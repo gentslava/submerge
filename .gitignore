@@ -3,6 +3,10 @@ node_modules/
 combine/node_modules/
 npm-debug.log*
 
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
 # mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
 mihomo/sources.json
 mihomo/hwid.txt

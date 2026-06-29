@@ -1,0 +1,27 @@
+{
+  "name": "@submerge/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "build": "tsc -b",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@submerge/shared": "workspace:*",
+    "@trpc/server": "latest",
+    "better-sqlite3": "latest",
+    "drizzle-orm": "latest",
+    "pino": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "latest",
+    "@types/node": "latest",
+    "drizzle-kit": "latest",
+    "vitest": "latest"
+  }
+}
