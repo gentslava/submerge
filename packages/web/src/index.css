@@ -91,6 +91,8 @@
   --color-timeout-bg: var(--timeout-bg);
   --color-idle: var(--idle);
   --color-chart-track: var(--chart-track);
+  /* Switch thumb is white in both themes (high contrast on the accent/track). */
+  --color-switch-thumb: #ffffff;
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --radius-sm: 6px;

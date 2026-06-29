@@ -16,7 +16,7 @@ export function NodesScreen() {
   const select = useMutation(
     trpc.nodes.select.mutationOptions({
       onSuccess: () => {
-        qc.invalidateQueries({ queryKey: trpc.nodes.list.queryKey() });
+        void qc.invalidateQueries({ queryKey: trpc.nodes.list.queryKey() });
         toast.success("Узел выбран");
       },
       onError: (e) => toast.error(e.message),
