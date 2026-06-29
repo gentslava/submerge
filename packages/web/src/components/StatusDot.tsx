@@ -4,11 +4,14 @@ import { useTRPC } from "@/lib/trpc";
 export function StatusDot() {
   const trpc = useTRPC();
   const ping = useQuery({ ...trpc.health.ping.queryOptions(), refetchInterval: 10_000 });
+  const pending = ping.data === undefined;
   const online = ping.data?.ok === true;
+  const dotClass = pending ? "bg-idle" : online ? "bg-online" : "bg-timeout";
+  const label = pending ? "проверка" : online ? "online" : "offline";
   return (
     <div className="flex items-center gap-2 text-xs text-text-secondary">
-      <span className={`h-2 w-2 rounded-full ${online ? "bg-online" : "bg-timeout"}`} />
-      mihomo: {online ? "online" : "offline"}
+      <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+      mihomo: {label}
     </div>
   );
 }
