@@ -14,9 +14,9 @@ interface SourceRowProps {
 }
 
 function KindIcon({ kind }: { kind: Source["kind"] }) {
-  if (kind === "happ") return <Lock className="h-4 w-4 shrink-0 text-text-tertiary" />;
-  if (kind === "vless") return <Link className="h-4 w-4 shrink-0 text-text-tertiary" />;
-  return <Inbox className="h-4 w-4 shrink-0 text-text-tertiary" />;
+  if (kind === "happ") return <Lock aria-hidden className="h-4 w-4 shrink-0 text-text-tertiary" />;
+  if (kind === "vless") return <Link aria-hidden className="h-4 w-4 shrink-0 text-text-tertiary" />;
+  return <Inbox aria-hidden className="h-4 w-4 shrink-0 text-text-tertiary" />;
 }
 
 export function SourceRow({ source, onToggle, onRefresh, onRemove, busy }: SourceRowProps) {

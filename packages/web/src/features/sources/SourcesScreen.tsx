@@ -88,8 +88,18 @@ export function SourcesScreen() {
               />
             ))
           ) : (
-            <div className="p-8 text-center text-text-secondary">
-              Пока нет источников — вставьте ссылку выше.
+            <div className="flex flex-col items-center gap-3 p-8 text-center text-text-secondary">
+              <span>Пока нет источников — вставьте ссылку выше.</span>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  const el = document.getElementById("source-value");
+                  if (el instanceof HTMLElement) el.focus();
+                }}
+              >
+                Добавить источник
+              </Button>
             </div>
           )}
         </div>

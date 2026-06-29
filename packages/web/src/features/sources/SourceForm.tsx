@@ -56,6 +56,7 @@ export function SourceForm() {
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <Textarea
+            id="source-value"
             {...register("value")}
             placeholder={"vless://…   ·   happ://…   ·   https://…/sub/…"}
             aria-label="Ссылка источника"

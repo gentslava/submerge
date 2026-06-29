@@ -35,7 +35,7 @@ export function NodeRow({ item, isActive, onSelect }: NodeRowProps) {
         isActive && "bg-accent-bg",
       )}
     >
-      <span className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])} />
+      <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])} />
       <span className="flex-1 truncate font-mono text-sm text-text-primary">{item.name}</span>
       <Badge variant={badgeVariants[lClass]}>{latencyLabel(item.delay)}</Badge>
       {isActive ? (
