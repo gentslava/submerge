@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Dark is the default theme; `.dark` on <html> is set in index.html. */
+/* Dark is the default; light activates when .dark is removed from <html> (theme toggle wired in a later task). */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* Light theme (role → value) */
@@ -65,7 +65,7 @@
 
 /* Expose roles as Tailwind utilities (bg-base, text-primary, border-default, …) */
 @theme inline {
-  --color-base: var(--bg-base);
+  --color-canvas: var(--bg-base);
   --color-surface: var(--bg-surface);
   --color-elevated: var(--bg-elevated);
   --color-hover: var(--bg-hover);
@@ -99,6 +99,7 @@
   --radius-xl: 14px;
 }
 
+/* Uses role vars directly: @layer base runs before @theme inline utilities exist. */
 @layer base {
   body {
     background-color: var(--bg-base);
