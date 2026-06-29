@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  getConnections,
-  getDelay,
-  getProxies,
-  reloadConfig,
-  selectProxy,
-  streamTraffic,
-} from "./mihomo.js";
+import { getDelay, getProxies, reloadConfig, selectProxy, streamTraffic } from "./mihomo.js";
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Promise<Response> | Response) {
   vi.stubGlobal("fetch", vi.fn(handler));
@@ -93,20 +86,5 @@ describe("mihomo client", () => {
       { up: 10, down: 20 },
       { up: 5, down: 7 },
     ]);
-  });
-
-  it("parses a connections snapshot", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({ downloadTotal: 100, uploadTotal: 50, connections: [{}, {}] }),
-            { status: 200 },
-          ),
-      ),
-    );
-    const c = await getConnections();
-    expect(c).toEqual({ downloadTotal: 100, uploadTotal: 50, count: 2 });
   });
 });

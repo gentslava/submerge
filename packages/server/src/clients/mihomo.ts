@@ -19,12 +19,6 @@ const mihomoProxySchema = z.looseObject({
 export type MihomoProxy = z.infer<typeof mihomoProxySchema>;
 
 const proxiesResponseSchema = z.object({ proxies: z.record(z.string(), mihomoProxySchema) });
-
-const connectionsSchema = z.object({
-  downloadTotal: z.number(),
-  uploadTotal: z.number(),
-  connections: z.array(z.unknown()).default([]),
-});
 export type ProxiesResponse = z.infer<typeof proxiesResponseSchema>;
 
 const delayResponseSchema = z.object({ delay: z.number() });
@@ -69,12 +63,6 @@ export async function reloadConfig(targetPath: string): Promise<void> {
   if (!r.ok) throw new Error(`mihomo reload returned HTTP ${r.status}`);
 }
 
-export interface ConnectionsSnapshot {
-  downloadTotal: number;
-  uploadTotal: number;
-  count: number;
-}
-
 // Stream mihomo /traffic as parsed NDJSON samples until `signal` aborts or the
 // upstream closes. Caller owns the lifecycle (re-open on error). NOTE: uses
 // fetch directly (NOT call()) because /traffic is long-lived — no 5 s timeout.
@@ -96,11 +84,4 @@ export async function* streamTraffic(signal: AbortSignal): AsyncGenerator<Traffi
       nl = buf.indexOf("\n");
     }
   }
-}
-
-export async function getConnections(): Promise<ConnectionsSnapshot> {
-  const r = await call("/connections");
-  if (!r.ok) throw new Error(`mihomo /connections returned HTTP ${r.status}`);
-  const { downloadTotal, uploadTotal, connections } = connectionsSchema.parse(await r.json());
-  return { downloadTotal, uploadTotal, count: connections.length };
 }
