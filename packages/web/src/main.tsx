@@ -5,6 +5,7 @@ import { createTRPCClient, httpBatchLink, httpSubscriptionLink, splitLink } from
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
+import { LiveProvider } from "./features/live/LiveProvider";
 import { makeQueryClient } from "./lib/query";
 import { applyTheme, getTheme } from "./lib/theme";
 import { ThemeProvider, useTheme } from "./lib/theme-context";
@@ -36,7 +37,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
         <ThemeProvider>
-          <RouterProvider router={router} />
+          <LiveProvider>
+            <RouterProvider router={router} />
+          </LiveProvider>
           <ThemedToaster />
         </ThemeProvider>
       </TRPCProvider>
