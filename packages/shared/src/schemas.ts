@@ -61,3 +61,14 @@ export const delayInput = z.object({ name: z.string().min(1) });
 export type DelayInput = z.infer<typeof delayInput>;
 export const setSettingInput = z.object({ key: z.string().min(1), value: z.string() });
 export type SetSettingInput = z.infer<typeof setSettingInput>;
+
+// Live (SSE) — high-frequency traffic samples + the fan-out event union.
+export const trafficSampleSchema = z.object({ up: z.number(), down: z.number() });
+export type TrafficSample = z.infer<typeof trafficSampleSchema>;
+
+export const liveEventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("nodeUpdate"), view: nodeViewSchema }),
+  z.object({ type: z.literal("traffic"), up: z.number(), down: z.number() }),
+  z.object({ type: z.literal("health"), mihomo: z.boolean() }),
+]);
+export type LiveEvent = z.infer<typeof liveEventSchema>;
