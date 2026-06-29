@@ -2,7 +2,7 @@
 //  - vless:// (ws+tls / tcp+reality / grpc / xhttp / http)
 //  - subscriptions: clash/mihomo yaml | base64 list | v2ray/xray JSON | sing-box JSON
 //  - happ:// is handled separately via the happ-decoder client (see ingest.ts)
-import type { Proxy as MihomoProxy } from "@submerge/shared";
+import type { Proxy as ProxyConfig } from "@submerge/shared";
 import { type SourceKind, sourceKindSchema } from "@submerge/shared";
 import * as yaml from "js-yaml";
 
@@ -59,7 +59,7 @@ export function detectKindSafe(value: string): SourceKind {
 }
 
 // ── vless:// → mihomo proxy ─────────────────────────────────────────
-export function parseVless(uri: string): MihomoProxy {
+export function parseVless(uri: string): ProxyConfig {
   const u = new URL(uri.trim());
   if (u.protocol !== "vless:") throw new Error("not a vless:// link");
   const q = u.searchParams;
@@ -100,13 +100,13 @@ export function parseVless(uri: string): MihomoProxy {
   else if (net === "http" || net === "h2") p["h2-opts"] = { path, host: host ? [host] : [sni] };
   else if (net === "xhttp")
     p["xhttp-opts"] = { path, host: host || sni, mode: q.get("mode") || "auto" };
-  return p as MihomoProxy;
+  return p as ProxyConfig;
 }
 
 // ── v2ray/xray JSON outbound → mihomo proxy (best-effort, Happ format) ──
 // biome-ignore lint/suspicious/noExplicitAny: external untyped JSON
-function v2rayOutboundToMihomo(ob: any, remark?: string): MihomoProxy | null {
-  if (!ob || ob.protocol !== "vless") return null; // freedom/blackhole/direct skipped
+function v2rayOutboundToMihomo(ob: any, remark?: string): ProxyConfig | null {
+  if (ob?.protocol !== "vless") return null; // freedom/blackhole/direct skipped
   const vnext = ob.settings?.vnext?.[0];
   const user = vnext?.users?.[0];
   if (!vnext || !user) return null;
@@ -137,13 +137,13 @@ function v2rayOutboundToMihomo(ob: any, remark?: string): MihomoProxy | null {
     p["ws-opts"] = { path: ss.wsSettings?.path || "/", headers: ss.wsSettings?.headers || {} };
   else if (net === "grpc")
     p["grpc-opts"] = { "grpc-service-name": ss.grpcSettings?.serviceName || "" };
-  return p as MihomoProxy;
+  return p as ProxyConfig;
 }
 
 // ── sing-box outbound → mihomo proxy (type/server/server_port) ──────
 // biome-ignore lint/suspicious/noExplicitAny: external untyped JSON
-function singBoxOutboundToMihomo(ob: any): MihomoProxy | null {
-  if (!ob || ob.type !== "vless" || !ob.server) return null;
+function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
+  if (ob?.type !== "vless" || !ob.server) return null;
   const net = ob.transport?.type || "tcp";
   const p: Record<string, unknown> = {
     name: ob.tag || `${ob.server}:${ob.server_port}`,
@@ -170,16 +170,16 @@ function singBoxOutboundToMihomo(ob: any): MihomoProxy | null {
     p["ws-opts"] = { path: ob.transport?.path || "/", headers: ob.transport?.headers || {} };
   else if (net === "grpc")
     p["grpc-opts"] = { "grpc-service-name": ob.transport?.service_name || "" };
-  return p as MihomoProxy;
+  return p as ProxyConfig;
 }
 
 // ── Parse subscription body text into mihomo proxies ────────────────
-export function parseProxiesFromText(text: string): MihomoProxy[] {
+export function parseProxiesFromText(text: string): ProxyConfig[] {
   // 1) clash/mihomo yaml
   try {
     const doc = yaml.load(text) as { proxies?: unknown[] } | undefined;
     if (doc && Array.isArray(doc.proxies) && doc.proxies.length)
-      return doc.proxies as MihomoProxy[];
+      return doc.proxies as ProxyConfig[];
   } catch {
     /* not yaml */
   }
@@ -190,7 +190,7 @@ export function parseProxiesFromText(text: string): MihomoProxy[] {
     // biome-ignore lint/suspicious/noExplicitAny: external untyped JSON
     const profiles: any[] | null = Array.isArray(j) ? j : j.outbounds ? [j] : null;
     if (profiles) {
-      const out: MihomoProxy[] = [];
+      const out: ProxyConfig[] = [];
       for (const prof of profiles)
         for (const ob of prof.outbounds || []) {
           const p = v2rayOutboundToMihomo(ob, prof.remarks) || singBoxOutboundToMihomo(ob);
@@ -210,7 +210,7 @@ export function parseProxiesFromText(text: string): MihomoProxy[] {
   } catch {
     /* not base64 */
   }
-  const out: MihomoProxy[] = [];
+  const out: ProxyConfig[] = [];
   for (const line of decoded.split(/\r?\n/)) {
     const s = line.trim();
     if (!s.startsWith("vless://")) continue;
