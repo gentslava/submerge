@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTRPC } from "@/lib/trpc";
 import { SourceForm } from "./SourceForm";
@@ -40,11 +41,14 @@ export function SourcesScreen() {
     }),
   );
 
-  // Track which source id currently has a pending mutation
-  const pendingId: number | undefined =
-    (toggleMutation.isPending ? toggleMutation.variables?.id : undefined) ??
-    (refreshMutation.isPending ? refreshMutation.variables?.id : undefined) ??
-    (removeMutation.isPending ? removeMutation.variables?.id : undefined);
+  // Track all in-flight mutation ids
+  const pendingIds = new Set<number>([
+    ...(toggleMutation.isPending && toggleMutation.variables ? [toggleMutation.variables.id] : []),
+    ...(refreshMutation.isPending && refreshMutation.variables
+      ? [refreshMutation.variables.id]
+      : []),
+    ...(removeMutation.isPending && removeMutation.variables ? [removeMutation.variables.id] : []),
+  ]);
 
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-8">
@@ -67,14 +71,17 @@ export function SourcesScreen() {
             </div>
           ) : sourcesQuery.isError ? (
             <div className="p-8 text-center text-text-secondary">
-              Не удалось загрузить источники.
+              Не удалось загрузить источники.{" "}
+              <Button variant="subtle" size="sm" onClick={() => sourcesQuery.refetch()}>
+                Повторить
+              </Button>
             </div>
           ) : sourcesQuery.data && sourcesQuery.data.length > 0 ? (
             sourcesQuery.data.map((source) => (
               <SourceRow
                 key={source.id}
                 source={source}
-                busy={pendingId === source.id}
+                busy={pendingIds.has(source.id)}
                 onToggle={() => toggleMutation.mutate({ id: source.id })}
                 onRefresh={() => refreshMutation.mutate({ id: source.id })}
                 onRemove={() => removeMutation.mutate({ id: source.id })}

@@ -9,4 +9,8 @@ describe("detectKindHint", () => {
     expect(detectKindHint("clash://install?url=x")).toBe("sub");
     expect(detectKindHint("")).toBe("unknown");
   });
+
+  it("detects vless case-insensitively", () => {
+    expect(detectKindHint("VLESS://abc")).toBe("vless");
+  });
 });

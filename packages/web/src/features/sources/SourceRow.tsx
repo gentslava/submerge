@@ -45,7 +45,7 @@ export function SourceRow({ source, onToggle, onRefresh, onRemove, busy }: Sourc
       <Switch
         checked={source.enabled}
         onCheckedChange={onToggle}
-        {...(isBusy ? { disabled: true } : {})}
+        disabled={isBusy}
         aria-label="Включить источник"
       />
       <Button
