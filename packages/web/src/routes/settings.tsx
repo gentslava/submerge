@@ -1,3 +1,5 @@
+import { SettingsScreen } from "@/features/settings/SettingsScreen";
+
 export function SettingsRoute() {
-  return <div className="p-6 text-text-primary">Настройки</div>;
+  return <SettingsScreen />;
 }

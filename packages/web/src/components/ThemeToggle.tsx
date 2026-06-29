@@ -1,18 +1,12 @@
 import { Moon, Sun } from "lucide-react";
-import { useState } from "react";
-import { applyTheme, getTheme } from "@/lib/theme";
+import { useTheme } from "@/lib/theme-context";
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState(getTheme);
-  function toggle() {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    applyTheme(next);
-  }
+  const { theme, setTheme } = useTheme();
   return (
     <button
       type="button"
-      onClick={toggle}
+      onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
       aria-label="Сменить тему"
       className="inline-flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-hover"
     >

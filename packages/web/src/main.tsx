@@ -7,11 +7,17 @@ import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
 import { makeQueryClient } from "./lib/query";
 import { applyTheme, getTheme } from "./lib/theme";
+import { ThemeProvider, useTheme } from "./lib/theme-context";
 import { TRPCProvider } from "./lib/trpc";
 import { router } from "./routes/tree";
 import "./index.css";
 
 applyTheme(getTheme());
+
+function ThemedToaster() {
+  const { theme } = useTheme();
+  return <Toaster theme={theme} position="top-right" richColors />;
+}
 
 function App() {
   const [queryClient] = useState(makeQueryClient);
@@ -21,8 +27,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
-        <RouterProvider router={router} />
-        <Toaster theme={getTheme()} position="top-right" richColors />
+        <ThemeProvider>
+          <RouterProvider router={router} />
+          <ThemedToaster />
+        </ThemeProvider>
       </TRPCProvider>
     </QueryClientProvider>
   );
