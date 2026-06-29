@@ -20,7 +20,7 @@ export async function decodeHapp(link: string, useHwid: boolean): Promise<Decode
     r = await fetch(`${env.HAPP_DECODER_URL}/decode`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ link: link.trim(), hwid: !!useHwid }),
+      body: JSON.stringify({ link: link.trim(), hwid: useHwid }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
