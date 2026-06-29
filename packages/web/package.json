@@ -3,5 +3,41 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "build": "echo \"web: filled in Phase 3\"" }
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@submerge/shared": "workspace:*",
+    "@tanstack/react-query": "latest",
+    "@tanstack/react-router": "latest",
+    "@trpc/client": "latest",
+    "@trpc/tanstack-react-query": "latest",
+    "@hookform/resolvers": "latest",
+    "class-variance-authority": "latest",
+    "clsx": "latest",
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-hook-form": "latest",
+    "sonner": "latest",
+    "tailwind-merge": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@submerge/server": "workspace:*",
+    "@tailwindcss/vite": "latest",
+    "@testing-library/jest-dom": "latest",
+    "@testing-library/react": "latest",
+    "@testing-library/user-event": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "jsdom": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest",
+    "vitest": "latest"
+  }
 }
