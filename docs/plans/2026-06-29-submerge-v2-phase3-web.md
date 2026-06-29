@@ -297,7 +297,7 @@ export function cn(...inputs: ClassValue[]): string {
 
 /* Expose roles as Tailwind utilities (bg-base, text-primary, border-default, …) */
 @theme inline {
-  --color-base: var(--bg-base);
+  --color-canvas: var(--bg-base);
   --color-surface: var(--bg-surface);
   --color-elevated: var(--bg-elevated);
   --color-hover: var(--bg-hover);
@@ -694,7 +694,7 @@ import { Sidebar } from "./Sidebar";
 
 export function AppShell() {
   return (
-    <div className="flex min-h-dvh bg-base text-text-primary">
+    <div className="flex min-h-dvh bg-canvas text-text-primary">
       <Sidebar />
       <main className="flex-1 pb-16 md:pb-0">
         <Outlet />
