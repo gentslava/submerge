@@ -1,7 +1,7 @@
 import { on } from "node:events";
 import type { LiveEvent } from "@submerge/shared";
 import { tracked } from "@trpc/server";
-import { publicProcedure, router } from "../trpc/trpc.js";
+import { protectedProcedure, router } from "../trpc/trpc.js";
 import { LIVE_EVENT, type LiveHub } from "./hub.js";
 
 // Monotonic SSE event id so reconnecting clients can resume via Last-Event-ID.
@@ -43,6 +43,6 @@ async function* streamEvents(
 
 export function makeLiveRouter(hub: LiveHub) {
   return router({
-    stream: publicProcedure.subscription((opts) => streamEvents(hub, opts.signal)),
+    stream: protectedProcedure.subscription((opts) => streamEvents(hub, opts.signal)),
   });
 }
