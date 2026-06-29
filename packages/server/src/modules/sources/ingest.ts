@@ -8,6 +8,8 @@ export interface IngestResult {
   proxies: ProxyConfig[];
 }
 
+const FETCH_TIMEOUT_MS = 30_000; // subscription fetch
+
 // Fetch an https subscription and parse its body into proxies.
 // X-Hwid is sent only when useHwid is set (ADR-0002): device-bound providers
 // need it, but sending it elsewhere can burn device-slot limits.
@@ -21,7 +23,7 @@ export async function fetchSubscription(
     headers["X-Hwid"] = hwid;
     headers["X-Device-Os"] = "Android";
   }
-  const res = await fetch(url.trim(), { headers, signal: AbortSignal.timeout(30_000) });
+  const res = await fetch(url.trim(), { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`subscription returned HTTP ${res.status}`);
   const proxies = parseProxiesFromText(await res.text());
   if (!proxies.length)
