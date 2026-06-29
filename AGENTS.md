@@ -50,7 +50,7 @@ pnpm format                             # biome format --write .
 pnpm -F @submerge/server db:generate    # generate migration from schema
 ```
 
-Node 24 runs `.ts` directly (no flags). PoC: `docker compose up -d` (combine+mihomo+happ-decoder).
+Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` specifiers in nodenext mode). PoC: `docker compose up -d` (combine+mihomo+happ-decoder).
 
 ## Conventions
 
