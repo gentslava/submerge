@@ -1,13 +1,13 @@
 import type { LiveEvent } from "@submerge/shared";
 import { describe, expect, it, vi } from "vitest";
-import { LiveHub } from "./hub.js";
+import { LIVE_EVENT, LiveHub } from "./hub.js";
 
 const view = { now: "NL-1", all: [{ name: "NL-1", type: "vless", delay: 9 }] };
 
 function collect(hub: LiveHub, n: number): Promise<LiveEvent[]> {
   return new Promise((resolve) => {
     const out: LiveEvent[] = [];
-    hub.emitter.on("event", (e: LiveEvent) => {
+    hub.emitter.on(LIVE_EVENT, (e: LiveEvent) => {
       out.push(e);
       if (out.length === n) resolve(out);
     });
@@ -22,7 +22,7 @@ describe("LiveHub", () => {
       getInterval: () => 10,
     });
     const got = collect(hub, 2);
-    hub.pollOnce();
+    await hub.pollOnce();
     const events = await got;
     expect(events).toContainEqual({ type: "health", mihomo: true });
     expect(events).toContainEqual({ type: "nodeUpdate", view });
@@ -38,7 +38,7 @@ describe("LiveHub", () => {
       getInterval: () => 10,
     });
     const got = collect(hub, 1);
-    hub.pollOnce();
+    await hub.pollOnce();
     expect(await got).toEqual([{ type: "health", mihomo: false }]);
   });
 });

@@ -1,6 +1,10 @@
 import { EventEmitter } from "node:events";
 import type { LiveEvent, NodeView, TrafficSample } from "@submerge/shared";
 
+// Event name on the emitter — shared with the SSE router (Task 5) so a typo
+// can't silently break the fan-out.
+export const LIVE_EVENT = "event";
+
 export interface HubDeps {
   fetchView: () => Promise<NodeView>;
   streamTraffic: (signal: AbortSignal) => AsyncGenerator<TrafficSample>;
@@ -28,7 +32,7 @@ export class LiveHub {
   }
 
   private emit(e: LiveEvent): void {
-    this.emitter.emit("event", e);
+    this.emitter.emit(LIVE_EVENT, e);
   }
 
   async pollOnce(): Promise<void> {
@@ -55,15 +59,19 @@ export class LiveHub {
   }
 
   private async pumpTraffic(): Promise<void> {
-    while (this.trafficAbort) {
+    // Snapshot the controller for this pump's lifetime: a stop()→start() during
+    // the retry sleep installs a NEW controller, and this generation must exit
+    // rather than re-enter on it (avoids two concurrent pumps / duplicate events).
+    const ctrl = this.trafficAbort;
+    while (this.trafficAbort === ctrl && ctrl !== null) {
       try {
-        for await (const s of this.deps.streamTraffic(this.trafficAbort.signal)) {
+        for await (const s of this.deps.streamTraffic(ctrl.signal)) {
           this.emit({ type: "traffic", up: s.up, down: s.down });
         }
       } catch {
-        // upstream closed/error → brief pause, then retry while still running
+        // upstream closed/error → brief pause, then retry while still current
       }
-      if (this.trafficAbort) await new Promise((r) => setTimeout(r, 1000));
+      if (this.trafficAbort === ctrl) await new Promise((r) => setTimeout(r, 1000));
     }
   }
 
