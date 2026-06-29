@@ -31,6 +31,6 @@ export async function decodeHapp(link: string, useHwid: boolean): Promise<Decode
   if (!parsed.success)
     throw new Error(`happ-decoder returned an unexpected response (HTTP ${r.status})`);
   const data = parsed.data;
-  if (!r.ok || !data.ok) throw new Error(data.error ?? `happ-decoder returned HTTP ${r.status}`);
+  if (!r.ok || !data.ok) throw new Error(data.error || `happ-decoder returned HTTP ${r.status}`);
   return data;
 }
