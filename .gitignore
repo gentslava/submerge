@@ -4,6 +4,7 @@ npm-debug.log*
 
 # mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
 mihomo/sources.json
+mihomo/hwid.txt
 mihomo/providers/
 mihomo/ui/
 mihomo/.cache/

@@ -158,7 +158,10 @@ export function parseProxiesFromText(text) {
 }
 
 export async function fetchSubscription(url) {
-  const res = await fetch(url.trim(), { headers: { 'User-Agent': 'clash.meta' } });
+  // X-Hwid нужен провайдерам с привязкой к устройству (иначе отдают заглушку)
+  const headers = { 'User-Agent': 'clash.meta', 'X-Device-Os': 'Android' };
+  if (process.env.SUBMERGE_HWID) headers['X-Hwid'] = process.env.SUBMERGE_HWID;
+  const res = await fetch(url.trim(), { headers });
   if (!res.ok) throw new Error(`подписка вернула HTTP ${res.status}`);
   const proxies = parseProxiesFromText(await res.text());
   if (!proxies.length) throw new Error('в подписке не нашлось узлов (clash-yaml / v2ray-json / base64)');

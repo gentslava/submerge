@@ -1,6 +1,7 @@
 // combine — control-plane: ingest источников -> генерация config.yaml -> reload mihomo -> статус.
 import http from 'node:http';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { parseVless, fetchSubscription, detectKind, ingestHapp, extractSubUrl, parseProxiesFromText } from './parse.js';
 import { writeConfig } from './generate.js';
 
@@ -10,6 +11,15 @@ const CFG_DIR = '/mihomo';
 const CFG_HOST = `${CFG_DIR}/config.yaml`;                 // куда combine пишет
 const CFG_IN_MIHOMO = '/root/.config/mihomo/config.yaml';  // как видит mihomo
 const SRC_PATH = `${CFG_DIR}/sources.json`;
+
+// Стабильный HWID для подписок с привязкой к устройству (Black Cat VPN и т.п.).
+const HWID_PATH = `${CFG_DIR}/hwid.txt`;
+(() => {
+  let hwid = process.env.SUBMERGE_HWID || '';
+  if (!hwid && existsSync(HWID_PATH)) { try { hwid = readFileSync(HWID_PATH, 'utf8').trim(); } catch {} }
+  if (!hwid) { hwid = randomBytes(16).toString('hex'); try { writeFileSync(HWID_PATH, hwid); } catch {} }
+  process.env.SUBMERGE_HWID = hwid;
+})();
 
 let sources = [];
 if (existsSync(SRC_PATH)) { try { sources = JSON.parse(readFileSync(SRC_PATH, 'utf8')); } catch {} }
