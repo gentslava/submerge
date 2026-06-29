@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { NodeItem, NodeView, Proxy as ProxyConfig } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
+import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
@@ -37,9 +38,8 @@ export async function applyConfig(
   return { nodes: proxies.length };
 }
 
-// Normalize the mihomo PROXY select group into the UI-facing NodeView.
-export async function listNodes(): Promise<NodeView> {
-  const { proxies } = await getProxies();
+// Pure normalization: map a ProxiesResponse to the UI-facing NodeView.
+export function toNodeView({ proxies }: ProxiesResponse): NodeView {
   const group = proxies.PROXY;
   if (!group?.all) return { now: null, all: [] };
   const all: NodeItem[] = group.all.map((name) => {
@@ -54,6 +54,11 @@ export async function listNodes(): Promise<NodeView> {
     return item;
   });
   return { now: group.now ?? null, all };
+}
+
+// Normalize the mihomo PROXY select group into the UI-facing NodeView.
+export async function listNodes(): Promise<NodeView> {
+  return toNodeView(await getProxies());
 }
 
 export async function testDelay(name: string): Promise<number | null> {
