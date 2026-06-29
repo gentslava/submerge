@@ -1,3 +1,5 @@
+import { makeLiveRouter } from "../live/router.js";
+import { liveHub } from "../live/singleton.js";
 import { nodesRouter } from "../modules/nodes/router.js";
 import { settingsRouter } from "../modules/settings/router.js";
 import { sourcesRouter } from "../modules/sources/router.js";
@@ -11,6 +13,7 @@ export const appRouter = router({
   sources: sourcesRouter,
   nodes: nodesRouter,
   settings: settingsRouter,
+  live: makeLiveRouter(liveHub),
 });
 
 // Re-exported for the web package (Phase 3)

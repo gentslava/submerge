@@ -32,7 +32,6 @@ export function SettingsScreen() {
     }),
   );
 
-  // TODO(phase-4): consume pollInterval in live queries
   function persistInterval(raw: string) {
     const trimmed = raw.trim();
     if (!/^\d+$/.test(trimmed)) return; // reject empty / non-integer input

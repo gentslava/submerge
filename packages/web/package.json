@@ -11,12 +11,12 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@hookform/resolvers": "latest",
     "@submerge/shared": "workspace:*",
     "@tanstack/react-query": "latest",
     "@tanstack/react-router": "latest",
     "@trpc/client": "latest",
     "@trpc/tanstack-react-query": "latest",
-    "@hookform/resolvers": "latest",
     "class-variance-authority": "latest",
     "clsx": "latest",
     "lucide-react": "latest",
@@ -25,6 +25,7 @@
     "react-hook-form": "latest",
     "sonner": "latest",
     "tailwind-merge": "latest",
+    "uplot": "^1.6.32",
     "zod": "latest"
   },
   "devDependencies": {

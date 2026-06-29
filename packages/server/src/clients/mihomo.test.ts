@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDelay, getProxies, reloadConfig, selectProxy } from "./mihomo.js";
+import { getDelay, getProxies, reloadConfig, selectProxy, streamTraffic } from "./mihomo.js";
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Promise<Response> | Response) {
   vi.stubGlobal("fetch", vi.fn(handler));
@@ -65,5 +65,26 @@ describe("mihomo client", () => {
   it("throws when mihomo returns 500 on proxies", async () => {
     mockFetch(() => new Response("boom", { status: 500 }));
     await expect(getProxies()).rejects.toThrow(/mihomo/i);
+  });
+
+  it("streams and parses NDJSON traffic samples", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        const enc = new TextEncoder();
+        c.enqueue(enc.encode('{"up":10,"down":20}\n{"up":5,'));
+        c.enqueue(enc.encode('"down":7}\n'));
+        c.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 200 })),
+    );
+    const samples: Array<{ up: number; down: number }> = [];
+    for await (const s of streamTraffic(new AbortController().signal)) samples.push(s);
+    expect(samples).toEqual([
+      { up: 10, down: 20 },
+      { up: 5, down: 7 },
+    ]);
   });
 });
