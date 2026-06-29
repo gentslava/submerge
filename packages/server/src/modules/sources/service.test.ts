@@ -4,7 +4,14 @@ import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
-import { addSource, listSources, removeSource, reorderSources, toggleSource } from "./service.js";
+import {
+  addSource,
+  listSources,
+  refreshSource,
+  removeSource,
+  reorderSources,
+  toggleSource,
+} from "./service.js";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -101,5 +108,28 @@ describe("sources service", () => {
     await reorderSources(db, [b.id, a.id], tmpConfig());
     const list = await listSources(db);
     expect(list.map((s) => s.id)).toEqual([b.id, a.id]); // listSources orders by sortOrder
+  });
+
+  it("re-ingests and updates the snapshot on refresh", async () => {
+    const db = freshDb();
+    stubNet(); // first ingest → node "A"
+    const src = await addSource(
+      db,
+      { value: "https://ex.com/sub", hwid: false },
+      tmpConfig(),
+      hwidFile(),
+    );
+    expect(src.proxies[0]?.name).toBe("A");
+    stubNet("proxies:\n  - {name: Z, type: vless, server: ex.com, port: 443, uuid: u}\n"); // re-ingest → node "Z"
+    const refreshed = await refreshSource(db, src.id, tmpConfig(), hwidFile());
+    expect(refreshed.proxies[0]?.name).toBe("Z"); // snapshot was refreshed, not stale
+    expect(typeof refreshed.updatedAt).toBe("string");
+  });
+
+  it("throws when refreshing a missing source", async () => {
+    const db = freshDb();
+    await expect(refreshSource(db, 9999, tmpConfig(), hwidFile())).rejects.toThrow(
+      "source 9999 not found",
+    );
   });
 });

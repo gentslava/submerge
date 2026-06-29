@@ -11,6 +11,7 @@ import { ingestSource } from "./ingest.js";
 function toSource(row: typeof sources.$inferSelect): Source {
   return {
     id: row.id,
+    // kind is always written as a valid SourceKind by ingestSource
     kind: row.kind as Source["kind"],
     value: row.value,
     label: row.label,
@@ -62,6 +63,7 @@ export async function removeSource(
   id: number,
   configPath: string = env.MIHOMO_CONFIG_PATH,
 ): Promise<void> {
+  // idempotent: deleting a missing id is a no-op (no throw), unlike toggle/refresh
   db.delete(sources).where(eq(sources.id, id)).run();
   await applyConfig(db, configPath);
 }
