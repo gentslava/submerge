@@ -1,0 +1,34 @@
+import { cn } from "@/lib/utils";
+
+interface SegmentedOption {
+  value: string;
+  label: string;
+}
+
+interface SegmentedProps {
+  options: SegmentedOption[];
+  value: string;
+  onChange: (v: string) => void;
+}
+
+export function Segmented({ options, value, onChange }: SegmentedProps) {
+  return (
+    <div className="inline-flex rounded-lg border border-border-default bg-elevated p-0.5">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={cn(
+            "min-h-8 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border",
+            opt.value === value
+              ? "bg-surface text-text-primary shadow-sm"
+              : "text-text-secondary hover:text-text-primary",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
