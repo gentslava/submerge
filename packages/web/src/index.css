@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* Dark is the default; light activates when .dark is removed from <html> (theme toggle wired in a later task). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Light theme (role → value) */
+:root {
+  --bg-base: #f6f7f9;
+  --bg-surface: #ffffff;
+  --bg-elevated: #eef0f5;
+  --bg-hover: #e7e9f0;
+  --bg-input: #ffffff;
+  --border-subtle: #e6e8ef;
+  --border-default: #d5d9e2;
+  --border-strong: #c0c5d1;
+  --text-primary: #1a1d24;
+  --text-secondary: #585e6a;
+  --text-tertiary: #6f7682;
+  --text-disabled: #a0a6b0;
+  --accent: #6366f1;
+  --accent-hover: #5356e0;
+  --accent-fg: #ffffff;
+  --accent-text: #4f46e5;
+  --accent-bg: #6366f114;
+  --accent-border: #6366f14d;
+  --online: #2e7d32;
+  --online-bg: #2e7d3214;
+  --slow: #a16207;
+  --slow-bg: #a162071f;
+  --timeout: #c81e1e;
+  --timeout-bg: #c81e1e14;
+  --idle: #6f7682;
+  --chart-track: #d8daf3;
+}
+
+/* Dark theme override */
+.dark {
+  --bg-base: #0b0d12;
+  --bg-surface: #101219;
+  --bg-elevated: #161922;
+  --bg-hover: #1c2029;
+  --bg-input: #13151c;
+  --border-subtle: #20232c;
+  --border-default: #2a2e39;
+  --border-strong: #3a3f4d;
+  --text-primary: #e9ebef;
+  --text-secondary: #9ba1ad;
+  --text-tertiary: #6a707d;
+  --text-disabled: #4a4f5a;
+  --accent: #6366f1;
+  --accent-hover: #7b7df4;
+  --accent-fg: #ffffff;
+  --accent-text: #adb0f8;
+  --accent-bg: #6366f126;
+  --accent-border: #6366f14d;
+  --online: #3fb950;
+  --online-bg: #3fb9501f;
+  --slow: #d9a33a;
+  --slow-bg: #d9a33a1f;
+  --timeout: #e5534b;
+  --timeout-bg: #e5534b1f;
+  --idle: #6a707d;
+  --chart-track: #2e3150;
+}
+
+/* Expose roles as Tailwind utilities (bg-base, text-primary, border-default, …) */
+@theme inline {
+  --color-canvas: var(--bg-base);
+  --color-surface: var(--bg-surface);
+  --color-elevated: var(--bg-elevated);
+  --color-hover: var(--bg-hover);
+  --color-input: var(--bg-input);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-disabled: var(--text-disabled);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-text: var(--accent-text);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-border: var(--accent-border);
+  --color-online: var(--online);
+  --color-online-bg: var(--online-bg);
+  --color-slow: var(--slow);
+  --color-slow-bg: var(--slow-bg);
+  --color-timeout: var(--timeout);
+  --color-timeout-bg: var(--timeout-bg);
+  --color-idle: var(--idle);
+  --color-chart-track: var(--chart-track);
+  /* Switch thumb is white in both themes (high contrast on the accent/track). */
+  --color-switch-thumb: #ffffff;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
+
+/* Uses role vars directly: @layer base runs before @theme inline utilities exist. */
+@layer base {
+  body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
