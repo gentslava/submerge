@@ -23,10 +23,9 @@ interface NodeRowProps {
   item: NodeItem;
   isActive: boolean;
   onSelect(): void;
-  onPing(): void;
 }
 
-export function NodeRow({ item, isActive, onSelect, onPing: _onPing }: NodeRowProps) {
+export function NodeRow({ item, isActive, onSelect }: NodeRowProps) {
   const lClass = latencyClass(item.delay);
 
   return (

@@ -12,6 +12,7 @@ const latencyTextColors: Record<LatencyClass, string> = {
   idle: "text-text-tertiary",
 };
 
+// TODO(phase-4): replace with real per-node latency history from SSE/query
 const STATIC_HISTORY = [40, 55, 38, 60, 45, 52];
 
 interface ActiveNodeCardProps {

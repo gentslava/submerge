@@ -46,9 +46,9 @@ export function NodesScreen() {
       ) : nodesQuery.isError ? (
         <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-text-secondary">
           Не удалось получить узлы от mihomo.{" "}
-          <button type="button" className="text-accent-text" onClick={() => nodesQuery.refetch()}>
+          <Button variant="subtle" size="sm" onClick={() => nodesQuery.refetch()}>
             Повторить
-          </button>
+          </Button>
         </div>
       ) : (
         <Body
@@ -90,7 +90,6 @@ function Body({
               item={n}
               isActive={now === n.name}
               onSelect={() => onSelect(n.name)}
-              onPing={() => {}}
             />
           ))
         )}
