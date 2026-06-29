@@ -1,6 +1,7 @@
 import type { NodeItem } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,11 +9,14 @@ import { useTRPC } from "@/lib/trpc";
 import { ActiveNodeCard } from "./ActiveNodeCard";
 import { NodeRow } from "./NodeRow";
 import { splitNodes } from "./nodeView";
+import { TrafficChart } from "./TrafficChart";
+
+const HISTORY_CAP = 30;
 
 export function NodesScreen() {
   const trpc = useTRPC();
   const qc = useQueryClient();
-  const nodesQuery = useQuery({ ...trpc.nodes.list.queryOptions(), refetchInterval: 5000 });
+  const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const select = useMutation(
     trpc.nodes.select.mutationOptions({
       onSuccess: () => {
@@ -70,10 +74,57 @@ function Body({
   all: NodeItem[];
   onSelect: (n: string) => void;
 }) {
-  const { nodes } = splitNodes(all);
+  const { modes, nodes } = splitNodes(all);
+
+  // Accumulate the active node's latency history across SSE-patched updates.
+  // Mutating the ref during render is safe here: it never triggers a re-render
+  // (no setState), it only records the latest delay so the next render can read
+  // an up-to-date series. The cache patch from the live stream drives re-renders.
+  const histRef = useRef<Record<string, number[]>>({});
+  if (now != null) {
+    const active = all.find((n) => n.name === now);
+    const delay = active?.delay ?? null;
+    if (delay != null && delay > 0) {
+      const series = histRef.current[now] ?? [];
+      histRef.current[now] = series;
+      if (series[series.length - 1] !== delay) {
+        series.push(delay);
+        if (series.length > HISTORY_CAP) series.splice(0, series.length - HISTORY_CAP);
+      }
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
-      <ActiveNodeCard now={now} all={all} />
+      <ActiveNodeCard
+        now={now}
+        all={all}
+        history={now != null ? (histRef.current[now] ?? []) : []}
+      />
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs font-semibold tracking-wide text-text-secondary">Трафик</h2>
+        <div className="rounded-xl border border-border-subtle bg-surface p-4">
+          <TrafficChart />
+        </div>
+      </section>
+
+      {modes.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-xs font-semibold tracking-wide text-text-secondary">Режимы</h2>
+          <div className="flex flex-col rounded-xl border border-border-subtle bg-surface">
+            {modes.map((m) => (
+              <NodeRow
+                key={m.name}
+                item={m}
+                isActive={now === m.name}
+                onSelect={() => onSelect(m.name)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       <div className="flex flex-col rounded-xl border border-border-subtle bg-surface">
         {nodes.length === 0 ? (
           <div className="p-8 text-center text-text-secondary">

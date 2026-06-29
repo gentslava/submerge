@@ -11,6 +11,7 @@ export function LatencyBars({ values, className }: LatencyBarsProps) {
   }
 
   const max = Math.max(...values);
+  const safeMax = max > 0 ? max : 1; // all-zero / empty → flat bars, not NaN
 
   return (
     <div className={cn("flex h-8 items-end gap-0.5", className)}>
@@ -18,7 +19,7 @@ export function LatencyBars({ values, className }: LatencyBarsProps) {
         <div key={i} className="relative flex-1 rounded-sm bg-chart-track">
           <div
             className="absolute bottom-0 w-full rounded-sm bg-accent"
-            style={{ height: `${Math.max(8, (v / max) * 100)}%` }}
+            style={{ height: `${Math.max(8, (v / safeMax) * 100)}%` }}
           />
         </div>
       ))}

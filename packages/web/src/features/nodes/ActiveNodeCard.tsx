@@ -12,15 +12,13 @@ const latencyTextColors: Record<LatencyClass, string> = {
   idle: "text-text-tertiary",
 };
 
-// TODO(phase-4): replace with real per-node latency history from SSE/query
-const STATIC_HISTORY = [40, 55, 38, 60, 45, 52];
-
 interface ActiveNodeCardProps {
   now: string | null;
   all: NodeItem[];
+  history: number[];
 }
 
-export function ActiveNodeCard({ now, all }: ActiveNodeCardProps) {
+export function ActiveNodeCard({ now, all, history }: ActiveNodeCardProps) {
   const active = now != null ? all.find((n) => n.name === now) : undefined;
 
   return (
@@ -43,7 +41,10 @@ export function ActiveNodeCard({ now, all }: ActiveNodeCardProps) {
               </span>
               <span className="text-sm text-text-tertiary">ms</span>
             </div>
-            <LatencyBars values={STATIC_HISTORY} className="flex-1" />
+            <LatencyBars
+              values={history.length ? history : [active.delay ?? 0]}
+              className="flex-1"
+            />
           </div>
         </>
       )}

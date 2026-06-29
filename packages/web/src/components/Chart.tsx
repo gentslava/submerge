@@ -1,0 +1,39 @@
+import { useEffect, useRef } from "react";
+import uPlot from "uplot";
+import "uplot/dist/uPlot.min.css";
+
+export function Chart({
+  data,
+  height = 96,
+  makeOpts,
+}: {
+  data: uPlot.AlignedData;
+  height?: number;
+  makeOpts: (width: number) => uPlot.Options;
+}) {
+  const elRef = useRef<HTMLDivElement>(null);
+  const uRef = useRef<uPlot | null>(null);
+
+  useEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    const width = el.clientWidth || 320;
+    const u = new uPlot(makeOpts(width), data, el);
+    uRef.current = u;
+    const ro = new ResizeObserver(() => {
+      u.setSize({ width: el.clientWidth || width, height });
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      u.destroy();
+      uRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    uRef.current?.setData(data);
+  }, [data]);
+
+  return <div ref={elRef} style={{ height }} />;
+}
