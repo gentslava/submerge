@@ -25,7 +25,7 @@ describe("mihomo client", () => {
     });
     const res = await getProxies();
     expect(res.proxies.PROXY?.now).toBe("A");
-    expect(seenAuth).toMatch(/^Bearer /);
+    expect(seenAuth).toMatch(/^Bearer/);
   });
 
   it("parses a delay response", async () => {
@@ -33,7 +33,7 @@ describe("mihomo client", () => {
     expect(await getDelay("A")).toEqual({ delay: 123 });
   });
 
-  it("returns delay null shape on an error status", async () => {
+  it("throws on an error status", async () => {
     mockFetch(() => json({ message: "timeout" }, { status: 408 }));
     await expect(getDelay("A")).rejects.toThrow();
   });

@@ -24,12 +24,10 @@ const delayResponseSchema = z.object({ delay: z.number() });
 export type DelayResponse = z.infer<typeof delayResponseSchema>;
 
 function call(path: string, init: RequestInit = {}): Promise<Response> {
-  const secret = env.MIHOMO_SECRET;
-  const authValue = secret ? `Bearer ${secret}` : "Bearer -";
   return fetch(`${env.MIHOMO_API}${path}`, {
     ...init,
     signal: AbortSignal.timeout(TIMEOUT_MS),
-    headers: { ...(init.headers ?? {}), Authorization: authValue },
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${env.MIHOMO_SECRET}` },
   });
 }
 
