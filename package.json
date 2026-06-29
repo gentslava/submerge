@@ -6,7 +6,7 @@
   "engines": { "node": ">=24" },
   "scripts": {
     "build": "pnpm -r run build",
-    "typecheck": "tsc -b --noEmit packages/shared packages/server",
+    "typecheck": "tsc -b",
     "lint": "biome ci .",
     "format": "biome format --write .",
     "test": "pnpm -r run test"
