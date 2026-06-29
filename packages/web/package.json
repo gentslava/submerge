@@ -1,0 +1,7 @@
+{
+  "name": "@submerge/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "echo \"web: filled in Phase 3\"" }
+}
