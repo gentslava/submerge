@@ -1,0 +1,45 @@
+import type { Proxy as ProxyConfig } from "@submerge/shared";
+import * as yaml from "js-yaml";
+import { describe, expect, it } from "vitest";
+import { buildConfig, dedupeNames } from "./config.js";
+
+const proxy = (name: string): ProxyConfig => ({
+  name,
+  type: "vless",
+  server: "ex.com",
+  port: 443,
+  uuid: "u",
+});
+
+describe("dedupeNames", () => {
+  it("leaves unique names untouched", () => {
+    expect(dedupeNames([proxy("A"), proxy("B")]).map((p) => p.name)).toEqual(["A", "B"]);
+  });
+  it("disambiguates duplicates deterministically", () => {
+    expect(dedupeNames([proxy("A"), proxy("A"), proxy("A")]).map((p) => p.name)).toEqual([
+      "A",
+      "A-2",
+      "A-3",
+    ]);
+  });
+});
+
+describe("buildConfig", () => {
+  it("emits PROXY + AUTO groups and a MATCH rule for a populated config", () => {
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(buildConfig([proxy("A"), proxy("B")])) as Record<string, any>;
+    expect(cfg["mixed-port"]).toBe(7890);
+    const groups = cfg["proxy-groups"];
+    expect(groups[0].name).toBe("PROXY");
+    expect(groups[0].proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
+    expect(groups[1].name).toBe("AUTO");
+    expect(groups[1].proxies).toEqual(["A", "B"]);
+    expect(cfg.rules).toEqual(["MATCH,PROXY"]);
+  });
+  it("falls back to DIRECT when there are no proxies", () => {
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(buildConfig([])) as Record<string, any>;
+    expect(cfg["proxy-groups"][1].proxies).toEqual(["DIRECT"]);
+    expect(cfg.rules).toEqual(["MATCH,DIRECT"]);
+  });
+});
