@@ -33,3 +33,31 @@ export const addSourceInput = z.object({
   hwid: z.boolean().default(false),
 });
 export type AddSourceInput = z.infer<typeof addSourceInput>;
+
+// A single node as shown in the UI: live "now"/delay come from mihomo, not the DB.
+export const nodeItemSchema = z.object({
+  name: z.string(),
+  type: z.string(),
+  delay: z.number().nullable(), // null = unreachable or not yet tested
+  udp: z.boolean().optional(),
+});
+export type NodeItem = z.infer<typeof nodeItemSchema>;
+
+// The PROXY select group: currently selected node + all selectable members.
+export const nodeViewSchema = z.object({
+  now: z.string().nullable(),
+  all: z.array(nodeItemSchema),
+});
+export type NodeView = z.infer<typeof nodeViewSchema>;
+
+// ── tRPC input schemas ────────────────────────────────────────────
+export const idInput = z.object({ id: z.number().int() });
+export type IdInput = z.infer<typeof idInput>;
+export const reorderInput = z.object({ ids: z.array(z.number().int()) });
+export type ReorderInput = z.infer<typeof reorderInput>;
+export const selectNodeInput = z.object({ group: z.string().min(1), name: z.string().min(1) });
+export type SelectNodeInput = z.infer<typeof selectNodeInput>;
+export const delayInput = z.object({ name: z.string().min(1) });
+export type DelayInput = z.infer<typeof delayInput>;
+export const setSettingInput = z.object({ key: z.string().min(1), value: z.string() });
+export type SetSettingInput = z.infer<typeof setSettingInput>;

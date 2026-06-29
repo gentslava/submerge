@@ -15,11 +15,13 @@
     "@trpc/server": "latest",
     "better-sqlite3": "latest",
     "drizzle-orm": "latest",
+    "js-yaml": "latest",
     "pino": "latest",
     "zod": "latest"
   },
   "devDependencies": {
     "@types/better-sqlite3": "latest",
+    "@types/js-yaml": "latest",
     "@types/node": "latest",
     "drizzle-kit": "latest",
     "tsx": "latest",

@@ -7,6 +7,12 @@ const envSchema = z.object({
   MIHOMO_SECRET: z.string().default(""),
   HAPP_DECODER_URL: z.url().default("http://happ-decoder:8080"),
   ADMIN_PASSWORD: z.string().optional(),
+  // Where the server writes the generated mihomo config (shared volume in compose).
+  MIHOMO_CONFIG_PATH: z.string().default("/mihomo/config.yaml"),
+  // Path as mihomo sees it, sent in the reload body (PUT /configs).
+  MIHOMO_CONFIG_TARGET: z.string().default("/root/.config/mihomo/config.yaml"),
+  // Stable HWID is mirrored here so happ-decoder (unchanged) and the server agree.
+  HWID_FILE: z.string().default("/mihomo/hwid.txt"),
 });
 
 export type Env = z.infer<typeof envSchema>;
