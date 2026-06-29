@@ -924,6 +924,7 @@ git commit -m "$(printf 'feat(web): Источники screen — add (rhf+zod, 
 
 - [ ] **Step 1: `SettingsScreen.tsx`** — `useQuery(trpc.settings.get.queryOptions())` returns `Record<string,string>`. Sections (Card per group):
   - **Внешний вид:** Тема — segmented (Тёмная / Светлая) calling `applyTheme` + persisting via `settings.set({key:"theme", value})`.
+    > **Theme context (deferred from Task 5):** introduce a small `ThemeProvider`/context holding the current theme + a `setTheme` that calls `applyTheme`. Have `ThemeToggle` (Sidebar) AND this Settings segmented AND `main.tsx`'s `<Toaster theme={...}>` all read/write that single source, so toggling the theme anywhere re-themes sonner toasts too (currently `<Toaster theme={getTheme()}>` reads once and goes stale after a toggle). Wire `Toaster` to the context value.
   - **Подключение:** read-only proxy address chip (`127.0.0.1:7890`), `mihomo secret` (read-only display of whether set), интервал опроса (number, persisted via `settings.set`).
   - **HWID:** current hwid value (mono, from `settings.get`'s `hwid` if present) + copy button.
   Each `settings.set` mutation invalidates `settings.get` + toast "Сохранено".
