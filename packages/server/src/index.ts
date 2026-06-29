@@ -3,12 +3,16 @@ import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import pino from "pino";
 import { env } from "./config/env.js";
 import { runMigrations } from "./db/migrate.js";
+import { liveHub } from "./live/singleton.js";
 import { appRouter } from "./trpc/router.js";
 
 const log = pino({ name: "submerge" });
 
 // Apply any pending DB migrations before accepting connections
 runMigrations();
+
+// Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
+liveHub.start();
 
 const trpcHandler = createHTTPHandler({
   router: appRouter,
@@ -38,7 +42,10 @@ const server = createServer((req, res) => {
 
 server.listen(env.PORT, () => log.info(`submerge server on :${env.PORT}`));
 
-// Graceful shutdown: stop accepting new connections, then exit
-const shutdown = () => server.close(() => process.exit(0));
+// Graceful shutdown: stop the hub, then stop accepting new connections and exit
+const shutdown = () => {
+  liveHub.stop();
+  server.close(() => process.exit(0));
+};
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
