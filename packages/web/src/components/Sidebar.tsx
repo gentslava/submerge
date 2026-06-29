@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Radio, ScrollText, Waypoints } from "lucide-react";
+import { PROXY_ENDPOINT } from "@/lib/constants";
 import { NAV_ITEMS } from "./nav";
 import { StatusDot } from "./StatusDot";
 import { ThemeToggle } from "./ThemeToggle";
@@ -46,9 +47,8 @@ export function Sidebar() {
         ))}
       </div>
       <div className="mt-auto flex flex-col gap-2">
-        {/* TODO: pull proxy address from settings once exposed */}
         <div className="rounded-md bg-elevated px-2.5 py-1.5 font-mono text-xs text-text-tertiary">
-          SOCKS · 127.0.0.1:7890
+          SOCKS · {PROXY_ENDPOINT}
         </div>
         <ThemeToggle />
       </div>

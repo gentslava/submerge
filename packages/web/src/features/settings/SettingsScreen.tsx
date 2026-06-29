@@ -7,11 +7,10 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PROXY_ENDPOINT } from "@/lib/constants";
 import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
-
-const PROXY_ENDPOINT = "127.0.0.1:7890";
 
 export function SettingsScreen() {
   const trpc = useTRPC();
@@ -23,17 +22,7 @@ export function SettingsScreen() {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
 
-  const themeMutation = useMutation(
-    trpc.settings.set.mutationOptions({
-      onSuccess: () => {
-        void invalidate();
-        toast.success("Сохранено");
-      },
-      onError: (e) => toast.error(e.message),
-    }),
-  );
-
-  const intervalMutation = useMutation(
+  const settingsMutation = useMutation(
     trpc.settings.set.mutationOptions({
       onSuccess: () => {
         void invalidate();
@@ -46,15 +35,19 @@ export function SettingsScreen() {
   // TODO(phase-4): consume pollInterval in live queries
   function persistInterval(raw: string) {
     const trimmed = raw.trim();
-    if (trimmed === "") return; // ignore empty
-    const n = Number.parseInt(trimmed, 10);
-    if (!Number.isFinite(n) || n < 1) return; // clamp to a sane positive integer
-    intervalMutation.mutate({ key: "pollInterval", value: String(n) });
+    if (!/^\d+$/.test(trimmed)) return; // reject empty / non-integer input
+    const n = Number(trimmed);
+    if (n < 1) return; // reject 0
+    settingsMutation.mutate({ key: "pollInterval", value: String(n) });
   }
 
   async function copyHwid(hwid: string) {
-    await navigator.clipboard.writeText(hwid);
-    toast.success("Скопировано");
+    try {
+      await navigator.clipboard.writeText(hwid);
+      toast.success("Скопировано");
+    } catch {
+      toast.error("Не удалось скопировать");
+    }
   }
 
   const hwid = data?.hwid;
@@ -67,11 +60,18 @@ export function SettingsScreen() {
         <p className="text-sm text-text-secondary">Тема, подключение и идентификатор устройства</p>
       </header>
 
-      {settingsQuery.isPending ? (
+      {settingsQuery.isLoading ? (
         <div className="flex flex-col gap-4">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-32 w-full" />
           ))}
+        </div>
+      ) : settingsQuery.isError ? (
+        <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-text-secondary">
+          Не удалось загрузить настройки.{" "}
+          <Button variant="subtle" size="sm" onClick={() => settingsQuery.refetch()}>
+            Повторить
+          </Button>
         </div>
       ) : (
         <div className="flex flex-col gap-4">
@@ -79,6 +79,13 @@ export function SettingsScreen() {
             <h2 className="mb-4 text-sm font-semibold text-text-primary">Внешний вид</h2>
             <div className="flex items-center justify-between gap-4">
               <span className="text-sm text-text-secondary">Тема</span>
+              {/*
+                Theme uses localStorage (getTheme) as the source of truth, applied
+                synchronously on load before React renders. data?.theme is persisted to
+                the server for cross-device parity but is intentionally NOT read back here:
+                for this single-admin app the local choice wins, so this divergence is by
+                design, not an oversight.
+              */}
               <Segmented
                 aria-label="Тема"
                 options={[
@@ -89,7 +96,7 @@ export function SettingsScreen() {
                 onChange={(v) => {
                   const t = v as Theme;
                   setTheme(t);
-                  themeMutation.mutate({ key: "theme", value: t });
+                  settingsMutation.mutate({ key: "theme", value: t });
                 }}
               />
             </div>
@@ -115,7 +122,9 @@ export function SettingsScreen() {
               <div className="flex items-center justify-between gap-4">
                 <span className="text-sm text-text-secondary">Интервал опроса, с</span>
                 <Input
+                  key={data?.pollInterval ?? "5"}
                   type="number"
+                  aria-label="Интервал опроса (секунды)"
                   min={1}
                   step={1}
                   defaultValue={data?.pollInterval ?? "5"}

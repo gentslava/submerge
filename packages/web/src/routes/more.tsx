@@ -1,6 +1,7 @@
 import { Activity, Route, ScrollText, Stethoscope, Waypoints } from "lucide-react";
 import type { ComponentType } from "react";
 import { Button } from "@/components/ui/button";
+import { PROXY_ENDPOINT } from "@/lib/constants";
 
 const SOON: { label: string; icon: ComponentType<{ size?: number }> }[] = [
   { label: "Соединения", icon: Waypoints },
@@ -53,7 +54,7 @@ export function MoreRoute() {
             </Button>
           </div>
           <div className="rounded-md bg-elevated px-2.5 py-1.5 font-mono text-xs text-text-tertiary">
-            SOCKS · 127.0.0.1:7890
+            SOCKS · {PROXY_ENDPOINT}
           </div>
         </div>
       </div>
