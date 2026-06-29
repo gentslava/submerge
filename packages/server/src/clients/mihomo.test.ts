@@ -40,12 +40,15 @@ describe("mihomo client", () => {
 
   it("selects a proxy via PUT", async () => {
     let method = "";
+    let body = "";
     mockFetch((_url, init) => {
       method = init?.method ?? "";
+      body = String(init?.body ?? "");
       return new Response(null, { status: 204 });
     });
     await selectProxy("PROXY", "A");
     expect(method).toBe("PUT");
+    expect(JSON.parse(body)).toEqual({ name: "A" });
   });
 
   it("reloads the config via PUT /configs", async () => {
