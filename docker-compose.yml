@@ -35,5 +35,7 @@ services:
     container_name: submerge-happ-decoder
     restart: unless-stopped
     init: true                      # tini пожинает зомби-процессы happd
+    volumes:
+      - ./mihomo:/mihomo:ro         # общий HWID (hwid.txt) для инжекта X-Hwid
     expose:
       - "8080"                      # внутренний сервис, наружу не публикуется

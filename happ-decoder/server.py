@@ -44,6 +44,27 @@ def _kill_happ():
         subprocess.run(["pkill", "-9", "-f", pat], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def _read_hwid():
+    try:
+        with open("/mihomo/hwid.txt") as f:
+            return f.read().strip()
+    except OSError:
+        return os.environ.get("SUBMERGE_HWID", "")
+
+
+def _set_hwid_inject(use_hwid: bool):
+    try:
+        if use_hwid:
+            h = _read_hwid()
+            if h:
+                with open("/tmp/inject_hwid", "w") as f:
+                    f.write(h)
+                return
+        os.remove("/tmp/inject_hwid")
+    except OSError:
+        pass
+
+
 def _reset_happ_state():
     for p in (f"{HOME}/.config/Happ", f"{HOME}/.config/Happ.conf", f"{HOME}/.local/share/Happ"):
         if os.path.isdir(p):
@@ -55,13 +76,14 @@ def _reset_happ_state():
                 pass
 
 
-def decode(link: str):
+def decode(link: str, use_hwid: bool = False):
     _kill_happ()                 # подчищаем процессы от прошлого запроса
     try:
         os.remove(RESULT)
     except FileNotFoundError:
         pass
     _reset_happ_state()
+    _set_hwid_inject(use_hwid)   # включаем/выключаем инжект X-Hwid через mitmproxy
 
     env = dict(os.environ)
     env.update({
@@ -116,13 +138,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, {"error": "not found"})
         try:
             n = int(self.headers.get("content-length", "0"))
-            link = json.loads(self.rfile.read(n))["link"]
+            data = json.loads(self.rfile.read(n))
+            link = data["link"]
+            use_hwid = bool(data.get("hwid"))
         except Exception:
             return self._send(400, {"error": "ожидается тело {\"link\": \"happ://...\"}"})
         if not isinstance(link, str) or not link.startswith("happ://"):
             return self._send(400, {"error": "ссылка должна начинаться с happ://"})
         with _lock:
-            res = decode(link)
+            res = decode(link, use_hwid)
         if not res:
             return self._send(502, {"ok": False, "error": "не удалось декодировать (таймаут / подписка не перехвачена)"})
         self._send(200, {"ok": True, **res})

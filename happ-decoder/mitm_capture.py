@@ -13,6 +13,22 @@ SKIP = (
 )
 
 
+def request(flow: http.HTTPFlow) -> None:
+    # по флагу /tmp/inject_hwid добавляем X-Hwid к запросам подписки
+    # (Happ по умолчанию не шлёт HWID; провайдеры с привязкой иначе отдают заглушку)
+    host = flow.request.pretty_host
+    if any(s in host for s in SKIP):
+        return
+    try:
+        with open("/tmp/inject_hwid") as f:
+            h = f.read().strip()
+    except OSError:
+        return
+    if h:
+        flow.request.headers["X-Hwid"] = h
+        flow.request.headers["X-Device-Os"] = "Android"
+
+
 def _looks_like_subscription(text: str) -> bool:
     if not text:
         return False

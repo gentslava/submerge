@@ -92,8 +92,8 @@ const server = http.createServer(async (req, res) => {
         if (!proxies.length) throw new Error('в подписке не нашлось узлов');
         sources.push({ kind: 'sub', label: url || 'inline-подписка', proxies, hwid: !!hwid });
       } else if (kind === 'happ') {
-        const { via, proxies } = await ingestHapp(value);
-        sources.push({ kind: 'happ', label: `happ → ${via}`, proxies });
+        const { via, proxies } = await ingestHapp(value, !!hwid);
+        sources.push({ kind: 'happ', label: `happ → ${via}`, proxies, hwid: !!hwid });
       } else throw new Error('неизвестный тип источника');
       persist();
       return json(res, { ok: true, kind, result: await reload() });

@@ -173,12 +173,12 @@ export async function fetchSubscription(url, useHwid = false) {
 }
 
 // ── happ:// → happ-decoder сервис → sub-URL/тело → узлы ──────────
-export async function ingestHapp(link) {
+export async function ingestHapp(link, useHwid = false) {
   let r;
   try {
     r = await fetch(`${HAPP_DECODER_URL}/decode`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ link: link.trim() }),
+      body: JSON.stringify({ link: link.trim(), hwid: !!useHwid }),
       signal: AbortSignal.timeout(70000),
     });
   } catch (e) {
