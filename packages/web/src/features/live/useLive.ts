@@ -8,7 +8,7 @@ const TRAFFIC_WINDOW = 60; // last ~60 samples (~60 s at 1/s)
 
 export interface LiveState {
   traffic: readonly TrafficSample[];
-  mihomo: boolean;
+  mihomo: boolean | null;
 }
 
 export function useLive(): LiveState {
@@ -16,7 +16,7 @@ export function useLive(): LiveState {
   const client = useTRPCClient();
   const qc = useQueryClient();
   const buffer = useRef(new RingBuffer<TrafficSample>(TRAFFIC_WINDOW));
-  const [state, setState] = useState<LiveState>({ traffic: [], mihomo: false });
+  const [state, setState] = useState<LiveState>({ traffic: [], mihomo: null });
 
   useEffect(() => {
     // Over httpSubscriptionLink the server's tracked() yields arrive typed as
@@ -34,7 +34,7 @@ export function useLive(): LiveState {
         }
       },
       onError() {
-        setState((s) => (s.mihomo ? { ...s, mihomo: false } : s));
+        setState((s) => (s.mihomo === false ? s : { ...s, mihomo: false }));
       },
     });
     return () => sub.unsubscribe();

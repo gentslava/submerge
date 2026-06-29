@@ -14,6 +14,8 @@ export function Chart({
   const elRef = useRef<HTMLDivElement>(null);
   const uRef = useRef<uPlot | null>(null);
 
+  // uPlot is created once on mount; `makeOpts`/`data`/`height` are read at init only,
+  // and subsequent data changes are pushed via the setData effect below.
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
