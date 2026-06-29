@@ -30,6 +30,14 @@ def start_mitm():
     )
 
 
+def start_xvfb():
+    # прямой Xvfb надёжнее xvfb-run (тот требует xauth)
+    subprocess.Popen(
+        ["Xvfb", ":99", "-screen", "0", "1024x768x24"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
+
 def _reset_happ_state():
     for p in (f"{HOME}/.config/Happ", f"{HOME}/.config/Happ.conf", f"{HOME}/.local/share/Happ"):
         if os.path.isdir(p):
@@ -56,9 +64,10 @@ def decode(link: str):
         "http_proxy": f"http://127.0.0.1:{PROXY_PORT}",
         "https_proxy": f"http://127.0.0.1:{PROXY_PORT}",
         "SSL_CERT_FILE": "/etc/ssl/certs/ca-certificates.crt",
+        "DISPLAY": ":99",
     })
     proc = subprocess.Popen(
-        ["xvfb-run", "-a", HAPP_BIN, "--test-crypt5", link],
+        [HAPP_BIN, "--test-crypt5", link],
         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     deadline = time.time() + TIMEOUT
@@ -116,6 +125,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     os.makedirs(HOME, exist_ok=True)
+    start_xvfb()
     start_mitm()
     time.sleep(3)
     print(f"happ-decoder: API :{API_PORT}, proxy :{PROXY_PORT}", flush=True)
