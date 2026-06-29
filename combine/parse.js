@@ -1,0 +1,148 @@
+// Ingest-слой: разбор источников узлов.
+//  - vless:// (ws+tls / tcp+reality / grpc / xhttp / http)
+//  - подписки: clash/mihomo yaml | base64-список | v2ray/xray JSON (outbounds)
+//  - happ:// — через сервис happ-decoder (официальный бинарь Happ + перехват sub-URL)
+import yaml from 'js-yaml';
+
+const HAPP_DECODER_URL = process.env.HAPP_DECODER_URL || 'http://happ-decoder:8080';
+
+// ── Автоопределение типа источника ───────────────────────────────
+export function detectKind(value) {
+  const v = (value || '').trim();
+  if (!v) throw new Error('пустая строка');
+  if (v.startsWith('happ://')) return 'happ';
+  if (v.startsWith('vless://')) return 'vless';
+  if (/^(vmess|trojan|ss|ssr|hysteria2?|tuic):\/\//i.test(v))
+    throw new Error('одиночные узлы пока поддержаны только для vless:// (остальное — через подписку)');
+  if (/^https?:\/\//i.test(v)) return 'sub';
+  try {
+    const d = Buffer.from(v.replace(/\s+/g, ''), 'base64').toString('utf8');
+    if (d.includes('://')) return 'sub';
+  } catch { /* не base64 */ }
+  throw new Error('не удалось определить тип: ожидается vless:// , happ:// или URL подписки');
+}
+
+// ── vless:// → mihomo proxy ───────────────────────────────────────
+export function parseVless(uri) {
+  const u = new URL(uri.trim());
+  if (u.protocol !== 'vless:') throw new Error('не vless:// ссылка');
+  const q = u.searchParams;
+  const server = u.hostname;
+  const port = Number(u.port) || 443;
+  const uuid = decodeURIComponent(u.username);
+  if (!uuid) throw new Error('не удалось разобрать UUID');
+  const name = u.hash ? decodeURIComponent(u.hash.slice(1)) : `${server}:${port}`;
+
+  const security = q.get('security') || 'none';
+  const net = q.get('type') || 'tcp';
+  const sni = q.get('sni') || q.get('host') || server;
+  const fp = q.get('fp') || 'chrome';
+  const flow = q.get('flow') || '';
+  const host = q.get('host') || '';
+  const path = q.get('path') ? decodeURIComponent(q.get('path')) : '/';
+
+  const p = { name, type: 'vless', server, port, uuid, udp: true, 'client-fingerprint': fp, network: net === 'h2' ? 'http' : net };
+  if (flow) p.flow = flow;
+  if (security === 'tls' || security === 'reality') {
+    p.tls = true;
+    p.servername = sni;
+    if (security === 'reality') p['reality-opts'] = { 'public-key': q.get('pbk') || '', 'short-id': q.get('sid') || '' };
+  }
+  if (net === 'ws') p['ws-opts'] = { path, headers: { Host: host || sni } };
+  else if (net === 'grpc') p['grpc-opts'] = { 'grpc-service-name': q.get('serviceName') || path.replace(/^\//, '') };
+  else if (net === 'http' || net === 'h2') p['h2-opts'] = { path, host: host ? [host] : [sni] };
+  else if (net === 'xhttp') p['xhttp-opts'] = { path, host: host || sni, mode: q.get('mode') || 'auto' };
+  return p;
+}
+
+// ── v2ray/xray JSON outbound → mihomo proxy (best-effort, для формата Happ) ──
+function v2rayOutboundToMihomo(ob, remark) {
+  if (!ob || ob.protocol !== 'vless') return null;            // freedom/blackhole/direct пропускаем
+  const vnext = ob.settings?.vnext?.[0];
+  const user = vnext?.users?.[0];
+  if (!vnext || !user) return null;
+  const ss = ob.streamSettings || {};
+  const net = ss.network || 'tcp';
+  const p = {
+    name: remark || ob.tag || `${vnext.address}:${vnext.port}`,
+    type: 'vless', server: vnext.address, port: Number(vnext.port), uuid: user.id, udp: true,
+    network: net === 'h2' ? 'http' : net,
+  };
+  if (user.flow) p.flow = user.flow;
+  const sec = ss.security || 'none';
+  if (sec === 'tls' || sec === 'reality') {
+    p.tls = true;
+    const t = ss.tlsSettings || ss.realitySettings || {};
+    p.servername = t.serverName || vnext.address;
+    if (t.fingerprint) p['client-fingerprint'] = t.fingerprint;
+    if (sec === 'reality') {
+      const r = ss.realitySettings || {};
+      p['reality-opts'] = { 'public-key': r.publicKey || '', 'short-id': r.shortId || '' };
+    }
+  }
+  if (net === 'ws') p['ws-opts'] = { path: ss.wsSettings?.path || '/', headers: ss.wsSettings?.headers || {} };
+  else if (net === 'grpc') p['grpc-opts'] = { 'grpc-service-name': ss.grpcSettings?.serviceName || '' };
+  return p;
+}
+
+// ── Разбор содержимого подписки ──────────────────────────────────
+export function parseProxiesFromText(text) {
+  // 1) clash/mihomo yaml
+  try {
+    const doc = yaml.load(text);
+    if (doc && Array.isArray(doc.proxies) && doc.proxies.length) return doc.proxies;
+  } catch { /* не yaml */ }
+
+  // 2) v2ray/xray JSON (массив профилей с outbounds, либо {outbounds:[…]})
+  try {
+    const j = JSON.parse(text);
+    const profiles = Array.isArray(j) ? j : (j.outbounds ? [j] : null);
+    if (profiles) {
+      const out = [];
+      for (const prof of profiles) for (const ob of (prof.outbounds || [])) {
+        const p = v2rayOutboundToMihomo(ob, prof.remarks);
+        if (p) out.push(p);
+      }
+      if (out.length) return out;
+    }
+  } catch { /* не json */ }
+
+  // 3) base64-список или plain список ссылок
+  let decoded = text;
+  try {
+    const b = Buffer.from(text.replace(/\s+/g, ''), 'base64').toString('utf8');
+    if (b.includes('://')) decoded = b;
+  } catch { /* не base64 */ }
+  return decoded.split(/\r?\n/).map((s) => s.trim())
+    .filter((s) => s.startsWith('vless://'))
+    .map((s) => { try { return parseVless(s); } catch { return null; } })
+    .filter(Boolean);
+}
+
+export async function fetchSubscription(url) {
+  const res = await fetch(url.trim(), { headers: { 'User-Agent': 'clash.meta' } });
+  if (!res.ok) throw new Error(`подписка вернула HTTP ${res.status}`);
+  const proxies = parseProxiesFromText(await res.text());
+  if (!proxies.length) throw new Error('в подписке не нашлось узлов (clash-yaml / v2ray-json / base64)');
+  return proxies;
+}
+
+// ── happ:// → happ-decoder сервис → sub-URL/тело → узлы ──────────
+export async function ingestHapp(link) {
+  let r;
+  try {
+    r = await fetch(`${HAPP_DECODER_URL}/decode`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ link: link.trim() }),
+    });
+  } catch (e) {
+    throw new Error(`happ-decoder недоступен (${HAPP_DECODER_URL}): ${e.message}`);
+  }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.ok) throw new Error(j.error || `happ-decoder вернул HTTP ${r.status}`);
+
+  let proxies = j.body ? parseProxiesFromText(j.body) : [];
+  if (!proxies.length && j.url) proxies = await fetchSubscription(j.url);
+  if (!proxies.length) throw new Error(`happ декодирован (${j.url || '—'}), но узлы не извлечь`);
+  return { via: j.url || 'happ', proxies };
+}

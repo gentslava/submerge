@@ -1,0 +1,15 @@
+# combine
+combine/node_modules/
+npm-debug.log*
+
+# mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
+mihomo/sources.json
+mihomo/providers/
+mihomo/ui/
+mihomo/.cache/
+mihomo/cache.db
+
+# прочее
+*.deb
+out/
+.DS_Store

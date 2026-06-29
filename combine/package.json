@@ -1,0 +1,10 @@
+{
+  "name": "submerge-combine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Control-plane + UI для submerge (агрегатор VPN-подписок поверх mihomo)",
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}
