@@ -7,6 +7,12 @@ npm-debug.log*
 dist/
 *.tsbuildinfo
 
+# v2 server runtime — SQLite DB and secrets, do not commit
+packages/server/data/
+.env
+.env.*
+!.env.example
+
 # mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
 mihomo/sources.json
 mihomo/hwid.txt
