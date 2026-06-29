@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import pino from "pino";
+import { createAppContext } from "./auth/context.js";
 import { env } from "./config/env.js";
 import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
@@ -16,8 +17,7 @@ liveHub.start();
 
 const trpcHandler = createHTTPHandler({
   router: appRouter,
-  // auth is added in Phase 5; for now all requests are considered authed
-  createContext: () => ({ authed: true }),
+  createContext: ({ req, res }) => createAppContext({ req, res }),
 });
 
 const server = createServer((req, res) => {

@@ -22,7 +22,12 @@ describe("live router", () => {
     const snapshot = hub.snapshot();
 
     const appRouter = router({ live: makeLiveRouter(hub) });
-    const caller = createCallerFactory(appRouter)({ authed: true });
+    const caller = createCallerFactory(appRouter)({
+      authed: true,
+      authRequired: false,
+      req: {} as never,
+      res: {} as never,
+    });
     const iterable = await caller.live.stream();
 
     const seen: unknown[] = [];
