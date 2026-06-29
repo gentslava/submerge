@@ -6,7 +6,7 @@ import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
-import { applyConfig, collectProxies, listNodes } from "./service.js";
+import { applyConfig, collectProxies, listNodes, testDelay } from "./service.js";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -99,5 +99,29 @@ describe("listNodes", () => {
     );
     const view = await listNodes();
     expect(view).toEqual({ now: null, all: [] });
+  });
+});
+
+describe("testDelay", () => {
+  it("returns the delay when positive", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => json({ delay: 50 })),
+    );
+    expect(await testDelay("A")).toBe(50);
+  });
+  it("returns null when delay is zero", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => json({ delay: 0 })),
+    );
+    expect(await testDelay("A")).toBeNull();
+  });
+  it("returns null when the delay request fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response("err", { status: 503 })),
+    );
+    expect(await testDelay("A")).toBeNull();
   });
 });

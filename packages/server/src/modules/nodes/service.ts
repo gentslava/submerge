@@ -30,6 +30,7 @@ export async function applyConfig(
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
 ): Promise<ApplyResult> {
   const proxies = collectProxies(db);
+  // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
   writeFileSync(configPath, buildConfig(proxies), "utf8");
   await reloadConfig(targetPath);
