@@ -1,86 +1,91 @@
 # AGENTS.md — submerge
 
-Инструкции для ИИ-агентов, работающих над проектом. Читается Claude Code, Cursor, Copilot и др. Вложенные `AGENTS.md` в пакетах переопределяют этот для своей области.
+Instructions for AI agents working on this project. Read by Claude Code, Cursor, Copilot, etc. Nested `AGENTS.md` files inside packages override this one for their scope.
 
-## Что это за проект
+## What this project is
 
-**submerge** — self-hosted веб-приложение для управления VPN-подписками (роль клиента). Принимает источники узлов (URL подписок, `vless://`, `happ://`, клиентские deep-links), парсит узлы, генерирует конфиг для движка **mihomo** (Clash) и управляет им по REST API, показывает узлы с пингами/трафиком в реальном времени, позволяет выбирать активный узел и раздаёт локальный SOCKS/HTTP-прокси.
+**submerge** — a self-hosted web app for managing VPN subscriptions (client role). It ingests node sources (subscription URLs, `vless://`, `happ://`, client deep-links), parses nodes, generates a config for the **mihomo** (Clash) engine and controls it over the REST API, shows nodes with real-time latency/traffic, lets you pick the active node, and exposes a local SOCKS/HTTP proxy.
 
-Аудитория: **self-hosted продукт**, single-admin (опц. пароль), разворачивается через docker compose.
+Audience: **self-hosted product**, single-admin (optional password), deployed via docker compose.
 
-## Статус репозитория (важно)
+## Repository status (important)
 
-- **PoC (рабочий):** `combine/` (Node + vanilla JS), `happ-decoder/` (Python), `mihomo/`, корневой `docker-compose.yml`. **Не трогать до Фазы 6** — это эталон поведения.
-- **v2 (в разработке):** `packages/` — переписывание на современный стек. Спека: [docs/specs/2026-06-29-submerge-v2-stack-design.md](docs/specs/2026-06-29-submerge-v2-stack-design.md). Планы: `docs/plans/`.
+- **PoC (working):** `combine/` (Node + vanilla JS), `happ-decoder/` (Python), `mihomo/`, root `docker-compose.yml`. **Do not touch until Phase 6** — it's the behavioral reference.
+- **v2 (in development):** `packages/` — rewrite onto a modern stack. Spec: [docs/specs/2026-06-29-submerge-v2-stack-design.md](docs/specs/2026-06-29-submerge-v2-stack-design.md). Plans: `docs/plans/`.
 
-## Стек (v2)
+## Language
 
-Node **24 LTS**, TypeScript strict, pnpm workspaces, Biome, Vitest/Playwright.
-- **server**: tRPC v11 · Drizzle ORM + SQLite (better-sqlite3, WAL) · Zod 4 · pino · сессия-auth (@node-rs/argon2) · SSE-хаб.
+- **Documentation, code comments, and commit messages — English.**
+- UI-facing strings are currently Russian; i18n is out of scope for now (don't mass-translate the UI).
+
+## Stack (v2)
+
+Node **24 LTS**, strict TypeScript, pnpm workspaces, Biome, Vitest/Playwright.
+- **server**: tRPC v11 · Drizzle ORM + SQLite (better-sqlite3, WAL) · Zod 4 · pino · session auth (@node-rs/argon2) · SSE hub.
 - **web**: Vite · React 19 · shadcn/ui · Tailwind v4 · TanStack Query/Router · uPlot · lucide-react · sonner.
-- **shared**: Zod-схемы домена + выведенные типы (единый контракт).
+- **shared**: domain Zod schemas + inferred types (single contract).
 
-Все зависимости — последних мажорных версий, пиннинг через `pnpm-lock.yaml`. **No legacy на старте.**
+All dependencies are latest major at install time, pinned via `pnpm-lock.yaml`. **No legacy at the start.**
 
-## Структура (целевая, v2)
+## Structure (target, v2)
 
 ```
-packages/shared/   # Zod-схемы + типы — контракт фронт↔бэк
+packages/shared/   # Zod schemas + types — the front↔back contract
 packages/server/   # tRPC, Drizzle, SSE, clients/ (mihomo, happ-decoder), modules/ (sources,nodes,settings,auth)
 packages/web/      # React SPA
 docs/{specs,plans,adr,architecture.md}
 ```
 
-server-модуль = `router.ts` (тонкий: валидация+вызов) + `service.ts` (логика+Drizzle напрямую). Без репозиториев/DI.
+A server module = thin `router.ts` (validation + call) + `service.ts` (logic + Drizzle directly). No repositories/DI.
 
-## Команды (v2)
+## Commands (v2)
 
 ```bash
-pnpm install              # установка
-pnpm -F @submerge/server dev      # dev-сервер
-pnpm test                # все тесты (vitest)
-pnpm typecheck           # tsc -b --noEmit
-pnpm lint                # biome ci .
-pnpm format              # biome format --write .
-pnpm -F @submerge/server db:generate   # сгенерировать миграцию из схемы
+pnpm install                            # install
+pnpm -F @submerge/server dev            # dev server
+pnpm test                               # all tests (vitest)
+pnpm typecheck                          # tsc -b --noEmit
+pnpm lint                               # biome ci .
+pnpm format                             # biome format --write .
+pnpm -F @submerge/server db:generate    # generate migration from schema
 ```
 
-PoC: `docker compose up -d` (combine+mihomo+happ-decoder).
+Node 24 runs `.ts` directly (no flags). PoC: `docker compose up -d` (combine+mihomo+happ-decoder).
 
-## Конвенции
+## Conventions
 
-- **TS strict** (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). ESM, `verbatimModuleSyntax`.
-- **Форматирование/линт — Biome** (не ESLint/Prettier). Прогонять перед коммитом.
-- **Валидация:** Zod на границах. **Ответы внешних сервисов (mihomo, happ-decoder) ОБЯЗАТЕЛЬНО `.parse()`** — это главная точка отказа.
-- **Границы:** вся работа с mihomo/happ-decoder — только через `packages/server/src/clients/*` (таймауты, ретраи, Zod). Не дёргать их HTTP напрямую из модулей.
-- **Именование:** camelCase (TS), kebab-case (файлы), таблицы/колонки snake_case (Drizzle mapping в schema.ts).
-- **Анти-оверинжиниринг:** для масштаба «один админ, десятки источников, сотни узлов» НЕ вводить Postgres, GraphQL, Nx/Turborepo, hexagonal/CQRS/DI, OpenTelemetry. См. ADR.
+- **Strict TS** (+ `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`). ESM, `verbatimModuleSyntax`.
+- **Formatting/linting — Biome** (not ESLint/Prettier). Run before committing.
+- **Validation:** Zod at boundaries. **Responses from external services (mihomo, happ-decoder) MUST be `.parse()`d** — that's the main failure point.
+- **Boundaries:** all interaction with mihomo/happ-decoder goes only through `packages/server/src/clients/*` (timeouts, retries, Zod). Don't call them over HTTP directly from modules.
+- **Naming:** camelCase (TS), kebab-case (files), snake_case for DB tables/columns (mapped in schema.ts).
+- **Anti-overengineering:** for the scale "one admin, dozens of sources, hundreds of nodes" do NOT introduce Postgres, GraphQL, Nx/Turborepo, hexagonal/CQRS/DI, OpenTelemetry. See ADRs.
 
 ## Workflow
 
-- **TDD**: сначала падающий тест, потом минимальная реализация. Логику парсинга/ingest покрывать unit-тестами.
-- **Частые атомарные коммиты**, conventional commits (`feat:`, `fix:`, `chore:`, `docs:`). Завершать тело строкой:
+- **TDD**: failing test first, then minimal implementation. Cover parsing/ingest logic with unit tests.
+- **Frequent atomic commits**, conventional commits (`feat:`, `fix:`, `chore:`, `docs:`). End the body with:
   `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
-- **Гейты перед коммитом:** `pnpm lint && pnpm typecheck && pnpm test` — зелёные.
-- Перед использованием библиотек сверяться с актуальным API через **Context7 MCP** (Zod 4, tRPC v11, Drizzle, React 19) — версии latest, API мог измениться.
+- **Pre-commit gates:** `pnpm lint && pnpm typecheck && pnpm test` — green.
+- Before using libraries, check the current API via **Context7 MCP** (Zod 4, tRPC v11, Drizzle, React 19) — versions are latest, the API may have changed.
 
-## Чего не делать
+## Do not
 
-- Не трогать PoC (`combine/`, `happ-decoder/`, `mihomo/`, корневой compose) до Фазы 6.
-- Не пинить устаревшие версии «для совместимости» — берём latest.
-- Не коммитить секреты/рантайм: `mihomo/config.yaml` (узлы), `*/sources.json`, `hwid.txt`, `.env`, `data/*.db` — в `.gitignore`.
-- Не переусложнять (см. ADR-0004).
+- Don't touch the PoC (`combine/`, `happ-decoder/`, `mihomo/`, root compose) until Phase 6.
+- Don't pin outdated versions "for compatibility" — use latest.
+- Don't commit secrets/runtime: `mihomo/config.yaml` (nodes), `*/sources.json`, `hwid.txt`, `.env`, `data/*.db` — all in `.gitignore`.
+- Don't overengineer (see ADR-0004).
 
-## Доменные факты (не переоткрывать)
+## Domain facts (don't re-discover)
 
-- **happ://crypt** декодируется официальным бинарём Happ (Qt) в sidecar `happ-decoder` (Xvfb + mitmproxy перехватывает декодированный sub-URL). Статические реверс-декодеры (LeeeeT) устаревают из-за ротации ключей — см. ADR-0001.
-- **X-Hwid** — per-source флаг (по умолчанию выкл): провайдеры с привязкой к устройству без него отдают заглушку. Для https-подписок шлёт combine, для happ — mitmproxy инжектит. См. ADR-0002.
-- Форматы подписок: clash-yaml, base64-vless, v2ray/sing-box JSON. Deep-links клиентов (incy/clash/sing-box/…) — обёртка над URL, извлекается `extractSubUrl`.
-- mihomo — движок туннелирования (Go), управляется по Clash REST API.
+- **happ://crypt** is decoded by the official Happ binary (Qt) in the `happ-decoder` sidecar (Xvfb + mitmproxy intercepts the decoded sub-URL). Static reverse decoders (LeeeeT) go stale due to key rotation — see ADR-0001.
+- **X-Hwid** is a per-source flag (off by default): device-bound providers return a stub without it. For https subscriptions combine sends it; for happ the mitmproxy injects it. See ADR-0002.
+- Subscription formats: clash-yaml, base64-vless, v2ray/sing-box JSON. Client deep-links (incy/clash/sing-box/…) wrap a URL, extracted by `extractSubUrl`.
+- mihomo is the tunneling engine (Go), controlled via the Clash REST API.
 
-## Карта документации
+## Documentation map
 
-- `docs/specs/` — спецификации (что строим).
-- `docs/plans/` — планы реализации по фазам (как строим, bite-sized задачи).
-- `docs/adr/` — принятые архитектурные решения и почему.
-- `docs/architecture.md` — обзор архитектуры v2.
+- `docs/specs/` — specifications (what we build).
+- `docs/plans/` — phased implementation plans (how we build, bite-sized tasks).
+- `docs/adr/` — accepted architecture decisions and why.
+- `docs/architecture.md` — v2 architecture overview.

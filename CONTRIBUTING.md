@@ -1,34 +1,34 @@
 # Contributing
 
-Гайд для разработчиков и ИИ-агентов. Подробные правила для агентов — в [AGENTS.md](AGENTS.md).
+Guide for developers and AI agents. Detailed agent rules: [AGENTS.md](AGENTS.md).
 
-## Требования
+## Requirements
 
-- Node **24 LTS**, pnpm, Docker (для happ-decoder/mihomo и сборки).
+- Node **24 LTS**, pnpm, Docker (for happ-decoder/mihomo and builds).
 
-## Старт (v2)
+## Getting started (v2)
 
 ```bash
 pnpm install
-pnpm -F @submerge/server db:generate   # миграции из схемы (при изменении db/schema.ts)
-pnpm -F @submerge/server dev           # dev-сервер
-pnpm test                              # тесты
+pnpm -F @submerge/server db:generate   # generate migrations from schema (when db/schema.ts changes)
+pnpm -F @submerge/server dev           # dev server
+pnpm test                              # run tests
 ```
 
-## Рабочий цикл
+## Workflow
 
-1. Берём задачу из плана (`docs/plans/`) — реализация идёт по фазам.
-2. **TDD**: падающий тест → минимальная реализация → зелёный тест.
-3. Перед коммитом — гейты: `pnpm lint && pnpm typecheck && pnpm test`.
-4. Атомарные коммиты, conventional commits (`feat:`/`fix:`/`docs:`/`chore:`).
-5. Значимое архитектурное решение → ADR в `docs/adr/`.
+1. Pick a task from the plan (`docs/plans/`) — implementation proceeds in phases.
+2. **TDD**: failing test → minimal implementation → green test.
+3. Before committing — gates: `pnpm lint && pnpm typecheck && pnpm test`.
+4. Atomic commits, conventional commits (`feat:`/`fix:`/`docs:`/`chore:`).
+5. Significant architectural decision → ADR in `docs/adr/`.
 
-## Границы
+## Boundaries
 
-- Внешние сервисы (mihomo, happ-decoder) — только через `packages/server/src/clients/*`.
-- Ответы внешних сервисов валидировать через Zod.
-- Не трогать PoC (`combine/`, `happ-decoder/`, `mihomo/`, корневой `docker-compose.yml`) до Фазы 6.
+- External services (mihomo, happ-decoder) — only via `packages/server/src/clients/*`.
+- Validate external service responses with Zod.
+- Do not touch the PoC (`combine/`, `happ-decoder/`, `mihomo/`, root `docker-compose.yml`) until Phase 6.
 
-## Документация
+## Documentation
 
-- `docs/specs/` — что строим · `docs/plans/` — как · `docs/adr/` — почему · `docs/architecture.md` — обзор.
+- `docs/specs/` — what we build · `docs/plans/` — how · `docs/adr/` — why · `docs/architecture.md` — overview.

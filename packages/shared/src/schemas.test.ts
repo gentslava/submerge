@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { proxySchema, sourceKindSchema } from "./schemas.js";
 
 describe("schemas", () => {
-  it("принимает валидный kind", () => {
+  it("accepts a valid kind", () => {
     expect(sourceKindSchema.parse("sub")).toBe("sub");
   });
-  it("отклоняет неизвестный kind", () => {
+  it("rejects an unknown kind", () => {
     expect(() => sourceKindSchema.parse("nope")).toThrow();
   });
-  it("валидирует минимальный proxy", () => {
+  it("validates a minimal proxy", () => {
     const p = proxySchema.parse({
       name: "n1",
       type: "vless",

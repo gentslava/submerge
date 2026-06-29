@@ -2,16 +2,16 @@ import { describe, expect, it } from "vitest";
 import { parseEnv } from "./env.js";
 
 describe("parseEnv", () => {
-  it("даёт дефолты при пустом окружении", () => {
+  it("returns defaults for an empty environment", () => {
     const env = parseEnv({});
     expect(env.PORT).toBe(3000);
     expect(env.DB_PATH).toBe("./data/submerge.db");
     expect(env.ADMIN_PASSWORD).toBeUndefined();
   });
-  it("парсит PORT из строки", () => {
+  it("parses PORT from a string", () => {
     expect(parseEnv({ PORT: "8080" }).PORT).toBe(8080);
   });
-  it("падает на невалидном PORT", () => {
+  it("throws on an invalid PORT", () => {
     expect(() => parseEnv({ PORT: "abc" })).toThrow();
   });
 });

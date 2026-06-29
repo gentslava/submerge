@@ -3,8 +3,8 @@ import { z } from "zod";
 export const sourceKindSchema = z.enum(["sub", "vless", "happ"]);
 export type SourceKind = z.infer<typeof sourceKindSchema>;
 
-// mihomo-proxy: фиксируем обязательное ядро, остальное passthrough
-// Zod 4: z.looseObject() вместо z.object().passthrough() / .loose()
+// mihomo proxy: pin only the required core fields, everything else passes through
+// Zod 4: z.looseObject() replaces z.object().passthrough() / .loose()
 export const proxySchema = z.looseObject({
   name: z.string(),
   type: z.string(),

@@ -1,19 +1,19 @@
-# 0002 — X-Hwid как per-source опция (по умолчанию выключена)
+# 0002 — X-Hwid as a per-source option (off by default)
 
-**Статус:** принято (2026-06-29)
+**Status:** accepted (2026-06-29)
 
-## Контекст
+## Context
 
-Часть провайдеров привязывает подписку к устройству: без заголовка `X-Hwid` отдают заглушку («Приложение не поддерживается» / «Включите передачу HWID»), с ним — реальные узлы (проверено: Black Cat VPN 1→23 узла; happ-провайдер заглушки→12). Но слать HWID всем подряд нельзя — это расходует лимит устройств у провайдеров, которым HWID не нужен.
+Some providers bind subscriptions to a device: without the `X-Hwid` header they return a stub ("App not supported" / "Enable HWID sharing"), with it they return real nodes (verified: Black Cat VPN 1→23 nodes; happ provider stub→12). However, sending HWID to everyone is not acceptable — it burns device slot limits at providers that do not require HWID.
 
-## Решение
+## Decision
 
-`X-Hwid` — **опция на каждый источник** (флаг `hwid`, по умолчанию **выключен**). HWID — один стабильный идентификатор на инстанс (хранится в `hwid.txt`/настройках). Подаётся:
-- для https-подписок — combine добавляет заголовок `X-Hwid` (+`X-Device-Os`) при fetch;
-- для `happ://` — флаг передаётся в happ-decoder, mitmproxy инжектит `X-Hwid` в запросы Happ к подписке (эквивалент «тумблера HWID» в приложении).
+`X-Hwid` is an **option per source** (flag `hwid`, off by default). HWID is a single stable identifier per instance (stored in `hwid.txt`/settings). It is submitted as follows:
+- for https subscriptions — combine adds the `X-Hwid` header (+ `X-Device-Os`) when fetching;
+- for `happ://` — the flag is passed to happ-decoder, and mitmproxy injects `X-Hwid` into Happ's requests to the subscription (equivalent to the "HWID toggle" in the app).
 
-## Последствия
+## Consequences
 
-- (+) Провайдеры с привязкой работают; провайдеры без неё не получают лишний HWID и не жгут лимит устройств.
-- (+) Единый механизм для обычных подписок и happ.
-- (−) Пользователь должен знать/понять, когда включить флаг (подсказка в UI + сообщение об ошибке «включите HWID»).
+- (+) Providers that require device binding work; providers that do not need HWID are never sent it and do not burn device slot limits.
+- (+) Uniform mechanism for regular subscriptions and happ.
+- (−) The user must know/understand when to enable the flag (hint in UI + error message "enable HWID").
