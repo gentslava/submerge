@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { db } from "./client.js";
 
@@ -6,7 +7,7 @@ import { db } from "./client.js";
  * Safe to call on startup — applies only unapplied migrations.
  */
 export function runMigrations() {
-  migrate(db, { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
+  migrate(db, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
 }
 
 // Allow running directly: `node src/db/migrate.ts`

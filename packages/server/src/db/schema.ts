@@ -1,3 +1,4 @@
+import type { Proxy as ProxyConfig } from "@submerge/shared";
 import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -11,11 +12,11 @@ export const sources = sqliteTable("sources", {
   hwid: integer("hwid", { mode: "boolean" }).notNull().default(false),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
-  // Serialized proxy list — JSON array of proxy names assigned to this source.
-  // Use $defaultFn to avoid double-encoding: mode:"json" applies JSON.stringify,
-  // so the JS-level default must be an array, not the string "[]".
+  // Snapshot of the full proxy objects parsed from this source (used to generate
+  // the mihomo config without re-fetching). $defaultFn avoids double-encoding:
+  // mode:"json" applies JSON.stringify, so the JS-level default must be an array.
   proxies: text("proxies", { mode: "json" })
-    .$type<string[]>()
+    .$type<ProxyConfig[]>()
     .notNull()
     .$defaultFn(() => []),
   updatedAt: text("updated_at").notNull().default(sql`(current_timestamp)`),
