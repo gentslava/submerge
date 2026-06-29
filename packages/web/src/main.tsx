@@ -1,7 +1,7 @@
 import type { AppRouter } from "@submerge/server/router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
-import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import { createTRPCClient, httpBatchLink, httpSubscriptionLink, splitLink } from "@trpc/client";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Toaster } from "sonner";
@@ -22,7 +22,15 @@ function ThemedToaster() {
 function App() {
   const [queryClient] = useState(makeQueryClient);
   const [trpcClient] = useState(() =>
-    createTRPCClient<AppRouter>({ links: [httpBatchLink({ url: "/trpc" })] }),
+    createTRPCClient<AppRouter>({
+      links: [
+        splitLink({
+          condition: (op) => op.type === "subscription",
+          true: httpSubscriptionLink({ url: "/trpc" }),
+          false: httpBatchLink({ url: "/trpc" }),
+        }),
+      ],
+    }),
   );
   return (
     <QueryClientProvider client={queryClient}>
