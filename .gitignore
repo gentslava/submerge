@@ -1,4 +1,5 @@
-# combine
+# node_modules
+node_modules/
 combine/node_modules/
 npm-debug.log*
 
