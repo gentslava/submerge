@@ -5,12 +5,20 @@ import { env } from "../../config/env.js";
 
 // Ensure unique proxy names (mihomo requires it). Deterministic suffix so the
 // generated config is stable across reloads and testable (PoC used Math.random).
+// Tracks the full set of emitted names — including generated suffixes — so a
+// pre-existing "A-2" can't collide with a renamed duplicate of "A".
 export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
-  const seen = new Map<string, number>();
+  const used = new Set<string>();
   return proxies.map((p) => {
-    const count = seen.get(p.name) ?? 0;
-    seen.set(p.name, count + 1);
-    return count === 0 ? p : { ...p, name: `${p.name}-${count + 1}` };
+    if (!used.has(p.name)) {
+      used.add(p.name);
+      return p;
+    }
+    let n = 2;
+    while (used.has(`${p.name}-${n}`)) n++;
+    const name = `${p.name}-${n}`;
+    used.add(name);
+    return { ...p, name };
   });
 }
 

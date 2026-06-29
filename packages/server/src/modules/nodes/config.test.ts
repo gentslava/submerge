@@ -22,6 +22,18 @@ describe("dedupeNames", () => {
       "A-3",
     ]);
   });
+  it("tracks each name independently", () => {
+    expect(
+      dedupeNames([proxy("A"), proxy("B"), proxy("A"), proxy("B")]).map((p) => p.name),
+    ).toEqual(["A", "B", "A-2", "B-2"]);
+  });
+  it("skips a suffix already taken by a pre-existing name", () => {
+    expect(dedupeNames([proxy("A-2"), proxy("A"), proxy("A")]).map((p) => p.name)).toEqual([
+      "A-2",
+      "A",
+      "A-3",
+    ]);
+  });
 });
 
 describe("buildConfig", () => {
@@ -29,6 +41,7 @@ describe("buildConfig", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(buildConfig([proxy("A"), proxy("B")])) as Record<string, any>;
     expect(cfg["mixed-port"]).toBe(7890);
+    expect(cfg.secret).toBe("");
     const groups = cfg["proxy-groups"];
     expect(groups[0].name).toBe("PROXY");
     expect(groups[0].proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
@@ -39,6 +52,7 @@ describe("buildConfig", () => {
   it("falls back to DIRECT when there are no proxies", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(buildConfig([])) as Record<string, any>;
+    expect(cfg["proxy-groups"][0].proxies).toEqual(["AUTO", "DIRECT"]);
     expect(cfg["proxy-groups"][1].proxies).toEqual(["DIRECT"]);
     expect(cfg.rules).toEqual(["MATCH,DIRECT"]);
   });
