@@ -34,5 +34,6 @@ services:
     image: ghcr.io/gentslava/submerge-happ-decoder:latest
     container_name: submerge-happ-decoder
     restart: unless-stopped
+    init: true                      # tini пожинает зомби-процессы happd
     expose:
       - "8080"                      # внутренний сервис, наружу не публикуется

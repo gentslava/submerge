@@ -85,6 +85,27 @@ function v2rayOutboundToMihomo(ob, remark) {
   return p;
 }
 
+// ── sing-box outbound → mihomo proxy (формат sing-box: type/server/server_port) ──
+function singBoxOutboundToMihomo(ob) {
+  if (!ob || ob.type !== 'vless' || !ob.server) return null;
+  const net = ob.transport?.type || 'tcp';
+  const p = {
+    name: ob.tag || `${ob.server}:${ob.server_port}`,
+    type: 'vless', server: ob.server, port: Number(ob.server_port), uuid: ob.uuid, udp: true, network: net,
+  };
+  if (ob.flow) p.flow = ob.flow;
+  const tls = ob.tls;
+  if (tls?.enabled) {
+    p.tls = true;
+    p.servername = tls.server_name || ob.server;
+    if (tls.utls?.fingerprint) p['client-fingerprint'] = tls.utls.fingerprint;
+    if (tls.reality?.enabled) p['reality-opts'] = { 'public-key': tls.reality.public_key || '', 'short-id': tls.reality.short_id || '' };
+  }
+  if (net === 'ws') p['ws-opts'] = { path: ob.transport?.path || '/', headers: ob.transport?.headers || {} };
+  else if (net === 'grpc') p['grpc-opts'] = { 'grpc-service-name': ob.transport?.service_name || '' };
+  return p;
+}
+
 // ── Разбор содержимого подписки ──────────────────────────────────
 export function parseProxiesFromText(text) {
   // 1) clash/mihomo yaml
@@ -100,7 +121,7 @@ export function parseProxiesFromText(text) {
     if (profiles) {
       const out = [];
       for (const prof of profiles) for (const ob of (prof.outbounds || [])) {
-        const p = v2rayOutboundToMihomo(ob, prof.remarks);
+        const p = v2rayOutboundToMihomo(ob, prof.remarks) || singBoxOutboundToMihomo(ob);
         if (p) out.push(p);
       }
       if (out.length) return out;
@@ -134,15 +155,20 @@ export async function ingestHapp(link) {
     r = await fetch(`${HAPP_DECODER_URL}/decode`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ link: link.trim() }),
+      signal: AbortSignal.timeout(70000),
     });
   } catch (e) {
-    throw new Error(`happ-decoder недоступен (${HAPP_DECODER_URL}): ${e.message}`);
+    throw new Error(`happ-decoder недоступен/таймаут (${HAPP_DECODER_URL}): ${e.message}`);
   }
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw new Error(j.error || `happ-decoder вернул HTTP ${r.status}`);
 
   let proxies = j.body ? parseProxiesFromText(j.body) : [];
   if (!proxies.length && j.url) proxies = await fetchSubscription(j.url);
-  if (!proxies.length) throw new Error(`happ декодирован (${j.url || '—'}), но узлы не извлечь`);
+  if (!proxies.length) {
+    const sample = (j.body || '').slice(0, 240).replace(/\s+/g, ' ');
+    console.log(`[happ] формат не распознан. url=${j.url} sample=${sample}`);
+    throw new Error(`happ декодирован (${j.url || '—'}), но формат подписки не распознан — структура в логах combine`);
+  }
   return { via: j.url || 'happ', proxies };
 }

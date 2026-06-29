@@ -38,6 +38,12 @@ def start_xvfb():
     )
 
 
+def _kill_happ():
+    # Happ поднимает daemon happd, который переживает родителя — убиваем всё жёстко
+    for pat in ("/happ/bin/Happ", "happd"):
+        subprocess.run(["pkill", "-9", "-f", pat], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def _reset_happ_state():
     for p in (f"{HOME}/.config/Happ", f"{HOME}/.config/Happ.conf", f"{HOME}/.local/share/Happ"):
         if os.path.isdir(p):
@@ -50,6 +56,7 @@ def _reset_happ_state():
 
 
 def decode(link: str):
+    _kill_happ()                 # подчищаем процессы от прошлого запроса
     try:
         os.remove(RESULT)
     except FileNotFoundError:
@@ -86,6 +93,7 @@ def decode(link: str):
         proc.wait(timeout=5)
     except Exception:
         proc.kill()
+    _kill_happ()                 # гарантированно убираем Happ/happd после запроса
     return result
 
 
