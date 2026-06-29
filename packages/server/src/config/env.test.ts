@@ -14,4 +14,13 @@ describe("parseEnv", () => {
   it("throws on an invalid PORT", () => {
     expect(() => parseEnv({ PORT: "abc" })).toThrow();
   });
+  it("provides mihomo config + hwid file defaults", () => {
+    const env = parseEnv({});
+    expect(env.MIHOMO_CONFIG_PATH).toBe("/mihomo/config.yaml");
+    expect(env.MIHOMO_CONFIG_TARGET).toBe("/root/.config/mihomo/config.yaml");
+    expect(env.HWID_FILE).toBe("/mihomo/hwid.txt");
+  });
+  it("overrides config path from the environment", () => {
+    expect(parseEnv({ MIHOMO_CONFIG_PATH: "/tmp/c.yaml" }).MIHOMO_CONFIG_PATH).toBe("/tmp/c.yaml");
+  });
 });
