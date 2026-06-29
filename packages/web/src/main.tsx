@@ -22,13 +22,15 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TRPCProvider trpcClient={trpcClient} queryClient={queryClient}>
         <RouterProvider router={router} />
-        <Toaster theme="dark" position="top-right" richColors />
+        <Toaster theme={getTheme()} position="top-right" richColors />
       </TRPCProvider>
     </QueryClientProvider>
   );
 }
 
-createRoot(document.getElementById("root") as HTMLElement).render(
+const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("Root mount point #root not found");
+createRoot(rootEl).render(
   <StrictMode>
     <App />
   </StrictMode>,
