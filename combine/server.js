@@ -1,7 +1,7 @@
 // combine — control-plane: ingest источников -> генерация config.yaml -> reload mihomo -> статус.
 import http from 'node:http';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { parseVless, fetchSubscription, detectKind, ingestHapp } from './parse.js';
+import { parseVless, fetchSubscription, detectKind, ingestHapp, extractSubUrl, parseProxiesFromText } from './parse.js';
 import { writeConfig } from './generate.js';
 
 const MIHOMO_API = process.env.MIHOMO_API || 'http://mihomo:9090';
@@ -77,8 +77,10 @@ const server = http.createServer(async (req, res) => {
         const proxy = parseVless(value);
         sources.push({ kind: 'vless', label: proxy.name, proxy });
       } else if (kind === 'sub') {
-        const proxies = await fetchSubscription(value);
-        sources.push({ kind: 'sub', label: value.trim(), proxies });
+        const url = extractSubUrl(value);                 // из deep-link клиента или сам URL
+        const proxies = url ? await fetchSubscription(url) : parseProxiesFromText(value);
+        if (!proxies.length) throw new Error('в подписке не нашлось узлов');
+        sources.push({ kind: 'sub', label: url || 'inline-подписка', proxies });
       } else if (kind === 'happ') {
         const { via, proxies } = await ingestHapp(value);
         sources.push({ kind: 'happ', label: `happ → ${via}`, proxies });

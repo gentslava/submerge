@@ -6,20 +6,37 @@ import yaml from 'js-yaml';
 
 const HAPP_DECODER_URL = process.env.HAPP_DECODER_URL || 'http://happ-decoder:8080';
 
+// ── Извлечение URL подписки из клиентского deep-link ─────────────
+// Покрывает: scheme://action?url=<encoded> (clash/sing-box/v2rayng) и
+//            scheme://action/<plain-url> (incy/happ-add/streisand/hiddify).
+export function extractSubUrl(value) {
+  const v = (value || '').trim();
+  if (/^https?:\/\//i.test(v)) return v;                 // это уже сам URL
+  try {
+    const u = new URL(v);
+    const q = u.searchParams.get('url') || u.searchParams.get('link');
+    if (q && /^https?:\/\//i.test(q)) return q;          // ?url=<encoded>
+  } catch { /* не парсится как URL */ }
+  const m = v.match(/https?:\/\/[^\s"'<>]+/i);           // http(s) где-то в строке
+  if (m) { try { return decodeURIComponent(m[0]); } catch { return m[0]; } }
+  return null;
+}
+
 // ── Автоопределение типа источника ───────────────────────────────
 export function detectKind(value) {
   const v = (value || '').trim();
   if (!v) throw new Error('пустая строка');
-  if (v.startsWith('happ://')) return 'happ';
   if (v.startsWith('vless://')) return 'vless';
+  if (/^happ:\/\/crypt/i.test(v)) return 'happ';         // зашифрованный happ → decoder
   if (/^(vmess|trojan|ss|ssr|hysteria2?|tuic):\/\//i.test(v))
     throw new Error('одиночные узлы пока поддержаны только для vless:// (остальное — через подписку)');
-  if (/^https?:\/\//i.test(v)) return 'sub';
+  if (extractSubUrl(v)) return 'sub';                    // URL или deep-link клиента (incy/clash/sing-box/happ-add/…)
+  if (/^happ:\/\//i.test(v)) return 'happ';              // happ:// без URL внутри → decoder
   try {
     const d = Buffer.from(v.replace(/\s+/g, ''), 'base64').toString('utf8');
-    if (d.includes('://')) return 'sub';
+    if (d.includes('://')) return 'sub';                 // base64-контент подписки, вставленный напрямую
   } catch { /* не base64 */ }
-  throw new Error('не удалось определить тип: ожидается vless:// , happ:// или URL подписки');
+  throw new Error('не удалось определить тип: vless:// , happ:// , URL подписки или deep-link клиента');
 }
 
 // ── vless:// → mihomo proxy ───────────────────────────────────────
