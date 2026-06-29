@@ -8,10 +8,12 @@ export function StatusDot() {
   const online = ping.data?.ok === true;
   const dotClass = pending ? "bg-idle" : online ? "bg-online" : "bg-timeout";
   const label = pending ? "проверка" : online ? "online" : "offline";
+  // health.ping reports server liveness, not mihomo reachability — label it
+  // honestly. A real mihomo status probe (via the client) lands in Phase 4.
   return (
     <div className="flex items-center gap-2 text-xs text-text-secondary">
       <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-      mihomo: {label}
+      сервер: {label}
     </div>
   );
 }
