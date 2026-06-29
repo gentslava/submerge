@@ -44,6 +44,9 @@
     <label>Вставь строку — тип определю автоматически</label>
     <textarea id="value" placeholder="vless://…   ·   happ://…   ·   https://…/sub/…"></textarea>
     <div id="detected" class="muted" style="margin-top:6px"></div>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:8px;font-size:12px;color:#cbd2dc">
+      <input type="checkbox" id="hwid" style="width:auto;margin:0"> Передавать X-Hwid (VPN с привязкой к устройству)
+    </label>
     <div class="row">
       <button id="add">Добавить</button>
       <button id="reset" class="ghost">Сбросить всё</button>
@@ -83,7 +86,7 @@ async function refresh() {
     const st = await api('/api/state');
     // источники
     $('#sources').innerHTML = st.sources.length
-      ? st.sources.map((s) => { const ic = s.kind === 'sub' ? '📦' : s.kind === 'happ' ? '🔐' : '🔗'; return `<div class="src">${ic} ${escapeHtml(s.label)} <span class="pill">${s.count} узл.</span></div>`; }).join('')
+      ? st.sources.map((s) => { const ic = s.kind === 'sub' ? '📦' : s.kind === 'happ' ? '🔐' : '🔗'; const hw = s.hwid ? ' <span class="pill">HWID</span>' : ''; return `<div class="src">${ic} ${escapeHtml(s.label)} <span class="pill">${s.count} узл.</span>${hw}</div>`; }).join('')
       : '<div class="muted">пока пусто</div>';
 
     const groups = st.proxies?.proxies || {};
@@ -113,9 +116,10 @@ $('#value').addEventListener('input', () => {
   const v = $('#value').value.trim();
   let t = '';
   if (!v) t = '';
-  else if (v.startsWith('happ://')) t = '🔐 happ';
+  else if (/^happ:\/\/crypt/i.test(v)) t = '🔐 happ (зашифр.)';
   else if (v.startsWith('vless://')) t = '🔗 одиночный vless';
   else if (/^https?:\/\//i.test(v)) t = '📦 подписка';
+  else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) t = '📦 deep-link подписки';
   else t = '❓ base64/неизвестно';
   $('#detected').textContent = v ? ('тип: ' + t) : '';
 });
@@ -126,8 +130,8 @@ $('#add').onclick = async () => {
   if (!value) return;
   $('#add').disabled = true;
   try {
-    const r = await api('/api/sources', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value }) });
-    $('#value').value = ''; $('#detected').textContent = '';
+    const r = await api('/api/sources', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ value, hwid: $('#hwid').checked }) });
+    $('#value').value = ''; $('#detected').textContent = ''; $('#hwid').checked = false;
     if (!r.result?.ok) $('#addErr').textContent = 'добавлено как ' + r.kind + ', но reload mihomo вернул статус ' + r.result?.status;
     await refresh();
   } catch (e) { $('#addErr').textContent = String(e.message || e); }

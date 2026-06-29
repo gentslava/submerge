@@ -75,22 +75,22 @@ const server = http.createServer(async (req, res) => {
       let proxies = null, err = null;
       try { proxies = await (await mihomo('/proxies')).json(); } catch (e) { err = String(e); }
       return json(res, {
-        sources: sources.map((s) => ({ kind: s.kind, label: s.label, count: s.kind === 'vless' ? 1 : (s.proxies || []).length })),
+        sources: sources.map((s) => ({ kind: s.kind, label: s.label, count: s.kind === 'vless' ? 1 : (s.proxies || []).length, hwid: !!s.hwid })),
         proxies, err,
       });
     }
 
     if (req.method === 'POST' && pathname === '/api/sources') {
-      const { value } = JSON.parse(await readBody(req));
+      const { value, hwid } = JSON.parse(await readBody(req));
       const kind = detectKind(value);            // тип определяем автоматически
       if (kind === 'vless') {
         const proxy = parseVless(value);
         sources.push({ kind: 'vless', label: proxy.name, proxy });
       } else if (kind === 'sub') {
         const url = extractSubUrl(value);                 // из deep-link клиента или сам URL
-        const proxies = url ? await fetchSubscription(url) : parseProxiesFromText(value);
+        const proxies = url ? await fetchSubscription(url, !!hwid) : parseProxiesFromText(value);
         if (!proxies.length) throw new Error('в подписке не нашлось узлов');
-        sources.push({ kind: 'sub', label: url || 'inline-подписка', proxies });
+        sources.push({ kind: 'sub', label: url || 'inline-подписка', proxies, hwid: !!hwid });
       } else if (kind === 'happ') {
         const { via, proxies } = await ingestHapp(value);
         sources.push({ kind: 'happ', label: `happ → ${via}`, proxies });

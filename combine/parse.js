@@ -157,10 +157,14 @@ export function parseProxiesFromText(text) {
     .filter(Boolean);
 }
 
-export async function fetchSubscription(url) {
-  // X-Hwid нужен провайдерам с привязкой к устройству (иначе отдают заглушку)
-  const headers = { 'User-Agent': 'clash.meta', 'X-Device-Os': 'Android' };
-  if (process.env.SUBMERGE_HWID) headers['X-Hwid'] = process.env.SUBMERGE_HWID;
+export async function fetchSubscription(url, useHwid = false) {
+  const headers = { 'User-Agent': 'clash.meta' };
+  // X-Hwid — только по запросу: нужен провайдерам с привязкой к устройству
+  // (без него отдают заглушку), но лишний HWID другим может стоить лимита устройств.
+  if (useHwid && process.env.SUBMERGE_HWID) {
+    headers['X-Hwid'] = process.env.SUBMERGE_HWID;
+    headers['X-Device-Os'] = 'Android';
+  }
   const res = await fetch(url.trim(), { headers });
   if (!res.ok) throw new Error(`подписка вернула HTTP ${res.status}`);
   const proxies = parseProxiesFromText(await res.text());
