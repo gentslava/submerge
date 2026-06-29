@@ -9,11 +9,17 @@ interface SegmentedProps {
   options: SegmentedOption[];
   value: string;
   onChange: (v: string) => void;
+  "aria-label"?: string;
 }
 
-export function Segmented({ options, value, onChange }: SegmentedProps) {
+export function Segmented({ options, value, onChange, "aria-label": ariaLabel }: SegmentedProps) {
   return (
-    <div className="inline-flex rounded-lg border border-border-default bg-elevated p-0.5">
+    // biome-ignore lint/a11y/useSemanticElements: a div with role="group" is the correct ARIA pattern for a segmented switcher; <fieldset> carries unwanted form-control semantics and styling.
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className="inline-flex rounded-lg border border-border-default bg-elevated p-0.5"
+    >
       {options.map((opt) => (
         <button
           key={opt.value}

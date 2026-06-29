@@ -21,4 +21,16 @@ describe("Button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
     expect(onClick).toHaveBeenCalledOnce();
   });
+  it("does not fire onClick when disabled", () => {
+    const onClick = vi.fn();
+    render(
+      <Button disabled onClick={onClick}>
+        X
+      </Button>,
+    );
+    const btn = screen.getByRole("button", { name: "X" });
+    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });
