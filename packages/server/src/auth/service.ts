@@ -8,13 +8,16 @@ const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const SESSION_TTL_SEC = SESSION_TTL_MS / 1000;
 
 // Memoize the Argon2id hash of the configured admin password (by value) so we
-// hash once, not per login. verify() is slow + constant-time by design.
+// hash once, not per login. verify() is slow + constant-time by design. The
+// cache lives only in memory (≈1 entry — the env password); rotating the
+// password takes effect on process restart.
 const hashCache = new Map<string, Promise<string>>();
 export async function verifyPassword(
   adminPassword: string | undefined,
   submitted: string,
 ): Promise<boolean> {
-  if (!adminPassword) return false; // auth disabled → never authenticates
+  // Both undefined and "" mean auth is disabled — never authenticate.
+  if (!adminPassword) return false;
   let h = hashCache.get(adminPassword);
   if (!h) {
     h = hash(adminPassword);
