@@ -1,5 +1,12 @@
+import { sourceKindSchema } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
-import { detectKind, extractSubUrl, parseProxiesFromText, parseVless } from "./parse.js";
+import {
+  detectKind,
+  detectKindSafe,
+  extractSubUrl,
+  parseProxiesFromText,
+  parseVless,
+} from "./parse.js";
 
 describe("extractSubUrl", () => {
   it("returns a plain https url as-is", () => {
@@ -24,9 +31,19 @@ describe("detectKind", () => {
   it("detects a subscription url", () => expect(detectKind("https://ex.com/sub")).toBe("sub"));
   it("detects a client deep-link as sub", () =>
     expect(detectKind("clash://install-config?url=https%3A%2F%2Fex.com%2Fs")).toBe("sub"));
+  it("detects a non-crypt happ:// without an embedded url as happ", () =>
+    expect(detectKind("happ://import/abc")).toBe("happ"));
   it("throws on an empty string", () => expect(() => detectKind("")).toThrow());
   it("rejects non-vless single nodes", () =>
     expect(() => detectKind("trojan://x@h:443")).toThrow());
+});
+
+describe("detectKindSafe", () => {
+  it("returns a valid SourceKind for a subscription url", () => {
+    const kind = detectKindSafe("https://ex.com/sub");
+    expect(kind).toBe("sub");
+    expect(sourceKindSchema.parse(kind)).toBe("sub");
+  });
 });
 
 describe("parseVless", () => {
@@ -126,5 +143,10 @@ describe("parseProxiesFromText", () => {
   });
   it("returns an empty array for unrecognized text", () => {
     expect(parseProxiesFromText("not a subscription")).toEqual([]);
+  });
+  it("skips malformed vless lines and keeps the valid ones", () => {
+    expect(parseProxiesFromText("vless://bad\nvless://u@ex.com:443#A").map((p) => p.name)).toEqual([
+      "A",
+    ]);
   });
 });

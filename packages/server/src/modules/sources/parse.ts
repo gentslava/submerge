@@ -46,7 +46,7 @@ export function detectKind(value: string): SourceKind {
     const d = Buffer.from(v.replace(/\s+/g, ""), "base64").toString("utf8");
     if (d.includes("://")) return "sub"; // base64 subscription content pasted directly
   } catch {
-    /* not base64 */
+    /* base64 decode never throws in Node; the :// check above filters non-subscription input */
   }
   throw new Error(
     "could not detect kind: expected vless:// , happ:// , a subscription URL, or a client deep-link",
@@ -64,7 +64,7 @@ export function parseVless(uri: string): ProxyConfig {
   if (u.protocol !== "vless:") throw new Error("not a vless:// link");
   const q = u.searchParams;
   const server = u.hostname;
-  const port = Number(u.port) || 443;
+  const port = Number(u.port) || 443; // port 0 → 443; no VPN provider uses port 0
   const uuid = decodeURIComponent(u.username);
   if (!uuid) throw new Error("could not parse the UUID");
   const name = u.hash ? decodeURIComponent(u.hash.slice(1)) : `${server}:${port}`;
@@ -176,6 +176,7 @@ function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
 // ── Parse subscription body text into mihomo proxies ────────────────
 export function parseProxiesFromText(text: string): ProxyConfig[] {
   // 1) clash/mihomo yaml
+  // JSON parses as YAML but lacks .proxies, so it falls through to the JSON branch
   try {
     const doc = yaml.load(text) as { proxies?: unknown[] } | undefined;
     if (doc && Array.isArray(doc.proxies) && doc.proxies.length)
@@ -208,7 +209,7 @@ export function parseProxiesFromText(text: string): ProxyConfig[] {
     const b = Buffer.from(text.replace(/\s+/g, ""), "base64").toString("utf8");
     if (b.includes("://")) decoded = b;
   } catch {
-    /* not base64 */
+    /* base64 decode never throws in Node; the :// check above filters non-subscription input */
   }
   const out: ProxyConfig[] = [];
   for (const line of decoded.split(/\r?\n/)) {
