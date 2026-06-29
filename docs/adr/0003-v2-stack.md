@@ -1,23 +1,23 @@
-# 0003 — Стек v2: React + tRPC + Drizzle/SQLite, SPA без SSR
+# 0003 — v2 stack: React + tRPC + Drizzle/SQLite, SPA without SSR
 
-**Статус:** принято (2026-06-29)
+**Status:** accepted (2026-06-29)
 
-## Контекст
+## Context
 
-PoC написан на голом Node + vanilla JS + один HTML — не масштабируется по поддержке. Нужен современный Node/TS стек: быстрый, красивый UI, качественный, поддерживаемый. Приложение — интерактивная админ-панель за паролем (нет SEO, нет анонимного first-paint), с real-time (узлы/пинги/трафик).
+The PoC is written in bare Node + vanilla JS + single HTML — not maintainable at scale. We need a modern Node/TS stack: fast, polished UI, high quality, maintainable. The application is an interactive admin panel behind a password (no SEO, no anonymous first-paint), with real-time updates (nodes/pings/traffic).
 
-## Решение
+## Decision
 
-- **SSR не используем.** Панель за паролем → SSR/RSC решают несуществующие проблемы и мешают долгоживущим real-time соединениям. Значит не Next.js/Nuxt. Фронт — **SPA** (Vite + React 19).
-- **tRPC v11** — end-to-end типобезопасность без codegen (один репозиторий, оба конца наши).
-- **Real-time** — SSE (tRPC subscription), не WebSocket (для однонаправленного потока проще и надёжнее за reverse-proxy).
-- **UI** — shadcn/ui + Tailwind v4 + TanStack Query/Router + uPlot (live-графики).
-- **Монорепо** pnpm workspaces: `shared` / `server` / `web`.
+- **No SSR.** Panel behind a password → SSR/RSC solves non-existent problems and gets in the way of long-lived real-time connections. So not Next.js/Nuxt. Frontend — **SPA** (Vite + React 19).
+- **tRPC v11** — end-to-end type safety without codegen (single repo, we own both ends).
+- **Real-time** — SSE (tRPC subscription), not WebSocket (simpler and more reliable for a unidirectional stream behind a reverse proxy).
+- **UI** — shadcn/ui + Tailwind v4 + TanStack Query/Router + uPlot (live charts).
+- **Monorepo** pnpm workspaces: `shared` / `server` / `web`.
 
-React выбран над Svelte: для self-hosted-дашборда выигрыш Svelte в рантайме незаметен, а экосистема, готовые компоненты и качество AI-кодогенерации перевешивают.
+React chosen over Svelte: for a self-hosted dashboard the Svelte runtime advantage is imperceptible, while ecosystem maturity, ready-made components, and AI code generation quality tip the scales.
 
-## Последствия
+## Consequences
 
-- (+) Типобезопасность фронт↔бэк, зрелая экосистема, быстрый и красивый UI.
-- (+) Один контейнер раздаёт статику + tRPC + SSE.
-- (−) Split server/web требует общих типов — решено пакетом `shared` (Zod) + экспортом `AppRouter`.
+- (+) Front↔back type safety, mature ecosystem, fast and polished UI.
+- (+) One container serves static files + tRPC + SSE.
+- (−) Split server/web requires shared types — solved by the `shared` package (Zod) + `AppRouter` export.

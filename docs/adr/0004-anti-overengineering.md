@@ -1,25 +1,25 @@
-# 0004 — Минимально достаточная сложность
+# 0004 — Minimal sufficient complexity
 
-**Статус:** принято (2026-06-29)
+**Status:** accepted (2026-06-29)
 
-## Контекст
+## Context
 
-Масштаб приложения мал и фиксирован: **один админ, десятки источников, сотни узлов**, single-instance. Соблазн заложить «масштабируемую enterprise-архитектуру» приведёт к тому, что поддержка станет тяжелее, а не легче — прямо против цели проекта.
+The application's scale is small and fixed: **one admin, dozens of sources, hundreds of nodes**, single instance. The temptation to lay in a "scalable enterprise architecture" would make maintenance harder, not easier — directly against the project's goal.
 
-## Решение
+## Decision
 
-Осознанно выбираем простые варианты и говорим «нет» лишнему:
-- **БД:** SQLite (WAL) + Drizzle. **Не** Postgres/libsql/Turso (нет мультитенанта/реплик).
-- **API:** tRPC. **Не** GraphQL (один клиент, одна схема).
-- **Монорепо:** pnpm workspaces (3 пакета). **Не** Nx/Turborepo (их кэш/граф не окупаются на 3 пакетах).
-- **Структура server:** фичевые модули (`router.ts`+`service.ts`), прямые Drizzle-запросы. **Не** hexagonal/CQRS/event-sourcing/DI-контейнер/репозитории.
-- **Observability:** pino + healthchecks. **Не** OpenTelemetry/Prometheus на старте.
-- **Auth:** самописная сессия (argon2) для одного админа. **Не** тяжёлые auth-фреймворки; Lucia не использовать (maintenance mode).
+We deliberately choose simple options and say "no" to the unnecessary:
+- **DB:** SQLite (WAL) + Drizzle. **Not** Postgres/libsql/Turso (no multi-tenancy/replicas).
+- **API:** tRPC. **Not** GraphQL (one client, one schema).
+- **Monorepo:** pnpm workspaces (3 packages). **Not** Nx/Turborepo (their cache/graph don't pay off at 3 packages).
+- **Server structure:** feature modules (`router.ts`+`service.ts`), direct Drizzle queries. **Not** hexagonal/CQRS/event-sourcing/DI container/repositories.
+- **Observability:** pino + health checks. **Not** OpenTelemetry/Prometheus at the start.
+- **Auth:** hand-rolled session (argon2) for a single admin. **Not** heavy auth frameworks; do not use Lucia (maintenance mode).
 
-Единственное сознательное «усиление»: **жёсткая изоляция и Zod-валидация ответов внешних сервисов** (mihomo, happ-decoder) — реальная точка отказа.
+The one deliberate "hardening": **strict isolation and Zod-validated responses for external services** (mihomo, happ-decoder) — the real failure point.
 
-## Последствия
+## Consequences
 
-- (+) Минимум движущихся частей, легко держать в голове и поддерживать (в т.ч. ИИ-агентам).
-- (+) Бэкап = копия файла SQLite; деплой = один образ.
-- (−) Если проект вырастет в мультитенант — потребуется ревизия (но это будет новой спекой, а не предугаданной сложностью сейчас).
+- (+) Minimal moving parts, easy to hold in your head and maintain (including for AI agents).
+- (+) Backup = copy the SQLite file; deploy = single image.
+- (−) If the project ever grows into multi-tenancy, a revision will be needed — but that will be a new spec, not anticipated complexity now.

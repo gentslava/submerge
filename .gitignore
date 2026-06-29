@@ -1,6 +1,17 @@
-# combine
+# node_modules
+node_modules/
 combine/node_modules/
 npm-debug.log*
+
+# TypeScript build output
+dist/
+*.tsbuildinfo
+
+# v2 server runtime — SQLite DB and secrets, do not commit
+packages/server/data/
+.env
+.env.*
+!.env.example
 
 # mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
 mihomo/sources.json

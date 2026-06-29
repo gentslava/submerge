@@ -1,19 +1,19 @@
-# 0001 — Декодирование happ:// через официальный бинарь Happ
+# 0001 — Decoding happ:// via the official Happ binary
 
-**Статус:** принято (2026-06-29)
+**Status:** accepted (2026-06-29)
 
-## Контекст
+## Context
 
-`happ://crypt5` — зашифрованная ссылка приложения Happ; внутри спрятан обычный subscription URL. Ключи шифрования (RSA + ChaCha20-Poly1305) привязаны к версии APK и **молча ротируются** (релизы Happ ~еженедельно). Статические реверс-декодеры (LeeeeT/happ-decryptor и аналоги) зашивают снапшот ключей и быстро устаревают: на свежих ссылках падают с «marker not found» / «segment length missing» (проверено — реальная ссылка пользователя не декодировалась).
+`happ://crypt5` is an encrypted Happ application link that wraps a regular subscription URL. The encryption keys (RSA + ChaCha20-Poly1305) are tied to the APK version and **rotate silently** (Happ releases ~weekly). Static reverse decoders (LeeeeT/happ-decryptor and similar) hard-code a key snapshot and go stale quickly: on fresh links they fail with "marker not found" / "segment length missing" (verified — a real user link would not decode).
 
-## Решение
+## Decision
 
-Использовать **сам официальный бинарь Happ desktop** как декодер (он всегда имеет актуальные ключи). Sidecar `happ-decoder` (Python) запускает Happ (Qt) headless под **Xvfb**, прогоняет `--test-crypt5 <link>` через локальный **mitmproxy**, который перехватывает декодированный sub-URL и тело подписки. Обновление ключей = пересборка образа со свежим `.deb` Happ. Реверс/извлечение ключей не делаем.
+Use **the official Happ desktop binary itself** as the decoder (it always has the current keys). The `happ-decoder` sidecar (Python) runs Happ (Qt) headless under **Xvfb**, pipes `--test-crypt5 <link>` through a local **mitmproxy** that intercepts the decoded sub-URL and subscription body. Updating the keys means rebuilding the image with a fresh Happ `.deb`. No reverse engineering or key extraction.
 
-## Последствия
+## Consequences
 
-- (+) Работает на любых актуальных crypt-ссылках; обновление тривиально.
-- (+) Не зависим от хрупких сторонних декодеров.
-- (−) Тяжёлый образ (Qt + Xvfb + mitmproxy), запускается on-demand.
-- Happ не шлёт HWID по умолчанию — для провайдеров с привязкой mitmproxy инжектит `X-Hwid` (см. ADR-0002).
-- Happ привязан к версии: `HAPP_VERSION` — build-arg, обновляется при ротации ключей.
+- (+) Works on any current crypt links; updating is trivial.
+- (+) No dependency on fragile third-party decoders.
+- (−) Heavy image (Qt + Xvfb + mitmproxy), started on demand.
+- Happ does not send HWID by default — for providers that require device binding, mitmproxy injects `X-Hwid` (see ADR-0002).
+- Happ is version-locked: `HAPP_VERSION` is a build-arg, updated on key rotation.

@@ -1,29 +1,29 @@
-# submerge v2 — Фаза 1: каркас монорепо + server-ядро
+# submerge v2 — Phase 1: monorepo scaffold + server core
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Поднять монорепо submerge v2 с работающим server-ядром: типобезопасный контракт (Zod), БД (Drizzle+SQLite WAL), tRPC-сервер с health-роутером, валидируемый конфиг — фундамент для последующих фаз.
+**Goal:** Stand up the submerge v2 monorepo with a working server core: type-safe contract (Zod), database (Drizzle+SQLite WAL), tRPC server with a health router, validated config — the foundation for subsequent phases.
 
-**Architecture:** pnpm workspaces из трёх пакетов — `shared` (Zod-схемы + типы), `server` (Node 24 + tRPC + Drizzle/SQLite), `web` (заглушка, наполним в Фазе 3). server поднимает HTTP с `/trpc` и `/healthz`. На этом этапе фронта/ingest нет — только каркас и ядро.
+**Architecture:** pnpm workspaces with three packages — `shared` (Zod schemas + types), `server` (Node 24 + tRPC + Drizzle/SQLite), `web` (placeholder, to be filled in Phase 3). The server exposes HTTP with `/trpc` and `/healthz`. No frontend or ingest at this stage — only the scaffold and core.
 
-**Tech Stack:** Node 24 LTS, TypeScript (strict), pnpm, Biome, Zod 4, tRPC v11, Drizzle ORM + better-sqlite3, Vitest. Все зависимости — latest-мажор на момент установки.
+**Tech Stack:** Node 24 LTS, TypeScript (strict), pnpm, Biome, Zod 4, tRPC v11, Drizzle ORM + better-sqlite3, Vitest. All dependencies are latest-major at install time.
 
 ---
 
-## Файловая структура (создаётся в Фазе 1)
+## File structure (created in Phase 1)
 
 ```
 submerge/
-├─ package.json                     # workspace root: скрипты, devDeps (biome, typescript)
+├─ package.json                     # workspace root: scripts, devDeps (biome, typescript)
 ├─ pnpm-workspace.yaml
-├─ biome.json                       # линт+формат, единый
-├─ tsconfig.base.json               # strict база, наследуется пакетами
+├─ biome.json                       # lint+format, unified
+├─ tsconfig.base.json               # strict base, inherited by packages
 ├─ packages/
 │  ├─ shared/
 │  │  ├─ package.json
 │  │  ├─ tsconfig.json
 │  │  └─ src/
-│  │     ├─ index.ts                # реэкспорт схем
+│  │     ├─ index.ts                # schema re-exports
 │  │     └─ schemas.ts              # Zod: Proxy, Source, SourceKind, Settings
 │  ├─ server/
 │  │  ├─ package.json
@@ -31,34 +31,34 @@ submerge/
 │  │  ├─ drizzle.config.ts
 │  │  ├─ vitest.config.ts
 │  │  └─ src/
-│  │     ├─ config/env.ts           # Zod-валидация process.env (fail-fast)
-│  │     ├─ db/schema.ts            # таблицы sources, settings, sessions
-│  │     ├─ db/client.ts            # подключение + PRAGMA WAL
-│  │     ├─ db/migrate.ts           # применение миграций при старте
+│  │     ├─ config/env.ts           # Zod-validated process.env (fail-fast)
+│  │     ├─ db/schema.ts            # tables: sources, settings, sessions
+│  │     ├─ db/client.ts            # connection + PRAGMA WAL
+│  │     ├─ db/migrate.ts           # run migrations on startup
 │  │     ├─ trpc/trpc.ts            # init tRPC, context, publicProcedure
 │  │     ├─ trpc/router.ts          # appRouter (health) + export AppRouter
-│  │     └─ index.ts                # HTTP-сервер: /trpc + /healthz
+│  │     └─ index.ts                # HTTP server: /trpc + /healthz
 │  └─ web/
-│     └─ package.json               # placeholder (Фаза 3)
+│     └─ package.json               # placeholder (Phase 3)
 ```
 
-> На время v2 текущий PoC (`combine/`, `mihomo/`, `docker-compose.yml`) остаётся в репозитории нетронутым. Новый код живёт в `packages/`. Финальный compose переключим в Фазе 6.
+> During v2 development the current PoC (`combine/`, `mihomo/`, `docker-compose.yml`) stays in the repository untouched. New code lives in `packages/`. The final compose switch happens in Phase 6.
 
 ---
 
-### Task 1: Каркас монорепо
+### Task 1: Monorepo scaffold
 
 **Files:**
 - Create: `package.json`, `pnpm-workspace.yaml`, `biome.json`, `tsconfig.base.json`
 
-- [ ] **Step 1: Создать `pnpm-workspace.yaml`**
+- [ ] **Step 1: Create `pnpm-workspace.yaml`**
 
 ```yaml
 packages:
   - "packages/*"
 ```
 
-- [ ] **Step 2: Создать корневой `package.json`**
+- [ ] **Step 2: Create root `package.json`**
 
 ```json
 {
@@ -81,7 +81,7 @@ packages:
 }
 ```
 
-- [ ] **Step 3: Создать `tsconfig.base.json`**
+- [ ] **Step 3: Create `tsconfig.base.json`**
 
 ```json
 {
@@ -102,7 +102,7 @@ packages:
 }
 ```
 
-- [ ] **Step 4: Создать `biome.json`**
+- [ ] **Step 4: Create `biome.json`**
 
 ```json
 {
@@ -114,27 +114,27 @@ packages:
 }
 ```
 
-- [ ] **Step 5: Установить корневые devDeps**
+- [ ] **Step 5: Install root devDeps**
 
 Run: `cd ~/Developer/submerge && pnpm install`
-Expected: создан `pnpm-lock.yaml`, установлены biome+typescript последних версий.
+Expected: `pnpm-lock.yaml` created, biome+typescript installed at latest versions.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add package.json pnpm-workspace.yaml biome.json tsconfig.base.json pnpm-lock.yaml
-git commit -m "chore: каркас монорепо submerge v2 (pnpm workspaces, biome, tsconfig)"
+git commit -m "chore: monorepo scaffold for submerge v2 (pnpm workspaces, biome, tsconfig)"
 ```
 
 ---
 
-### Task 2: Пакет `shared` — Zod-схемы домена
+### Task 2: `shared` package — domain Zod schemas
 
 **Files:**
 - Create: `packages/shared/package.json`, `packages/shared/tsconfig.json`, `packages/shared/src/schemas.ts`, `packages/shared/src/index.ts`
 - Test: `packages/shared/src/schemas.test.ts`
 
-- [ ] **Step 1: Создать `packages/shared/package.json`**
+- [ ] **Step 1: Create `packages/shared/package.json`**
 
 ```json
 {
@@ -152,7 +152,7 @@ git commit -m "chore: каркас монорепо submerge v2 (pnpm workspaces
 }
 ```
 
-- [ ] **Step 2: Создать `packages/shared/tsconfig.json`**
+- [ ] **Step 2: Create `packages/shared/tsconfig.json`**
 
 ```json
 {
@@ -162,32 +162,32 @@ git commit -m "chore: каркас монорепо submerge v2 (pnpm workspaces
 }
 ```
 
-- [ ] **Step 3: Написать падающий тест `packages/shared/src/schemas.test.ts`**
+- [ ] **Step 3: Write failing test `packages/shared/src/schemas.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { sourceKindSchema, proxySchema } from "./schemas.js";
 
 describe("schemas", () => {
-  it("принимает валидный kind", () => {
+  it("accepts a valid kind", () => {
     expect(sourceKindSchema.parse("sub")).toBe("sub");
   });
-  it("отклоняет неизвестный kind", () => {
+  it("rejects an unknown kind", () => {
     expect(() => sourceKindSchema.parse("nope")).toThrow();
   });
-  it("валидирует минимальный proxy", () => {
+  it("validates a minimal proxy", () => {
     const p = proxySchema.parse({ name: "n1", type: "vless", server: "ex.com", port: 443, uuid: "u" });
     expect(p.name).toBe("n1");
   });
 });
 ```
 
-- [ ] **Step 4: Запустить тест — убедиться, что падает**
+- [ ] **Step 4: Run the test — confirm it fails**
 
 Run: `cd packages/shared && pnpm install && pnpm vitest run`
-Expected: FAIL — модуль `./schemas.js` не существует.
+Expected: FAIL — module `./schemas.js` does not exist.
 
-- [ ] **Step 5: Создать `packages/shared/src/schemas.ts`**
+- [ ] **Step 5: Create `packages/shared/src/schemas.ts`**
 
 ```ts
 import { z } from "zod";
@@ -195,7 +195,7 @@ import { z } from "zod";
 export const sourceKindSchema = z.enum(["sub", "vless", "happ"]);
 export type SourceKind = z.infer<typeof sourceKindSchema>;
 
-// mihomo-proxy: фиксируем только обязательное ядро, остальное — passthrough
+// mihomo proxy: pin only the required core fields, everything else passes through
 export const proxySchema = z
   .object({
     name: z.string(),
@@ -228,33 +228,33 @@ export const addSourceInput = z.object({
 export type AddSourceInput = z.infer<typeof addSourceInput>;
 ```
 
-- [ ] **Step 6: Создать `packages/shared/src/index.ts`**
+- [ ] **Step 6: Create `packages/shared/src/index.ts`**
 
 ```ts
 export * from "./schemas.js";
 ```
 
-- [ ] **Step 7: Запустить тест — убедиться, что проходит**
+- [ ] **Step 7: Run the test — confirm it passes**
 
 Run: `cd packages/shared && pnpm vitest run`
-Expected: PASS (3 теста).
+Expected: PASS (3 tests).
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add packages/shared pnpm-lock.yaml
-git commit -m "feat(shared): Zod-схемы домена (Source, Proxy, SourceKind) + тесты"
+git commit -m "feat(shared): domain Zod schemas (Source, Proxy, SourceKind) + tests"
 ```
 
 ---
 
-### Task 3: server — валидируемый конфиг (env)
+### Task 3: server — validated config (env)
 
 **Files:**
 - Create: `packages/server/package.json`, `packages/server/tsconfig.json`, `packages/server/vitest.config.ts`, `packages/server/src/config/env.ts`
 - Test: `packages/server/src/config/env.test.ts`
 
-- [ ] **Step 1: Создать `packages/server/package.json`**
+- [ ] **Step 1: Create `packages/server/package.json`**
 
 ```json
 {
@@ -286,7 +286,7 @@ git commit -m "feat(shared): Zod-схемы домена (Source, Proxy, SourceK
 }
 ```
 
-- [ ] **Step 2: Создать `packages/server/tsconfig.json`**
+- [ ] **Step 2: Create `packages/server/tsconfig.json`**
 
 ```json
 {
@@ -297,7 +297,7 @@ git commit -m "feat(shared): Zod-схемы домена (Source, Proxy, SourceK
 }
 ```
 
-- [ ] **Step 3: Создать `packages/server/vitest.config.ts`**
+- [ ] **Step 3: Create `packages/server/vitest.config.ts`**
 
 ```ts
 import { defineConfig } from "vitest/config";
@@ -307,34 +307,34 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 4: Написать падающий тест `packages/server/src/config/env.test.ts`**
+- [ ] **Step 4: Write failing test `packages/server/src/config/env.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { parseEnv } from "./env.js";
 
 describe("parseEnv", () => {
-  it("даёт дефолты при пустом окружении", () => {
+  it("returns defaults for an empty environment", () => {
     const env = parseEnv({});
     expect(env.PORT).toBe(3000);
     expect(env.DB_PATH).toBe("./data/submerge.db");
     expect(env.ADMIN_PASSWORD).toBeUndefined();
   });
-  it("парсит PORT из строки", () => {
+  it("parses PORT from a string", () => {
     expect(parseEnv({ PORT: "8080" }).PORT).toBe(8080);
   });
-  it("падает на невалидном PORT", () => {
+  it("throws on an invalid PORT", () => {
     expect(() => parseEnv({ PORT: "abc" })).toThrow();
   });
 });
 ```
 
-- [ ] **Step 5: Запустить тест — убедиться, что падает**
+- [ ] **Step 5: Run the test — confirm it fails**
 
 Run: `cd packages/server && pnpm install && pnpm vitest run`
-Expected: FAIL — `./env.js` не существует.
+Expected: FAIL — `./env.js` does not exist.
 
-- [ ] **Step 6: Создать `packages/server/src/config/env.ts`**
+- [ ] **Step 6: Create `packages/server/src/config/env.ts`**
 
 ```ts
 import { z } from "zod";
@@ -354,31 +354,31 @@ export function parseEnv(source: NodeJS.ProcessEnv | Record<string, string | und
   return envSchema.parse(source);
 }
 
-// единый валидированный конфиг, fail-fast при старте
+// single validated config, fail-fast on startup
 export const env = parseEnv(process.env);
 ```
 
-- [ ] **Step 7: Запустить тест — убедиться, что проходит**
+- [ ] **Step 7: Run the test — confirm it passes**
 
 Run: `cd packages/server && pnpm vitest run`
-Expected: PASS (3 теста).
+Expected: PASS (3 tests).
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add packages/server pnpm-lock.yaml
-git commit -m "feat(server): валидируемый конфиг env (Zod, fail-fast) + тесты"
+git commit -m "feat(server): validated env config (Zod, fail-fast) + tests"
 ```
 
 ---
 
-### Task 4: server — БД (Drizzle + SQLite WAL)
+### Task 4: server — database (Drizzle + SQLite WAL)
 
 **Files:**
 - Create: `packages/server/src/db/schema.ts`, `packages/server/src/db/client.ts`, `packages/server/src/db/migrate.ts`, `packages/server/drizzle.config.ts`
 - Test: `packages/server/src/db/client.test.ts`
 
-- [ ] **Step 1: Создать `packages/server/src/db/schema.ts`**
+- [ ] **Step 1: Create `packages/server/src/db/schema.ts`**
 
 ```ts
 import { sql } from "drizzle-orm";
@@ -408,7 +408,7 @@ export const sessions = sqliteTable("sessions", {
 });
 ```
 
-- [ ] **Step 2: Создать `packages/server/drizzle.config.ts`**
+- [ ] **Step 2: Create `packages/server/drizzle.config.ts`**
 
 ```ts
 import { defineConfig } from "drizzle-kit";
@@ -420,7 +420,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 3: Создать `packages/server/src/db/client.ts`**
+- [ ] **Step 3: Create `packages/server/src/db/client.ts`**
 
 ```ts
 import { mkdirSync } from "node:fs";
@@ -443,7 +443,7 @@ export type Db = ReturnType<typeof createDb>;
 export const db = createDb();
 ```
 
-- [ ] **Step 4: Создать `packages/server/src/db/migrate.ts`**
+- [ ] **Step 4: Create `packages/server/src/db/migrate.ts`**
 
 ```ts
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
@@ -456,12 +456,12 @@ export function runMigrations() {
 if (import.meta.url === `file://${process.argv[1]}`) runMigrations();
 ```
 
-- [ ] **Step 5: Сгенерировать миграцию из схемы**
+- [ ] **Step 5: Generate migration from schema**
 
 Run: `cd packages/server && pnpm db:generate`
-Expected: создан каталог `packages/server/drizzle/` с SQL-миграцией (CREATE TABLE sources/settings/sessions).
+Expected: `packages/server/drizzle/` directory created with a SQL migration (CREATE TABLE sources/settings/sessions).
 
-- [ ] **Step 6: Написать тест `packages/server/src/db/client.test.ts`**
+- [ ] **Step 6: Write test `packages/server/src/db/client.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -471,7 +471,7 @@ import { createDb } from "./client.js";
 import { sources } from "./schema.js";
 
 describe("db", () => {
-  it("создаёт и читает source в in-memory БД", () => {
+  it("creates and reads a source in an in-memory database", () => {
     const db = createDb(":memory:");
     migrate(db, { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
     db.insert(sources).values({ kind: "sub", value: "https://x", label: "X" }).run();
@@ -484,27 +484,27 @@ describe("db", () => {
 });
 ```
 
-- [ ] **Step 7: Запустить тест — убедиться, что проходит**
+- [ ] **Step 7: Run the test — confirm it passes**
 
 Run: `cd packages/server && pnpm vitest run src/db/client.test.ts`
-Expected: PASS — запись создаётся, дефолты (enabled=true, hwid=false, proxies=[]) применяются.
+Expected: PASS — record created, defaults (enabled=true, hwid=false, proxies=[]) applied.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add packages/server/src/db packages/server/drizzle.config.ts packages/server/drizzle
-git commit -m "feat(server): Drizzle-схема (sources/settings/sessions) + SQLite WAL + миграции"
+git commit -m "feat(server): Drizzle schema (sources/settings/sessions) + SQLite WAL + migrations"
 ```
 
 ---
 
-### Task 5: server — tRPC init и health-роутер
+### Task 5: server — tRPC init and health router
 
 **Files:**
 - Create: `packages/server/src/trpc/trpc.ts`, `packages/server/src/trpc/router.ts`
 - Test: `packages/server/src/trpc/router.test.ts`
 
-- [ ] **Step 1: Создать `packages/server/src/trpc/trpc.ts`**
+- [ ] **Step 1: Create `packages/server/src/trpc/trpc.ts`**
 
 ```ts
 import { initTRPC } from "@trpc/server";
@@ -520,7 +520,7 @@ export const publicProcedure = t.procedure;
 export const createCallerFactory = t.createCallerFactory;
 ```
 
-- [ ] **Step 2: Написать падающий тест `packages/server/src/trpc/router.test.ts`**
+- [ ] **Step 2: Write failing test `packages/server/src/trpc/router.test.ts`**
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -530,7 +530,7 @@ import { createCallerFactory } from "./trpc.js";
 const createCaller = createCallerFactory(appRouter);
 
 describe("appRouter", () => {
-  it("health.ping возвращает ok", async () => {
+  it("health.ping returns ok", async () => {
     const caller = createCaller({ authed: true });
     const res = await caller.health.ping();
     expect(res.ok).toBe(true);
@@ -539,12 +539,12 @@ describe("appRouter", () => {
 });
 ```
 
-- [ ] **Step 3: Запустить тест — убедиться, что падает**
+- [ ] **Step 3: Run the test — confirm it fails**
 
 Run: `cd packages/server && pnpm vitest run src/trpc/router.test.ts`
-Expected: FAIL — `./router.js` не существует.
+Expected: FAIL — `./router.js` does not exist.
 
-- [ ] **Step 4: Создать `packages/server/src/trpc/router.ts`**
+- [ ] **Step 4: Create `packages/server/src/trpc/router.ts`**
 
 ```ts
 import { publicProcedure, router } from "./trpc.js";
@@ -558,7 +558,7 @@ export const appRouter = router({
 export type AppRouter = typeof appRouter;
 ```
 
-- [ ] **Step 5: Запустить тест — убедиться, что проходит**
+- [ ] **Step 5: Run the test — confirm it passes**
 
 Run: `cd packages/server && pnpm vitest run src/trpc/router.test.ts`
 Expected: PASS.
@@ -567,18 +567,18 @@ Expected: PASS.
 
 ```bash
 git add packages/server/src/trpc
-git commit -m "feat(server): tRPC init + health.ping роутер + тест"
+git commit -m "feat(server): tRPC init + health.ping router + test"
 ```
 
 ---
 
-### Task 6: server — HTTP-сервер (/trpc + /healthz)
+### Task 6: server — HTTP server (/trpc + /healthz)
 
 **Files:**
 - Create: `packages/server/src/index.ts`
-- Modify: `packages/server/package.json` (зависимость `@trpc/server` уже есть; адаптер из неё)
+- Modify: `packages/server/package.json` (`@trpc/server` dependency already present; adapter comes from it)
 
-- [ ] **Step 1: Создать `packages/server/src/index.ts`**
+- [ ] **Step 1: Create `packages/server/src/index.ts`**
 
 ```ts
 import { createServer } from "node:http";
@@ -594,7 +594,7 @@ runMigrations();
 
 const trpcHandler = createHTTPHandler({
   router: appRouter,
-  createContext: () => ({ authed: true }), // auth добавим в Фазе 5
+  createContext: () => ({ authed: true }), // auth added in Phase 5
 });
 
 const server = createServer((req, res) => {
@@ -620,36 +620,36 @@ process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 ```
 
-- [ ] **Step 2: Запустить сервер**
+- [ ] **Step 2: Start the server**
 
 Run: `cd packages/server && node --experimental-strip-types src/index.ts`
-Expected: лог `submerge server on :3000`, создаётся `./data/submerge.db`.
+Expected: log `submerge server on :3000`, `./data/submerge.db` created.
 
-- [ ] **Step 3: Проверить /healthz (в другом терминале)**
+- [ ] **Step 3: Check /healthz (in another terminal)**
 
 Run: `curl -s http://127.0.0.1:3000/healthz`
 Expected: `{"ok":true}`
 
-- [ ] **Step 4: Проверить tRPC health.ping**
+- [ ] **Step 4: Check tRPC health.ping**
 
 Run: `curl -s 'http://127.0.0.1:3000/trpc/health.ping'`
-Expected: JSON с `result.data` содержащим `{"ok":true,"version":"0.2.0"}`. Остановить сервер (Ctrl+C).
+Expected: JSON with `result.data` containing `{"ok":true,"version":"0.2.0"}`. Stop the server (Ctrl+C).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add packages/server/src/index.ts
-git commit -m "feat(server): HTTP-сервер /trpc + /healthz + миграции при старте + graceful shutdown"
+git commit -m "feat(server): HTTP server /trpc + /healthz + migrations on startup + graceful shutdown"
 ```
 
 ---
 
-### Task 7: web — placeholder-пакет (наполнение в Фазе 3)
+### Task 7: web — placeholder package (to be filled in Phase 3)
 
 **Files:**
 - Create: `packages/web/package.json`
 
-- [ ] **Step 1: Создать `packages/web/package.json`**
+- [ ] **Step 1: Create `packages/web/package.json`**
 
 ```json
 {
@@ -657,38 +657,38 @@ git commit -m "feat(server): HTTP-сервер /trpc + /healthz + миграци
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "build": "echo \"web: наполняется в Фазе 3\"" }
+  "scripts": { "build": "echo \"web: to be filled in Phase 3\"" }
 }
 ```
 
-- [ ] **Step 2: Проверить целостность монорепо**
+- [ ] **Step 2: Verify monorepo integrity**
 
 Run: `cd ~/Developer/submerge && pnpm install && pnpm typecheck`
-Expected: `pnpm install` без ошибок; `tsc -b` собирает shared+server без ошибок типов.
+Expected: `pnpm install` without errors; `tsc -b` builds shared+server without type errors.
 
-- [ ] **Step 3: Прогнать весь линт и тесты**
+- [ ] **Step 3: Run all lint and tests**
 
 Run: `pnpm lint && pnpm test`
-Expected: biome — без ошибок; все Vitest-тесты (shared + server) проходят.
+Expected: biome — no errors; all Vitest tests (shared + server) pass.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add packages/web pnpm-lock.yaml
-git commit -m "chore(web): placeholder-пакет; завершён каркас Фазы 1"
+git commit -m "chore(web): placeholder package; Phase 1 scaffold complete"
 ```
 
 ---
 
-## Self-Review (выполнено при написании)
+## Self-Review (performed while writing)
 
-- **Покрытие спеки (Фаза 1):** монорепо ✓ (Task 1), shared/Zod ✓ (Task 2), env-конфиг ✓ (Task 3), Drizzle+SQLite WAL+миграции ✓ (Task 4), tRPC ✓ (Task 5,6), health ✓ (Task 6). БД-таблицы соответствуют разделу 5 спеки. Ingest/web/real-time/auth/деплой — отдельные фазы (2–6), вне Фазы 1 намеренно.
-- **Плейсхолдеры:** код приведён полностью в каждом шаге; «наполним в Фазе 3» относится к web-пакету, который намеренно пуст.
-- **Консистентность типов:** `AppRouter` экспортируется (Task 5) для web-клиента (Фаза 3); `Context.authed` (Task 5) используется в `createContext` (Task 6); имена таблиц/полей `schema.ts` совпадают в тестах и client.
-- **Версии:** все зависимости ставятся как `latest`; пиннинг — через `pnpm-lock.yaml`.
+- **Spec coverage (Phase 1):** monorepo ✓ (Task 1), shared/Zod ✓ (Task 2), env config ✓ (Task 3), Drizzle+SQLite WAL+migrations ✓ (Task 4), tRPC ✓ (Tasks 5,6), health ✓ (Task 6). DB tables match spec section 5. Ingest/web/real-time/auth/deploy are separate phases (2–6), intentionally out of scope for Phase 1.
+- **Placeholders:** code is given in full in every step; "to be filled in Phase 3" refers to the web package, which is intentionally empty.
+- **Type consistency:** `AppRouter` exported (Task 5) for the web client (Phase 3); `Context.authed` (Task 5) used in `createContext` (Task 6); table/column names in `schema.ts` match tests and client.
+- **Versions:** all dependencies installed as `latest`; pinning via `pnpm-lock.yaml`.
 
-## Замечания для исполнителя
+## Notes for implementers
 
-- Перед написанием кода свериться с актуальным API через Context7 MCP для: Zod 4 (`z.enum`, `.loose()`, `z.coerce`), tRPC v11 (`initTRPC`, `createHTTPHandler`), Drizzle (`sqliteTable`, `better-sqlite3` адаптер, миграции). API мог измениться к latest.
-- Node 24 умеет исполнять TS напрямую (`--experimental-strip-types`); если флаг не нужен в текущей версии — убрать. Для прод-сборки в Фазе 6 добавим компиляцию (tsc/tsup).
-- Не трогать существующий PoC (`combine/`, `mihomo/`, `happ-decoder/`, корневой `docker-compose.yml`) — он остаётся рабочим до Фазы 6.
+- Before writing code, check the current API via Context7 MCP for: Zod 4 (`z.enum`, `.loose()`, `z.coerce`), tRPC v11 (`initTRPC`, `createHTTPHandler`), Drizzle (`sqliteTable`, `better-sqlite3` adapter, migrations). The API may have changed at latest.
+- Node 24 can execute TS directly (`--experimental-strip-types`); if the flag is not needed in the current version — remove it. Production build (tsc/tsup) will be added in Phase 6.
+- Do not touch the existing PoC (`combine/`, `mihomo/`, `happ-decoder/`, root `docker-compose.yml`) — it stays operational until Phase 6.

@@ -1,12 +1,12 @@
 # Architecture Decision Records
 
-Короткие записи о принятых архитектурных решениях и причинах. Формат: Контекст → Решение → Последствия. Цель — чтобы агенты и разработчики не «переоткрывали» уже решённое.
+Short records of accepted architectural decisions and their rationale. Format: Context → Decision → Consequences. Goal: prevent agents and developers from re-discovering what has already been decided.
 
-При новом значимом решении — добавить файл `NNNN-краткое-название.md` со следующим номером и строкой в индекс ниже.
+When a new significant decision is made, add a file `NNNN-short-name.md` with the next number and a line in the index below.
 
-## Индекс
+## Index
 
-- [0001](0001-happ-via-official-binary.md) — Декодирование happ:// через официальный бинарь Happ, а не статический реверс-декодер
-- [0002](0002-hwid-per-source.md) — X-Hwid как per-source опция (по умолчанию выключена)
-- [0003](0003-v2-stack.md) — Стек v2: React + tRPC + Drizzle/SQLite, SPA без SSR
-- [0004](0004-anti-overengineering.md) — Минимально достаточная сложность (SQLite, монорепо pnpm, без Postgres/Nx/hexagonal)
+- [0001](0001-happ-via-official-binary.md) — Decoding happ:// via the official Happ binary, not a static reverse decoder
+- [0002](0002-hwid-per-source.md) — X-Hwid as a per-source option (off by default)
+- [0003](0003-v2-stack.md) — v2 stack: React + tRPC + Drizzle/SQLite, SPA without SSR
+- [0004](0004-anti-overengineering.md) — Minimal sufficient complexity (SQLite, pnpm monorepo, no Postgres/Nx/hexagonal)

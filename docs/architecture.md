@@ -1,34 +1,34 @@
-# Архитектура submerge v2
+# submerge v2 architecture
 
-Обзор для агентов и разработчиков. Полный дизайн — в [docs/specs/2026-06-29-submerge-v2-stack-design.md](specs/2026-06-29-submerge-v2-stack-design.md).
+Overview for agents and developers. Full design: [docs/specs/2026-06-29-submerge-v2-stack-design.md](specs/2026-06-29-submerge-v2-stack-design.md).
 
 ```
-┌──────────────── один Docker-контейнер: submerge ────────────────┐
-│  web (React SPA)  ──tRPC query/mutation──┐                       │
-│      ▲  tRPC subscription (SSE)           ▼                      │
-│      └──────────────────────  server (Node 24 + TS)             │
-│                               ├─ tRPC router (modules)           │
-│                               ├─ Drizzle + SQLite (WAL)          │
-│                               ├─ SSE-хаб (опрос mihomo → fan-out)│
-│                               └─ clients/ (изолированы, Zod)     │
-└───────────────────────────────┬──────────────────┬─────────────┘
-                       HTTP ↓ Clash API       HTTP ↓ /decode
-                        mihomo (Go)            happ-decoder (Python)
+┌──────────────── single Docker container: submerge ────────────────┐
+│  web (React SPA)  ──tRPC query/mutation───┐                       │
+│      ▲  tRPC subscription (SSE)           ▼                       │
+│      └──────────────────────  server (Node 24 + TS)               │
+│                               ├─ tRPC router (modules)            │
+│                               ├─ Drizzle + SQLite (WAL)           │
+│                               ├─ SSE hub (poll mihomo → fan-out)  │
+│                               └─ clients/ (isolated, Zod)         │
+└───────────────────────────────┬──────────────────┬────────────────┘
+                           HTTP ↓ Clash API   HTTP ↓ /decode
+                            mihomo (Go)        happ-decoder (Python)
 ```
 
-## Слои и границы
+## Layers and boundaries
 
-- **shared** — единственный контракт: Zod-схемы домена (Source, Proxy, Settings) и выведенные типы. Импортируется и server, и web.
-- **server** — control-plane. Модули по фичам (`sources`, `nodes`, `settings`, `auth`): `router.ts` (валидация+вызов) + `service.ts` (логика+Drizzle). Внешние сервисы — только через `clients/` (mihomo, happ-decoder) с таймаутами и Zod-валидацией ответов. tRPC отдаёт типы во web без codegen.
-- **web** — React SPA. tRPC-клиент + TanStack Query (серверное состояние), uPlot (live-метрики), shadcn/ui.
-- **happ-decoder** (Python) и **mihomo** (Go) — внешние процессы, переиспользуются из PoC без изменений.
+- **shared** — the single contract: domain Zod schemas (Source, Proxy, Settings) and inferred types. Imported by both server and web.
+- **server** — control plane. Feature modules (`sources`, `nodes`, `settings`, `auth`): `router.ts` (validation + dispatch) + `service.ts` (logic + Drizzle). External services go through `clients/` only (mihomo, happ-decoder) with timeouts and Zod-validated responses. tRPC exports types to web without codegen.
+- **web** — React SPA. tRPC client + TanStack Query (server state), uPlot (live metrics), shadcn/ui.
+- **happ-decoder** (Python) and **mihomo** (Go) — external processes, reused from PoC unchanged.
 
-## Потоки данных
+## Data flows
 
-- **Управление** (добавить источник, выбрать узел): web → tRPC mutation → server module → (parse / fetchSubscription / ingestHapp) → генерация config.yaml → reload mihomo.
-- **Real-time** (узлы/пинги/трафик): server SSE-хаб опрашивает mihomo → fan-out через tRPC subscription (SSE) → web патчит кэш TanStack Query точечно; высокочастотные метрики идут в uPlot мимо кэша (throttle).
-- **Персист**: источники/настройки/HWID/сессии — в SQLite (Drizzle). Узлы не хранятся (живой статус из mihomo); snapshot узлов источника — в `sources.proxies`.
+- **Management** (add source, select node): web → tRPC mutation → server module → (parse / fetchSubscription / ingestHapp) → generate config.yaml → reload mihomo.
+- **Real-time** (nodes/pings/traffic): server SSE hub polls mihomo → fan-out via tRPC subscription (SSE) → web patches TanStack Query cache with targeted node updates; high-frequency metrics go to uPlot directly, bypassing the cache (throttled).
+- **Persistence**: sources/settings/HWID/sessions — in SQLite (Drizzle). Nodes are not stored (live status from mihomo); per-source node snapshot in `sources.proxies`.
 
-## Ключевые решения
+## Key decisions
 
-См. [docs/adr/](adr/): happ через официальный бинарь, X-Hwid per-source, выбор стека, анти-оверинжиниринг.
+See [docs/adr/](adr/): happ via official binary, X-Hwid per-source, stack choice, anti-overengineering.
