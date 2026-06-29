@@ -164,8 +164,13 @@ export async function ingestHapp(link) {
   if (!r.ok || !j.ok) throw new Error(j.error || `happ-decoder вернул HTTP ${r.status}`);
 
   let proxies = j.body ? parseProxiesFromText(j.body) : [];
-  if (!proxies.length && j.url) proxies = await fetchSubscription(j.url);
+  if (!proxies.length && j.url) {
+    try { proxies = await fetchSubscription(j.url); } catch { /* разберём ниже */ }
+  }
   if (!proxies.length) {
+    // подписка декодирована и распознана как формат, но активных узлов нет → вероятно истекла
+    const decoded = j.body && (j.body.includes('"outbounds"') || j.body.includes('proxies:') || j.body.includes('://'));
+    if (decoded) throw new Error(`happ декодирован (${j.url || '—'}), но активных узлов нет — подписка, вероятно, истекла/неактивна`);
     const sample = (j.body || '').slice(0, 240).replace(/\s+/g, ' ');
     console.log(`[happ] формат не распознан. url=${j.url} sample=${sample}`);
     throw new Error(`happ декодирован (${j.url || '—'}), но формат подписки не распознан — структура в логах combine`);
