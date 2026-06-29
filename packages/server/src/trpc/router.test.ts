@@ -1,6 +1,8 @@
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { db } from "../db/client.js";
+import { settings } from "../db/schema.js";
 import { appRouter } from "./router.js";
 import { createCallerFactory } from "./trpc.js";
 
@@ -16,6 +18,12 @@ beforeAll(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+// Drop the throwaway settings key so the round-trip test stays self-contained
+// and the next run genuinely exercises the write→read path against the singleton db.
+afterAll(() => {
+  db.delete(settings).where(eq(settings.key, "__router_test__")).run();
+});
+
 describe("appRouter", () => {
   it("health.ping returns ok", async () => {
     const res = await caller().health.ping();
@@ -24,29 +32,28 @@ describe("appRouter", () => {
   });
 
   it("nodes.list normalizes mihomo proxies", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        () =>
-          new Response(
-            JSON.stringify({
-              proxies: {
-                PROXY: { name: "PROXY", type: "Selector", now: "A", all: ["A"], history: [] },
-                A: { name: "A", type: "vless", history: [] },
-              },
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          ),
-      ),
+    const fetchMock = vi.fn(
+      () =>
+        new Response(
+          JSON.stringify({
+            proxies: {
+              PROXY: { name: "PROXY", type: "Selector", now: "A", all: ["A"], history: [] },
+              A: { name: "A", type: "vless", history: [] },
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
     );
+    vi.stubGlobal("fetch", fetchMock);
     const view = await caller().nodes.list();
     expect(view.now).toBe("A");
     expect(view.all[0]?.name).toBe("A");
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/proxies"), expect.anything());
   });
 
   it("settings.set then settings.get round-trips", async () => {
-    await caller().settings.set({ key: "theme", value: "dark" });
+    await caller().settings.set({ key: "__router_test__", value: "dark" });
     const all = await caller().settings.get();
-    expect(all.theme).toBe("dark");
+    expect(all.__router_test__).toBe("dark");
   });
 });
