@@ -26,7 +26,7 @@ describe("schemas", () => {
   });
 });
 
-describe("phase2 schemas", () => {
+describe("nodeView + tRPC input schemas", () => {
   it("validates a node view", () => {
     const v = nodeViewSchema.parse({ now: "n1", all: [{ name: "n1", type: "vless", delay: 42 }] });
     expect(v.all[0]?.delay).toBe(42);
@@ -41,5 +41,8 @@ describe("phase2 schemas", () => {
   it("validates select + reorder inputs", () => {
     expect(selectNodeInput.parse({ group: "PROXY", name: "n1" }).group).toBe("PROXY");
     expect(reorderInput.parse({ ids: [3, 1, 2] }).ids).toHaveLength(3);
+  });
+  it("rejects an empty group", () => {
+    expect(() => selectNodeInput.parse({ group: "", name: "n1" })).toThrow();
   });
 });

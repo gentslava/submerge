@@ -52,7 +52,12 @@ export type NodeView = z.infer<typeof nodeViewSchema>;
 
 // ── tRPC input schemas ────────────────────────────────────────────
 export const idInput = z.object({ id: z.number().int() });
+export type IdInput = z.infer<typeof idInput>;
 export const reorderInput = z.object({ ids: z.array(z.number().int()) });
+export type ReorderInput = z.infer<typeof reorderInput>;
 export const selectNodeInput = z.object({ group: z.string().min(1), name: z.string().min(1) });
+export type SelectNodeInput = z.infer<typeof selectNodeInput>;
 export const delayInput = z.object({ name: z.string().min(1) });
+export type DelayInput = z.infer<typeof delayInput>;
 export const setSettingInput = z.object({ key: z.string().min(1), value: z.string() });
+export type SetSettingInput = z.infer<typeof setSettingInput>;
