@@ -22,21 +22,41 @@ export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
   });
 }
 
-// AUTO (url-test) group tuning — editable via Settings; defaults baked here.
+// AUTO group policy — the mihomo group type that picks the active node.
+export type AutoStrategy = "url-test" | "fallback" | "load-balance";
+export const AUTO_STRATEGIES: AutoStrategy[] = ["url-test", "fallback", "load-balance"];
+
+// AUTO group tuning — editable via Settings; defaults baked here.
 export interface AutoConfig {
+  strategy: AutoStrategy;
   url: string;
   interval: number; // seconds between mihomo re-tests
-  tolerance: number; // ms hysteresis before switching nodes
+  tolerance: number; // ms hysteresis before switching (url-test only)
+  switchOnTimeout: boolean; // proactively re-test + switch (mihomo lazy: false)
 }
 export const AUTO_DEFAULTS: AutoConfig = {
+  strategy: "url-test",
   url: "https://www.gstatic.com/generate_204",
   interval: 300,
   tolerance: 50,
+  switchOnTimeout: true,
 };
 
 export function buildConfig(proxies: ProxyConfig[], auto: AutoConfig = AUTO_DEFAULTS): string {
   const unique = dedupeNames(proxies);
   const names = unique.map((p) => p.name);
+  // The AUTO group's shape depends on its strategy (mihomo group type).
+  const autoGroup: Record<string, unknown> = {
+    name: "AUTO",
+    type: auto.strategy,
+    url: auto.url,
+    interval: auto.interval,
+    lazy: !auto.switchOnTimeout,
+    proxies: names.length ? names : ["DIRECT"],
+  };
+  if (auto.strategy === "url-test") autoGroup.tolerance = auto.tolerance;
+  if (auto.strategy === "load-balance") autoGroup.strategy = "round-robin";
+
   const cfg = {
     "mixed-port": 7890,
     "allow-lan": true,
@@ -49,14 +69,7 @@ export function buildConfig(proxies: ProxyConfig[], auto: AutoConfig = AUTO_DEFA
     proxies: unique,
     "proxy-groups": [
       { name: "PROXY", type: "select", proxies: ["AUTO", ...names, "DIRECT"] },
-      {
-        name: "AUTO",
-        type: "url-test",
-        url: auto.url,
-        interval: auto.interval,
-        tolerance: auto.tolerance,
-        proxies: names.length ? names : ["DIRECT"],
-      },
+      autoGroup,
     ],
     rules: [names.length ? "MATCH,PROXY" : "MATCH,DIRECT"],
   };

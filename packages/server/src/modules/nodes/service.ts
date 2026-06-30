@@ -8,17 +8,30 @@ import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
 import { getSetting } from "../settings/service.js";
-import { AUTO_DEFAULTS, type AutoConfig, buildConfig } from "./config.js";
+import {
+  AUTO_DEFAULTS,
+  AUTO_STRATEGIES,
+  type AutoConfig,
+  type AutoStrategy,
+  buildConfig,
+} from "./config.js";
 
-// Read the editable AUTO (url-test) tuning from settings, falling back to defaults.
+// Read the editable AUTO group tuning from settings, falling back to defaults.
 export function readAutoConfig(db: Db): AutoConfig {
+  const strategy = getSetting(db, "autoStrategy");
   const url = getSetting(db, "autoTestUrl")?.trim();
   const interval = Number.parseInt(getSetting(db, "autoTestInterval") ?? "", 10);
   const tolerance = Number.parseInt(getSetting(db, "autoTestTolerance") ?? "", 10);
+  const switchOnTimeout = getSetting(db, "autoSwitchOnTimeout");
   return {
+    strategy: AUTO_STRATEGIES.includes(strategy as AutoStrategy)
+      ? (strategy as AutoStrategy)
+      : AUTO_DEFAULTS.strategy,
     url: url && url.length > 0 ? url : AUTO_DEFAULTS.url,
     interval: Number.isFinite(interval) && interval >= 1 ? interval : AUTO_DEFAULTS.interval,
     tolerance: Number.isFinite(tolerance) && tolerance >= 0 ? tolerance : AUTO_DEFAULTS.tolerance,
+    switchOnTimeout:
+      switchOnTimeout == null ? AUTO_DEFAULTS.switchOnTimeout : switchOnTimeout === "true",
   };
 }
 

@@ -15,6 +15,16 @@ export function getAllSettings(db: Db): Record<string, string> {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
+// The UI-facing settings: stored DB values plus env-derived read-only fields
+// (mihomo secret from env, HWID ensured) that aren't plain settings rows.
+export function getSettingsView(db: Db): Record<string, string> {
+  return {
+    ...getAllSettings(db),
+    hwid: getOrCreateHwid(db),
+    mihomoSecret: env.MIHOMO_SECRET,
+  };
+}
+
 export function setSetting(db: Db, key: string, value: string): void {
   db.insert(settings)
     .values({ key, value })
