@@ -7,7 +7,7 @@
     "./router": "./src/trpc/router.ts"
   },
   "scripts": {
-    "dev": "tsx --watch src/index.ts",
+    "dev": "tsx --conditions=development --watch src/index.ts",
     "build": "tsc -b",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
