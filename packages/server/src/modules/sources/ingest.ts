@@ -1,4 +1,4 @@
-import type { Proxy as ProxyConfig, SourceKind } from "@submerge/shared";
+import type { Proxy as ProxyConfig, SourceKind, SubscriptionMeta } from "@submerge/shared";
 import { decodeHapp } from "../../clients/happDecoder.js";
 import { detectKind, extractSubUrl, parseProxiesFromText, parseVless } from "./parse.js";
 
@@ -6,18 +6,102 @@ export interface IngestResult {
   kind: SourceKind;
   label: string;
   proxies: ProxyConfig[];
+  meta: SubscriptionMeta | null;
+}
+
+// Subscription headers carry the name (`label`) plus the metadata kept in `meta`.
+interface SubInfo {
+  title: string | null;
+  used: number | null;
+  total: number | null;
+  expire: number | null;
+  updateHours: number | null;
+}
+const EMPTY_INFO: SubInfo = {
+  title: null,
+  used: null,
+  total: null,
+  expire: null,
+  updateHours: null,
+};
+
+// Split the title off the SubInfo; null when the provider sent no usable metadata.
+function toMeta(info: SubInfo): SubscriptionMeta | null {
+  const { used, total, expire, updateHours } = info;
+  if (used == null && total == null && expire == null && updateHours == null) return null;
+  return { used, total, expire, updateHours };
+}
+
+// Human title from `profile-title` ("base64:…" or raw), else the content-disposition
+// filename (with the .yaml/.txt/.json extension stripped).
+function parseTitle(headers: Headers): string | null {
+  const raw = headers.get("profile-title")?.trim();
+  if (raw) {
+    const b64 = /^base64:(.*)$/i.exec(raw);
+    if (b64?.[1]) {
+      try {
+        const decoded = Buffer.from(b64[1], "base64").toString("utf8").trim();
+        if (decoded) return decoded;
+      } catch {
+        /* not valid base64 — fall through */
+      }
+    } else {
+      return raw;
+    }
+  }
+  const cd = headers.get("content-disposition");
+  if (cd) {
+    const star = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    if (star?.[1]) {
+      try {
+        const name = decodeURIComponent(star[1]).trim();
+        if (name) return name;
+      } catch {
+        /* malformed — fall through */
+      }
+    }
+    const plain = /filename="?([^";]+)"?/i.exec(cd);
+    if (plain?.[1]) return plain[1].trim().replace(/\.(ya?ml|txt|json)$/i, "") || null;
+  }
+  return null;
+}
+
+// Parse subscription metadata from the provider's response headers (Clash/sub standard).
+export function parseSubInfo(headers: Headers): SubInfo {
+  const info: SubInfo = { ...EMPTY_INFO, title: parseTitle(headers) };
+
+  // subscription-userinfo: "upload=N; download=N; total=N; expire=N"
+  const userinfo = headers.get("subscription-userinfo");
+  if (userinfo) {
+    const f: Record<string, number> = {};
+    for (const part of userinfo.split(";")) {
+      const [k, v] = part.split("=");
+      if (k && v !== undefined) f[k.trim()] = Number(v.trim());
+    }
+    const up = Number.isFinite(f.upload) ? (f.upload as number) : 0;
+    const down = Number.isFinite(f.download) ? (f.download as number) : 0;
+    if (up > 0 || down > 0) info.used = up + down;
+    if (Number.isFinite(f.total) && (f.total as number) > 0) info.total = f.total as number;
+    if (Number.isFinite(f.expire) && (f.expire as number) > 0) info.expire = f.expire as number;
+  }
+
+  // profile-update-interval: refresh interval in hours.
+  const interval = Number(headers.get("profile-update-interval"));
+  if (Number.isFinite(interval) && interval > 0) info.updateHours = interval;
+
+  return info;
 }
 
 const FETCH_TIMEOUT_MS = 30_000; // subscription fetch
 
-// Fetch an https subscription and parse its body into proxies.
-// X-Hwid is sent only when useHwid is set (ADR-0002): device-bound providers
-// need it, but sending it elsewhere can burn device-slot limits.
+// Fetch an https subscription, parse its body into proxies, and read its metadata headers.
+// X-Hwid is sent only when useHwid is set (ADR-0002): device-bound providers need it, but
+// sending it elsewhere can burn device-slot limits.
 export async function fetchSubscription(
   url: string,
   useHwid = false,
   hwid = "",
-): Promise<ProxyConfig[]> {
+): Promise<{ proxies: ProxyConfig[]; info: SubInfo }> {
   const headers: Record<string, string> = { "User-Agent": "clash.meta" };
   if (useHwid && hwid) {
     headers["X-Hwid"] = hwid;
@@ -25,25 +109,30 @@ export async function fetchSubscription(
   }
   const res = await fetch(url.trim(), { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`subscription returned HTTP ${res.status}`);
+  const info = parseSubInfo(res.headers);
   const proxies = parseProxiesFromText(await res.text());
   if (!proxies.length)
     throw new Error("subscription had no nodes (clash-yaml / v2ray-json / base64)");
-  return proxies;
+  return { proxies, info };
 }
 
-// happ:// → happ-decoder → sub-url/body → proxies.
+// happ:// → happ-decoder → sub-url/body → proxies. Proxies prefer the decoder's inline
+// body (reliable); the metadata only comes with the sub-url fetch's headers (best-effort).
 export async function ingestHapp(
   link: string,
   useHwid = false,
   hwid = "",
-): Promise<{ via: string; proxies: ProxyConfig[] }> {
+): Promise<{ via: string; proxies: ProxyConfig[]; info: SubInfo }> {
   const decoded = await decodeHapp(link, useHwid);
   let proxies = decoded.body ? parseProxiesFromText(decoded.body) : [];
-  if (!proxies.length && decoded.url) {
+  let info = EMPTY_INFO;
+  if (decoded.url) {
     try {
-      proxies = await fetchSubscription(decoded.url, useHwid, hwid);
+      const fetched = await fetchSubscription(decoded.url, useHwid, hwid);
+      if (!proxies.length) proxies = fetched.proxies;
+      info = fetched.info;
     } catch {
-      /* fall through to the diagnostic below */
+      /* fetch failed — keep the body's proxies (if any); no metadata */
     }
   }
   if (!proxies.length) {
@@ -60,7 +149,7 @@ export async function ingestHapp(
       `happ decoded (${decoded.url || "—"}) but the subscription format was not recognized`,
     );
   }
-  return { via: decoded.url || "happ", proxies };
+  return { via: decoded.url || "happ", proxies, info };
 }
 
 // Dispatch on detected kind and return a normalized ingest result (no DB writes).
@@ -72,15 +161,19 @@ export async function ingestSource(
   const kind = detectKind(value);
   if (kind === "vless") {
     const proxy = parseVless(value);
-    return { kind, label: proxy.name, proxies: [proxy] };
+    return { kind, label: proxy.name, proxies: [proxy], meta: null };
   }
   if (kind === "sub") {
     const url = extractSubUrl(value);
-    const proxies = url ? await fetchSubscription(url, useHwid, hwid) : parseProxiesFromText(value);
+    if (url) {
+      const { proxies, info } = await fetchSubscription(url, useHwid, hwid);
+      return { kind, label: info.title || url, proxies, meta: toMeta(info) };
+    }
+    const proxies = parseProxiesFromText(value);
     if (!proxies.length) throw new Error("subscription had no nodes");
-    return { kind, label: url ?? "inline subscription", proxies };
+    return { kind, label: "inline subscription", proxies, meta: null };
   }
   // happ
-  const { via, proxies } = await ingestHapp(value, useHwid, hwid);
-  return { kind, label: `happ → ${via}`, proxies };
+  const { via, proxies, info } = await ingestHapp(value, useHwid, hwid);
+  return { kind, label: info.title || `happ → ${via}`, proxies, meta: toMeta(info) };
 }

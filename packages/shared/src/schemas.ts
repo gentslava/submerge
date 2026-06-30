@@ -14,6 +14,17 @@ export const proxySchema = z.looseObject({
 });
 export type Proxy = z.infer<typeof proxySchema>;
 
+// Subscription metadata parsed from the provider's HTTP response headers. All fields are
+// optional — providers send some, none, or all. Bytes for traffic, unix seconds for
+// expiry, hours for the suggested refresh interval.
+export const subscriptionMetaSchema = z.object({
+  used: z.number().nullable().default(null), // upload + download, bytes
+  total: z.number().nullable().default(null), // bytes (null/0 = unlimited)
+  expire: z.number().nullable().default(null), // unix seconds (null/0 = no expiry)
+  updateHours: z.number().nullable().default(null), // provider's suggested refresh interval
+});
+export type SubscriptionMeta = z.infer<typeof subscriptionMetaSchema>;
+
 export const sourceSchema = z.object({
   id: z.number().int(),
   kind: sourceKindSchema,
@@ -23,6 +34,8 @@ export const sourceSchema = z.object({
   enabled: z.boolean(),
   sortOrder: z.number().int(),
   proxies: z.array(proxySchema),
+  // Subscription metadata (name lives in `label`); null for vless / metadata-less sources.
+  meta: subscriptionMetaSchema.nullable().default(null),
   updatedAt: z.string(),
   createdAt: z.string(),
 });

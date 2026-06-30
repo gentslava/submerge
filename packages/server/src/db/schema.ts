@@ -1,4 +1,4 @@
-import type { Proxy as ProxyConfig } from "@submerge/shared";
+import type { Proxy as ProxyConfig, SubscriptionMeta } from "@submerge/shared";
 import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -19,6 +19,9 @@ export const sources = sqliteTable("sources", {
     .$type<ProxyConfig[]>()
     .notNull()
     .$defaultFn(() => []),
+  // Subscription metadata (traffic/expiry/update interval) parsed from provider headers;
+  // null for vless / metadata-less sources. The display name lives in `label`.
+  meta: text("meta", { mode: "json" }).$type<SubscriptionMeta | null>(),
   updatedAt: text("updated_at").notNull().default(sql`(current_timestamp)`),
   createdAt: text("created_at").notNull().default(sql`(current_timestamp)`),
 });

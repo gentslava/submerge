@@ -19,6 +19,7 @@ function toSource(row: typeof sources.$inferSelect): Source {
     enabled: row.enabled,
     sortOrder: row.sortOrder,
     proxies: row.proxies,
+    meta: row.meta ?? null,
     updatedAt: row.updatedAt,
     createdAt: row.createdAt,
   };
@@ -51,6 +52,7 @@ export async function addSource(
       hwid: input.hwid,
       sortOrder,
       proxies: result.proxies,
+      meta: result.meta,
     })
     .returning()
     .get();
@@ -80,7 +82,12 @@ export async function refreshSource(
   const result = await ingestSource(row.value, row.hwid, hwid);
   const updated = db
     .update(sources)
-    .set({ label: result.label, proxies: result.proxies, updatedAt: sql`(current_timestamp)` })
+    .set({
+      label: result.label,
+      proxies: result.proxies,
+      meta: result.meta,
+      updatedAt: sql`(current_timestamp)`,
+    })
     .where(eq(sources.id, id))
     .returning()
     .get();

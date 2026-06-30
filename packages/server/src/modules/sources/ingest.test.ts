@@ -13,8 +13,29 @@ describe("fetchSubscription", () => {
         text("proxies:\n  - {name: A, type: vless, server: ex.com, port: 443, uuid: u}\n"),
       ),
     );
-    const proxies = await fetchSubscription("https://ex.com/sub", false);
+    const { proxies } = await fetchSubscription("https://ex.com/sub", false);
     expect(proxies[0]?.name).toBe("A");
+  });
+
+  it("parses subscription metadata from the response headers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        text("proxies:\n  - {name: A, type: vless, server: ex.com, port: 443, uuid: u}\n", {
+          headers: {
+            "profile-title": `base64:${Buffer.from("Opengate VPN", "utf8").toString("base64")}`,
+            "subscription-userinfo": "upload=100; download=900; total=2000; expire=1834000000",
+            "profile-update-interval": "6",
+          },
+        }),
+      ),
+    );
+    const { info } = await fetchSubscription("https://ex.com/sub", false);
+    expect(info.title).toBe("Opengate VPN");
+    expect(info.used).toBe(1000);
+    expect(info.total).toBe(2000);
+    expect(info.expire).toBe(1834000000);
+    expect(info.updateHours).toBe(6);
   });
 
   it("adds X-Hwid + X-Device-Os only when useHwid is true", async () => {
