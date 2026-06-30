@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
+import { formatInterval } from "@/lib/duration";
 import { cn } from "@/lib/utils";
 
 // Авто = the AUTO group picks the node automatically (its strategy/tuning is set in
@@ -48,7 +49,7 @@ export function AutoStrategyCard({
   const params: { caption: string; value: string; grow?: boolean }[] = [
     { caption: "СТРАТЕГИЯ", value: STRATEGY_LABELS[auto.strategy] ?? auto.strategy },
     { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.url.replace(/^https?:\/\//, ""), grow: true },
-    { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: `${auto.interval} с` },
+    { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: formatInterval(auto.interval) },
     ...(auto.strategy === "url-test" ? [{ caption: "ДОПУСК", value: `${auto.tolerance} ms` }] : []),
     { caption: "ПЕРЕКЛЮЧАТЬ ПРИ", value: auto.switchOnTimeout ? "таймаут" : "вручную" },
   ];

@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { PROXY_ENDPOINT } from "@/lib/constants";
+import { formatInterval } from "@/lib/duration";
 import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
@@ -28,9 +29,11 @@ const STRATEGY_OPTIONS = [
   { value: "load-balance", label: "Нагрузка" },
 ];
 const POLL_PRESETS = [1, 2, 5, 10, 30];
-const CHECK_PRESETS = [30, 60, 120, 300, 600];
+// Check interval: from the most frequent (unstable links — fastest switching) to the
+// longest (stable — don't keep pinging configs). Large values read as minutes.
+const CHECK_PRESETS = [5, 10, 30, 60, 300, 600];
 
-// Render second-valued <option>s, keeping the current value present even off-preset.
+// Render interval <option>s (с / мин), keeping the current value present even off-preset.
 function secondsOptions(presets: number[], current: string) {
   const cur = Number(current);
   const values =
@@ -39,7 +42,7 @@ function secondsOptions(presets: number[], current: string) {
       : presets;
   return values.map((v) => (
     <option key={v} value={String(v)}>
-      {v} с
+      {formatInterval(v)}
     </option>
   ));
 }
