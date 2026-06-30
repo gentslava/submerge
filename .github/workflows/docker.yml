@@ -6,7 +6,16 @@ name: docker
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "pencil/**"
   workflow_dispatch:
+
+# A newer push supersedes an in-flight build of the same ref.
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

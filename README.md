@@ -1,4 +1,8 @@
-# submerge
+<p align="center">
+  <img src="packages/web/public/logo.svg" width="96" alt="submerge" />
+</p>
+
+<h1 align="center">submerge</h1>
 
 Self-hosted VPN subscription aggregator acting as a **client**: accepts subscriptions from multiple
 providers (including encrypted `happ://` links), aggregates nodes, and serves a local
@@ -12,10 +16,9 @@ SOCKS5/HTTP proxy via the **mihomo** engine — with a web UI for management.
 
 - **Any node source through a single UI:** `vless://` (ws+tls / tcp+reality+vision / xhttp / grpc), subscriptions (clash-yaml / base64 / v2ray-json), `happ://`.
 - **Auto-detection** of the pasted string type.
-- **happ:// out of the box** — decoded by the official Happ binary (current keys), not a stale reverse decoder. See [happ-decoder](#happ-how-it-works).
+- **happ:// out of the box** — decoded by the official Happ binary (current keys), not a stale reverse decoder ([how it works](docs/adr/0001-happ-via-official-binary.md)).
 - **Multi-server:** pick the best node by latency (`url-test`), failover, manual switching.
 - **Engine — mihomo:** subscriptions, health-check, hot-reload, SOCKS+HTTP, VLESS Reality — all battle-tested.
-- **Multiarch:** amd64 and arm64.
 
 ## Architecture
 
@@ -38,7 +41,7 @@ SOCKS5/HTTP proxy via the **mihomo** engine — with a web UI for management.
 
 ```bash
 git clone https://github.com/gentslava/submerge && cd submerge
-docker compose up -d --build
+docker compose up -d
 ```
 
 Open **http://127.0.0.1:3000**, paste a subscription / `vless://` / `happ://` — the type
@@ -48,36 +51,7 @@ is detected automatically. The proxy is available at `127.0.0.1:7890` (SOCKS5 an
 curl --proxy socks5h://127.0.0.1:7890 https://api.ipify.org   # should show the node's IP
 ```
 
-> The first build of `happ-decoder` downloads the official Happ desktop (~75 MB) and Qt dependencies — the image is large, this is expected.
-
-## happ:// — how it works
-
-`happ://crypt…` is an encrypted Happ link that wraps a regular subscription URL. The
-encryption keys are tied to the app version and **rotate silently**, so static reverse
-decoders (LeeeeT et al.) go stale quickly.
-
-submerge uses **the official Happ client itself** as the decoder: the binary has a
-dev flag `--test-crypt5` that decodes the link with the current keys and fetches the
-subscription; a local mitmproxy intercepts the decoded URL and body. That makes it a
-regular subscription consumed by mihomo. **Updating keys = rebuilding the image with
-a fresh Happ** (`HAPP_VERSION`), no reverse engineering required.
-
-> **Disclaimer.** This tool is for interoperability — decoding **your own** subscriptions
-> on your own server. The Happ binary is downloaded from the official repository at build
-> time and is **not included** in this repository; private keys are not extracted or distributed.
-
-## Multiarch build / publish
-
-```bash
-docker buildx build --platform linux/amd64,linux/arm64 \
-  --build-arg HAPP_VERSION=2.18.3 \
-  -t ghcr.io/gentslava/submerge-happ-decoder:latest ./happ-decoder --push
-
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/gentslava/submerge:latest . --push
-```
-
-`happ-decoder` selects the correct Happ `.deb` for the target architecture via `TARGETARCH`.
+> The `happ-decoder` image bundles the official Happ desktop + Qt, so it's large (~hundreds of MB) — the first pull takes a moment.
 
 ## Configuration
 
