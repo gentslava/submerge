@@ -12,11 +12,13 @@ const MIN_BAR = 4; // px, so a tiny value still shows a sliver
 const RECENT = 4; // most-recent successful bars rendered in accent
 const CAP = 40; // most recent N samples shown
 
-// How long ago the oldest shown sample was measured, given one sample per poll.
+// Format a "time ago" for the chart's left edge (seconds → с / мин / ч).
 function agoLabel(seconds: number): string {
   if (seconds <= 0) return "сейчас";
   if (seconds < 90) return `−${Math.round(seconds)} с`;
-  return `−${Math.round(seconds / 60)} мин`;
+  if (seconds < 5400) return `−${Math.round(seconds / 60)} мин`;
+  const hours = seconds / 3600;
+  return `−${Number.isInteger(hours) ? hours : hours.toFixed(1)} ч`;
 }
 
 // A latency bar chart for the active node, fed by mihomo's recorded history.
@@ -28,7 +30,10 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
   const peak = positives.length > 0 ? Math.max(...positives) : 0;
   const max = peak > 0 ? peak : 1;
   const firstAccent = Math.max(0, bars.length - RECENT);
-  const spanLabel = bars.length > 1 ? agoLabel((bars.length - 1) * checkInterval) : "ранее";
+  // The chart is a fixed time window: all CAP slots × the check interval, back from now.
+  // The left-edge label reflects the whole frame, NOT how many bars are filled yet
+  // (e.g. 40 slots × 300 s ≈ −3.3 ч; halve the check interval → halve the window).
+  const spanLabel = agoLabel(CAP * checkInterval);
 
   return (
     <div className="flex w-full flex-col gap-2.5 lg:w-[400px] lg:shrink-0">

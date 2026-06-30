@@ -45,9 +45,9 @@ export function AutoStrategyCard({
 }: AutoStrategyCardProps) {
   // Tolerance only applies to the url-test strategy (mihomo ignores it for
   // fallback / load-balance) — don't show a param that has no effect.
-  const params: { caption: string; value: string }[] = [
+  const params: { caption: string; value: string; grow?: boolean }[] = [
     { caption: "СТРАТЕГИЯ", value: STRATEGY_LABELS[auto.strategy] ?? auto.strategy },
-    { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.url.replace(/^https?:\/\//, "") },
+    { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.url.replace(/^https?:\/\//, ""), grow: true },
     { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: `${auto.interval} с` },
     ...(auto.strategy === "url-test" ? [{ caption: "ДОПУСК", value: `${auto.tolerance} ms` }] : []),
     { caption: "ПЕРЕКЛЮЧАТЬ ПРИ", value: auto.switchOnTimeout ? "таймаут" : "вручную" },
@@ -110,15 +110,30 @@ export function AutoStrategyCard({
 
       <div className="h-px w-full bg-border-subtle" />
 
+      {/* Content-flexible columns: the URL grows + truncates; short values size to content. */}
       <div className="flex items-center px-4 py-3.5">
         {params.map((p, i) => (
-          <div key={p.caption} className="flex flex-1 items-center">
+          <div
+            key={p.caption}
+            className={cn("flex items-center", p.grow ? "min-w-0 flex-1" : "shrink-0")}
+          >
             {i > 0 && (
-              <span aria-hidden="true" className="mr-[18px] h-[34px] w-px bg-border-subtle" />
+              <span
+                aria-hidden="true"
+                className="mx-[18px] h-[34px] w-px shrink-0 bg-border-subtle"
+              />
             )}
-            <div className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 flex-col gap-1.5">
               <span className="text-caption tracking-[0.4px] text-text-tertiary">{p.caption}</span>
-              <span className="font-mono text-sub font-medium text-text-primary">{p.value}</span>
+              <span
+                className={cn(
+                  "font-mono text-sub font-medium text-text-primary",
+                  p.grow && "truncate",
+                )}
+                title={p.grow ? p.value : undefined}
+              >
+                {p.value}
+              </span>
             </div>
           </div>
         ))}
