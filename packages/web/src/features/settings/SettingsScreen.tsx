@@ -6,18 +6,43 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
+import { useLiveState } from "@/features/live/LiveProvider";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
-// Read-only url-test config (mirrors server nodes/config.ts; not yet editable).
+// AUTO group defaults (mirror server nodes/config.ts) — used until settings load.
 const AUTO_TEST_URL = "https://www.gstatic.com/generate_204";
 const AUTO_INTERVAL = 300; // url-test group interval (s)
 const AUTO_TOLERANCE = 50; // url-test tolerance (ms)
+
+const STRATEGY_OPTIONS = [
+  { value: "url-test", label: "По задержке" },
+  { value: "fallback", label: "Отказоустойчивость" },
+  { value: "load-balance", label: "Нагрузка" },
+];
+const POLL_PRESETS = [1, 2, 5, 10, 30];
+const CHECK_PRESETS = [30, 60, 120, 300, 600];
+
+// Render second-valued <option>s, keeping the current value present even off-preset.
+function secondsOptions(presets: number[], current: string) {
+  const cur = Number(current);
+  const values =
+    Number.isFinite(cur) && cur > 0 && !presets.includes(cur)
+      ? [...presets, cur].sort((a, b) => a - b)
+      : presets;
+  return values.map((v) => (
+    <option key={v} value={String(v)}>
+      {v} с
+    </option>
+  ));
+}
 
 export function SettingsScreen() {
   const trpc = useTRPC();
@@ -26,6 +51,7 @@ export function SettingsScreen() {
 
   const authStatus = useAuthStatus();
   const logout = useLogout();
+  const { mihomo } = useLiveState();
 
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const data = settingsQuery.data;
@@ -67,9 +93,18 @@ export function SettingsScreen() {
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret;
   const hasSecret = typeof mihomoSecret === "string" && mihomoSecret.length > 0;
+  const autoStrategy = data?.autoStrategy ?? "url-test";
   const autoUrl = data?.autoTestUrl ?? AUTO_TEST_URL;
   const autoInterval = data?.autoTestInterval ?? String(AUTO_INTERVAL);
   const autoTolerance = data?.autoTestTolerance ?? String(AUTO_TOLERANCE);
+  const autoSwitch = (data?.autoSwitchOnTimeout ?? "true") === "true";
+  const pollInterval = data?.pollInterval ?? "5";
+  const engine =
+    mihomo === null
+      ? { dot: "bg-idle", label: "Проверка" }
+      : mihomo
+        ? { dot: "bg-online", label: "Подключено" }
+        : { dot: "bg-timeout", label: "Отключено" };
 
   return (
     <div className="flex flex-col gap-[26px] px-8 pt-[26px] pb-10">
@@ -97,7 +132,7 @@ export function SettingsScreen() {
         <>
           <Section
             title="Внешний вид"
-            desc="Оформление панели. В этой итерации отполирована тёмная тема."
+            desc="Оформление панели."
           >
             <Row label="Тема" sub="Тёмная · светлая · системная">
               {/*
@@ -125,10 +160,15 @@ export function SettingsScreen() {
 
           <Section
             title="Авто-выбор узла"
-            desc="Политика группы PROXY: submerge сам держит активным лучший узел (mihomo url-test)."
+            desc="Политика группы PROXY: submerge сам держит активным лучший узел."
           >
-            <Row label="Стратегия" sub="Тип группы PROXY">
-              <ValueBox>Авто · url-test</ValueBox>
+            <Row label="Стратегия" sub="Как выбирать активный узел">
+              <Segmented
+                aria-label="Стратегия"
+                options={STRATEGY_OPTIONS}
+                value={autoStrategy}
+                onChange={(v) => settingsMutation.mutate({ key: "autoStrategy", value: v })}
+              />
             </Row>
             <Row label="Тест-URL" sub="Куда mihomo шлёт проверочный запрос">
               <Input
@@ -140,20 +180,18 @@ export function SettingsScreen() {
                 className="w-[360px] font-mono text-[13px]"
               />
             </Row>
-            <Row label="Интервал проверки" sub="Как часто mihomo переопрашивает группу">
-              <Input
-                key={autoInterval}
-                type="number"
-                aria-label="Интервал проверки (секунды)"
-                min={1}
-                step={1}
-                defaultValue={autoInterval}
-                onBlur={(e) => persistInt("autoTestInterval", e.target.value, 1)}
-                className="w-[72px] text-center font-mono"
-              />
-              <span className="text-sm text-text-tertiary">с</span>
+            <Row label="Интервал проверки" sub="Как часто переизмерять задержку">
+              <Select
+                aria-label="Интервал проверки"
+                value={autoInterval}
+                onChange={(e) =>
+                  settingsMutation.mutate({ key: "autoTestInterval", value: e.target.value })
+                }
+              >
+                {secondsOptions(CHECK_PRESETS, autoInterval)}
+              </Select>
             </Row>
-            <Row label="Допуск" sub="Порог переключения между узлами">
+            <Row label="Допуск, мс" sub="Не переключаться при разнице меньше допуска">
               <Input
                 key={autoTolerance}
                 type="number"
@@ -162,13 +200,30 @@ export function SettingsScreen() {
                 step={1}
                 defaultValue={autoTolerance}
                 onBlur={(e) => persistInt("autoTestTolerance", e.target.value, 0)}
-                className="w-[72px] text-center font-mono"
+                className="w-[90px] text-center font-mono"
               />
-              <span className="text-sm text-text-tertiary">мс</span>
+            </Row>
+            <Row
+              label="Переключаться при таймауте"
+              sub="Сразу выбрать другой узел, если активный отвалился"
+            >
+              <Switch
+                checked={autoSwitch}
+                onCheckedChange={(v) =>
+                  settingsMutation.mutate({ key: "autoSwitchOnTimeout", value: String(v) })
+                }
+                aria-label="Переключаться при таймауте"
+              />
             </Row>
           </Section>
 
           <Section title="Подключение" desc="Доступ к API mihomo и локальному прокси.">
+            <Row label="Состояние движка" sub="Связь панели с ядром mihomo">
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden="true" className={`h-2 w-2 rounded-full ${engine.dot}`} />
+                <span className="text-sm text-text-secondary">{engine.label}</span>
+              </span>
+            </Row>
             <Row label="Секрет mihomo" sub="Токен для RESTful-API контроллера">
               {hasSecret ? (
                 <>
@@ -180,17 +235,15 @@ export function SettingsScreen() {
               )}
             </Row>
             <Row label="Интервал опроса" sub="Частота обновления задержек и трафика">
-              <Input
-                key={data?.pollInterval ?? "5"}
-                type="number"
-                aria-label="Интервал опроса (секунды)"
-                min={1}
-                step={1}
-                defaultValue={data?.pollInterval ?? "5"}
-                onBlur={(e) => persistInt("pollInterval", e.target.value, 1)}
-                className="w-[72px] text-center font-mono"
-              />
-              <span className="text-sm text-text-tertiary">с</span>
+              <Select
+                aria-label="Интервал опроса"
+                value={pollInterval}
+                onChange={(e) =>
+                  settingsMutation.mutate({ key: "pollInterval", value: e.target.value })
+                }
+              >
+                {secondsOptions(POLL_PRESETS, pollInterval)}
+              </Select>
             </Row>
             <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP, только чтение">
               <ValueBox>{PROXY_ENDPOINT}</ValueBox>

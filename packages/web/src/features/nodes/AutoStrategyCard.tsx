@@ -2,16 +2,23 @@ import { Link } from "@tanstack/react-router";
 import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Two real strategies backed by the engine: AUTO is a mihomo url-test group; manual
-// pins a specific node on the PROXY selector. (Fallback/load-balance are different
-// mihomo group types we don't generate, so they're intentionally not offered.)
+// Авто = the AUTO group picks the node automatically (its strategy/tuning is set in
+// Settings → Авто-выбор узла); Ручной pins a specific node on the PROXY selector.
 const TABS = [
   { key: "manual", label: "Ручной", Icon: MousePointer2 },
   { key: "auto", label: "Авто", Icon: Sparkles },
 ] as const;
 
+// Mirror of the editable AUTO group tuning (Settings → Авто-выбор узла).
+export interface AutoInfo {
+  url: string;
+  interval: number; // seconds between mihomo re-tests (NOT the panel poll)
+  tolerance: number;
+  switchOnTimeout: boolean;
+}
+
 interface AutoStrategyCardProps {
-  pollInterval: number;
+  auto: AutoInfo;
   isAuto: boolean;
   autoNow: string | null;
   now: string | null;
@@ -21,7 +28,7 @@ interface AutoStrategyCardProps {
 }
 
 export function AutoStrategyCard({
-  pollInterval,
+  auto,
   isAuto,
   autoNow,
   now,
@@ -30,10 +37,10 @@ export function AutoStrategyCard({
   pending = false,
 }: AutoStrategyCardProps) {
   const params: { caption: string; value: string }[] = [
-    { caption: "ПРОВЕРОЧНЫЙ URL", value: "gstatic.com/generate_204" },
-    { caption: "ИНТЕРВАЛ", value: `${pollInterval} с` },
-    { caption: "ДОПУСК", value: "50 ms" },
-    { caption: "ПЕРЕКЛЮЧАТЬ ПРИ", value: "> 250 ms · timeout" },
+    { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.url.replace(/^https?:\/\//, "") },
+    { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: `${auto.interval} с` },
+    { caption: "ДОПУСК", value: `${auto.tolerance} ms` },
+    { caption: "ПЕРЕКЛЮЧАТЬ ПРИ", value: auto.switchOnTimeout ? "таймаут" : "вручную" },
   ];
 
   const status = isAuto
@@ -80,7 +87,7 @@ export function AutoStrategyCard({
             <span aria-hidden="true" className="h-2 w-2 rounded-full bg-online" />
             <span className="text-xs text-text-secondary">Live</span>
           </span>
-          {/* url-test cadence lives in Settings (pollInterval) — link there honestly. */}
+          {/* Auto-select tuning is editable in Settings → Авто-выбор узла. */}
           <Link
             to="/settings"
             className="flex h-8 items-center gap-[7px] rounded-md border border-border-default bg-elevated px-3 text-[13px] text-text-primary transition-colors hover:bg-hover [&_svg]:text-text-secondary"

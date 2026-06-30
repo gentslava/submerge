@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLiveState } from "@/features/live/LiveProvider";
 import { useTRPC } from "@/lib/trpc";
 import { ActiveNodeCard } from "./ActiveNodeCard";
-import { AutoStrategyCard } from "./AutoStrategyCard";
+import { type AutoInfo, AutoStrategyCard } from "./AutoStrategyCard";
 import { NodeList } from "./NodeList";
 import { NodesHeader } from "./NodesHeader";
 import { isPseudo } from "./nodeView";
@@ -25,6 +25,15 @@ export function NodesScreen() {
   // Real poll cadence the server uses (settings-driven) — the active node is
   // measured this often, so the latency chart grows at this rate.
   const pollInterval = Math.max(1, Number(settingsQuery.data?.pollInterval ?? 5) || 5);
+  // The AUTO group's own tuning (Settings → Авто-выбор узла) — distinct from the
+  // panel poll above; drives the strategy card's params.
+  const s = settingsQuery.data;
+  const auto: AutoInfo = {
+    url: s?.autoTestUrl ?? "https://www.gstatic.com/generate_204",
+    interval: Math.max(1, Number(s?.autoTestInterval ?? 300) || 300),
+    tolerance: Math.max(0, Number(s?.autoTestTolerance ?? 50) || 50),
+    switchOnTimeout: (s?.autoSwitchOnTimeout ?? "true") === "true",
+  };
 
   // Per-node "being pinged" set — drives the progressive loaders in each row.
   const [pingingNames, setPingingNames] = useState<Set<string>>(() => new Set());
@@ -122,6 +131,7 @@ export function NodesScreen() {
           autoNow={autoNow}
           isAuto={isAuto}
           pollInterval={pollInterval}
+          auto={auto}
           all={all}
           sources={sourcesQuery.data ?? []}
           totals={totals}
@@ -143,6 +153,7 @@ function Body({
   autoNow,
   isAuto,
   pollInterval,
+  auto,
   all,
   sources,
   totals,
@@ -158,6 +169,7 @@ function Body({
   autoNow: string | null;
   isAuto: boolean;
   pollInterval: number;
+  auto: AutoInfo;
   all: NodeItem[];
   sources: Source[];
   totals: ReturnType<typeof useLiveState>["totals"];
@@ -172,7 +184,7 @@ function Body({
   return (
     <>
       <AutoStrategyCard
-        pollInterval={pollInterval}
+        auto={auto}
         isAuto={isAuto}
         autoNow={autoNow}
         now={now}
