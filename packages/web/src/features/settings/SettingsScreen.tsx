@@ -42,12 +42,17 @@ export function SettingsScreen() {
     }),
   );
 
-  function persistInterval(raw: string) {
+  function persistInt(key: string, raw: string, min: number) {
     const trimmed = raw.trim();
     if (!/^\d+$/.test(trimmed)) return; // reject empty / non-integer input
-    const n = Number(trimmed);
-    if (n < 1) return; // reject 0
-    settingsMutation.mutate({ key: "pollInterval", value: String(n) });
+    if (Number(trimmed) < min) return;
+    settingsMutation.mutate({ key, value: String(Number(trimmed)) });
+  }
+
+  function persistText(key: string, raw: string) {
+    const v = raw.trim();
+    if (v.length === 0) return;
+    settingsMutation.mutate({ key, value: v });
   }
 
   async function copy(text: string) {
@@ -62,6 +67,9 @@ export function SettingsScreen() {
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret;
   const hasSecret = typeof mihomoSecret === "string" && mihomoSecret.length > 0;
+  const autoUrl = data?.autoTestUrl ?? AUTO_TEST_URL;
+  const autoInterval = data?.autoTestInterval ?? String(AUTO_INTERVAL);
+  const autoTolerance = data?.autoTestTolerance ?? String(AUTO_TOLERANCE);
 
   return (
     <div className="flex flex-col gap-[26px] px-8 pt-[26px] pb-10">
@@ -91,17 +99,19 @@ export function SettingsScreen() {
             title="Внешний вид"
             desc="Оформление панели. В этой итерации отполирована тёмная тема."
           >
-            <Row label="Тема" sub="Тёмная · светлая">
+            <Row label="Тема" sub="Тёмная · светлая · системная">
               {/*
                 Theme uses localStorage (getTheme) as the source of truth, applied
                 synchronously on load. data?.theme is persisted server-side for parity
                 but intentionally not read back: the local choice wins (single admin).
+                "Системная" (default) follows the OS until an explicit pick.
               */}
               <Segmented
                 aria-label="Тема"
                 options={[
                   { value: "dark", label: "Тёмная" },
                   { value: "light", label: "Светлая" },
+                  { value: "system", label: "Системная" },
                 ]}
                 value={theme}
                 onChange={(v) => {
@@ -121,13 +131,40 @@ export function SettingsScreen() {
               <ValueBox>Авто · url-test</ValueBox>
             </Row>
             <Row label="Тест-URL" sub="Куда mihomo шлёт проверочный запрос">
-              <ValueBox className="max-w-[360px]">{AUTO_TEST_URL}</ValueBox>
+              <Input
+                key={autoUrl}
+                type="url"
+                aria-label="Тест-URL"
+                defaultValue={autoUrl}
+                onBlur={(e) => persistText("autoTestUrl", e.target.value)}
+                className="w-[360px] font-mono text-[13px]"
+              />
             </Row>
             <Row label="Интервал проверки" sub="Как часто mihomo переопрашивает группу">
-              <ValueBox>{AUTO_INTERVAL} с</ValueBox>
+              <Input
+                key={autoInterval}
+                type="number"
+                aria-label="Интервал проверки (секунды)"
+                min={1}
+                step={1}
+                defaultValue={autoInterval}
+                onBlur={(e) => persistInt("autoTestInterval", e.target.value, 1)}
+                className="w-[72px] text-center font-mono"
+              />
+              <span className="text-sm text-text-tertiary">с</span>
             </Row>
             <Row label="Допуск" sub="Порог переключения между узлами">
-              <ValueBox>{AUTO_TOLERANCE} мс</ValueBox>
+              <Input
+                key={autoTolerance}
+                type="number"
+                aria-label="Допуск (мс)"
+                min={0}
+                step={1}
+                defaultValue={autoTolerance}
+                onBlur={(e) => persistInt("autoTestTolerance", e.target.value, 0)}
+                className="w-[72px] text-center font-mono"
+              />
+              <span className="text-sm text-text-tertiary">мс</span>
             </Row>
           </Section>
 
@@ -150,7 +187,7 @@ export function SettingsScreen() {
                 min={1}
                 step={1}
                 defaultValue={data?.pollInterval ?? "5"}
-                onBlur={(e) => persistInterval(e.target.value)}
+                onBlur={(e) => persistInt("pollInterval", e.target.value, 1)}
                 className="w-[72px] text-center font-mono"
               />
               <span className="text-sm text-text-tertiary">с</span>
