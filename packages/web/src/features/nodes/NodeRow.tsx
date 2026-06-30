@@ -26,7 +26,7 @@ export function NodeRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-4 border-b border-border-subtle px-4 py-3 last:border-b-0",
+        "flex items-center gap-4 border-b border-border-subtle px-4 py-[13px] last:border-b-0",
         isActive && "bg-accent-bg",
       )}
     >
@@ -36,7 +36,7 @@ export function NodeRow({
           aria-hidden="true"
           className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])}
         />
-        <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-col gap-[3px]">
           <span className="truncate font-mono text-[13px] font-medium text-text-primary">
             {item.name}
           </span>
@@ -69,12 +69,12 @@ export function NodeRow({
       {/* Action cell */}
       <div className="flex w-[120px] shrink-0 justify-end">
         {isActive ? (
-          <Button variant="primary" className="h-8 w-[112px]" disabled>
+          <Button variant="primary" size="sm" className="w-[112px]" disabled>
             <Check className="h-4 w-4" aria-hidden="true" />
             Активен
           </Button>
         ) : (
-          <Button variant="ghost" className="h-8 w-[112px]" onClick={onSelect}>
+          <Button variant="ghost" size="sm" className="w-[112px]" onClick={onSelect}>
             Выбрать
           </Button>
         )}

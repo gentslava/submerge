@@ -20,7 +20,7 @@ export function NodesHeader({
 }: NodesHeaderProps) {
   return (
     <header className="flex items-center justify-between gap-3">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-[5px]">
         <h1 className="text-2xl font-semibold text-text-primary">Узлы</h1>
         <p className="text-[13px] text-text-secondary">
           Группа PROXY · {nodeCount} {plural(nodeCount)} · опрос каждые {pollInterval} с

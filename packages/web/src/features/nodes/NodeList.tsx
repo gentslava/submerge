@@ -21,7 +21,7 @@ export function NodeList({ now, all, sources, pingingName, onSelect, onPing }: N
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
       {/* Columns header */}
-      <div className="flex items-center gap-4 border-b border-border-subtle bg-elevated px-4 py-2.5">
+      <div className="flex items-center gap-4 border-b border-border-subtle bg-elevated px-4 py-[11px]">
         <span className="flex-1 text-[11px] font-semibold tracking-[0.5px] text-text-tertiary">
           УЗЕЛ
         </span>

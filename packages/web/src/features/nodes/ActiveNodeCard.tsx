@@ -24,7 +24,7 @@ export function ActiveNodeCard({ now, all, history, traffic }: ActiveNodeCardPro
       <div className="flex flex-1 flex-col gap-[18px]">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="text-[11px] font-semibold tracking-[0.6px] text-text-tertiary">
-            АКТИВНЫЙ УЗЕЛ
+            {isAuto ? "АКТИВНЫЙ УЗЕЛ · ВЫБРАН АВТОМАТИЧЕСКИ" : "АКТИВНЫЙ УЗЕЛ"}
           </span>
           {active != null && (
             <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-[11px] font-semibold text-accent-text">

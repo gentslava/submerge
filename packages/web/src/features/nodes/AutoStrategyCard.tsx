@@ -38,8 +38,8 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
                 aria-current={active ? "true" : undefined}
                 className={
                   active
-                    ? "rounded-sm bg-accent px-3.5 py-[7px] text-[13px] font-medium text-accent-fg"
-                    : "rounded-sm px-3.5 py-[7px] text-[13px] font-medium text-text-secondary"
+                    ? "rounded-sm bg-accent px-[13px] py-[7px] text-[13px] font-medium text-accent-fg"
+                    : "rounded-sm px-[13px] py-[7px] text-[13px] font-medium text-text-secondary"
                 }
               >
                 {s}
@@ -84,7 +84,7 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
 
       <div className="h-px w-full bg-border-subtle" />
 
-      <div className="flex items-center gap-2.5 bg-elevated px-4 py-2.5">
+      <div className="flex items-center gap-2.5 bg-elevated px-4 py-[11px]">
         <History className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
         {/* Honest static line — the backend does not track switch history. */}
         <span className="font-mono text-xs text-text-tertiary">

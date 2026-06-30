@@ -68,7 +68,7 @@ export function NodesScreen() {
   const realCount = all.filter((n) => !isPseudo(n.name)).length;
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-[22px] px-8 pt-6 pb-8">
+    <div className="flex flex-col gap-[22px] px-8 pt-[26px] pb-8">
       <NodesHeader
         nodeCount={realCount}
         pollInterval={POLL_INTERVAL}

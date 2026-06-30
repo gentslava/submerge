@@ -12,7 +12,11 @@ const button = cva(
         subtle: "bg-transparent text-text-secondary hover:bg-hover",
         destructive: "bg-transparent text-timeout border border-border-default hover:bg-timeout-bg",
       },
-      size: { sm: "h-8 px-3", md: "h-9 px-4", icon: "h-9 w-9 p-0" },
+      size: {
+        sm: "h-8 px-[14px] text-[13px]",
+        md: "h-10 px-[14px]",
+        icon: "h-9 w-9 p-0",
+      },
     },
     defaultVariants: { variant: "primary", size: "md" },
   },
