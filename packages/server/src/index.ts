@@ -9,7 +9,7 @@ import { env } from "./config/env.js";
 import { db } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
-import { getSetting } from "./modules/settings/service.js";
+import { readMihomoSecret } from "./modules/nodes/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
 import { appRouter } from "./trpc/router.js";
 
@@ -45,7 +45,7 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
 runMigrations();
 
 // Use the panel-set mihomo secret (if any) before talking to the engine.
-setMihomoSecret(getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET);
+setMihomoSecret(readMihomoSecret(db));
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
 liveHub.start();

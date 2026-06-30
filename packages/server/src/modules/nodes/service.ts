@@ -35,7 +35,10 @@ export function readAutoConfig(db: Db): AutoConfig {
   };
 }
 
-// The mihomo API secret: a panel-set value (Settings) wins over the env default.
+// The panel's CLIENT credential for the mihomo API — a Settings value wins over the
+// env default. This is distinct from the `secret:` baked into the generated config
+// (that one is the deploy secret, env). They coincide for a sidecar (admin never
+// overrides) and intentionally differ when pointing the panel at an external engine.
 export function readMihomoSecret(db: Db): string {
   return getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET;
 }
@@ -64,7 +67,10 @@ export async function applyConfig(
   const proxies = collectProxies(db);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
-  writeFileSync(configPath, buildConfig(proxies, readAutoConfig(db), readMihomoSecret(db)), "utf8");
+  // The config's `secret:` is the deploy secret (buildConfig defaults to env), NOT the
+  // editable panel credential — so rotating the panel secret never needs a reload (a
+  // reload authenticates with the current secret, which would 401 + lock out a wrong one).
+  writeFileSync(configPath, buildConfig(proxies, readAutoConfig(db)), "utf8");
   await reloadConfig(targetPath);
   return { nodes: proxies.length };
 }
