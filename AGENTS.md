@@ -10,8 +10,8 @@ Audience: **self-hosted product**, single-admin (optional password), deployed vi
 
 ## Repository status (important)
 
-- **PoC (working):** `combine/` (Node + vanilla JS), `happ-decoder/` (Python), `mihomo/`, root `docker-compose.yml`. **Do not touch until Phase 6** — it's the behavioral reference.
-- **v2 (in development):** `packages/` — rewrite onto a modern stack. Spec: [docs/specs/2026-06-29-submerge-v2-stack-design.md](docs/specs/2026-06-29-submerge-v2-stack-design.md). Plans: `docs/plans/`.
+- **v2 (shipped):** `packages/` — the application, served from the `submerge` Docker container (React SPA + tRPC/SSE + `/healthz` from one process). Spec: [docs/specs/2026-06-29-submerge-v2-stack-design.md](docs/specs/2026-06-29-submerge-v2-stack-design.md). Plans: `docs/plans/`.
+- **PoC (removed):** the old `combine/` (Node + vanilla JS) has been removed; its behavior is fully ported into `packages/server` modules. `happ-decoder/` (Python) and `mihomo/` (Go) remain as reused sidecars.
 
 ## Language
 
@@ -50,7 +50,12 @@ pnpm format                             # biome format --write .
 pnpm -F @submerge/server db:generate    # generate migration from schema
 ```
 
-Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` specifiers in nodenext mode). PoC: `docker compose up -d` (combine+mihomo+happ-decoder).
+Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` specifiers in nodenext mode). Deploy: `docker compose up -d --build` brings up `mihomo` + `submerge` + `happ-decoder`; the UI is at `http://127.0.0.1:3000`.
+
+## Deploy
+
+- **`COOKIE_SECURE`**: behind TLS set `COOKIE_SECURE=true` on the `submerge` service. Do **not** leave it blank — `z.stringbool()` rejects `""` and the server won't boot. The compose default is `"false"` (plain HTTP on localhost). `ADMIN_PASSWORD` is optional (auth is off when unset).
+- **mihomo config write (uid 999)**: the `submerge` container runs as a non-root user (uid 999) and writes the shared mihomo config to the bind-mounted `./mihomo`. On **Linux hosts** the bind mount keeps host ownership, so `./mihomo` must be writable by uid 999 — e.g. `chown -R 999:999 mihomo` (or add a matching `user:` override to the service). On Docker Desktop (Mac/Windows) this is automatic.
 
 ## Conventions
 
@@ -71,7 +76,6 @@ Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` sp
 
 ## Do not
 
-- Don't touch the PoC (`combine/`, `happ-decoder/`, `mihomo/`, root compose) until Phase 6.
 - Don't pin outdated versions "for compatibility" — use latest.
 - Don't commit secrets/runtime: `mihomo/config.yaml` (nodes), `*/sources.json`, `hwid.txt`, `.env`, `data/*.db` — all in `.gitignore`.
 - Don't overengineer (see ADR-0004).
@@ -79,7 +83,7 @@ Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` sp
 ## Domain facts (don't re-discover)
 
 - **happ://crypt** is decoded by the official Happ binary (Qt) in the `happ-decoder` sidecar (Xvfb + mitmproxy intercepts the decoded sub-URL). Static reverse decoders (LeeeeT) go stale due to key rotation — see ADR-0001.
-- **X-Hwid** is a per-source flag (off by default): device-bound providers return a stub without it. For https subscriptions combine sends it; for happ the mitmproxy injects it. See ADR-0002.
+- **X-Hwid** is a per-source flag (off by default): device-bound providers return a stub without it. For https subscriptions the server sends it; for happ the mitmproxy injects it. See ADR-0002.
 - Subscription formats: clash-yaml, base64-vless, v2ray/sing-box JSON. Client deep-links (incy/clash/sing-box/…) wrap a URL, extracted by `extractSubUrl`.
 - mihomo is the tunneling engine (Go), controlled via the Clash REST API.
 

@@ -7,7 +7,7 @@ services:
       - ./mihomo:/root/.config/mihomo
     ports:
       - "127.0.0.1:7890:7890"   # SOCKS5 + HTTP (для клиентов / роутера / matter)
-      - "127.0.0.1:9090:9090"   # mihomo API (отладка; combine ходит внутри сети)
+      - "127.0.0.1:9090:9090"   # mihomo API (отладка; submerge ходит внутри сети по http://mihomo:9090)
 
   submerge:
     build:
