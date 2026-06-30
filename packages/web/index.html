@@ -5,7 +5,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      // Apply the theme before first paint (no flash). Absence of the key = system.
+      // Apply the theme before first paint (no flash). This MUST run inline (before the
+      // bundle loads), so it duplicates the resolution in src/lib/theme.ts — keep both in
+      // sync: storage key "theme", value "dark"|"light", and absence of the key = system.
       (() => {
         const s = localStorage.getItem("theme");
         const dark = s === "dark" || (s !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);

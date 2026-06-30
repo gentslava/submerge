@@ -1,3 +1,10 @@
+import {
+  DEFAULT_AUTO_STRATEGY,
+  DEFAULT_AUTO_TEST_INTERVAL,
+  DEFAULT_AUTO_TEST_URL,
+  DEFAULT_AUTO_TOLERANCE,
+  DEFAULT_POLL_INTERVAL,
+} from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -14,11 +21,6 @@ import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-
-// AUTO group defaults (mirror server nodes/config.ts) — used until settings load.
-const AUTO_TEST_URL = "https://www.gstatic.com/generate_204";
-const AUTO_INTERVAL = 300; // url-test group interval (s)
-const AUTO_TOLERANCE = 50; // url-test tolerance (ms)
 
 const STRATEGY_OPTIONS = [
   { value: "url-test", label: "По задержке" },
@@ -56,7 +58,7 @@ export function SettingsScreen() {
   // Engine reachability — polled at the panel's poll cadence and on demand
   // ("Проверить"), so the status updates live without a page reload (this is a
   // direct check, independent of the SSE live stream).
-  const pollMs = (Number(data?.pollInterval) || 5) * 1000;
+  const pollMs = (Number(data?.pollInterval) || DEFAULT_POLL_INTERVAL) * 1000;
   const healthQuery = useQuery(
     trpc.nodes.health.queryOptions(undefined, { refetchInterval: pollMs }),
   );
@@ -97,12 +99,12 @@ export function SettingsScreen() {
 
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret ?? "";
-  const autoStrategy = data?.autoStrategy ?? "url-test";
-  const autoUrl = data?.autoTestUrl ?? AUTO_TEST_URL;
-  const autoInterval = data?.autoTestInterval ?? String(AUTO_INTERVAL);
-  const autoTolerance = data?.autoTestTolerance ?? String(AUTO_TOLERANCE);
+  const autoStrategy = data?.autoStrategy ?? DEFAULT_AUTO_STRATEGY;
+  const autoUrl = data?.autoTestUrl ?? DEFAULT_AUTO_TEST_URL;
+  const autoInterval = data?.autoTestInterval ?? String(DEFAULT_AUTO_TEST_INTERVAL);
+  const autoTolerance = data?.autoTestTolerance ?? String(DEFAULT_AUTO_TOLERANCE);
   const autoSwitch = (data?.autoSwitchOnTimeout ?? "true") === "true";
-  const pollInterval = data?.pollInterval ?? "5";
+  const pollInterval = data?.pollInterval ?? String(DEFAULT_POLL_INTERVAL);
   const engine = healthQuery.isLoading
     ? { dot: "bg-idle", label: "Проверка" }
     : healthQuery.data?.connected

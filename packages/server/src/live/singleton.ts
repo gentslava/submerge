@@ -1,3 +1,4 @@
+import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
 import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
 import { readAutoConfig, toNodeView } from "../modules/nodes/service.js";
@@ -11,7 +12,7 @@ const PSEUDO_NODES = new Set(["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPAT
 // fall back to 5 s. Returns milliseconds for the hub's scheduler.
 function pollIntervalMs(): number {
   const raw = Number.parseInt(getSetting(db, "pollInterval") ?? "", 10);
-  const seconds = Number.isFinite(raw) && raw >= 1 ? raw : 5; // default 5 s
+  const seconds = Number.isFinite(raw) && raw >= 1 ? raw : DEFAULT_POLL_INTERVAL;
   return seconds * 1000;
 }
 

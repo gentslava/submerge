@@ -17,6 +17,7 @@ interface ActiveNodeCardProps {
   all: NodeItem[];
   totals: { up: number; down: number } | null;
   latency: readonly number[];
+  latencyLive: number;
   pollInterval: number;
 }
 
@@ -26,6 +27,7 @@ export function ActiveNodeCard({
   all,
   totals,
   latency,
+  latencyLive,
   pollInterval,
 }: ActiveNodeCardProps) {
   const isAuto = now === "AUTO";
@@ -114,7 +116,7 @@ export function ActiveNodeCard({
         </div>
       </div>
 
-      <LatencyChart history={latency} pollInterval={pollInterval} />
+      <LatencyChart history={latency} pollInterval={pollInterval} liveCount={latencyLive} />
     </section>
   );
 }

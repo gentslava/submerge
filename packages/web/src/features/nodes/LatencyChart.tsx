@@ -3,6 +3,10 @@ interface LatencyChartProps {
   // poll. Timeouts are kept and rendered as failure spikes.
   history: readonly number[];
   pollInterval: number; // seconds between samples — drives the time-axis label
+  // How many tail samples are at the poll cadence (vs seeded from mihomo history at a
+  // different interval). The precise "−N с/мин" label only shows once this covers the
+  // whole window; otherwise the leftmost bar's age is unknown, so we show "ранее".
+  liveCount: number;
 }
 
 const TRACK_HEIGHT = 92;
@@ -20,13 +24,18 @@ function agoLabel(seconds: number): string {
 // A latency bar chart for the active node, fed by mihomo's recorded history.
 // Successful round-trips scale by delay; timeouts show as full-height red spikes so
 // node stability is legible at a glance.
-export function LatencyChart({ history, pollInterval }: LatencyChartProps) {
+export function LatencyChart({ history, pollInterval, liveCount }: LatencyChartProps) {
   const bars = history.slice(-CAP);
   const positives = bars.filter((v) => v > 0);
   const peak = positives.length > 0 ? Math.max(...positives) : 0;
   const max = peak > 0 ? peak : 1;
   const firstAccent = Math.max(0, bars.length - RECENT);
-  const spanLabel = bars.length > 1 ? agoLabel((bars.length - 1) * pollInterval) : "ранее";
+  // Only claim a precise age when every shown bar is at the poll cadence; while seeded
+  // history samples remain on the left, their timing is unknown → "ранее".
+  const spanLabel =
+    bars.length > 1 && liveCount >= bars.length
+      ? agoLabel((bars.length - 1) * pollInterval)
+      : "ранее";
 
   return (
     <div className="flex w-full flex-col gap-2.5 lg:w-[400px] lg:shrink-0">

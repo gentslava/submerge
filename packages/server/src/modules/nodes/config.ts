@@ -1,5 +1,12 @@
 // Generate the mihomo config.yaml from a set of proxies (ported from generate.js).
-import type { Proxy as ProxyConfig } from "@submerge/shared";
+import {
+  DEFAULT_AUTO_STRATEGY,
+  DEFAULT_AUTO_SWITCH_ON_TIMEOUT,
+  DEFAULT_AUTO_TEST_INTERVAL,
+  DEFAULT_AUTO_TEST_URL,
+  DEFAULT_AUTO_TOLERANCE,
+  type Proxy as ProxyConfig,
+} from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
 
@@ -35,11 +42,11 @@ export interface AutoConfig {
   switchOnTimeout: boolean; // proactively re-test + switch (mihomo lazy: false)
 }
 export const AUTO_DEFAULTS: AutoConfig = {
-  strategy: "url-test",
-  url: "https://www.gstatic.com/generate_204",
-  interval: 300,
-  tolerance: 50,
-  switchOnTimeout: true,
+  strategy: DEFAULT_AUTO_STRATEGY,
+  url: DEFAULT_AUTO_TEST_URL,
+  interval: DEFAULT_AUTO_TEST_INTERVAL,
+  tolerance: DEFAULT_AUTO_TOLERANCE,
+  switchOnTimeout: DEFAULT_AUTO_SWITCH_ON_TIMEOUT,
 };
 
 export function buildConfig(

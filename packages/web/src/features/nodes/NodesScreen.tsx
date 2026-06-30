@@ -1,4 +1,12 @@
-import type { NodeItem, Source } from "@submerge/shared";
+import {
+  DEFAULT_AUTO_STRATEGY,
+  DEFAULT_AUTO_TEST_INTERVAL,
+  DEFAULT_AUTO_TEST_URL,
+  DEFAULT_AUTO_TOLERANCE,
+  DEFAULT_POLL_INTERVAL,
+  type NodeItem,
+  type Source,
+} from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers } from "lucide-react";
 import { useState } from "react";
@@ -16,7 +24,7 @@ import { isPseudo } from "./nodeView";
 export function NodesScreen() {
   const trpc = useTRPC();
   const qc = useQueryClient();
-  const { latency, totals } = useLiveState();
+  const { latency, latencyLive, totals } = useLiveState();
 
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
@@ -24,15 +32,24 @@ export function NodesScreen() {
 
   // Real poll cadence the server uses (settings-driven) — the active node is
   // measured this often, so the latency chart grows at this rate.
-  const pollInterval = Math.max(1, Number(settingsQuery.data?.pollInterval ?? 5) || 5);
+  const pollInterval = Math.max(
+    1,
+    Number(settingsQuery.data?.pollInterval ?? DEFAULT_POLL_INTERVAL) || DEFAULT_POLL_INTERVAL,
+  );
   // The AUTO group's own tuning (Settings → Авто-выбор узла) — distinct from the
   // panel poll above; drives the strategy card's params.
   const s = settingsQuery.data;
   const auto: AutoInfo = {
-    strategy: s?.autoStrategy ?? "url-test",
-    url: s?.autoTestUrl ?? "https://www.gstatic.com/generate_204",
-    interval: Math.max(1, Number(s?.autoTestInterval ?? 300) || 300),
-    tolerance: Math.max(0, Number(s?.autoTestTolerance ?? 50) || 50),
+    strategy: s?.autoStrategy ?? DEFAULT_AUTO_STRATEGY,
+    url: s?.autoTestUrl ?? DEFAULT_AUTO_TEST_URL,
+    interval: Math.max(
+      1,
+      Number(s?.autoTestInterval ?? DEFAULT_AUTO_TEST_INTERVAL) || DEFAULT_AUTO_TEST_INTERVAL,
+    ),
+    tolerance: Math.max(
+      0,
+      Number(s?.autoTestTolerance ?? DEFAULT_AUTO_TOLERANCE) || DEFAULT_AUTO_TOLERANCE,
+    ),
     switchOnTimeout: (s?.autoSwitchOnTimeout ?? "true") === "true",
   };
 
@@ -137,6 +154,7 @@ export function NodesScreen() {
           sources={sourcesQuery.data ?? []}
           totals={totals}
           latency={latency}
+          latencyLive={latencyLive}
           pingingNames={pingingNames}
           selectPending={select.isPending}
           onSelect={(name) => select.mutate({ group: "PROXY", name })}
@@ -159,6 +177,7 @@ function Body({
   sources,
   totals,
   latency,
+  latencyLive,
   pingingNames,
   selectPending,
   onSelect,
@@ -175,6 +194,7 @@ function Body({
   sources: Source[];
   totals: ReturnType<typeof useLiveState>["totals"];
   latency: ReturnType<typeof useLiveState>["latency"];
+  latencyLive: ReturnType<typeof useLiveState>["latencyLive"];
   pingingNames: Set<string>;
   selectPending: boolean;
   onSelect: (name: string) => void;
@@ -200,6 +220,7 @@ function Body({
         all={all}
         totals={totals}
         latency={latency}
+        latencyLive={latencyLive}
         pollInterval={pollInterval}
       />
 
