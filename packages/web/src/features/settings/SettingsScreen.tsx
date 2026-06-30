@@ -243,14 +243,22 @@ export function SettingsScreen() {
               </Select>
             </Row>
             <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP, только чтение">
-              <CopyValue value={PROXY_ENDPOINT} copyLabel="Скопировать адрес" />
+              <ReadonlyCopyField
+                value={PROXY_ENDPOINT}
+                widthClass="w-[220px]"
+                copyLabel="Скопировать адрес"
+              />
             </Row>
           </Section>
 
           <Section title="HWID" desc="Идентификатор устройства для источников с привязкой.">
             <Row label="Текущий HWID" sub="Передаётся источникам с включённой привязкой">
               {hwid ? (
-                <CopyValue value={hwid} copyLabel="Скопировать HWID" />
+                <ReadonlyCopyField
+                  value={hwid}
+                  widthClass="w-[260px]"
+                  copyLabel="Скопировать HWID"
+                />
               ) : (
                 <span className="text-xs text-text-tertiary">
                   Будет создан при первом обращении к happ-источнику
@@ -304,7 +312,7 @@ function Row({ label, sub, children }: { label: string; sub: string; children: R
   );
 }
 
-// Copy text to the clipboard with a toast — shared by every inline copy button.
+// Copy text to the clipboard with a toast — shared by every copy button.
 async function copyToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
@@ -314,14 +322,13 @@ async function copyToClipboard(text: string): Promise<void> {
   }
 }
 
-// Shared field shell — a 320px box (mockup Pnnav: bg-input, border, radius) holding the
-// value/input on the left and inline trailing icon buttons (reveal/copy) on the right.
-// Keeping copy INSIDE the box keeps copyable fields the same width and aligned.
-function FieldShell({ children, className }: { children: ReactNode; className?: string }) {
+// Bordered field box (mockup: bg-input, border, radius 8, h-9). Width is per-field —
+// the mockup sizes them differently (secret 320, proxy 220, HWID 260), so callers set it.
+function FieldBox({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={cn(
-        "flex h-9 w-[320px] items-center gap-2.5 rounded-md border border-border-default bg-input px-3",
+        "flex h-9 items-center gap-2.5 overflow-hidden rounded-md border border-border-default bg-input px-3",
         className,
       )}
     >
@@ -330,15 +337,17 @@ function FieldShell({ children, className }: { children: ReactNode; className?: 
   );
 }
 
-// A 15px inline icon button (reveal / copy) that lives inside a FieldShell.
-function FieldIcon({
+// Icon button (reveal / copy) — text-tertiary with a hover tint, no chrome (mockup).
+function IconButton({
   onClick,
   label,
   icon: Icon,
+  size = 15,
 }: {
   onClick(): void;
   label: string;
   icon: LucideIcon;
+  size?: number;
 }) {
   return (
     <button
@@ -347,32 +356,41 @@ function FieldIcon({
       aria-label={label}
       className="flex shrink-0 items-center text-text-tertiary transition-colors hover:text-text-secondary"
     >
-      <Icon className="h-[15px] w-[15px]" aria-hidden="true" />
+      <Icon size={size} aria-hidden="true" />
     </button>
   );
 }
 
-// Read-only value with an inline copy button (proxy address, HWID).
-function CopyValue({ value, copyLabel }: { value: string; copyLabel: string }) {
+// Read-only value with the copy icon INSIDE the box (like the secret) — only the box
+// WIDTH differs per field (proxy 220px, HWID 260px), not the copy placement.
+function ReadonlyCopyField({
+  value,
+  widthClass,
+  copyLabel,
+}: {
+  value: string;
+  widthClass: string;
+  copyLabel: string;
+}) {
   return (
-    <FieldShell>
+    <FieldBox className={widthClass}>
       <span
         title={value}
         className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-primary"
       >
         {value}
       </span>
-      <FieldIcon onClick={() => copyToClipboard(value)} label={copyLabel} icon={Copy} />
-    </FieldShell>
+      <IconButton onClick={() => copyToClipboard(value)} label={copyLabel} icon={Copy} />
+    </FieldBox>
   );
 }
 
-// Editable mihomo secret — masked by default with reveal + copy inline (mockup Pnnav).
+// Editable mihomo secret (mockup Pnnav): a 320px box with reveal + copy INSIDE it.
 // Saving rotates the engine (server rewrites + reloads the config) and re-points the client.
 function SecretField({ value, onSave }: { value: string; onSave(v: string): void }) {
   const [reveal, setReveal] = useState(false);
   return (
-    <FieldShell>
+    <FieldBox className="w-[320px]">
       <input
         key={value}
         type={reveal ? "text" : "password"}
@@ -386,12 +404,12 @@ function SecretField({ value, onSave }: { value: string; onSave(v: string): void
         }}
         className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-text-primary outline-none placeholder:text-text-tertiary"
       />
-      <FieldIcon
+      <IconButton
         onClick={() => setReveal((r) => !r)}
         label={reveal ? "Скрыть секрет" : "Показать секрет"}
         icon={reveal ? EyeOff : Eye}
       />
-      <FieldIcon onClick={() => copyToClipboard(value)} label="Скопировать секрет" icon={Copy} />
-    </FieldShell>
+      <IconButton onClick={() => copyToClipboard(value)} label="Скопировать секрет" icon={Copy} />
+    </FieldBox>
   );
 }
