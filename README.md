@@ -19,6 +19,7 @@ SOCKS5/HTTP proxy via the **mihomo** engine — with a web UI for management.
 - **happ:// out of the box** — decoded by the official Happ binary (current keys), not a stale reverse decoder ([how it works](docs/adr/0001-happ-via-official-binary.md)).
 - **Multi-server:** pick the best node by latency (`url-test`), failover, manual switching.
 - **Engine — mihomo:** subscriptions, health-check, hot-reload, SOCKS+HTTP, VLESS Reality — all battle-tested.
+- **Multiarch:** `amd64` and `arm64` images, built + published by CI.
 
 ## Architecture
 
