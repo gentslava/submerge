@@ -79,7 +79,7 @@ describe("static helpers", () => {
 
 - [ ] **Step 4: implement `static.ts`:**
 ```ts
-import { normalize, resolve, sep } from "node:path";
+import { resolve, sep } from "node:path";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -115,7 +115,9 @@ export function safeResolve(distDir: string, urlPath: string): string | null {
   }
   if (decoded === "/" || decoded === "") decoded = "/index.html";
   const base = resolve(distDir);
-  const target = resolve(base, `.${normalize(decoded)}`);
+  // Prefix with "." so the path is relative; resolve() then climbs above base
+  // for any ".." segment, which the startsWith guard below rejects.
+  const target = resolve(base, `.${decoded}`);
   if (target !== base && !target.startsWith(base + sep)) return null;
   return target;
 }
