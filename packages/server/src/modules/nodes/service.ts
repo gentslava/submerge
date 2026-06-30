@@ -97,9 +97,9 @@ export async function listNodes(): Promise<NodeView> {
   return toNodeView(await getProxies());
 }
 
-export async function testDelay(name: string): Promise<number | null> {
+export async function testDelay(name: string, url?: string): Promise<number | null> {
   try {
-    const { delay } = await getDelay(name);
+    const { delay } = await getDelay(name, url);
     return delay > 0 ? delay : null;
   } catch {
     return null; // timeout / unreachable node → no delay
@@ -108,4 +108,14 @@ export async function testDelay(name: string): Promise<number | null> {
 
 export async function selectNode(group: string, name: string): Promise<void> {
   await selectProxy(group, name);
+}
+
+// A one-shot reachability check (for the Settings "Проверить" button + polling).
+export async function checkHealth(): Promise<boolean> {
+  try {
+    await getProxies();
+    return true;
+  } catch {
+    return false;
+  }
 }

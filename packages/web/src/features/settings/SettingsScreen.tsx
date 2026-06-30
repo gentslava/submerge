@@ -9,7 +9,6 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
-import { useLiveState } from "@/features/live/LiveProvider";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -50,10 +49,17 @@ export function SettingsScreen() {
 
   const authStatus = useAuthStatus();
   const logout = useLogout();
-  const { mihomo } = useLiveState();
 
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const data = settingsQuery.data;
+
+  // Engine reachability — polled at the panel's poll cadence and on demand
+  // ("Проверить"), so the status updates live without a page reload (this is a
+  // direct check, independent of the SSE live stream).
+  const pollMs = (Number(data?.pollInterval) || 5) * 1000;
+  const healthQuery = useQuery(
+    trpc.nodes.health.queryOptions(undefined, { refetchInterval: pollMs }),
+  );
 
   const invalidate = () => qc.invalidateQueries({ queryKey: trpc.settings.get.queryKey() });
 
@@ -90,19 +96,18 @@ export function SettingsScreen() {
   }
 
   const hwid = data?.hwid;
-  const mihomoSecret = data?.mihomoSecret ?? "";
+  const mihomoSecretSet = data?.mihomoSecretSet === "true";
   const autoStrategy = data?.autoStrategy ?? "url-test";
   const autoUrl = data?.autoTestUrl ?? AUTO_TEST_URL;
   const autoInterval = data?.autoTestInterval ?? String(AUTO_INTERVAL);
   const autoTolerance = data?.autoTestTolerance ?? String(AUTO_TOLERANCE);
   const autoSwitch = (data?.autoSwitchOnTimeout ?? "true") === "true";
   const pollInterval = data?.pollInterval ?? "5";
-  const engine =
-    mihomo === null
-      ? { dot: "bg-idle", label: "Проверка" }
-      : mihomo
-        ? { dot: "bg-online", label: "Подключено" }
-        : { dot: "bg-timeout", label: "Отключено" };
+  const engine = healthQuery.isLoading
+    ? { dot: "bg-idle", label: "Проверка" }
+    : healthQuery.data?.connected
+      ? { dot: "bg-online", label: "Подключено" }
+      : { dot: "bg-timeout", label: "Отключено" };
 
   return (
     <div className="flex flex-col gap-[26px] px-8 pt-[26px] pb-10">
@@ -218,12 +223,19 @@ export function SettingsScreen() {
                 <span aria-hidden="true" className={`h-2 w-2 rounded-full ${engine.dot}`} />
                 <span className="text-sm text-text-secondary">{engine.label}</span>
               </span>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={healthQuery.isFetching}
+                onClick={() => healthQuery.refetch()}
+              >
+                {healthQuery.isFetching ? "Проверка…" : "Проверить"}
+              </Button>
             </Row>
             <Row label="Секрет mihomo" sub="Токен для доступа к RESTful-API mihomo">
               <SecretField
-                value={mihomoSecret}
+                isSet={mihomoSecretSet}
                 onSave={(v) => settingsMutation.mutate({ key: "mihomoSecret", value: v })}
-                onCopy={() => copy(mihomoSecret)}
               />
             </Row>
             <Row label="Интервал опроса" sub="Частота обновления задержек и трафика">
@@ -340,47 +352,39 @@ function CopyBtn({ onClick, label }: { onClick(): void; label: string }) {
   );
 }
 
-// Editable mihomo secret — masked by default, with reveal + copy. Saving it re-points
-// the panel's API client to mihomo with this secret (no engine config rewrite).
-function SecretField({
-  value,
-  onSave,
-  onCopy,
-}: {
-  value: string;
-  onSave(v: string): void;
-  onCopy(): void;
-}) {
+// Write-only mihomo secret field. The current secret is never sent to the client
+// (so it can't leak when auth is off) — we only know whether one is set. Typing a
+// new value + blurring rotates it; the input then clears. Reveal shows what you type.
+function SecretField({ isSet, onSave }: { isSet: boolean; onSave(v: string): void }) {
   const [reveal, setReveal] = useState(false);
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="relative inline-flex">
-        <input
-          key={value}
-          type={reveal ? "text" : "password"}
-          aria-label="Секрет mihomo"
-          placeholder="не задан"
-          defaultValue={value}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v && v !== value) onSave(v);
-          }}
-          className="h-9 w-[260px] rounded-md border border-border-default bg-input pr-9 pl-3 font-mono text-[13px] text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
-        />
-        <button
-          type="button"
-          onClick={() => setReveal((r) => !r)}
-          aria-label={reveal ? "Скрыть секрет" : "Показать секрет"}
-          className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-text-tertiary transition-colors hover:text-text-secondary"
-        >
-          {reveal ? (
-            <EyeOff className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <Eye className="h-4 w-4" aria-hidden="true" />
-          )}
-        </button>
-      </div>
-      <CopyBtn onClick={onCopy} label="Скопировать секрет" />
+    <div className="relative inline-flex">
+      <input
+        type={reveal ? "text" : "password"}
+        aria-label="Секрет mihomo"
+        placeholder={isSet ? "•••••••• задан — введите новый" : "не задан"}
+        autoComplete="off"
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          if (v) {
+            onSave(v);
+            e.target.value = "";
+          }
+        }}
+        className="h-9 w-[260px] rounded-md border border-border-default bg-input pr-9 pl-3 font-mono text-[13px] text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
+      />
+      <button
+        type="button"
+        onClick={() => setReveal((r) => !r)}
+        aria-label={reveal ? "Скрыть секрет" : "Показать секрет"}
+        className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-text-tertiary transition-colors hover:text-text-secondary"
+      >
+        {reveal ? (
+          <EyeOff className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <Eye className="h-4 w-4" aria-hidden="true" />
+        )}
+      </button>
     </div>
   );
 }

@@ -11,11 +11,18 @@ const TABS = [
 
 // Mirror of the editable AUTO group tuning (Settings → Авто-выбор узла).
 export interface AutoInfo {
+  strategy: string; // "url-test" | "fallback" | "load-balance"
   url: string;
   interval: number; // seconds between mihomo re-tests (NOT the panel poll)
   tolerance: number;
   switchOnTimeout: boolean;
 }
+
+const STRATEGY_LABELS: Record<string, string> = {
+  "url-test": "По задержке",
+  fallback: "Отказоустойчивость",
+  "load-balance": "Нагрузка",
+};
 
 interface AutoStrategyCardProps {
   auto: AutoInfo;
@@ -36,10 +43,13 @@ export function AutoStrategyCard({
   onManual,
   pending = false,
 }: AutoStrategyCardProps) {
+  // Tolerance only applies to the url-test strategy (mihomo ignores it for
+  // fallback / load-balance) — don't show a param that has no effect.
   const params: { caption: string; value: string }[] = [
+    { caption: "СТРАТЕГИЯ", value: STRATEGY_LABELS[auto.strategy] ?? auto.strategy },
     { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.url.replace(/^https?:\/\//, "") },
     { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: `${auto.interval} с` },
-    { caption: "ДОПУСК", value: `${auto.tolerance} ms` },
+    ...(auto.strategy === "url-test" ? [{ caption: "ДОПУСК", value: `${auto.tolerance} ms` }] : []),
     { caption: "ПЕРЕКЛЮЧАТЬ ПРИ", value: auto.switchOnTimeout ? "таймаут" : "вручную" },
   ];
 

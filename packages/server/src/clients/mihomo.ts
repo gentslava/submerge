@@ -53,8 +53,10 @@ export async function getProxies(): Promise<ProxiesResponse> {
   return proxiesResponseSchema.parse(await r.json());
 }
 
-export async function getDelay(name: string): Promise<DelayResponse> {
-  const q = `timeout=3000&url=${encodeURIComponent(TEST_URL)}`;
+// `url` defaults to the built-in probe endpoint; callers pass the AUTO group's
+// configured test URL so the chart/ping measure the same target AUTO selects on.
+export async function getDelay(name: string, url: string = TEST_URL): Promise<DelayResponse> {
+  const q = `timeout=3000&url=${encodeURIComponent(url)}`;
   const r = await call(`/proxies/${encodeURIComponent(name)}/delay?${q}`);
   if (!r.ok) throw new Error(`mihomo delay for "${name}" returned HTTP ${r.status}`);
   return delayResponseSchema.parse(await r.json());

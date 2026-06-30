@@ -29,6 +29,7 @@ export function NodesScreen() {
   // panel poll above; drives the strategy card's params.
   const s = settingsQuery.data;
   const auto: AutoInfo = {
+    strategy: s?.autoStrategy ?? "url-test",
     url: s?.autoTestUrl ?? "https://www.gstatic.com/generate_204",
     interval: Math.max(1, Number(s?.autoTestInterval ?? 300) || 300),
     tolerance: Math.max(0, Number(s?.autoTestTolerance ?? 50) || 50),

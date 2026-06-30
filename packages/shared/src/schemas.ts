@@ -40,8 +40,8 @@ export const nodeItemSchema = z.object({
   type: z.string(),
   delay: z.number().nullable(), // null = unreachable or not yet tested
   udp: z.boolean().optional(),
-  // mihomo's recorded delay history (ms, oldest → newest, timeouts dropped) — drives
-  // the live latency chart for the active node.
+  // mihomo's recorded delay history (ms, oldest → newest; timeouts kept as 0 so the
+  // chart can render them as instability) — drives the live latency chart.
   history: z.array(z.number()).default([]),
 });
 export type NodeItem = z.infer<typeof nodeItemSchema>;
