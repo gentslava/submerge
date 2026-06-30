@@ -74,7 +74,8 @@ The approved UI is the **Indigo Console** design in [`pencil/web-ui.pen`](pencil
 - **Tokens first, in config.** Colors/radii/fonts/type-scale live in `packages/web/src/index.css` `@theme`, mirrored from the mockup's `variables`. Never hand-pick a hex/px — use a token.
 - **Measure, don't invent.** Read exact values from the mockup (Pencil MCP `batch_get … resolveVariables:true`, or the JSON directly). Don't fill visual gaps with generic defaults (gradients, `rounded-2xl`, oversized padding) — that "AI look" is the failure mode that produced the first, rejected UI.
 - **Visual fidelity is a gate.** Before a UI task is done: render at the mockup viewport (**1440×1024, dark**), screenshot, and compare element-by-element to the frame; cross-check exact values with `browser_evaluate`. Verifying at the wrong viewport gives false conclusions.
-- **Behavior, not just looks.** Controls must work — no dead buttons or decorative tabs. If the engine can't back a control, don't draw it.
+- **Match the control, don't downgrade it.** The mockup's *interaction* is spec, not just its box: segmented stays segmented (not a dropdown), a preset dropdown stays a dropdown (not a free-text input), editable stays editable (not read-only), a switch stays a switch (not an omitted row); units go in the label (`Допуск, мс`), not trailing the input. Read the control *type* from the mockup like you read a color. Silently swapping a richer control for a simpler one is a control-logic regression — the repeat failure that diverged Settings from the frame even when pixels looked close.
+- **Behavior, not just looks.** Controls must work — no dead buttons or decorative tabs. If the engine genuinely can't back a control, that's a product decision: raise it, don't silently fake or drop it.
 - **Honesty over fidelity.** Don't render data we don't have (fake quotas/totals) — show the real value or omit it, and say why.
 
 ## Workflow

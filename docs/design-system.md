@@ -36,10 +36,19 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
    (**1440×1024, dark**), screenshot it, and compare element‑by‑element to the frame.
    Cross‑check exact values with `browser_evaluate` (bounding boxes, computed styles) —
    a screenshot at the wrong viewport produces false conclusions.
-4. **Behavior, not just looks.** Interactive controls must work. No dead buttons, no
-   decorative tabs that don't do anything — that reads as fake. If the engine can't back
-   a control, don't draw it.
-5. **Honesty over fidelity when they conflict.** Don't render data we don't have (fake
+4. **Match the control, don't downgrade it.** The mockup's *interaction* is part of the
+   spec, not just its box. If the frame shows a segmented control, build a segmented
+   control — not a dropdown; a dropdown of presets, not a free‑text input; an editable
+   field, not read‑only text; a switch, not an omitted row. Units live where the mockup
+   puts them (in the label — "Допуск, мс" — not trailing the input). Read the control
+   *type* the way you read a color: from the mockup. Silently swapping a richer control
+   for a simpler one is a control‑logic regression — the failure that repeatedly diverged
+   the Settings screen from the frame even when the pixels looked close.
+5. **Behavior, not just looks.** Interactive controls must work. No dead buttons, no
+   decorative tabs that don't do anything — that reads as fake. If the engine genuinely
+   can't back a control, that's a product decision: raise it, don't silently fake the
+   control or quietly drop it from the mockup.
+6. **Honesty over fidelity when they conflict.** Don't render data we don't have (fake
    quotas, fake totals). Show the real thing or omit it, and say why.
 
 ## Frame map (screen → frame id)
