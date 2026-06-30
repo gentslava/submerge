@@ -12,13 +12,17 @@ const MIN_BAR = 4; // px, so a tiny value still shows a sliver
 const RECENT = 4; // most-recent successful bars rendered in accent
 const CAP = 40; // most recent N samples shown
 
-// Format a "time ago" for the chart's left edge (seconds → с / мин / ч).
-function agoLabel(seconds: number): string {
-  if (seconds <= 0) return "сейчас";
-  if (seconds < 90) return `−${Math.round(seconds)} с`;
-  if (seconds < 5400) return `−${Math.round(seconds / 60)} мин`;
+// Bare duration label (seconds → с / мин / ч), e.g. "3 мин" — used for the window span.
+function durationLabel(seconds: number): string {
+  if (seconds < 90) return `${Math.round(seconds)} с`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} мин`;
   const hours = seconds / 3600;
-  return `−${Number.isInteger(hours) ? hours : hours.toFixed(1)} ч`;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} ч`;
+}
+
+// "Time ago" for the chart's left edge — the same duration, prefixed with a minus.
+function agoLabel(seconds: number): string {
+  return seconds <= 0 ? "сейчас" : `−${durationLabel(seconds)}`;
 }
 
 // A latency bar chart for the active node, fed by mihomo's recorded history.
@@ -31,14 +35,17 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
   const max = peak > 0 ? peak : 1;
   const firstAccent = Math.max(0, bars.length - RECENT);
   // The chart is a fixed time window: all CAP slots × the check interval, back from now.
-  // The left-edge label reflects the whole frame, NOT how many bars are filled yet
-  // (e.g. 40 slots × 300 s ≈ −3.3 ч; halve the check interval → halve the window).
-  const spanLabel = agoLabel(CAP * checkInterval);
+  // The labels reflect the whole frame, NOT how many bars are filled yet (e.g. 40 slots ×
+  // 300 s ≈ 3.3 ч; halve the check interval → halve the window).
+  const windowSeconds = CAP * checkInterval;
+  const spanLabel = agoLabel(windowSeconds);
 
   return (
     <div className="flex w-full flex-col gap-2.5 lg:w-[400px] lg:shrink-0">
       <div className="flex items-center justify-between">
-        <span className="text-meta text-text-secondary">Задержка · live</span>
+        <span className="text-meta text-text-secondary">
+          Задержка · {durationLabel(windowSeconds)}
+        </span>
         <span className="font-mono text-[11px] text-text-tertiary">
           {peak > 0 ? `пик ${peak} ms` : "нет данных"}
         </span>

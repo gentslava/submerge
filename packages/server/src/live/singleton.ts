@@ -1,9 +1,12 @@
 import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
-import { getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
+import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
-import { toNodeView } from "../modules/nodes/service.js";
+import { readAutoConfig, toNodeView } from "../modules/nodes/service.js";
 import { getSetting } from "../modules/settings/service.js";
 import { LiveHub } from "./hub.js";
+
+// mihomo built-in policies aren't real proxies — delay-testing them errors, so skip.
+const PSEUDO_NODES = new Set(["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"]);
 
 // Poll cadence is settings-driven: read `pollInterval` (seconds), clamp to >= 1,
 // fall back to the default. Returns milliseconds for the hub's scheduler.
@@ -13,13 +16,25 @@ function pollIntervalMs(): number {
   return seconds * 1000;
 }
 
-// Process-wide hub wired to the real mihomo client + settings-driven cadence. The panel
-// only READS mihomo's state each poll — it does NOT probe the active node itself. Node
-// latency is measured by mihomo's url-test at the configured check interval, so a node is
-// never re-tested every poll (which would ignore the "Интервал проверки" setting).
+// Throttle the active-node probe to the configured CHECK interval (NOT the poll cadence):
+// the hub calls probeActive every poll, but we only re-test the node once per «Интервал
+// проверки», so the latency chart grows at that interval — no faster (the old re-test
+// every 5 s bug), and not dependent on mihomo's own url-test (which the panel may not
+// control, e.g. an external engine). The 1 s slack absorbs poll-timing jitter when the
+// check interval equals the poll interval.
+let lastProbe = 0;
+
 export const liveHub = new LiveHub({
   fetchView: async () => toNodeView(await getProxies()),
   streamTraffic,
   getInterval: pollIntervalMs,
+  probeActive: async (name) => {
+    if (PSEUDO_NODES.has(name)) return;
+    const intervalMs = readAutoConfig(db).interval * 1000;
+    const now = Date.now();
+    if (now - lastProbe < intervalMs - 1000) return;
+    lastProbe = now;
+    await getDelay(name, readAutoConfig(db).url);
+  },
   fetchTotals: getTotals,
 });
