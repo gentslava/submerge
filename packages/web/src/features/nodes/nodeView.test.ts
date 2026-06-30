@@ -26,7 +26,7 @@ function src(over: Partial<Source>): Source {
 }
 
 function node(name: string): NodeItem {
-  return { name, type: "vless", delay: 47 };
+  return { name, type: "vless", delay: 47, history: [] };
 }
 
 describe("nodeView", () => {
@@ -44,9 +44,9 @@ describe("nodeView", () => {
   });
   it("separates pseudo modes from real nodes", () => {
     const { modes, nodes } = splitNodes([
-      { name: "AUTO", type: "URLTest", delay: null },
-      { name: "NL-1", type: "vless", delay: 47 },
-      { name: "DIRECT", type: "Direct", delay: null },
+      { name: "AUTO", type: "URLTest", delay: null, history: [] },
+      { name: "NL-1", type: "vless", delay: 47, history: [] },
+      { name: "DIRECT", type: "Direct", delay: null, history: [] },
     ]);
     expect(modes.map((m) => m.name)).toEqual(["AUTO", "DIRECT"]);
     expect(nodes.map((n) => n.name)).toEqual(["NL-1"]);
