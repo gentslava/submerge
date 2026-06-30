@@ -49,7 +49,7 @@ export function SourceRow({ source, onToggle, onRefresh, onRemove, busy }: Sourc
         aria-label="Включить источник"
       />
       <Button
-        variant="subtle"
+        variant="ghost"
         size="icon"
         disabled={isBusy}
         onClick={onRefresh}
@@ -58,7 +58,7 @@ export function SourceRow({ source, onToggle, onRefresh, onRemove, busy }: Sourc
         <RotateCw className="h-4 w-4" />
       </Button>
       <Button
-        variant="subtle"
+        variant="ghost"
         size="icon"
         disabled={isBusy}
         onClick={handleRemove}

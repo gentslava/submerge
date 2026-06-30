@@ -36,10 +36,8 @@ function Brand() {
         <Waves size={18} className="text-accent-fg" />
       </span>
       <span className="flex flex-col gap-px">
-        <span className="font-mono text-[15px] font-semibold leading-none text-text-primary">
-          submerge
-        </span>
-        <span className="text-[10px] font-semibold uppercase leading-none tracking-[0.8px] text-text-tertiary">
+        <span className="font-mono text-cardtitle leading-none text-text-primary">submerge</span>
+        <span className="text-micro font-semibold uppercase leading-none tracking-[0.8px] text-text-tertiary">
           self-hosted
         </span>
       </span>
@@ -91,7 +89,7 @@ function TogglesCard() {
   return (
     <div className="flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-elevated px-3 py-[11px]">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-text-secondary">LAN-доступ</span>
+        <span className="text-meta text-text-secondary">LAN-доступ</span>
         {/* TODO: wire to a server action (toggle LAN proxy bind) in a later phase. */}
         <Switch checked disabled onCheckedChange={() => {}} aria-label="LAN-доступ" />
       </div>
@@ -99,7 +97,7 @@ function TogglesCard() {
       <button
         type="button"
         disabled
-        className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border-default bg-hover text-xs font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border-default bg-hover text-meta text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
       >
         <RotateCw size={14} />
         Перезапустить ядро
@@ -128,12 +126,10 @@ function ProxyCard() {
     <div className="flex flex-col gap-[9px] rounded-lg border border-border-subtle bg-elevated p-[13px]">
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} />
-        <span className="text-xs font-medium text-text-secondary">{status.label}</span>
+        <span className="text-meta text-text-secondary">{status.label}</span>
       </div>
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[13px] font-medium text-text-primary">
-          {PROXY_ENDPOINT}
-        </span>
+        <span className="font-mono text-sub font-medium text-text-primary">{PROXY_ENDPOINT}</span>
         <button
           type="button"
           onClick={copyAddress}
@@ -164,7 +160,7 @@ function LogoutRow() {
       className="flex items-center gap-[9px] rounded-md px-2.5 py-2 text-text-tertiary hover:text-text-secondary"
     >
       <Power size={16} />
-      <span className="text-[13px]">Выйти</span>
+      <span className="text-sub">Выйти</span>
     </button>
   );
 }

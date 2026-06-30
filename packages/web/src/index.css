@@ -99,6 +99,25 @@
   --radius-md: 8px;
   --radius-lg: 10px;
   --radius-xl: 14px;
+  /* Typography scale (Indigo Console roles — "Типографика" reference).
+     Each role bakes its size and, where set, weight/letter-spacing into the
+     generated text-* utility (text-h1, text-section, …). Tailwind's default
+     text-sm/xs/lg/2xl remain available — nothing here removes them. */
+  --text-h1: 24px;
+  --text-h1--font-weight: 600;
+  --text-section: 18px;
+  --text-section--font-weight: 600;
+  --text-cardtitle: 15px;
+  --text-cardtitle--font-weight: 600;
+  --text-label: 14px;
+  --text-label--font-weight: 500;
+  --text-sub: 13px; /* default weight 400 */
+  --text-meta: 12px;
+  --text-meta--font-weight: 500;
+  --text-caption: 11px;
+  --text-caption--font-weight: 600;
+  --text-caption--letter-spacing: 0.5px;
+  --text-micro: 10px;
 }
 
 /* Uses role vars directly: @layer base runs before @theme inline utilities exist. */

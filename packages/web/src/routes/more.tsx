@@ -49,7 +49,7 @@ export function MoreRoute() {
           </div>
           {/* Real restart action arrives in Phase 4–6 once mihomo control is wired. */}
           <div>
-            <Button variant="ghost" size="sm" disabled>
+            <Button variant="secondary" size="sm" disabled>
               Перезапустить ядро
             </Button>
           </div>

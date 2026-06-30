@@ -72,7 +72,7 @@ export function SourcesScreen() {
           ) : sourcesQuery.isError ? (
             <div className="p-8 text-center text-text-secondary">
               Не удалось загрузить источники.{" "}
-              <Button variant="subtle" size="sm" onClick={() => sourcesQuery.refetch()}>
+              <Button variant="ghost" size="sm" onClick={() => sourcesQuery.refetch()}>
                 Повторить
               </Button>
             </div>

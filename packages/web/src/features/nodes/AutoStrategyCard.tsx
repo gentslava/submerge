@@ -38,8 +38,8 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
                 aria-current={active ? "true" : undefined}
                 className={
                   active
-                    ? "rounded-sm bg-accent px-[13px] py-[7px] text-[13px] font-medium text-accent-fg"
-                    : "rounded-sm px-[13px] py-[7px] text-[13px] font-medium text-text-secondary"
+                    ? "rounded-sm bg-accent px-[13px] py-[7px] text-sub font-medium text-accent-fg"
+                    : "rounded-sm px-[13px] py-[7px] text-sub font-medium text-text-secondary"
                 }
               >
                 {s}
@@ -56,7 +56,7 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
           <button
             type="button"
             disabled
-            className="flex h-8 items-center gap-[7px] rounded-md border border-border-default bg-elevated px-3 text-[13px] text-text-secondary disabled:pointer-events-none disabled:opacity-60"
+            className="flex h-8 items-center gap-[7px] rounded-md border border-border-default bg-elevated px-3 text-sub text-text-secondary disabled:pointer-events-none disabled:opacity-60"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
             Настроить
@@ -73,10 +73,8 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
               <span aria-hidden="true" className="mr-[18px] h-[34px] w-px bg-border-subtle" />
             )}
             <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-semibold tracking-[0.4px] text-text-tertiary">
-                {p.caption}
-              </span>
-              <span className="font-mono text-[13px] font-medium text-text-primary">{p.value}</span>
+              <span className="text-caption tracking-[0.4px] text-text-tertiary">{p.caption}</span>
+              <span className="font-mono text-sub font-medium text-text-primary">{p.value}</span>
             </div>
           </div>
         ))}

@@ -8,9 +8,9 @@ const button = cva(
     variants: {
       variant: {
         primary: "bg-accent text-accent-fg hover:bg-accent-hover",
-        ghost: "bg-elevated text-text-secondary border border-border-default hover:bg-hover",
-        subtle: "bg-transparent text-text-secondary hover:bg-hover",
-        destructive: "bg-transparent text-timeout border border-border-default hover:bg-timeout-bg",
+        secondary: "bg-elevated text-text-secondary border border-border-default hover:bg-hover",
+        ghost: "bg-transparent text-text-secondary hover:bg-hover",
+        destructive: "bg-timeout-bg text-timeout hover:bg-timeout-bg/80",
       },
       size: {
         sm: "h-8 px-[14px] text-[13px]",

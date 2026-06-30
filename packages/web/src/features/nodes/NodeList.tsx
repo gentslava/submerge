@@ -22,12 +22,8 @@ export function NodeList({ now, all, sources, pingingName, onSelect, onPing }: N
     <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
       {/* Columns header */}
       <div className="flex items-center gap-4 border-b border-border-subtle bg-elevated px-4 py-[11px]">
-        <span className="flex-1 text-[11px] font-semibold tracking-[0.5px] text-text-tertiary">
-          УЗЕЛ
-        </span>
-        <span className="w-24 text-right text-[11px] font-semibold tracking-[0.5px] text-text-tertiary">
-          ПИНГ
-        </span>
+        <span className="flex-1 text-caption text-text-tertiary">УЗЕЛ</span>
+        <span className="w-24 text-right text-caption text-text-tertiary">ПИНГ</span>
         <span aria-hidden="true" className="w-12" />
         <span aria-hidden="true" className="w-[120px]" />
       </div>
@@ -40,7 +36,7 @@ export function NodeList({ now, all, sources, pingingName, onSelect, onPing }: N
               className="h-[15px] w-[15px] shrink-0 text-text-secondary"
               aria-hidden="true"
             />
-            <span className="text-[13px] font-semibold text-text-primary">Режимы</span>
+            <span className="text-sub font-semibold text-text-primary">Режимы</span>
             <span className="rounded-full bg-hover px-2 py-0.5 text-[11px] text-text-tertiary">
               {modes.length}
             </span>

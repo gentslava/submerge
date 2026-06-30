@@ -72,7 +72,7 @@ export function SettingsScreen() {
       ) : settingsQuery.isError ? (
         <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-text-secondary">
           Не удалось загрузить настройки.{" "}
-          <Button variant="subtle" size="sm" onClick={() => settingsQuery.refetch()}>
+          <Button variant="ghost" size="sm" onClick={() => settingsQuery.refetch()}>
             Повторить
           </Button>
         </div>
@@ -146,7 +146,7 @@ export function SettingsScreen() {
                   {hwid}
                 </span>
                 <Button
-                  variant="subtle"
+                  variant="ghost"
                   size="icon"
                   aria-label="Скопировать HWID"
                   onClick={() => void copyHwid(hwid)}

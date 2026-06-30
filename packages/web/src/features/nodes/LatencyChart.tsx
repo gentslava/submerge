@@ -17,7 +17,7 @@ export function LatencyChart({ history }: LatencyChartProps) {
   return (
     <div className="flex w-full flex-col gap-2.5 lg:w-[400px] lg:shrink-0">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-text-secondary">Задержка · live</span>
+        <span className="text-meta text-text-secondary">Задержка · live</span>
         <span className="font-mono text-[11px] text-text-tertiary">
           {peak > 0 ? `пик ${peak} ms` : "нет данных"}
         </span>
@@ -43,8 +43,8 @@ export function LatencyChart({ history }: LatencyChartProps) {
       )}
 
       <div className="flex items-center justify-between">
-        <span className="font-mono text-[10px] text-text-tertiary">начало</span>
-        <span className="font-mono text-[10px] text-text-tertiary">сейчас</span>
+        <span className="font-mono text-micro text-text-tertiary">начало</span>
+        <span className="font-mono text-micro text-text-tertiary">сейчас</span>
       </div>
     </div>
   );

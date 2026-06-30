@@ -9,11 +9,17 @@ describe("Button", () => {
     expect(btn).toBeInTheDocument();
     expect(btn.className).toContain("bg-accent");
   });
-  it("applies the ghost variant", () => {
-    render(<Button variant="ghost">Обновить</Button>);
+  it("applies the secondary variant (bordered)", () => {
+    render(<Button variant="secondary">Обновить</Button>);
     expect(screen.getByRole("button", { name: "Обновить" }).className).toContain(
       "border-border-default",
     );
+  });
+  it("applies the ghost variant (borderless)", () => {
+    render(<Button variant="ghost">Призрак</Button>);
+    const cls = screen.getByRole("button", { name: "Призрак" }).className;
+    expect(cls).toContain("bg-transparent");
+    expect(cls).not.toContain("border-border-default");
   });
   it("fires onClick", () => {
     const onClick = vi.fn();

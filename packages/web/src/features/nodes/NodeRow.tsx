@@ -37,7 +37,7 @@ export function NodeRow({
           className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])}
         />
         <div className="flex min-w-0 flex-col gap-[3px]">
-          <span className="truncate font-mono text-[13px] font-medium text-text-primary">
+          <span className="truncate font-mono text-sub font-medium text-text-primary">
             {item.name}
           </span>
           {sublabel != null && sublabel !== "" && (
@@ -74,7 +74,7 @@ export function NodeRow({
             Активен
           </Button>
         ) : (
-          <Button variant="ghost" size="sm" className="w-[112px]" onClick={onSelect}>
+          <Button variant="secondary" size="sm" className="w-[112px]" onClick={onSelect}>
             Выбрать
           </Button>
         )}

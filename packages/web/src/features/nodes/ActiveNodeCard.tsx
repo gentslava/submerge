@@ -23,7 +23,7 @@ export function ActiveNodeCard({ now, all, history, traffic }: ActiveNodeCardPro
     <section className="flex flex-col gap-7 rounded-xl border border-border-subtle bg-surface p-[22px] lg:flex-row">
       <div className="flex flex-1 flex-col gap-[18px]">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-[11px] font-semibold tracking-[0.6px] text-text-tertiary">
+          <span className="text-caption tracking-[0.6px] text-text-tertiary">
             {isAuto ? "АКТИВНЫЙ УЗЕЛ · ВЫБРАН АВТОМАТИЧЕСКИ" : "АКТИВНЫЙ УЗЕЛ"}
           </span>
           {active != null && (
@@ -86,7 +86,7 @@ export function ActiveNodeCard({ now, all, history, traffic }: ActiveNodeCardPro
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[11px] font-semibold tracking-[0.4px] text-text-tertiary">{label}</span>
+      <span className="text-caption tracking-[0.4px] text-text-tertiary">{label}</span>
       <span className="leading-none">{children}</span>
     </div>
   );

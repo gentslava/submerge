@@ -144,7 +144,7 @@ function Body({
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">
-        <h2 className="text-[15px] font-semibold text-text-primary">Все узлы</h2>
+        <h2 className="text-cardtitle text-text-primary">Все узлы</h2>
         <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
           сгруппировано по подпискам
@@ -181,7 +181,7 @@ function ErrorState({ onRetry }: { onRetry(): void }) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-xl border border-border-subtle bg-surface p-10 text-center text-text-secondary">
       <span>Не удалось получить узлы от mihomo.</span>
-      <Button variant="ghost" size="sm" onClick={onRetry}>
+      <Button variant="secondary" size="sm" onClick={onRetry}>
         Повторить
       </Button>
     </div>
