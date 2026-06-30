@@ -19,6 +19,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec biome ci .
+      - run: pnpm -F @submerge/web design:tokens:check
       - run: pnpm typecheck
       - run: pnpm -r test
       - run: pnpm -F @submerge/web build

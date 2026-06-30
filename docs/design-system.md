@@ -130,16 +130,24 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
   `chart-track`, timeouts full‑height `timeout`; hover tooltip with the ms value; left
   axis = real elapsed time (`(count−1)×pollInterval`), right = "сейчас".
 
-## Recommended: make the contract enforceable
+## Enforcement
 
-Mirror what the data layer already does (Zod + `db:generate`):
+The contract is enforced the same way the data layer is (Zod + `db:generate`):
 
-- **Token sync script.** Generate the color/radius/font role variables in `index.css`
-  from the mockup's `variables` (curated allow‑list mapping `.pen` name → role var,
-  ignoring `c-*`/`s2-*`). Run it like `db:generate`; have CI fail if `index.css` is out of
-  sync with `web-ui.pen`. This makes value drift (e.g. the accent‑hover mismatch that
-  already exists) impossible.
+- **Token sync (implemented).** The color role variables in `index.css` (the `:root` /
+  `.dark` blocks between the `@generated design tokens` markers) are generated from the
+  mockup's `variables` by [`scripts/sync-design-tokens.mjs`](../packages/web/scripts/sync-design-tokens.mjs)
+  (curated allow‑list `.pen` name → role var, ignoring `c-*`/`s2-*`). Do not hand‑edit
+  inside the markers.
+  - `pnpm -F @submerge/web design:tokens` — rewrite in place after the mockup changes.
+  - `pnpm -F @submerge/web design:tokens:check` — fails if out of sync; runs in CI.
+  - First run already corrected six light‑theme drifts (accent‑hover, accent‑border,
+    text‑disabled, idle, online‑bg, timeout‑bg). Radii / fonts / type‑scale still live in
+    `@theme` (they change rarely).
+
+Still worth adding:
+
 - **Per‑task visual acceptance criteria.** UI tasks in `docs/plans/` should carry measured
   specs referencing a frame id (as in the table above), not prose descriptions.
-- **Visual‑diff review stage.** Add a review step: render at 1440×dark → screenshot →
-  compare to `get_screenshot` of the frame, before a UI task is "done".
+- **Visual‑diff review stage.** Render at 1440×dark → screenshot → compare to
+  `get_screenshot` of the frame, before a UI task is "done".

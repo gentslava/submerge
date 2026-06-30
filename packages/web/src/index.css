@@ -3,7 +3,7 @@
 /* Dark is the default; light activates when .dark is removed from <html> (theme toggle wired in a later task). */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* Light theme (role → value) */
+/* @generated design tokens — sync from pencil/web-ui.pen via `pnpm -F @submerge/web design:tokens`. Do not edit by hand. */
 :root {
   --bg-base: #f6f7f9;
   --bg-surface: #ffffff;
@@ -16,24 +16,23 @@
   --text-primary: #1a1d24;
   --text-secondary: #585e6a;
   --text-tertiary: #6f7682;
-  --text-disabled: #a0a6b0;
+  --text-disabled: #a9aeb9;
   --accent: #6366f1;
-  --accent-hover: #5356e0;
+  --accent-hover: #5457e0;
   --accent-fg: #ffffff;
   --accent-text: #4f46e5;
   --accent-bg: #6366f114;
-  --accent-border: #6366f14d;
+  --accent-border: #6366f133;
   --online: #2e7d32;
-  --online-bg: #2e7d3214;
+  --online-bg: #2e7d321f;
   --slow: #a16207;
   --slow-bg: #a162071f;
   --timeout: #c81e1e;
-  --timeout-bg: #c81e1e14;
-  --idle: #6f7682;
+  --timeout-bg: #c81e1e1f;
+  --idle: #9aa0ac;
   --chart-track: #d8daf3;
 }
 
-/* Dark theme override */
 .dark {
   --bg-base: #0b0d12;
   --bg-surface: #101219;
@@ -62,6 +61,7 @@
   --idle: #6a707d;
   --chart-track: #2e3150;
 }
+/* @end generated design tokens */
 
 /* Expose roles as Tailwind utilities (bg-base, text-primary, border-default, …) */
 @theme inline {
