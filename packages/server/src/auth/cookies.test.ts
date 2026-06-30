@@ -11,6 +11,9 @@ describe("cookies", () => {
     expect(parseCookies("sid=abc; theme=dark")).toEqual({ sid: "abc", theme: "dark" });
     expect(parseCookies(undefined)).toEqual({});
   });
+  it("keeps a malformed %-encoded value raw instead of throwing", () => {
+    expect(parseCookies("sid=%")).toEqual({ sid: "%" });
+  });
   it("serializes a session cookie (httpOnly, lax, path)", () => {
     const c = serializeSessionCookie("abc", 3600, false);
     expect(c).toContain(`${SESSION_COOKIE}=abc`);
