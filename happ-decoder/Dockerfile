@@ -27,11 +27,17 @@ RUN set -eux; \
     rm -rf /tmp/*
 
 ENV HOME=/work
-# Генерируем CA mitmproxy и доверяем ему системно (для MITM подписки)
-RUN mkdir -p /work \
- && (timeout 4 mitmdump -p 8081 >/dev/null 2>&1 || true) \
- && cp /work/.mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt \
- && update-ca-certificates
+# Генерируем CA mitmproxy и доверяем ему системно (для MITM подписки).
+# mitmdump пишет CA при первом старте — ждём появления файла (под arm64/QEMU старт
+# медленнее фикс-таймаута), затем доверяем. Фоновый mitmdump гаснет с завершением RUN.
+RUN set -eux; \
+    mkdir -p /work; \
+    mitmdump -p 8081 >/dev/null 2>&1 & \
+    for _ in $(seq 1 60); do \
+      [ -f /work/.mitmproxy/mitmproxy-ca-cert.pem ] && break || sleep 1; \
+    done; \
+    cp /work/.mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt; \
+    update-ca-certificates
 
 COPY mitm_capture.py server.py /app/
 ENV LD_LIBRARY_PATH=/happ/lib QT_QPA_PLATFORM=xcb LANG=C.UTF-8 \
