@@ -1,5 +1,7 @@
 import type { NodeItem } from "@submerge/shared";
 import { ChevronDown, KeyRound, Layers } from "lucide-react";
+import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { NodeRow } from "./NodeRow";
 import type { NodeGroup as NodeGroupModel } from "./nodeView";
 
@@ -12,10 +14,23 @@ interface NodeGroupProps {
 }
 
 export function NodeGroup({ group, now, pingingNames, onSelect, onPing }: NodeGroupProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <>
-      <div className="flex items-center gap-3 border-b border-border-subtle bg-elevated px-4 py-2.5">
-        <ChevronDown className="h-[15px] w-[15px] shrink-0 text-text-tertiary" aria-hidden="true" />
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        aria-expanded={!collapsed}
+        className="flex w-full items-center gap-3 border-b border-border-subtle bg-elevated px-4 py-2.5 text-left transition-colors hover:bg-hover"
+      >
+        <ChevronDown
+          className={cn(
+            "h-[15px] w-[15px] shrink-0 text-text-tertiary transition-transform",
+            collapsed && "-rotate-90",
+          )}
+          aria-hidden="true"
+        />
         {group.hwid ? (
           <KeyRound className="h-[15px] w-[15px] shrink-0 text-text-secondary" aria-hidden="true" />
         ) : (
@@ -25,17 +40,18 @@ export function NodeGroup({ group, now, pingingNames, onSelect, onPing }: NodeGr
         <span className="rounded-full bg-hover px-2 py-0.5 text-[11px] text-text-tertiary">
           {group.nodes.length}
         </span>
-      </div>
-      {group.nodes.map((n: NodeItem) => (
-        <NodeRow
-          key={n.name}
-          item={n}
-          isActive={now === n.name}
-          pinging={pingingNames.has(n.name)}
-          onSelect={() => onSelect(n.name)}
-          onPing={() => onPing(n.name)}
-        />
-      ))}
+      </button>
+      {!collapsed &&
+        group.nodes.map((n: NodeItem) => (
+          <NodeRow
+            key={n.name}
+            item={n}
+            isActive={now === n.name}
+            pinging={pingingNames.has(n.name)}
+            onSelect={() => onSelect(n.name)}
+            onPing={() => onPing(n.name)}
+          />
+        ))}
     </>
   );
 }
