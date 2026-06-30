@@ -1,6 +1,5 @@
 # node_modules
 node_modules/
-combine/node_modules/
 npm-debug.log*
 
 # TypeScript build output
@@ -14,6 +13,7 @@ packages/server/data/
 !.env.example
 
 # mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
+mihomo/config.yaml
 mihomo/sources.json
 mihomo/hwid.txt
 mihomo/providers/
