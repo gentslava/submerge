@@ -15,6 +15,8 @@ const envSchema = z.object({
   MIHOMO_CONFIG_TARGET: z.string().default("/root/.config/mihomo/config.yaml"),
   // Stable HWID is mirrored here so happ-decoder (unchanged) and the server agree.
   HWID_FILE: z.string().default("/mihomo/hwid.txt"),
+  // Directory of the built web SPA to serve (dev default; container overrides to an absolute path).
+  WEB_DIST: z.string().default("../web/dist"),
 });
 
 export type Env = z.infer<typeof envSchema>;

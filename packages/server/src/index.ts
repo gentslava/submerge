@@ -1,13 +1,42 @@
-import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { createServer, type ServerResponse } from "node:http";
+import { resolve } from "node:path";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import pino from "pino";
 import { createAppContext } from "./auth/context.js";
 import { env } from "./config/env.js";
 import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
+import { contentTypeFor, safeResolve } from "./static.js";
 import { appRouter } from "./trpc/router.js";
 
 const log = pino({ name: "submerge" });
+
+// Built web SPA served alongside /trpc and /healthz (same origin).
+const WEB_DIST = resolve(env.WEB_DIST);
+const INDEX_HTML = resolve(WEB_DIST, "index.html");
+
+async function serveStatic(url: string, res: ServerResponse): Promise<void> {
+  const file = safeResolve(WEB_DIST, url);
+  try {
+    if (file) {
+      const body = await readFile(file);
+      res.writeHead(200, { "content-type": contentTypeFor(file) });
+      res.end(body);
+      return;
+    }
+  } catch {
+    /* missing file → fall through to index.html (SPA route) */
+  }
+  try {
+    const html = await readFile(INDEX_HTML);
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end(html);
+  } catch {
+    res.writeHead(404);
+    res.end("not found");
+  }
+}
 
 // Apply any pending DB migrations before accepting connections
 runMigrations();
@@ -36,6 +65,10 @@ const server = createServer((req, res) => {
     return;
   }
 
+  if (req.method === "GET" || req.method === "HEAD") {
+    void serveStatic(url, res);
+    return;
+  }
   res.writeHead(404);
   res.end("not found");
 });
