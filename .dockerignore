@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+combine
+happ-decoder
+mihomo
+data
+docs
+pencil
+*.md
+**/*.test.ts
+.playwright-mcp
+smoke-*.png

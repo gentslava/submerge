@@ -9,7 +9,7 @@ Some providers bind subscriptions to a device: without the `X-Hwid` header they 
 ## Decision
 
 `X-Hwid` is an **option per source** (flag `hwid`, off by default). HWID is a single stable identifier per instance (stored in `hwid.txt`/settings). It is submitted as follows:
-- for https subscriptions — combine adds the `X-Hwid` header (+ `X-Device-Os`) when fetching;
+- for https subscriptions — the server adds the `X-Hwid` header (+ `X-Device-Os`) when fetching;
 - for `happ://` — the flag is passed to happ-decoder, and mitmproxy injects `X-Hwid` into Happ's requests to the subscription (equivalent to the "HWID toggle" in the app).
 
 ## Consequences

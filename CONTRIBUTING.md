@@ -27,7 +27,6 @@ pnpm test                              # run tests
 
 - External services (mihomo, happ-decoder) — only via `packages/server/src/clients/*`.
 - Validate external service responses with Zod.
-- Do not touch the PoC (`combine/`, `happ-decoder/`, `mihomo/`, root `docker-compose.yml`) until Phase 6.
 
 ## Documentation
 

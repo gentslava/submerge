@@ -23,15 +23,15 @@ SOCKS5/HTTP proxy via the **mihomo** engine — with a web UI for management.
                      ┌─────────────────────────────────────────┐
  clients / router →  │  mihomo (engine)  ← config.yaml         │
  matter / SOCKS      │     ▲ generated + reloaded via API      │
-                     │  combine (control plane + web UI :3000) │
+                     │  submerge (control plane + web UI :3000)│
                      │     │ kind=happ →                       │
                      │     ▼                                   │
                      │  happ-decoder (Happ + Xvfb + mitmproxy) │
                      └─────────────────────────────────────────┘
 ```
 
-- **combine** — Node service: ingest sources → generate `mihomo/config.yaml` → reload mihomo → node status; serves the web UI.
-- **happ-decoder** — the official Happ desktop binary as a `happ://` decoder: runs headless (Xvfb) through a local mitmproxy that intercepts the decoded sub-URL. Called by combine over HTTP, on demand.
+- **submerge** — the application (Node 24 + React SPA in one container): ingest sources → generate `mihomo/config.yaml` → reload mihomo → live node status; serves the web UI and the tRPC/SSE API.
+- **happ-decoder** — the official Happ desktop binary as a `happ://` decoder: runs headless (Xvfb) through a local mitmproxy that intercepts the decoded sub-URL. Called by submerge over HTTP, on demand.
 - **mihomo** — tunneling and proxy-serving engine.
 
 ## Quick start
@@ -74,7 +74,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
   -t ghcr.io/gentslava/submerge-happ-decoder:latest ./happ-decoder --push
 
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/gentslava/submerge-combine:latest ./combine --push
+  -t ghcr.io/gentslava/submerge:latest . --push
 ```
 
 `happ-decoder` selects the correct Happ `.deb` for the target architecture via `TARGETARCH`.
@@ -83,8 +83,8 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 | Variable | Service | Purpose |
 |---|---|---|
-| `MIHOMO_SECRET` | combine | mihomo API secret (default `poc` — **change in production**) |
-| `HAPP_DECODER_URL` | combine | address of the happ-decoder service |
+| `MIHOMO_SECRET` | submerge | mihomo API secret (default `poc` — **change in production**) |
+| `HAPP_DECODER_URL` | submerge | address of the happ-decoder service |
 | `HAPP_VERSION` | happ-decoder (build-arg) | Happ desktop version (key source) |
 
 **Security:** the proxy and API listen on `127.0.0.1` only. The runtime file

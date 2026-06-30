@@ -7,21 +7,27 @@ services:
       - ./mihomo:/root/.config/mihomo
     ports:
       - "127.0.0.1:7890:7890"   # SOCKS5 + HTTP (для клиентов / роутера / matter)
-      - "127.0.0.1:9090:9090"   # mihomo API (отладка; combine ходит внутри сети)
+      - "127.0.0.1:9090:9090"   # mihomo API (отладка; submerge ходит внутри сети по http://mihomo:9090)
 
-  combine:
-    build: ./combine
-    image: ghcr.io/gentslava/submerge-combine:latest
-    container_name: submerge-combine
+  submerge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/gentslava/submerge:latest
+    container_name: submerge
     restart: unless-stopped
     environment:
       MIHOMO_API: "http://mihomo:9090"
       MIHOMO_SECRET: "poc"
       HAPP_DECODER_URL: "http://happ-decoder:8080"
+      # Auth off unless ADMIN_PASSWORD is set. Behind TLS, set COOKIE_SECURE=true.
+      # ADMIN_PASSWORD: "change-me"
+      COOKIE_SECURE: "false"
     volumes:
-      - ./mihomo:/mihomo            # тот же конфиг, что монтирует mihomo
+      - ./mihomo:/mihomo            # shared config + hwid.txt (server writes config.yaml)
+      - submerge-data:/app/data     # persistent SQLite DB
     ports:
-      - "127.0.0.1:3000:3000"       # веб-UI комбайна
+      - "127.0.0.1:3000:3000"
     depends_on:
       - mihomo
       - happ-decoder
@@ -39,3 +45,6 @@ services:
       - ./mihomo:/mihomo:ro         # общий HWID (hwid.txt) для инжекта X-Hwid
     expose:
       - "8080"                      # внутренний сервис, наружу не публикуется
+
+volumes:
+  submerge-data:
