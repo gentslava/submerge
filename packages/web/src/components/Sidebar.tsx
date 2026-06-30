@@ -30,20 +30,21 @@ export function Sidebar() {
 }
 
 function Brand() {
-  // Clickable → home (Узлы). px-2.5 aligns the mark with the nav icon rail (24px
-  // from the sidebar edge); a bare 6px padding left it 4px off the nav below it.
+  // Clickable → home (Узлы); padding 6 + hover box matches the mockup brand frame.
+  // Line-heights mirror the mockup's text boxes (20px / 12px) so the two lines sit
+  // with the right gap — leading-none cramped them together.
   return (
     <Link
       to="/"
       aria-label="submerge — на главную"
-      className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-hover"
+      className="flex items-center gap-2.5 rounded-md p-1.5 transition-colors hover:bg-hover"
     >
       <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md bg-accent">
         <Waves size={18} className="text-accent-fg" />
       </span>
       <span className="flex flex-col gap-px">
-        <span className="font-mono text-cardtitle leading-none text-text-primary">submerge</span>
-        <span className="text-micro font-semibold uppercase leading-none tracking-[0.8px] text-text-tertiary">
+        <span className="font-mono text-cardtitle leading-[20px] text-text-primary">submerge</span>
+        <span className="text-micro font-semibold uppercase leading-[12px] tracking-[0.8px] text-text-tertiary">
           self-hosted
         </span>
       </span>
@@ -59,7 +60,7 @@ function NavRow({ entry }: { entry: NavEntry }) {
       <Link
         to={entry.to}
         activeOptions={{ exact: entry.to === "/" }}
-        className="flex h-10 items-center gap-2.5 rounded-md px-2.5 text-text-secondary [&.active]:bg-accent-bg [&.active]:text-accent-text"
+        className="flex h-10 items-center gap-2.5 rounded-md px-2.5 text-text-secondary transition-colors hover:bg-hover hover:text-text-primary [&.active]:bg-accent-bg [&.active]:text-accent-text [&.active]:hover:bg-accent-bg [&.active]:hover:text-accent-text"
       >
         <Icon size={18} className="shrink-0" />
         <span className="text-sm font-medium [.active_&]:font-semibold">{label}</span>
