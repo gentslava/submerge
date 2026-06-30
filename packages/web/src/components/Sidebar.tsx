@@ -30,8 +30,14 @@ export function Sidebar() {
 }
 
 function Brand() {
+  // Clickable → home (Узлы). px-2.5 aligns the mark with the nav icon rail (24px
+  // from the sidebar edge); a bare 6px padding left it 4px off the nav below it.
   return (
-    <div className="flex items-center gap-2.5 p-1.5">
+    <Link
+      to="/"
+      aria-label="submerge — на главную"
+      className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 transition-colors hover:bg-hover"
+    >
       <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md bg-accent">
         <Waves size={18} className="text-accent-fg" />
       </span>
@@ -41,7 +47,7 @@ function Brand() {
           self-hosted
         </span>
       </span>
-    </div>
+    </Link>
   );
 }
 
