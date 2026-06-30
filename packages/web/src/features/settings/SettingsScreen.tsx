@@ -96,7 +96,7 @@ export function SettingsScreen() {
   }
 
   const hwid = data?.hwid;
-  const mihomoSecretSet = data?.mihomoSecretSet === "true";
+  const mihomoSecret = data?.mihomoSecret ?? "";
   const autoStrategy = data?.autoStrategy ?? "url-test";
   const autoUrl = data?.autoTestUrl ?? AUTO_TEST_URL;
   const autoInterval = data?.autoTestInterval ?? String(AUTO_INTERVAL);
@@ -234,8 +234,9 @@ export function SettingsScreen() {
             </Row>
             <Row label="Секрет mihomo" sub="Токен для доступа к RESTful-API mihomo">
               <SecretField
-                isSet={mihomoSecretSet}
+                value={mihomoSecret}
                 onSave={(v) => settingsMutation.mutate({ key: "mihomoSecret", value: v })}
+                onCopy={() => copy(mihomoSecret)}
               />
             </Row>
             <Row label="Интервал опроса" sub="Частота обновления задержек и трафика">
@@ -352,39 +353,48 @@ function CopyBtn({ onClick, label }: { onClick(): void; label: string }) {
   );
 }
 
-// Write-only mihomo secret field. The current secret is never sent to the client
-// (so it can't leak when auth is off) — we only know whether one is set. Typing a
-// new value + blurring rotates it; the input then clears. Reveal shows what you type.
-function SecretField({ isSet, onSave }: { isSet: boolean; onSave(v: string): void }) {
+// Editable mihomo secret — masked by default with a reveal toggle + copy. Saving it
+// rotates the engine (the server rewrites + reloads the config) and re-points the client.
+function SecretField({
+  value,
+  onSave,
+  onCopy,
+}: {
+  value: string;
+  onSave(v: string): void;
+  onCopy(): void;
+}) {
   const [reveal, setReveal] = useState(false);
   return (
-    <div className="relative inline-flex">
-      <input
-        type={reveal ? "text" : "password"}
-        aria-label="Секрет mihomo"
-        placeholder={isSet ? "•••••••• задан — введите новый" : "не задан"}
-        autoComplete="off"
-        onBlur={(e) => {
-          const v = e.target.value.trim();
-          if (v) {
-            onSave(v);
-            e.target.value = "";
-          }
-        }}
-        className="h-9 w-[260px] rounded-md border border-border-default bg-input pr-9 pl-3 font-mono text-[13px] text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
-      />
-      <button
-        type="button"
-        onClick={() => setReveal((r) => !r)}
-        aria-label={reveal ? "Скрыть секрет" : "Показать секрет"}
-        className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-text-tertiary transition-colors hover:text-text-secondary"
-      >
-        {reveal ? (
-          <EyeOff className="h-4 w-4" aria-hidden="true" />
-        ) : (
-          <Eye className="h-4 w-4" aria-hidden="true" />
-        )}
-      </button>
+    <div className="flex items-center gap-2.5">
+      <div className="relative inline-flex">
+        <input
+          key={value}
+          type={reveal ? "text" : "password"}
+          aria-label="Секрет mihomo"
+          placeholder="не задан"
+          autoComplete="off"
+          defaultValue={value}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v && v !== value) onSave(v);
+          }}
+          className="h-9 w-[260px] rounded-md border border-border-default bg-input pr-9 pl-3 font-mono text-[13px] text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
+        />
+        <button
+          type="button"
+          onClick={() => setReveal((r) => !r)}
+          aria-label={reveal ? "Скрыть секрет" : "Показать секрет"}
+          className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-text-tertiary transition-colors hover:text-text-secondary"
+        >
+          {reveal ? (
+            <EyeOff className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Eye className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+      <CopyBtn onClick={onCopy} label="Скопировать секрет" />
     </div>
   );
 }

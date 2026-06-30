@@ -15,16 +15,14 @@ export function getAllSettings(db: Db): Record<string, string> {
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
-// The UI-facing settings: stored DB values plus the ensured HWID. The mihomo API
-// secret is NEVER sent to the client (it would leak to any caller when auth is
-// off) — we expose only whether one is set; the Settings field is write-only.
+// The UI-facing settings: stored DB values plus env-seeded/ensured fields. The mihomo
+// secret falls back to env until set and is admin-viewable (single-admin tool) — keep
+// the panel behind ADMIN_PASSWORD if it's network-exposed (see the deploy notes).
 export function getSettingsView(db: Db): Record<string, string> {
-  const secret = getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET;
   return {
     ...getAllSettings(db),
     hwid: getOrCreateHwid(db),
-    mihomoSecret: "", // masked — never expose the raw secret; see mihomoSecretSet
-    mihomoSecretSet: secret ? "true" : "false",
+    mihomoSecret: getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET,
   };
 }
 
