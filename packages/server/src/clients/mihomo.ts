@@ -6,6 +6,13 @@ import { env } from "../config/env.js";
 const TIMEOUT_MS = 5000;
 const TEST_URL = "https://www.gstatic.com/generate_204";
 
+// The mihomo API secret can be set/rotated from Settings; the live value lives here
+// (init from env, overridden at boot from the DB, updated after a rotation reload).
+let mihomoSecret = env.MIHOMO_SECRET;
+export function setMihomoSecret(secret: string): void {
+  mihomoSecret = secret;
+}
+
 const historyEntrySchema = z.object({ time: z.string(), delay: z.number() });
 // mihomo returns far more fields; pin only what we read, pass the rest through.
 const mihomoProxySchema = z.looseObject({
@@ -36,7 +43,7 @@ function call(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${env.MIHOMO_API}${path}`, {
     ...init,
     signal: AbortSignal.timeout(TIMEOUT_MS),
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${env.MIHOMO_SECRET}` },
+    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${mihomoSecret}` },
   });
 }
 
@@ -85,7 +92,7 @@ export async function reloadConfig(targetPath: string): Promise<void> {
 export async function* streamTraffic(signal: AbortSignal): AsyncGenerator<TrafficSample> {
   const r = await fetch(`${env.MIHOMO_API}/traffic`, {
     signal,
-    headers: { Authorization: `Bearer ${env.MIHOMO_SECRET}` },
+    headers: { Authorization: `Bearer ${mihomoSecret}` },
   });
   if (!r.ok || !r.body) throw new Error(`mihomo /traffic returned HTTP ${r.status}`);
   const stream = r.body.pipeThrough(new TextDecoderStream());

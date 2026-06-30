@@ -4,9 +4,12 @@ import { resolve } from "node:path";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import pino from "pino";
 import { createAppContext } from "./auth/context.js";
+import { setMihomoSecret } from "./clients/mihomo.js";
 import { env } from "./config/env.js";
+import { db } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
+import { getSetting } from "./modules/settings/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
 import { appRouter } from "./trpc/router.js";
 
@@ -40,6 +43,9 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
 
 // Apply any pending DB migrations before accepting connections
 runMigrations();
+
+// Use the panel-set mihomo secret (if any) before talking to the engine.
+setMihomoSecret(getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET);
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
 liveHub.start();

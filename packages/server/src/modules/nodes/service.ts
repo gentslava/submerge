@@ -35,6 +35,11 @@ export function readAutoConfig(db: Db): AutoConfig {
   };
 }
 
+// The mihomo API secret: a panel-set value (Settings) wins over the env default.
+export function readMihomoSecret(db: Db): string {
+  return getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET;
+}
+
 // Gather proxy snapshots from enabled sources, ordered by sortOrder then id.
 export function collectProxies(db: Db): ProxyConfig[] {
   const rows = db
@@ -59,7 +64,7 @@ export async function applyConfig(
   const proxies = collectProxies(db);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
-  writeFileSync(configPath, buildConfig(proxies, readAutoConfig(db)), "utf8");
+  writeFileSync(configPath, buildConfig(proxies, readAutoConfig(db), readMihomoSecret(db)), "utf8");
   await reloadConfig(targetPath);
   return { nodes: proxies.length };
 }

@@ -42,7 +42,11 @@ export const AUTO_DEFAULTS: AutoConfig = {
   switchOnTimeout: true,
 };
 
-export function buildConfig(proxies: ProxyConfig[], auto: AutoConfig = AUTO_DEFAULTS): string {
+export function buildConfig(
+  proxies: ProxyConfig[],
+  auto: AutoConfig = AUTO_DEFAULTS,
+  secret: string = env.MIHOMO_SECRET,
+): string {
   const unique = dedupeNames(proxies);
   const names = unique.map((p) => p.name);
   // The AUTO group's shape depends on its strategy (mihomo group type).
@@ -65,7 +69,7 @@ export function buildConfig(proxies: ProxyConfig[], auto: AutoConfig = AUTO_DEFA
     "log-level": "info",
     ipv6: false,
     "external-controller": "0.0.0.0:9090",
-    secret: env.MIHOMO_SECRET,
+    secret,
     proxies: unique,
     "proxy-groups": [
       { name: "PROXY", type: "select", proxies: ["AUTO", ...names, "DIRECT"] },

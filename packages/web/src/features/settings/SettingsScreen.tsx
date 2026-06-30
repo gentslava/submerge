@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy } from "lucide-react";
-import type { ReactNode } from "react";
+import { Copy, Eye, EyeOff } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -91,8 +90,7 @@ export function SettingsScreen() {
   }
 
   const hwid = data?.hwid;
-  const mihomoSecret = data?.mihomoSecret;
-  const hasSecret = typeof mihomoSecret === "string" && mihomoSecret.length > 0;
+  const mihomoSecret = data?.mihomoSecret ?? "";
   const autoStrategy = data?.autoStrategy ?? "url-test";
   const autoUrl = data?.autoTestUrl ?? AUTO_TEST_URL;
   const autoInterval = data?.autoTestInterval ?? String(AUTO_INTERVAL);
@@ -130,10 +128,7 @@ export function SettingsScreen() {
         </div>
       ) : (
         <>
-          <Section
-            title="Внешний вид"
-            desc="Оформление панели."
-          >
+          <Section title="Внешний вид" desc="Оформление панели.">
             <Row label="Тема" sub="Тёмная · светлая · системная">
               {/*
                 Theme uses localStorage (getTheme) as the source of truth, applied
@@ -224,15 +219,12 @@ export function SettingsScreen() {
                 <span className="text-sm text-text-secondary">{engine.label}</span>
               </span>
             </Row>
-            <Row label="Секрет mihomo" sub="Токен для RESTful-API контроллера">
-              {hasSecret ? (
-                <>
-                  <ValueBox className="text-text-secondary">••••••••••••</ValueBox>
-                  <CopyBtn onClick={() => copy(mihomoSecret)} label="Скопировать секрет" />
-                </>
-              ) : (
-                <Badge variant="neutral">Не задан</Badge>
-              )}
+            <Row label="Секрет mihomo" sub="Токен для доступа к RESTful-API mihomo">
+              <SecretField
+                value={mihomoSecret}
+                onSave={(v) => settingsMutation.mutate({ key: "mihomoSecret", value: v })}
+                onCopy={() => copy(mihomoSecret)}
+              />
             </Row>
             <Row label="Интервал опроса" sub="Частота обновления задержек и трафика">
               <Select
@@ -345,5 +337,50 @@ function CopyBtn({ onClick, label }: { onClick(): void; label: string }) {
     >
       <Copy className="h-4 w-4" aria-hidden="true" />
     </button>
+  );
+}
+
+// Editable mihomo secret — masked by default, with reveal + copy. Saving it re-points
+// the panel's API client to mihomo with this secret (no engine config rewrite).
+function SecretField({
+  value,
+  onSave,
+  onCopy,
+}: {
+  value: string;
+  onSave(v: string): void;
+  onCopy(): void;
+}) {
+  const [reveal, setReveal] = useState(false);
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="relative inline-flex">
+        <input
+          key={value}
+          type={reveal ? "text" : "password"}
+          aria-label="Секрет mihomo"
+          placeholder="не задан"
+          defaultValue={value}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v && v !== value) onSave(v);
+          }}
+          className="h-9 w-[260px] rounded-md border border-border-default bg-input pr-9 pl-3 font-mono text-[13px] text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
+        />
+        <button
+          type="button"
+          onClick={() => setReveal((r) => !r)}
+          aria-label={reveal ? "Скрыть секрет" : "Показать секрет"}
+          className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-text-tertiary transition-colors hover:text-text-secondary"
+        >
+          {reveal ? (
+            <EyeOff className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Eye className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+      <CopyBtn onClick={onCopy} label="Скопировать секрет" />
+    </div>
   );
 }

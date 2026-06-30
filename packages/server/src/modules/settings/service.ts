@@ -21,7 +21,7 @@ export function getSettingsView(db: Db): Record<string, string> {
   return {
     ...getAllSettings(db),
     hwid: getOrCreateHwid(db),
-    mihomoSecret: env.MIHOMO_SECRET,
+    mihomoSecret: getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET,
   };
 }
 
