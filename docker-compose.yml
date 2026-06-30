@@ -1,3 +1,6 @@
+# Deploy compose — pulls prebuilt images from GHCR (built by .github/workflows/docker.yml
+# on push to master). To build locally instead: `docker build -t ghcr.io/gentslava/submerge .`
+# and `docker build -t ghcr.io/gentslava/submerge-happ-decoder ./happ-decoder`.
 services:
   mihomo:
     image: metacubex/mihomo:latest
@@ -10,9 +13,6 @@ services:
       - "127.0.0.1:9090:9090"   # mihomo API (отладка; submerge ходит внутри сети по http://mihomo:9090)
 
   submerge:
-    build:
-      context: .
-      dockerfile: Dockerfile
     image: ghcr.io/gentslava/submerge:latest
     container_name: submerge
     restart: unless-stopped
@@ -33,10 +33,6 @@ services:
       - happ-decoder
 
   happ-decoder:
-    build:
-      context: ./happ-decoder
-      args:
-        HAPP_VERSION: "2.18.3"
     image: ghcr.io/gentslava/submerge-happ-decoder:latest
     container_name: submerge-happ-decoder
     restart: unless-stopped

@@ -51,7 +51,7 @@ pnpm -F @submerge/server db:generate    # generate migration from schema
 pnpm -F @submerge/web design:tokens      # sync index.css color tokens from pencil/web-ui.pen
 ```
 
-Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` specifiers in nodenext mode). Deploy: `docker compose up -d --build` brings up `mihomo` + `submerge` + `happ-decoder`; the UI is at `http://127.0.0.1:3000`.
+Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` specifiers in nodenext mode). Deploy: `docker compose up -d` pulls the GHCR images (built by `.github/workflows/docker.yml` on push to master) for `submerge` + `happ-decoder`, plus `mihomo`; the UI is at `http://127.0.0.1:3000`.
 
 ## Deploy
 
