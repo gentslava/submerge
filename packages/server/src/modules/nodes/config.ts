@@ -22,7 +22,19 @@ export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
   });
 }
 
-export function buildConfig(proxies: ProxyConfig[]): string {
+// AUTO (url-test) group tuning — editable via Settings; defaults baked here.
+export interface AutoConfig {
+  url: string;
+  interval: number; // seconds between mihomo re-tests
+  tolerance: number; // ms hysteresis before switching nodes
+}
+export const AUTO_DEFAULTS: AutoConfig = {
+  url: "https://www.gstatic.com/generate_204",
+  interval: 300,
+  tolerance: 50,
+};
+
+export function buildConfig(proxies: ProxyConfig[], auto: AutoConfig = AUTO_DEFAULTS): string {
   const unique = dedupeNames(proxies);
   const names = unique.map((p) => p.name);
   const cfg = {
@@ -40,9 +52,9 @@ export function buildConfig(proxies: ProxyConfig[]): string {
       {
         name: "AUTO",
         type: "url-test",
-        url: "https://www.gstatic.com/generate_204",
-        interval: 300,
-        tolerance: 50,
+        url: auto.url,
+        interval: auto.interval,
+        tolerance: auto.tolerance,
         proxies: names.length ? names : ["DIRECT"],
       },
     ],
