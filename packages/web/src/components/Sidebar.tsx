@@ -85,26 +85,21 @@ function NavRow({ entry }: { entry: NavEntry }) {
     );
   }
 
-  // Inert placeholder — no route/screen yet. Rendered with the mockup's row
-  // markup but non-navigating.
+  // Inert placeholder — no screen yet: dimmed, non-navigating, tagged "СКОРО".
   return (
     // biome-ignore lint/a11y/useSemanticElements: inert nav entry — a real <a> would imply a navigable destination
     <div
       role="link"
       aria-disabled="true"
-      aria-label={entry.soon ? `${label} (скоро)` : label}
+      aria-label={`${label} (скоро)`}
       tabIndex={-1}
-      className={`flex h-10 cursor-default items-center gap-2.5 rounded-md px-2.5 text-text-secondary ${
-        entry.soon ? "opacity-50" : ""
-      }`}
+      className="flex h-10 cursor-default items-center gap-2.5 rounded-md px-2.5 text-text-secondary opacity-50"
     >
       <Icon size={18} className="shrink-0" />
       <span className="flex-1 text-sm font-medium">{label}</span>
-      {entry.soon && (
-        <span className="rounded-full bg-hover px-[7px] py-0.5 text-[9px] font-semibold tracking-[0.4px] text-text-secondary">
-          СКОРО
-        </span>
-      )}
+      <span className="rounded-full bg-hover px-[7px] py-0.5 text-[9px] font-semibold tracking-[0.4px] text-text-secondary">
+        СКОРО
+      </span>
     </div>
   );
 }

@@ -18,13 +18,14 @@ export interface NavLink {
   icon: LucideIcon;
 }
 
-/** A nav entry with no screen yet — rendered inert (no route, no navigation). */
+/**
+ * A nav entry with no screen yet — rendered inert (no route, no navigation),
+ * dimmed and tagged "СКОРО".
+ */
 export interface NavPlaceholder {
   kind: "placeholder";
   label: string;
   icon: LucideIcon;
-  /** Dim + show a "СКОРО" badge (only Маршрутизация in the mockup). */
-  soon?: boolean;
 }
 
 export type NavEntry = NavLink | NavPlaceholder;
@@ -37,7 +38,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/", label: "Узлы", icon: Server },
   { kind: "placeholder", label: "Трафик", icon: Activity },
   { kind: "placeholder", label: "Соединения", icon: Cable },
-  { kind: "placeholder", label: "Маршрутизация", icon: Route, soon: true },
+  { kind: "placeholder", label: "Маршрутизация", icon: Route },
   { kind: "placeholder", label: "Логи", icon: SquareTerminal },
   { kind: "link", to: "/sources", label: "Источники", icon: Layers },
   { kind: "placeholder", label: "Диагностика", icon: Stethoscope },
