@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Copy, Power, RotateCw } from "lucide-react";
+import { Copy, Power, RotateCw, Waves } from "lucide-react";
 import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
@@ -29,29 +29,6 @@ export function Sidebar() {
   );
 }
 
-// Bespoke brand mark — a submarine periscope: submerged (private) yet reaching the
-// surface (the internet). lucide has no periscope, so the logo is owned in code.
-function PeriscopeMark({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <rect x="4" y="3" width="9" height="6" rx="2" />
-      <path d="M13 6h1.5" />
-      <circle cx="16.7" cy="6" r="1.6" fill="currentColor" stroke="none" />
-      <path d="M8.5 9v9" />
-      <path d="M6 18.5h5" />
-    </svg>
-  );
-}
-
 function Brand() {
   // Clickable → home (Узлы); padding 6 + hover box matches the mockup brand frame.
   // Line-heights mirror the mockup's text boxes (20px / 12px) so the two lines sit
@@ -63,7 +40,7 @@ function Brand() {
       className="flex items-center gap-2.5 rounded-md p-1.5 transition-colors hover:bg-hover"
     >
       <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md bg-accent">
-        <PeriscopeMark className="h-[18px] w-[18px] text-accent-fg" />
+        <Waves size={18} className="text-accent-fg" />
       </span>
       <span className="flex flex-col gap-px">
         <span className="font-mono text-cardtitle leading-[20px] text-text-primary">submerge</span>
