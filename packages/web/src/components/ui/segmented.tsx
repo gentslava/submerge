@@ -18,23 +18,25 @@ export function Segmented({ options, value, onChange, "aria-label": ariaLabel }:
     <div
       role="group"
       aria-label={ariaLabel}
-      className="inline-flex rounded-lg border border-border-default bg-elevated p-0.5"
+      className="inline-flex gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]"
     >
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={cn(
-            "min-h-8 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border",
-            opt.value === value
-              ? "bg-surface text-text-primary shadow-sm"
-              : "text-text-secondary hover:text-text-primary",
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            aria-current={active ? "true" : undefined}
+            className={cn(
+              "rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border",
+              active ? "bg-accent text-accent-fg" : "text-text-secondary hover:text-text-primary",
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

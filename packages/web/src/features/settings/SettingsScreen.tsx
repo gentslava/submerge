@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
+import type { ReactNode } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +12,12 @@ import { PROXY_ENDPOINT } from "@/lib/constants";
 import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
+
+// Read-only url-test config (mirrors server nodes/config.ts; not yet editable).
+const AUTO_TEST_URL = "https://www.gstatic.com/generate_204";
+const AUTO_INTERVAL = 300; // url-test group interval (s)
+const AUTO_TOLERANCE = 50; // url-test tolerance (ms)
 
 export function SettingsScreen() {
   const trpc = useTRPC();
@@ -44,9 +50,9 @@ export function SettingsScreen() {
     settingsMutation.mutate({ key: "pollInterval", value: String(n) });
   }
 
-  async function copyHwid(hwid: string) {
+  async function copy(text: string) {
     try {
-      await navigator.clipboard.writeText(hwid);
+      await navigator.clipboard.writeText(text);
       toast.success("Скопировано");
     } catch {
       toast.error("Не удалось скопировать");
@@ -55,39 +61,41 @@ export function SettingsScreen() {
 
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret;
+  const hasSecret = typeof mihomoSecret === "string" && mihomoSecret.length > 0;
 
   return (
-    <div className="mx-auto max-w-4xl p-4 md:p-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-text-primary">Настройки</h1>
-        <p className="text-sm text-text-secondary">Тема, подключение и идентификатор устройства</p>
+    <div className="flex flex-col gap-[26px] px-8 pt-[26px] pb-10">
+      <header className="flex flex-col gap-[5px]">
+        <h1 className="text-h1 text-text-primary">Настройки</h1>
+        <p className="text-sub text-text-secondary">
+          Локальная конфигурация панели и движка mihomo
+        </p>
       </header>
 
       {settingsQuery.isLoading ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-[26px]">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-32 w-full" />
+            <Skeleton key={i} className="h-[120px] w-full rounded-lg" />
           ))}
         </div>
       ) : settingsQuery.isError ? (
-        <div className="rounded-xl border border-border-subtle bg-surface p-8 text-center text-text-secondary">
-          Не удалось загрузить настройки.{" "}
-          <Button variant="ghost" size="sm" onClick={() => settingsQuery.refetch()}>
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-border-subtle bg-surface p-10 text-center text-text-secondary">
+          <span>Не удалось загрузить настройки.</span>
+          <Button variant="secondary" size="sm" onClick={() => settingsQuery.refetch()}>
             Повторить
           </Button>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          <Card className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-text-primary">Внешний вид</h2>
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-sm text-text-secondary">Тема</span>
+        <>
+          <Section
+            title="Внешний вид"
+            desc="Оформление панели. В этой итерации отполирована тёмная тема."
+          >
+            <Row label="Тема" sub="Тёмная · светлая">
               {/*
                 Theme uses localStorage (getTheme) as the source of truth, applied
-                synchronously on load before React renders. data?.theme is persisted to
-                the server for cross-device parity but is intentionally NOT read back here:
-                for this single-admin app the local choice wins, so this divergence is by
-                design, not an oversight.
+                synchronously on load. data?.theme is persisted server-side for parity
+                but intentionally not read back: the local choice wins (single admin).
               */}
               <Segmented
                 aria-label="Тема"
@@ -102,70 +110,77 @@ export function SettingsScreen() {
                   settingsMutation.mutate({ key: "theme", value: t });
                 }}
               />
-            </div>
-          </Card>
+            </Row>
+          </Section>
 
-          <Card className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-text-primary">Подключение</h2>
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-text-secondary">Прокси</span>
-                <span className="rounded-md bg-elevated px-2.5 py-1 font-mono text-xs text-text-tertiary">
-                  {PROXY_ENDPOINT}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-text-secondary">mihomo secret</span>
-                {typeof mihomoSecret === "string" && mihomoSecret.length > 0 ? (
-                  <Badge variant="accent">Задан</Badge>
-                ) : (
-                  <Badge variant="neutral">Не задан</Badge>
-                )}
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-text-secondary">Интервал опроса, с</span>
-                <Input
-                  key={data?.pollInterval ?? "5"}
-                  type="number"
-                  aria-label="Интервал опроса (секунды)"
-                  min={1}
-                  step={1}
-                  defaultValue={data?.pollInterval ?? "5"}
-                  onBlur={(e) => persistInterval(e.target.value)}
-                  className="w-24"
-                />
-              </div>
-            </div>
-          </Card>
+          <Section
+            title="Авто-выбор узла"
+            desc="Политика группы PROXY: submerge сам держит активным лучший узел (mihomo url-test)."
+          >
+            <Row label="Стратегия" sub="Тип группы PROXY">
+              <ValueBox>Авто · url-test</ValueBox>
+            </Row>
+            <Row label="Тест-URL" sub="Куда mihomo шлёт проверочный запрос">
+              <ValueBox className="max-w-[360px]">{AUTO_TEST_URL}</ValueBox>
+            </Row>
+            <Row label="Интервал проверки" sub="Как часто mihomo переопрашивает группу">
+              <ValueBox>{AUTO_INTERVAL} с</ValueBox>
+            </Row>
+            <Row label="Допуск" sub="Порог переключения между узлами">
+              <ValueBox>{AUTO_TOLERANCE} мс</ValueBox>
+            </Row>
+          </Section>
 
-          <Card className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-text-primary">HWID</h2>
-            {hwid ? (
-              <div className="flex items-center justify-between gap-3">
-                <span title={hwid} className="truncate font-mono text-xs text-text-secondary">
-                  {hwid}
+          <Section title="Подключение" desc="Доступ к API mihomo и локальному прокси.">
+            <Row label="Секрет mihomo" sub="Токен для RESTful-API контроллера">
+              {hasSecret ? (
+                <>
+                  <ValueBox className="text-text-secondary">••••••••••••</ValueBox>
+                  <CopyBtn onClick={() => copy(mihomoSecret)} label="Скопировать секрет" />
+                </>
+              ) : (
+                <Badge variant="neutral">Не задан</Badge>
+              )}
+            </Row>
+            <Row label="Интервал опроса" sub="Частота обновления задержек и трафика">
+              <Input
+                key={data?.pollInterval ?? "5"}
+                type="number"
+                aria-label="Интервал опроса (секунды)"
+                min={1}
+                step={1}
+                defaultValue={data?.pollInterval ?? "5"}
+                onBlur={(e) => persistInterval(e.target.value)}
+                className="w-[72px] text-center font-mono"
+              />
+              <span className="text-sm text-text-tertiary">с</span>
+            </Row>
+            <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP, только чтение">
+              <ValueBox>{PROXY_ENDPOINT}</ValueBox>
+              <CopyBtn onClick={() => copy(PROXY_ENDPOINT)} label="Скопировать адрес" />
+            </Row>
+          </Section>
+
+          <Section title="HWID" desc="Идентификатор устройства для источников с привязкой.">
+            <Row label="Текущий HWID" sub="Передаётся источникам с включённой привязкой">
+              {hwid ? (
+                <>
+                  <ValueBox className="max-w-[260px]" title={hwid}>
+                    {hwid}
+                  </ValueBox>
+                  <CopyBtn onClick={() => copy(hwid)} label="Скопировать HWID" />
+                </>
+              ) : (
+                <span className="text-xs text-text-tertiary">
+                  Будет создан при первом обращении к happ-источнику
                 </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Скопировать HWID"
-                  onClick={() => void copyHwid(hwid)}
-                >
-                  <Copy size={16} />
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-text-tertiary">
-                Будет создан при первом обращении к happ-источнику
-              </p>
-            )}
-          </Card>
+              )}
+            </Row>
+          </Section>
 
           {authStatus.data?.required ? (
-            <Card className="p-5">
-              <h2 className="mb-4 text-sm font-semibold text-text-primary">Сессия</h2>
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-sm text-text-secondary">Выйти из аккаунта</span>
+            <Section title="Сессия" desc="Доступ к панели администратора.">
+              <Row label="Выйти из аккаунта" sub="Завершить текущую сессию">
                 <Button
                   variant="destructive"
                   disabled={logout.isPending}
@@ -173,11 +188,72 @@ export function SettingsScreen() {
                 >
                   Выйти
                 </Button>
-              </div>
-            </Card>
+              </Row>
+            </Section>
           ) : null}
-        </div>
+        </>
       )}
     </div>
+  );
+}
+
+function Section({ title, desc, children }: { title: string; desc: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3.5">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-cardtitle text-text-primary">{title}</h2>
+        <p className="text-sub text-text-secondary">{desc}</p>
+      </div>
+      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+function Row({ label, sub, children }: { label: string; sub: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-6 border-b border-border-subtle px-[18px] py-4 last:border-0">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="text-sm font-medium text-text-primary">{label}</span>
+        <span className="text-xs text-text-tertiary">{sub}</span>
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5">{children}</div>
+    </div>
+  );
+}
+
+function ValueBox({
+  children,
+  className,
+  title,
+}: {
+  children: ReactNode;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-block max-w-full truncate rounded-md border border-border-default bg-input px-3 py-[9px] align-middle font-mono text-[13px] text-text-primary",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function CopyBtn({ onClick, label }: { onClick(): void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-hover hover:text-text-secondary"
+    >
+      <Copy className="h-4 w-4" aria-hidden="true" />
+    </button>
   );
 }
