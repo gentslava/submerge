@@ -6,7 +6,7 @@ import {
   DEFAULT_POLL_INTERVAL,
 } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Eye, EyeOff } from "lucide-react";
+import { Copy, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -86,15 +86,6 @@ export function SettingsScreen() {
     const v = raw.trim();
     if (v.length === 0) return;
     settingsMutation.mutate({ key, value: v });
-  }
-
-  async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Скопировано");
-    } catch {
-      toast.error("Не удалось скопировать");
-    }
   }
 
   const hwid = data?.hwid;
@@ -238,7 +229,6 @@ export function SettingsScreen() {
               <SecretField
                 value={mihomoSecret}
                 onSave={(v) => settingsMutation.mutate({ key: "mihomoSecret", value: v })}
-                onCopy={() => copy(mihomoSecret)}
               />
             </Row>
             <Row label="Интервал опроса" sub="Частота обновления задержек и трафика">
@@ -253,20 +243,14 @@ export function SettingsScreen() {
               </Select>
             </Row>
             <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP, только чтение">
-              <ValueBox>{PROXY_ENDPOINT}</ValueBox>
-              <CopyBtn onClick={() => copy(PROXY_ENDPOINT)} label="Скопировать адрес" />
+              <CopyValue value={PROXY_ENDPOINT} copyLabel="Скопировать адрес" />
             </Row>
           </Section>
 
           <Section title="HWID" desc="Идентификатор устройства для источников с привязкой.">
             <Row label="Текущий HWID" sub="Передаётся источникам с включённой привязкой">
               {hwid ? (
-                <>
-                  <ValueBox className="max-w-[260px]" title={hwid}>
-                    {hwid}
-                  </ValueBox>
-                  <CopyBtn onClick={() => copy(hwid)} label="Скопировать HWID" />
-                </>
+                <CopyValue value={hwid} copyLabel="Скопировать HWID" />
               ) : (
                 <span className="text-xs text-text-tertiary">
                   Будет создан при первом обращении к happ-источнику
@@ -320,83 +304,94 @@ function Row({ label, sub, children }: { label: string; sub: string; children: R
   );
 }
 
-function ValueBox({
-  children,
-  className,
-  title,
-}: {
-  children: ReactNode;
-  className?: string;
-  title?: string;
-}) {
+// Copy text to the clipboard with a toast — shared by every inline copy button.
+async function copyToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast.success("Скопировано");
+  } catch {
+    toast.error("Не удалось скопировать");
+  }
+}
+
+// Shared field shell — a 320px box (mockup Pnnav: bg-input, border, radius) holding the
+// value/input on the left and inline trailing icon buttons (reveal/copy) on the right.
+// Keeping copy INSIDE the box keeps copyable fields the same width and aligned.
+function FieldShell({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <span
-      title={title}
+    <div
       className={cn(
-        "inline-block max-w-full truncate rounded-md border border-border-default bg-input px-3 py-[9px] align-middle font-mono text-[13px] text-text-primary",
+        "flex h-9 w-[320px] items-center gap-2.5 rounded-md border border-border-default bg-input px-3",
         className,
       )}
     >
       {children}
-    </span>
+    </div>
   );
 }
 
-function CopyBtn({ onClick, label }: { onClick(): void; label: string }) {
+// A 15px inline icon button (reveal / copy) that lives inside a FieldShell.
+function FieldIcon({
+  onClick,
+  label,
+  icon: Icon,
+}: {
+  onClick(): void;
+  label: string;
+  icon: LucideIcon;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="flex h-8 w-8 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-hover hover:text-text-secondary"
+      className="flex shrink-0 items-center text-text-tertiary transition-colors hover:text-text-secondary"
     >
-      <Copy className="h-4 w-4" aria-hidden="true" />
+      <Icon className="h-[15px] w-[15px]" aria-hidden="true" />
     </button>
   );
 }
 
-// Editable mihomo secret — masked by default with a reveal toggle + copy. Saving it
-// rotates the engine (the server rewrites + reloads the config) and re-points the client.
-function SecretField({
-  value,
-  onSave,
-  onCopy,
-}: {
-  value: string;
-  onSave(v: string): void;
-  onCopy(): void;
-}) {
+// Read-only value with an inline copy button (proxy address, HWID).
+function CopyValue({ value, copyLabel }: { value: string; copyLabel: string }) {
+  return (
+    <FieldShell>
+      <span
+        title={value}
+        className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-primary"
+      >
+        {value}
+      </span>
+      <FieldIcon onClick={() => copyToClipboard(value)} label={copyLabel} icon={Copy} />
+    </FieldShell>
+  );
+}
+
+// Editable mihomo secret — masked by default with reveal + copy inline (mockup Pnnav).
+// Saving rotates the engine (server rewrites + reloads the config) and re-points the client.
+function SecretField({ value, onSave }: { value: string; onSave(v: string): void }) {
   const [reveal, setReveal] = useState(false);
   return (
-    <div className="flex items-center gap-2.5">
-      <div className="relative inline-flex">
-        <input
-          key={value}
-          type={reveal ? "text" : "password"}
-          aria-label="Секрет mihomo"
-          placeholder="не задан"
-          autoComplete="off"
-          defaultValue={value}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v && v !== value) onSave(v);
-          }}
-          className="h-9 w-[260px] rounded-md border border-border-default bg-input pr-9 pl-3 font-mono text-[13px] text-text-primary placeholder:text-text-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
-        />
-        <button
-          type="button"
-          onClick={() => setReveal((r) => !r)}
-          aria-label={reveal ? "Скрыть секрет" : "Показать секрет"}
-          className="absolute top-1/2 right-1.5 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-text-tertiary transition-colors hover:text-text-secondary"
-        >
-          {reveal ? (
-            <EyeOff className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <Eye className="h-4 w-4" aria-hidden="true" />
-          )}
-        </button>
-      </div>
-      <CopyBtn onClick={onCopy} label="Скопировать секрет" />
-    </div>
+    <FieldShell>
+      <input
+        key={value}
+        type={reveal ? "text" : "password"}
+        aria-label="Секрет mihomo"
+        placeholder="не задан"
+        autoComplete="off"
+        defaultValue={value}
+        onBlur={(e) => {
+          const v = e.target.value.trim();
+          if (v && v !== value) onSave(v);
+        }}
+        className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-text-primary outline-none placeholder:text-text-tertiary"
+      />
+      <FieldIcon
+        onClick={() => setReveal((r) => !r)}
+        label={reveal ? "Скрыть секрет" : "Показать секрет"}
+        icon={reveal ? EyeOff : Eye}
+      />
+      <FieldIcon onClick={() => copyToClipboard(value)} label="Скопировать секрет" icon={Copy} />
+    </FieldShell>
   );
 }
