@@ -1,53 +1,93 @@
-import type { NodeItem } from "@submerge/shared";
-import { LatencyBars } from "@/components/LatencyBars";
-import { Card } from "@/components/ui/card";
+import type { NodeItem, TrafficSample } from "@submerge/shared";
 import { cn } from "@/lib/utils";
-import type { LatencyClass } from "./nodeView";
-import { latencyClass } from "./nodeView";
-
-const latencyTextColors: Record<LatencyClass, string> = {
-  online: "text-online",
-  slow: "text-slow",
-  timeout: "text-timeout",
-  idle: "text-text-tertiary",
-};
+import { LatencyChart } from "./LatencyChart";
+import { formatRate, isPseudo, latencyClass, latencyTextColors, typeBadges } from "./nodeView";
 
 interface ActiveNodeCardProps {
   now: string | null;
   all: NodeItem[];
   history: number[];
+  traffic: readonly TrafficSample[];
 }
 
-export function ActiveNodeCard({ now, all, history }: ActiveNodeCardProps) {
+export function ActiveNodeCard({ now, all, history, traffic }: ActiveNodeCardProps) {
   const active = now != null ? all.find((n) => n.name === now) : undefined;
+  const isAuto = now === "AUTO";
+  const latest = traffic.at(-1);
+
+  const delayClass = latencyClass(active?.delay ?? null);
+  const delayValue = active?.delay != null && active.delay > 0 ? active.delay : null;
+  const badges = active && !isPseudo(active.name) ? typeBadges(active) : [];
 
   return (
-    <Card className="p-5">
-      <p className="mb-2 text-xs font-semibold tracking-wide text-accent-text">АКТИВНЫЙ УЗЕЛ</p>
-      {active == null ? (
-        <p className="text-text-tertiary">Нет активного узла</p>
-      ) : (
-        <>
-          <p className="mb-3 font-mono text-xl text-text-primary">{active.name}</p>
-          <div className="flex items-end gap-4">
-            <div className="flex items-baseline gap-1">
+    <section className="flex flex-col gap-7 rounded-xl border border-border-subtle bg-surface p-[22px] lg:flex-row">
+      <div className="flex flex-1 flex-col gap-[18px]">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-[11px] font-semibold tracking-[0.6px] text-text-tertiary">
+            АКТИВНЫЙ УЗЕЛ
+          </span>
+          {active != null && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-[11px] font-semibold text-accent-text">
+              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-accent-text" />
+              Активен
+            </span>
+          )}
+          {isAuto && (
+            <span className="inline-flex items-center rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-[11px] font-semibold text-accent-text">
+              АВТО
+            </span>
+          )}
+        </div>
+
+        <h2 className="text-[23px] font-semibold text-text-primary">
+          {active?.name ?? "Нет активного узла"}
+        </h2>
+
+        {badges.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            {badges.map((b) => (
               <span
-                className={cn(
-                  "font-mono text-3xl font-semibold",
-                  latencyTextColors[latencyClass(active.delay)],
-                )}
+                key={b}
+                className="rounded-full bg-hover px-2 py-0.5 font-mono text-[11px] text-text-secondary"
               >
-                {active.delay != null && active.delay > 0 ? active.delay : "—"}
+                {b}
               </span>
-              <span className="text-sm text-text-tertiary">ms</span>
-            </div>
-            <LatencyBars
-              values={history.length ? history : [active.delay ?? 0]}
-              className="flex-1"
-            />
+            ))}
           </div>
-        </>
-      )}
-    </Card>
+        )}
+
+        <div className="flex flex-wrap items-end gap-x-[34px] gap-y-4">
+          <Stat label="ЗАДЕРЖКА">
+            <span
+              className={cn("font-mono text-[30px] font-semibold", latencyTextColors[delayClass])}
+            >
+              {delayValue ?? "—"}
+            </span>
+            <span className="text-sm text-text-tertiary"> ms</span>
+          </Stat>
+          <Stat label="ПРИНЯТО">
+            <span className="font-mono text-[20px] font-semibold text-text-primary">
+              {latest ? formatRate(latest.down) : "—"}
+            </span>
+          </Stat>
+          <Stat label="ОТДАНО">
+            <span className="font-mono text-[20px] font-semibold text-text-primary">
+              {latest ? formatRate(latest.up) : "—"}
+            </span>
+          </Stat>
+        </div>
+      </div>
+
+      <LatencyChart history={history} />
+    </section>
+  );
+}
+
+function Stat({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-semibold tracking-[0.4px] text-text-tertiary">{label}</span>
+      <span className="leading-none">{children}</span>
+    </div>
   );
 }

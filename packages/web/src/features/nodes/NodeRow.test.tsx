@@ -3,11 +3,17 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NodeRow } from "./NodeRow";
 
+const base = {
+  isActive: false,
+  onSelect: vi.fn(),
+  onPing: vi.fn(),
+};
+
 describe("NodeRow", () => {
-  it("renders latency label and calls onSelect when Выбрать is clicked", () => {
+  it("renders the latency label and calls onSelect when Выбрать is clicked", () => {
     const item: NodeItem = { name: "NL-1", type: "vless", delay: 47 };
     const onSelect = vi.fn();
-    render(<NodeRow item={item} isActive={false} onSelect={onSelect} />);
+    render(<NodeRow {...base} item={item} onSelect={onSelect} />);
 
     expect(screen.getByText("47 ms")).toBeInTheDocument();
 
@@ -15,16 +21,32 @@ describe("NodeRow", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it("shows timeout label for a non-positive delay", () => {
+  it("renders the sublabel when provided", () => {
+    const item: NodeItem = { name: "NL-1", type: "vless", delay: 47 };
+    render(<NodeRow {...base} item={item} sublabel="vless" />);
+
+    expect(screen.getByText("vless")).toBeInTheDocument();
+  });
+
+  it("shows the timeout label for a non-positive delay", () => {
     const item: NodeItem = { name: "NL-1", type: "vless", delay: 0 };
-    render(<NodeRow item={item} isActive={false} onSelect={vi.fn()} />);
+    render(<NodeRow {...base} item={item} />);
 
     expect(screen.getByText("timeout")).toBeInTheDocument();
   });
 
-  it("shows the active badge and no Выбрать button when active", () => {
+  it("calls onPing when the per-row ping button is clicked", () => {
     const item: NodeItem = { name: "NL-1", type: "vless", delay: 47 };
-    render(<NodeRow item={item} isActive={true} onSelect={vi.fn()} />);
+    const onPing = vi.fn();
+    render(<NodeRow {...base} item={item} onPing={onPing} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Пинговать NL-1" }));
+    expect(onPing).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the Активен action and no Выбрать button when active", () => {
+    const item: NodeItem = { name: "NL-1", type: "vless", delay: 47 };
+    render(<NodeRow {...base} item={item} isActive={true} />);
 
     expect(screen.getByText("Активен")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Выбрать" })).toBeNull();
