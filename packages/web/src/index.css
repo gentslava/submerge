@@ -128,4 +128,12 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
+
+  /* Interactive elements show the pointer cursor — Tailwind v4 no longer defaults
+     buttons to it, so custom <button>s (segmented tabs, icon buttons) needed this. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for] {
+    cursor: pointer;
+  }
 }
