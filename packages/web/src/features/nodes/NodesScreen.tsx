@@ -24,7 +24,7 @@ import { isPseudo } from "./nodeView";
 export function NodesScreen() {
   const trpc = useTRPC();
   const qc = useQueryClient();
-  const { latency, latencyLive, totals } = useLiveState();
+  const { latency, totals } = useLiveState();
 
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
@@ -148,13 +148,11 @@ export function NodesScreen() {
           now={now}
           autoNow={autoNow}
           isAuto={isAuto}
-          pollInterval={pollInterval}
           auto={auto}
           all={all}
           sources={sourcesQuery.data ?? []}
           totals={totals}
           latency={latency}
-          latencyLive={latencyLive}
           pingingNames={pingingNames}
           selectPending={select.isPending}
           onSelect={(name) => select.mutate({ group: "PROXY", name })}
@@ -171,13 +169,11 @@ function Body({
   now,
   autoNow,
   isAuto,
-  pollInterval,
   auto,
   all,
   sources,
   totals,
   latency,
-  latencyLive,
   pingingNames,
   selectPending,
   onSelect,
@@ -188,13 +184,11 @@ function Body({
   now: string | null;
   autoNow: string | null;
   isAuto: boolean;
-  pollInterval: number;
   auto: AutoInfo;
   all: NodeItem[];
   sources: Source[];
   totals: ReturnType<typeof useLiveState>["totals"];
   latency: ReturnType<typeof useLiveState>["latency"];
-  latencyLive: ReturnType<typeof useLiveState>["latencyLive"];
   pingingNames: Set<string>;
   selectPending: boolean;
   onSelect: (name: string) => void;
@@ -220,8 +214,7 @@ function Body({
         all={all}
         totals={totals}
         latency={latency}
-        latencyLive={latencyLive}
-        pollInterval={pollInterval}
+        checkInterval={auto.interval}
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">

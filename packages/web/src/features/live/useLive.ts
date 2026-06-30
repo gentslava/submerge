@@ -13,10 +13,6 @@ export interface LiveState {
   // Active node's latency series (ms; 0 = timeout), one sample appended per poll.
   // mihomo only keeps ~10 history entries, so we accumulate here for a longer chart.
   latency: readonly number[];
-  // How many tail samples were measured at the panel poll cadence (vs seeded from
-  // mihomo's history, which is recorded at the url-test interval). The time axis is
-  // only precise once this covers the whole shown window.
-  latencyLive: number;
   // Cumulative bytes received/sent since mihomo started (принято / отдано).
   totals: { up: number; down: number } | null;
 }
@@ -28,16 +24,11 @@ export function useLive(): LiveState {
   const buffer = useRef(new RingBuffer<TrafficSample>(TRAFFIC_WINDOW));
   // Accumulated latency series keyed by the active node — reset when it changes,
   // seeded from mihomo's recent history, then extended one sample per poll.
-  const latency = useRef<{ name: string | null; values: number[]; live: number }>({
-    name: null,
-    values: [],
-    live: 0,
-  });
+  const latency = useRef<{ name: string | null; values: number[] }>({ name: null, values: [] });
   const [state, setState] = useState<LiveState>({
     traffic: [],
     mihomo: null,
     latency: [],
-    latencyLive: 0,
     totals: null,
   });
 
@@ -54,18 +45,20 @@ export function useLive(): LiveState {
           const node = active ? view.all.find((n) => n.name === active) : undefined;
           const lat = latency.current;
           if (active !== lat.name) {
-            // Active node changed → reseed the series from its recorded history. Those
-            // samples aren't at the poll cadence, so live resets to 0.
+            // Active node changed → seed from its recorded check history (mihomo's
+            // url-test log). 0 = timeout, kept as a failure spike.
             lat.name = active;
             lat.values = node ? node.history.slice(-LATENCY_WINDOW) : [];
-            lat.live = 0;
           } else if (node) {
-            // Same node → append this poll's fresh measurement (0 = timeout).
-            const d = node.delay != null && node.delay > 0 ? node.delay : 0;
-            lat.values = [...lat.values, d].slice(-LATENCY_WINDOW);
-            lat.live = Math.min(lat.live + 1, LATENCY_WINDOW);
+            // Same node → append ONLY when mihomo recorded a NEW check (its latest
+            // history entry changed). The panel no longer probes per poll, so the chart
+            // advances at mihomo's url-test (check) interval — not on every poll.
+            const latest = node.history.at(-1);
+            if (latest !== undefined && latest !== lat.values.at(-1)) {
+              lat.values = [...lat.values, latest].slice(-LATENCY_WINDOW);
+            }
           }
-          setState((s) => ({ ...s, latency: lat.values, latencyLive: lat.live }));
+          setState((s) => ({ ...s, latency: lat.values }));
         } else if (evt.type === "traffic") {
           buffer.current.push({ up: evt.up, down: evt.down });
           setState((s) => ({ ...s, traffic: [...buffer.current.toArray()] }));

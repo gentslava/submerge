@@ -17,8 +17,7 @@ interface ActiveNodeCardProps {
   all: NodeItem[];
   totals: { up: number; down: number } | null;
   latency: readonly number[];
-  latencyLive: number;
-  pollInterval: number;
+  checkInterval: number;
 }
 
 export function ActiveNodeCard({
@@ -27,8 +26,7 @@ export function ActiveNodeCard({
   all,
   totals,
   latency,
-  latencyLive,
-  pollInterval,
+  checkInterval,
 }: ActiveNodeCardProps) {
   const isAuto = now === "AUTO";
   // Under AUTO, show the real node the url-test group currently routes through.
@@ -116,7 +114,7 @@ export function ActiveNodeCard({
         </div>
       </div>
 
-      <LatencyChart history={latency} pollInterval={pollInterval} liveCount={latencyLive} />
+      <LatencyChart history={latency} checkInterval={checkInterval} />
     </section>
   );
 }
