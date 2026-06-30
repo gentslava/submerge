@@ -66,6 +66,16 @@ Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` sp
 - **Naming:** camelCase (TS), kebab-case (files), snake_case for DB tables/columns (mapped in schema.ts).
 - **Anti-overengineering:** for the scale "one admin, dozens of sources, hundreds of nodes" do NOT introduce Postgres, GraphQL, Nx/Turborepo, hexagonal/CQRS/DI, OpenTelemetry. See ADRs.
 
+## Design system & visual fidelity (web)
+
+The approved UI is the **Indigo Console** design in [`pencil/web-ui.pen`](pencil/web-ui.pen) — a plain JSON mockup, **tracked in git**, that is the **visual source of truth**. Full contract (token table, component specs, frame map): [docs/design-system.md](docs/design-system.md).
+
+- **Tokens first, in config.** Colors/radii/fonts/type-scale live in `packages/web/src/index.css` `@theme`, mirrored from the mockup's `variables`. Never hand-pick a hex/px — use a token.
+- **Measure, don't invent.** Read exact values from the mockup (Pencil MCP `batch_get … resolveVariables:true`, or the JSON directly). Don't fill visual gaps with generic defaults (gradients, `rounded-2xl`, oversized padding) — that "AI look" is the failure mode that produced the first, rejected UI.
+- **Visual fidelity is a gate.** Before a UI task is done: render at the mockup viewport (**1440×1024, dark**), screenshot, and compare element-by-element to the frame; cross-check exact values with `browser_evaluate`. Verifying at the wrong viewport gives false conclusions.
+- **Behavior, not just looks.** Controls must work — no dead buttons or decorative tabs. If the engine can't back a control, don't draw it.
+- **Honesty over fidelity.** Don't render data we don't have (fake quotas/totals) — show the real value or omit it, and say why.
+
 ## Workflow
 
 - **TDD**: failing test first, then minimal implementation. Cover parsing/ingest logic with unit tests.
@@ -93,3 +103,4 @@ Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` sp
 - `docs/plans/` — phased implementation plans (how we build, bite-sized tasks).
 - `docs/adr/` — accepted architecture decisions and why.
 - `docs/architecture.md` — v2 architecture overview.
+- `docs/design-system.md` — the Indigo Console design contract (tokens, component specs, frame map, visual gates).
