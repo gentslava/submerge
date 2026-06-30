@@ -6,12 +6,12 @@ import type { NodeGroup as NodeGroupModel } from "./nodeView";
 interface NodeGroupProps {
   group: NodeGroupModel;
   now: string | null;
-  pingingName: string | null;
+  pingingNames: Set<string>;
   onSelect(name: string): void;
   onPing(name: string): void;
 }
 
-export function NodeGroup({ group, now, pingingName, onSelect, onPing }: NodeGroupProps) {
+export function NodeGroup({ group, now, pingingNames, onSelect, onPing }: NodeGroupProps) {
   return (
     <>
       <div className="flex items-center gap-3 border-b border-border-subtle bg-elevated px-4 py-2.5">
@@ -31,8 +31,7 @@ export function NodeGroup({ group, now, pingingName, onSelect, onPing }: NodeGro
           key={n.name}
           item={n}
           isActive={now === n.name}
-          sublabel={n.type}
-          pinging={pingingName === n.name}
+          pinging={pingingNames.has(n.name)}
           onSelect={() => onSelect(n.name)}
           onPing={() => onPing(n.name)}
         />

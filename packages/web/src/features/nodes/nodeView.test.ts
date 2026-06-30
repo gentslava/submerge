@@ -1,6 +1,13 @@
 import type { NodeItem, Source } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
-import { formatRate, groupNodes, latencyClass, latencyLabel, splitNodes } from "./nodeView";
+import {
+  formatBytes,
+  formatRate,
+  groupNodes,
+  latencyClass,
+  latencyLabel,
+  splitNodes,
+} from "./nodeView";
 
 function src(over: Partial<Source>): Source {
   return {
@@ -82,9 +89,16 @@ describe("nodeView", () => {
   });
 
   it("formats traffic rates per second", () => {
-    expect(formatRate(0)).toBe("0 B/с");
-    expect(formatRate(512)).toBe("512 B/с");
-    expect(formatRate(1536)).toBe("1.5 KB/с");
-    expect(formatRate(5 * 1024 * 1024)).toBe("5.0 MB/с");
+    expect(formatRate(0)).toBe("0 Б/с");
+    expect(formatRate(512)).toBe("512 Б/с");
+    expect(formatRate(1536)).toBe("1.5 КБ/с");
+    expect(formatRate(5 * 1024 * 1024)).toBe("5.0 МБ/с");
+  });
+
+  it("formats cumulative byte totals", () => {
+    expect(formatBytes(0)).toBe("0 Б");
+    expect(formatBytes(900)).toBe("900 Б");
+    expect(formatBytes(1536)).toBe("1.5 КБ");
+    expect(formatBytes(9_019_431_321)).toBe("8.4 ГБ");
   });
 });

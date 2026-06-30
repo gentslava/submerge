@@ -1,7 +1,7 @@
 import type { NodeItem, Source } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Layers } from "lucide-react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,18 +13,21 @@ import { NodeList } from "./NodeList";
 import { NodesHeader } from "./NodesHeader";
 import { isPseudo } from "./nodeView";
 
-const HISTORY_CAP = 40;
-const POLL_INTERVAL = 300; // url-test group interval (s), see server nodes/config.ts
-
 export function NodesScreen() {
   const trpc = useTRPC();
   const qc = useQueryClient();
-  const { traffic } = useLiveState();
+  const { latency, totals } = useLiveState();
 
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
+  const settingsQuery = useQuery(trpc.settings.get.queryOptions());
 
-  const [pingingName, setPingingName] = useState<string | null>(null);
+  // Real poll cadence the server uses (settings-driven) — the active node is
+  // measured this often, so the latency chart grows at this rate.
+  const pollInterval = Math.max(1, Number(settingsQuery.data?.pollInterval ?? 5) || 5);
+
+  // Per-node "being pinged" set — drives the progressive loaders in each row.
+  const [pingingNames, setPingingNames] = useState<Set<string>>(() => new Set());
 
   const select = useMutation(
     trpc.nodes.select.mutationOptions({
@@ -38,42 +41,73 @@ export function NodesScreen() {
 
   const delay = useMutation(trpc.nodes.delay.mutationOptions());
 
+  // Optimistically write a node's measured delay into the cached view so the value
+  // appears the instant its ping returns (the SSE poll later reconciles).
+  const patchDelay = (name: string, value: number | null) => {
+    qc.setQueryData(trpc.nodes.list.queryKey(), (old) =>
+      old
+        ? { ...old, all: old.all.map((n) => (n.name === name ? { ...n, delay: value } : n)) }
+        : old,
+    );
+  };
+
+  const markPinging = (name: string, on: boolean) =>
+    setPingingNames((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(name);
+      else next.delete(name);
+      return next;
+    });
+
   const pingOne = async (name: string) => {
-    setPingingName(name);
+    markPinging(name, true);
     try {
-      await delay.mutateAsync({ name });
-      void qc.invalidateQueries({ queryKey: trpc.nodes.list.queryKey() });
+      patchDelay(name, await delay.mutateAsync({ name }));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось пропинговать узел");
     } finally {
-      setPingingName(null);
+      markPinging(name, false);
     }
   };
 
   const pingAll = async () => {
-    const all = nodesQuery.data?.all ?? [];
-    const real = all.filter((n) => !isPseudo(n.name));
+    const real = (nodesQuery.data?.all ?? []).filter((n) => !isPseudo(n.name));
     if (real.length === 0) return;
-    try {
-      await Promise.allSettled(real.map((n) => delay.mutateAsync({ name: n.name })));
-      void qc.invalidateQueries({ queryKey: trpc.nodes.list.queryKey() });
-      toast.success(`Пропинговано узлов: ${real.length}`);
-    } catch {
-      toast.error("Не удалось пропинговать узлы");
-    }
+    // Show a loader on every node up front, then fill each value as its ping returns
+    // — so a large fleet visibly progresses instead of freezing then updating at once.
+    setPingingNames(new Set(real.map((n) => n.name)));
+    await Promise.allSettled(
+      real.map(async (n) => {
+        try {
+          patchDelay(n.name, await delay.mutateAsync({ name: n.name }));
+        } finally {
+          markPinging(n.name, false);
+        }
+      }),
+    );
+    toast.success(`Пропинговано узлов: ${real.length}`);
   };
 
-  const all = nodesQuery.data?.all ?? [];
-  const now = nodesQuery.data?.now ?? null;
+  const data = nodesQuery.data;
+  const all = data?.all ?? [];
+  const now = data?.now ?? null;
+  const autoNow = data?.autoNow ?? null;
+  const isAuto = now === "AUTO";
   const realCount = all.filter((n) => !isPseudo(n.name)).length;
+
+  const onAuto = () => select.mutate({ group: "PROXY", name: "AUTO" });
+  // Switching Авто → Ручной pins the node AUTO currently routes through.
+  const onManual = () => {
+    if (autoNow) select.mutate({ group: "PROXY", name: autoNow });
+  };
 
   return (
     <div className="flex flex-col gap-[22px] px-8 pt-[26px] pb-8">
       <NodesHeader
         nodeCount={realCount}
-        pollInterval={POLL_INTERVAL}
+        pollInterval={pollInterval}
         refreshing={nodesQuery.isFetching}
-        pinging={delay.isPending && pingingName === null}
+        pinging={pingingNames.size > 0}
         onRefresh={() => nodesQuery.refetch()}
         onPingAll={pingAll}
       />
@@ -85,12 +119,19 @@ export function NodesScreen() {
       ) : (
         <Body
           now={now}
+          autoNow={autoNow}
+          isAuto={isAuto}
+          pollInterval={pollInterval}
           all={all}
           sources={sourcesQuery.data ?? []}
-          traffic={traffic}
-          pingingName={pingingName}
+          totals={totals}
+          latency={latency}
+          pingingNames={pingingNames}
+          selectPending={select.isPending}
           onSelect={(name) => select.mutate({ group: "PROXY", name })}
           onPing={pingOne}
+          onAuto={onAuto}
+          onManual={onManual}
         />
       )}
     </div>
@@ -99,48 +140,54 @@ export function NodesScreen() {
 
 function Body({
   now,
+  autoNow,
+  isAuto,
+  pollInterval,
   all,
   sources,
-  traffic,
-  pingingName,
+  totals,
+  latency,
+  pingingNames,
+  selectPending,
   onSelect,
   onPing,
+  onAuto,
+  onManual,
 }: {
   now: string | null;
+  autoNow: string | null;
+  isAuto: boolean;
+  pollInterval: number;
   all: NodeItem[];
   sources: Source[];
-  traffic: ReturnType<typeof useLiveState>["traffic"];
-  pingingName: string | null;
+  totals: ReturnType<typeof useLiveState>["totals"];
+  latency: ReturnType<typeof useLiveState>["latency"];
+  pingingNames: Set<string>;
+  selectPending: boolean;
   onSelect: (name: string) => void;
   onPing: (name: string) => void;
+  onAuto: () => void;
+  onManual: () => void;
 }) {
-  // Accumulate the active node's latency history across SSE-patched updates.
-  // Mutating the ref during render is safe here: it never triggers a re-render
-  // (no setState), it only records the latest delay so the next render can read
-  // an up-to-date series. The cache patch from the live stream drives re-renders.
-  const histRef = useRef<Record<string, number[]>>({});
-  if (now != null) {
-    const active = all.find((n) => n.name === now);
-    const d = active?.delay ?? null;
-    if (d != null && d > 0) {
-      const series = histRef.current[now] ?? [];
-      histRef.current[now] = series;
-      if (series[series.length - 1] !== d) {
-        series.push(d);
-        if (series.length > HISTORY_CAP) series.splice(0, series.length - HISTORY_CAP);
-      }
-    }
-  }
-
   return (
     <>
-      <AutoStrategyCard pollInterval={POLL_INTERVAL} />
+      <AutoStrategyCard
+        pollInterval={pollInterval}
+        isAuto={isAuto}
+        autoNow={autoNow}
+        now={now}
+        onAuto={onAuto}
+        onManual={onManual}
+        pending={selectPending}
+      />
 
       <ActiveNodeCard
         now={now}
+        autoNow={autoNow}
         all={all}
-        history={now != null ? (histRef.current[now] ?? []) : []}
-        traffic={traffic}
+        totals={totals}
+        latency={latency}
+        pollInterval={pollInterval}
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">
@@ -155,7 +202,7 @@ function Body({
         now={now}
         all={all}
         sources={sources}
-        pingingName={pingingName}
+        pingingNames={pingingNames}
         onSelect={onSelect}
         onPing={onPing}
       />

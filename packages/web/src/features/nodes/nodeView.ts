@@ -93,8 +93,8 @@ export function groupNodes(nodes: NodeItem[], sources: Source[]): NodeGroup[] {
 
 // Format a mihomo /traffic rate (bytes per second) honestly as a throughput value.
 export function formatRate(bytesPerSec: number): string {
-  if (bytesPerSec <= 0) return "0 B/с";
-  const units = ["B", "KB", "MB", "GB"];
+  if (bytesPerSec <= 0) return "0 Б/с";
+  const units = ["Б", "КБ", "МБ", "ГБ"];
   let v = bytesPerSec;
   let i = 0;
   while (v >= 1024 && i < units.length - 1) {
@@ -103,4 +103,18 @@ export function formatRate(bytesPerSec: number): string {
   }
   const digits = v >= 100 || i === 0 ? 0 : 1;
   return `${v.toFixed(digits)} ${units[i]}/с`;
+}
+
+// Format a cumulative byte total (e.g. 8.4 ГБ) — no per-second suffix.
+export function formatBytes(bytes: number): string {
+  if (bytes <= 0) return "0 Б";
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i += 1;
+  }
+  const digits = v >= 100 || i === 0 ? 0 : 1;
+  return `${v.toFixed(digits)} ${units[i]}`;
 }

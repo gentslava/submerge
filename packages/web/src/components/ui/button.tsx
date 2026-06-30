@@ -8,7 +8,10 @@ const button = cva(
     variants: {
       variant: {
         primary: "bg-accent text-accent-fg hover:bg-accent-hover",
-        secondary: "bg-elevated text-text-secondary border border-border-default hover:bg-hover",
+        // Bright label (text-primary) + muted icon (text-secondary) per the mockup —
+        // a fully-muted label made these read as "disabled".
+        secondary:
+          "bg-elevated text-text-primary border border-border-default hover:bg-hover [&_svg]:text-text-secondary",
         ghost: "bg-transparent text-text-secondary hover:bg-hover",
         destructive: "bg-timeout-bg text-timeout hover:bg-timeout-bg/80",
       },

@@ -1,17 +1,34 @@
-import { History, SlidersHorizontal } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-// The Auto-Strategy card is a design-faithful, mostly-informational panel.
-// mihomo exposes a single url-test group (AUTO); we don't switch between
-// manual/reserve/balance strategies, so the segmented control is static and the
-// threshold params reflect the url-test config defaults (see nodes/config.ts).
-const STRATEGIES = ["Ручной", "Авто", "Резерв", "Баланс"] as const;
-const ACTIVE_STRATEGY = "Авто";
+// Two real strategies backed by the engine: AUTO is a mihomo url-test group; manual
+// pins a specific node on the PROXY selector. (Fallback/load-balance are different
+// mihomo group types we don't generate, so they're intentionally not offered.)
+const TABS = [
+  { key: "manual", label: "Ручной", Icon: MousePointer2 },
+  { key: "auto", label: "Авто", Icon: Sparkles },
+] as const;
 
 interface AutoStrategyCardProps {
   pollInterval: number;
+  isAuto: boolean;
+  autoNow: string | null;
+  now: string | null;
+  onAuto(): void;
+  onManual(): void;
+  pending?: boolean;
 }
 
-export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
+export function AutoStrategyCard({
+  pollInterval,
+  isAuto,
+  autoNow,
+  now,
+  onAuto,
+  onManual,
+  pending = false,
+}: AutoStrategyCardProps) {
   const params: { caption: string; value: string }[] = [
     { caption: "ПРОВЕРОЧНЫЙ URL", value: "gstatic.com/generate_204" },
     { caption: "ИНТЕРВАЛ", value: `${pollInterval} с` },
@@ -19,31 +36,42 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
     { caption: "ПЕРЕКЛЮЧАТЬ ПРИ", value: "> 250 ms · timeout" },
   ];
 
+  const status = isAuto
+    ? autoNow
+      ? `Авто · сейчас через ${autoNow}`
+      : "Авто · выбор узла…"
+    : now
+      ? `Ручной выбор · ${now}`
+      : "Ручной выбор";
+
   return (
     <section className="overflow-hidden rounded-lg border border-border-subtle bg-surface">
       <div className="flex items-center justify-between gap-3 px-4 py-3.5">
-        {/* TODO(design): segmented strategy switch is informational — mihomo only
-            runs the AUTO url-test group, so the tabs are not interactive. */}
-        {/* biome-ignore lint/a11y/useSemanticElements: a div with role="group" is the correct ARIA pattern for this non-interactive segmented display; <fieldset> carries unwanted form-control semantics. */}
+        {/* biome-ignore lint/a11y/useSemanticElements: role="group" is the correct ARIA pattern for a segmented toggle of buttons; <fieldset> carries unwanted form-control semantics. */}
         <div
           role="group"
-          aria-label="Стратегия выбора (информационно)"
+          aria-label="Стратегия выбора узла"
           className="flex gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]"
         >
-          {STRATEGIES.map((s) => {
-            const active = s === ACTIVE_STRATEGY;
+          {TABS.map(({ key, label, Icon }) => {
+            const active = key === (isAuto ? "auto" : "manual");
             return (
-              <span
-                key={s}
+              <button
+                key={key}
+                type="button"
+                disabled={pending}
                 aria-current={active ? "true" : undefined}
-                className={
+                onClick={key === "auto" ? onAuto : onManual}
+                className={cn(
+                  "flex items-center gap-[7px] rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:pointer-events-none disabled:opacity-60",
                   active
-                    ? "rounded-sm bg-accent px-[13px] py-[7px] text-sub font-medium text-accent-fg"
-                    : "rounded-sm px-[13px] py-[7px] text-sub font-medium text-text-secondary"
-                }
+                    ? "bg-accent text-accent-fg"
+                    : "text-text-secondary hover:text-text-primary",
+                )}
               >
-                {s}
-              </span>
+                <Icon className="h-[15px] w-[15px]" aria-hidden="true" />
+                {label}
+              </button>
             );
           })}
         </div>
@@ -52,15 +80,14 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
             <span aria-hidden="true" className="h-2 w-2 rounded-full bg-online" />
             <span className="text-xs text-text-secondary">Live</span>
           </span>
-          {/* TODO(design): "Настроить" has no settings target yet. */}
-          <button
-            type="button"
-            disabled
-            className="flex h-8 items-center gap-[7px] rounded-md border border-border-default bg-elevated px-3 text-sub text-text-secondary disabled:pointer-events-none disabled:opacity-60"
+          {/* url-test cadence lives in Settings (pollInterval) — link there honestly. */}
+          <Link
+            to="/settings"
+            className="flex h-8 items-center gap-[7px] rounded-md border border-border-default bg-elevated px-3 text-[13px] text-text-primary transition-colors hover:bg-hover [&_svg]:text-text-secondary"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
             Настроить
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -84,10 +111,7 @@ export function AutoStrategyCard({ pollInterval }: AutoStrategyCardProps) {
 
       <div className="flex items-center gap-2.5 bg-elevated px-4 py-[11px]">
         <History className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
-        {/* Honest static line — the backend does not track switch history. */}
-        <span className="font-mono text-xs text-text-tertiary">
-          Автовыбор активен · переключение по деградации
-        </span>
+        <span className="font-mono text-xs text-text-tertiary">{status}</span>
       </div>
     </section>
   );
