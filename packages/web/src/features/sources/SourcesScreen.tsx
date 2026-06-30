@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { pluralRu } from "@/lib/plural";
 import { useTRPC } from "@/lib/trpc";
 import { SourceForm } from "./SourceForm";
 import { SourceRow } from "./SourceRow";
@@ -50,60 +51,70 @@ export function SourcesScreen() {
     ...(removeMutation.isPending && removeMutation.variables ? [removeMutation.variables.id] : []),
   ]);
 
+  const sources = sourcesQuery.data ?? [];
+  const count = sources.length;
+
   return (
-    <div className="mx-auto max-w-4xl p-4 md:p-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-text-primary">Источники</h1>
-        <p className="text-sm text-text-secondary">Подписки, vless и happ-ссылки</p>
+    <div className="flex flex-col gap-[22px] px-8 pt-[26px] pb-8">
+      <header className="flex flex-col gap-[5px]">
+        <h1 className="text-h1 text-text-primary">Источники</h1>
+        <p className="text-sub text-text-secondary">
+          Подписки и одиночные ссылки, из которых собираются узлы
+        </p>
       </header>
 
-      <div className="flex flex-col gap-4">
-        <SourceForm />
+      <SourceForm />
 
-        <div className="rounded-xl border border-border-subtle bg-surface">
-          {sourcesQuery.isLoading ? (
-            <div className="flex flex-col">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="border-b border-border-subtle px-4 py-3 last:border-0">
-                  <Skeleton className="h-5 w-full" />
-                </div>
-              ))}
-            </div>
-          ) : sourcesQuery.isError ? (
-            <div className="p-8 text-center text-text-secondary">
-              Не удалось загрузить источники.{" "}
-              <Button variant="ghost" size="sm" onClick={() => sourcesQuery.refetch()}>
-                Повторить
-              </Button>
-            </div>
-          ) : sourcesQuery.data && sourcesQuery.data.length > 0 ? (
-            sourcesQuery.data.map((source) => (
-              <SourceRow
-                key={source.id}
-                source={source}
-                busy={pendingIds.has(source.id)}
-                onToggle={() => toggleMutation.mutate({ id: source.id })}
-                onRefresh={() => refreshMutation.mutate({ id: source.id })}
-                onRemove={() => removeMutation.mutate({ id: source.id })}
-              />
-            ))
-          ) : (
-            <div className="flex flex-col items-center gap-3 p-8 text-center text-text-secondary">
-              <span>Пока нет источников — вставьте ссылку выше.</span>
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => {
-                  const el = document.getElementById("source-value");
-                  if (el instanceof HTMLElement) el.focus();
-                }}
-              >
-                Добавить источник
-              </Button>
-            </div>
+      <section className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
+        <div className="flex items-center justify-between px-4 py-3.5">
+          <span className="text-caption text-text-tertiary">СПИСОК ИСТОЧНИКОВ</span>
+          {count > 0 && (
+            <span className="text-xs text-text-tertiary">
+              {count} {pluralRu(count, ["источник", "источника", "источников"])}
+            </span>
           )}
         </div>
-      </div>
+        <div className="h-px w-full bg-border-subtle" />
+
+        {sourcesQuery.isLoading ? (
+          <div className="flex flex-col">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="border-b border-border-subtle px-4 py-3.5 last:border-0">
+                <Skeleton className="h-10 w-full rounded-md" />
+              </div>
+            ))}
+          </div>
+        ) : sourcesQuery.isError ? (
+          <div className="flex flex-col items-center gap-3 p-8 text-center text-text-secondary">
+            <span>Не удалось загрузить источники.</span>
+            <Button variant="secondary" size="sm" onClick={() => sourcesQuery.refetch()}>
+              Повторить
+            </Button>
+          </div>
+        ) : count > 0 ? (
+          sources.map((source) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              busy={pendingIds.has(source.id)}
+              onToggle={() => toggleMutation.mutate({ id: source.id })}
+              onRefresh={() => refreshMutation.mutate({ id: source.id })}
+              onRemove={() => removeMutation.mutate({ id: source.id })}
+            />
+          ))
+        ) : (
+          <div className="flex flex-col items-center gap-3 p-10 text-center text-text-secondary">
+            <span>Пока нет источников — вставьте ссылку в форму выше.</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => document.getElementById("source-value")?.focus()}
+            >
+              Перейти к форме
+            </Button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

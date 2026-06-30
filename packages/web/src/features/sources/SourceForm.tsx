@@ -1,12 +1,11 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { addSourceInput } from "@submerge/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Sparkles } from "lucide-react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useTRPC } from "@/lib/trpc";
@@ -43,6 +42,7 @@ export function SourceForm() {
   });
 
   const value = watch("value");
+  const typed = (value ?? "").trim() !== "";
   const kindHint = detectKindHint(value ?? "");
 
   function onSubmit(data: FormValues) {
@@ -51,25 +51,39 @@ export function SourceForm() {
   }
 
   return (
-    <Card className="p-4">
-      <h2 className="mb-3 text-base font-semibold text-text-primary">Добавить источник</h2>
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3">
+    <section className="overflow-hidden rounded-lg border border-border-subtle bg-surface">
+      <div className="px-4 py-3.5">
+        <span className="text-caption text-text-tertiary">ДОБАВИТЬ ИСТОЧНИК</span>
+      </div>
+      <div className="h-px w-full bg-border-subtle" />
+
+      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-1">
           <Textarea
             id="source-value"
             {...register("value")}
             placeholder={"vless://…   ·   happ://…   ·   https://…/sub/…"}
             aria-label="Ссылка источника"
+            className="h-[120px] resize-none p-3.5"
           />
           {errors.value && <p className="text-xs text-timeout">{errors.value.message}</p>}
-          {(value ?? "").trim() && (
-            <div className="flex items-center gap-1.5">
-              <Badge variant="neutral">{KIND_LABEL[kindHint]}</Badge>
-            </div>
-          )}
         </div>
 
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sub text-text-secondary">Тип:</span>
+            <span className="inline-flex items-center gap-[5px] rounded-full bg-hover px-[9px] py-[3px] text-meta text-text-tertiary">
+              {typed ? (
+                KIND_LABEL[kindHint]
+              ) : (
+                <>
+                  <Sparkles className="h-3 w-3" aria-hidden="true" />
+                  определится автоматически
+                </>
+              )}
+            </span>
+          </div>
+
           <div className="flex items-center gap-3">
             <Controller
               name="hwid"
@@ -83,19 +97,22 @@ export function SourceForm() {
                 />
               )}
             />
-            <label htmlFor="hwid-switch" className="cursor-pointer text-sm text-text-primary">
-              Передавать HWID (привязка к устройству)
+            <label htmlFor="hwid-switch" className="flex cursor-pointer flex-col gap-[3px]">
+              <span className="text-sub font-medium text-text-primary">Передавать HWID</span>
+              <span className="max-w-[320px] text-[11px] text-text-tertiary">
+                Привязка к устройству — сервер выдаёт узлы только для текущего HWID
+              </span>
             </label>
           </div>
-          <p className="ml-12 text-xs text-text-tertiary">
-            Включайте только для провайдеров с привязкой к устройству.
-          </p>
         </div>
 
-        <Button type="submit" disabled={addMutation.isPending} className="self-start">
-          {addMutation.isPending ? "Добавляю…" : "Добавить"}
-        </Button>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={addMutation.isPending}>
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            {addMutation.isPending ? "Добавляю…" : "Добавить"}
+          </Button>
+        </div>
       </form>
-    </Card>
+    </section>
   );
 }
