@@ -1,57 +1,170 @@
 import { Link } from "@tanstack/react-router";
-import { Radio, ScrollText, Waypoints } from "lucide-react";
+import { Copy, Power, RotateCw, Waves } from "lucide-react";
+import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
+import { useLiveState } from "@/features/live/LiveProvider";
+import { useActiveNode } from "@/features/nodes/useActiveNode";
 import { PROXY_ENDPOINT } from "@/lib/constants";
-import { NAV_ITEMS } from "./nav";
-import { StatusDot } from "./StatusDot";
-import { ThemeToggle } from "./ThemeToggle";
-
-const SOON = [
-  { label: "Трафик", icon: Radio },
-  { label: "Соединения", icon: Waypoints },
-  { label: "Логи", icon: ScrollText },
-] as const;
+import { NAV_ENTRIES, type NavEntry } from "./nav";
 
 export function Sidebar() {
   return (
-    <aside className="hidden md:flex w-60 shrink-0 flex-col gap-1 border-r border-border-subtle bg-surface p-3">
-      <div className="px-2 py-3 font-semibold text-text-primary">submerge</div>
-      <StatusDot />
-      <nav className="mt-3 flex flex-col gap-1">
-        {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            activeOptions={{ exact: to === "/" }}
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-text-secondary hover:bg-hover [&.active]:bg-accent-bg [&.active]:text-accent-text"
-          >
-            <Icon size={16} /> {label}
-          </Link>
-        ))}
-      </nav>
-      <div className="mt-4 mb-1 px-2.5 text-[11px] font-semibold tracking-wide text-text-tertiary">
-        СКОРО
+    <aside className="hidden md:flex h-dvh w-[248px] shrink-0 flex-col justify-between border-r border-border-subtle bg-surface pt-5 pr-3.5 pb-[18px] pl-3.5">
+      <div className="flex flex-col gap-6">
+        <Brand />
+        <nav className="flex flex-col gap-0.5">
+          {NAV_ENTRIES.map((entry) => (
+            <NavRow key={entry.label} entry={entry} />
+          ))}
+        </nav>
       </div>
-      <div className="flex flex-col gap-1">
-        {SOON.map(({ label, icon: Icon }) => (
-          // biome-ignore lint/a11y/useSemanticElements: inert "coming soon" entry — a real <a> would imply a navigable destination
-          <div
-            key={label}
-            role="link"
-            aria-disabled="true"
-            aria-label={`${label} (скоро)`}
-            tabIndex={-1}
-            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-text-disabled cursor-not-allowed"
-          >
-            <Icon size={16} /> {label}
-          </div>
-        ))}
-      </div>
-      <div className="mt-auto flex flex-col gap-2">
-        <div className="rounded-md bg-elevated px-2.5 py-1.5 font-mono text-xs text-text-tertiary">
-          SOCKS · {PROXY_ENDPOINT}
-        </div>
-        <ThemeToggle />
+
+      <div className="flex flex-col gap-3">
+        <TogglesCard />
+        <ProxyCard />
+        <LogoutRow />
       </div>
     </aside>
+  );
+}
+
+function Brand() {
+  return (
+    <div className="flex items-center gap-2.5 p-1.5">
+      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md bg-accent">
+        <Waves size={18} className="text-accent-fg" />
+      </span>
+      <span className="flex flex-col gap-px">
+        <span className="font-mono text-[15px] font-semibold leading-none text-text-primary">
+          submerge
+        </span>
+        <span className="text-[10px] font-semibold uppercase leading-none tracking-[0.8px] text-text-tertiary">
+          self-hosted
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function NavRow({ entry }: { entry: NavEntry }) {
+  const { icon: Icon, label } = entry;
+
+  if (entry.kind === "link") {
+    return (
+      <Link
+        to={entry.to}
+        activeOptions={{ exact: entry.to === "/" }}
+        className="flex h-10 items-center gap-2.5 rounded-md px-2.5 text-text-secondary [&.active]:bg-accent-bg [&.active]:text-accent-text"
+      >
+        <Icon size={18} className="shrink-0" />
+        <span className="text-sm font-medium [.active_&]:font-semibold">{label}</span>
+      </Link>
+    );
+  }
+
+  // Inert placeholder — no route/screen yet. Rendered with the mockup's row
+  // markup but non-navigating.
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: inert nav entry — a real <a> would imply a navigable destination
+    <div
+      role="link"
+      aria-disabled="true"
+      aria-label={entry.soon ? `${label} (скоро)` : label}
+      tabIndex={-1}
+      className={`flex h-10 cursor-default items-center gap-2.5 rounded-md px-2.5 text-text-secondary ${
+        entry.soon ? "opacity-50" : ""
+      }`}
+    >
+      <Icon size={18} className="shrink-0" />
+      <span className="flex-1 text-sm font-medium">{label}</span>
+      {entry.soon && (
+        <span className="rounded-full bg-hover px-[7px] py-0.5 text-[9px] font-semibold tracking-[0.4px] text-text-secondary">
+          СКОРО
+        </span>
+      )}
+    </div>
+  );
+}
+
+function TogglesCard() {
+  return (
+    <div className="flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-elevated px-3 py-[11px]">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-text-secondary">LAN-доступ</span>
+        {/* TODO: wire to a server action (toggle LAN proxy bind) in a later phase. */}
+        <Switch checked disabled onCheckedChange={() => {}} aria-label="LAN-доступ" />
+      </div>
+      {/* TODO: wire to a server action (restart mihomo core) in a later phase. */}
+      <button
+        type="button"
+        disabled
+        className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border-default bg-hover text-xs font-medium text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RotateCw size={14} />
+        Перезапустить ядро
+      </button>
+    </div>
+  );
+}
+
+function ProxyCard() {
+  const { mihomo } = useLiveState();
+  const activeNode = useActiveNode();
+
+  const status =
+    mihomo === null
+      ? { dot: "bg-idle", label: "Проверка" }
+      : mihomo
+        ? { dot: "bg-online", label: "Подключено" }
+        : { dot: "bg-timeout", label: "Отключено" };
+
+  const copyAddress = () => {
+    void navigator.clipboard.writeText(PROXY_ENDPOINT);
+    toast.success("Скопировано");
+  };
+
+  return (
+    <div className="flex flex-col gap-[9px] rounded-lg border border-border-subtle bg-elevated p-[13px]">
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} />
+        <span className="text-xs font-medium text-text-secondary">{status.label}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[13px] font-medium text-text-primary">
+          {PROXY_ENDPOINT}
+        </span>
+        <button
+          type="button"
+          onClick={copyAddress}
+          aria-label="Скопировать адрес"
+          className="text-text-tertiary hover:text-text-secondary"
+        >
+          <Copy size={13} />
+        </button>
+      </div>
+      <span className="font-mono text-[11px] text-text-tertiary">
+        Активный узел · {activeNode ?? "—"}
+      </span>
+    </div>
+  );
+}
+
+function LogoutRow() {
+  const { data: authStatus } = useAuthStatus();
+  const logout = useLogout();
+
+  // Render only when auth is enabled.
+  if (!authStatus?.required) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => logout.mutate()}
+      className="flex items-center gap-[9px] rounded-md px-2.5 py-2 text-text-tertiary hover:text-text-secondary"
+    >
+      <Power size={16} />
+      <span className="text-[13px]">Выйти</span>
+    </button>
   );
 }
