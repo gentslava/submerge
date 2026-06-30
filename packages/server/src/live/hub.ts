@@ -9,6 +9,13 @@ export interface HubDeps {
   fetchView: () => Promise<NodeView>;
   streamTraffic: (signal: AbortSignal) => AsyncGenerator<TrafficSample>;
   getInterval: () => number; // ms between /proxies polls (settings-driven)
+  // Actively measure one node's latency (mihomo records it in history). Optional —
+  // when set, the hub probes the active node each poll so its latency chart grows
+  // live at the poll cadence instead of only on manual pings.
+  probeActive?: (name: string) => Promise<void>;
+  // Cumulative received/sent byte totals (from /connections). Optional — when set,
+  // the hub emits a `totals` event each poll for the active-node "принято/отдано".
+  fetchTotals?: () => Promise<{ up: number; down: number }>;
 }
 
 export class LiveHub {
@@ -18,6 +25,8 @@ export class LiveHub {
   private trafficAbort: AbortController | null = null;
   private lastView: NodeView | null = null;
   private lastHealth = false;
+  private lastActive: string | null = null;
+  private lastTotals: { up: number; down: number } | null = null;
 
   constructor(deps: HubDeps) {
     this.deps = deps;
@@ -28,6 +37,9 @@ export class LiveHub {
   snapshot(): LiveEvent[] {
     const out: LiveEvent[] = [{ type: "health", mihomo: this.lastHealth }];
     if (this.lastView) out.push({ type: "nodeUpdate", view: this.lastView });
+    if (this.lastTotals) {
+      out.push({ type: "totals", up: this.lastTotals.up, down: this.lastTotals.down });
+    }
     return out;
   }
 
@@ -37,10 +49,31 @@ export class LiveHub {
 
   async pollOnce(): Promise<void> {
     try {
+      // Probe the previously-active node first so this poll's view already carries
+      // a fresh measurement (best-effort: a failed probe must not abort the poll).
+      if (this.lastActive && this.deps.probeActive) {
+        try {
+          await this.deps.probeActive(this.lastActive);
+        } catch {
+          /* unreachable node / probe error — mihomo still records it; keep polling */
+        }
+      }
       const view = await this.deps.fetchView();
       this.lastView = view;
+      // Under AUTO, the node we want to keep measuring is the one it resolves to.
+      this.lastActive = view.now === "AUTO" ? view.autoNow : view.now;
       this.setHealth(true);
       this.emit({ type: "nodeUpdate", view });
+      // Cumulative byte totals — best-effort, must not affect health or abort the poll.
+      if (this.deps.fetchTotals) {
+        try {
+          const totals = await this.deps.fetchTotals();
+          this.lastTotals = totals;
+          this.emit({ type: "totals", up: totals.up, down: totals.down });
+        } catch {
+          /* /connections unavailable — keep last known totals */
+        }
+      }
     } catch {
       this.setHealth(false);
     }

@@ -41,19 +41,24 @@ export async function applyConfig(
 // Pure normalization: map a ProxiesResponse to the UI-facing NodeView.
 export function toNodeView({ proxies }: ProxiesResponse): NodeView {
   const group = proxies.PROXY;
-  if (!group?.all) return { now: null, all: [] };
+  if (!group?.all) return { now: null, autoNow: null, all: [] };
   const all: NodeItem[] = group.all.map((name) => {
     const info = proxies[name];
     const last = info?.history.at(-1);
+    // Keep every measurement, including timeouts (mihomo records 0) — the chart
+    // renders them as failure spikes so node stability is visible, not hidden.
+    const history = (info?.history ?? []).map((h) => h.delay);
     const item: NodeItem = {
       name,
       type: info?.type ?? "unknown",
       delay: last && last.delay > 0 ? last.delay : null,
+      history,
     };
     if (info?.udp !== undefined) item.udp = info.udp;
     return item;
   });
-  return { now: group.now ?? null, all };
+  // The AUTO url-test group reports the member it currently routes through via `now`.
+  return { now: group.now ?? null, autoNow: proxies.AUTO?.now ?? null, all };
 }
 
 // Normalize the mihomo PROXY select group into the UI-facing NodeView.

@@ -87,8 +87,8 @@ describe("listNodes", () => {
     const view = await listNodes();
     expect(view.now).toBe("A");
     expect(view.all).toEqual([
-      { name: "A", type: "vless", delay: 50, udp: true },
-      { name: "B", type: "vless", delay: null },
+      { name: "A", type: "vless", delay: 50, udp: true, history: [50] },
+      { name: "B", type: "vless", delay: null, history: [] },
     ]);
   });
 
@@ -98,7 +98,7 @@ describe("listNodes", () => {
       vi.fn(() => json({ proxies: {} })),
     );
     const view = await listNodes();
-    expect(view).toEqual({ now: null, all: [] });
+    expect(view).toEqual({ now: null, autoNow: null, all: [] });
   });
 });
 

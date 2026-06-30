@@ -24,6 +24,14 @@ export type ProxiesResponse = z.infer<typeof proxiesResponseSchema>;
 const delayResponseSchema = z.object({ delay: z.number() });
 export type DelayResponse = z.infer<typeof delayResponseSchema>;
 
+// /connections carries cumulative byte counters (plus a large connections array we
+// don't read — unknown keys are stripped by the schema).
+const connectionsTotalsSchema = z.object({ downloadTotal: z.number(), uploadTotal: z.number() });
+export interface TrafficTotals {
+  up: number;
+  down: number;
+}
+
 function call(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${env.MIHOMO_API}${path}`, {
     ...init,
@@ -43,6 +51,14 @@ export async function getDelay(name: string): Promise<DelayResponse> {
   const r = await call(`/proxies/${encodeURIComponent(name)}/delay?${q}`);
   if (!r.ok) throw new Error(`mihomo delay for "${name}" returned HTTP ${r.status}`);
   return delayResponseSchema.parse(await r.json());
+}
+
+// Cumulative bytes received/sent since mihomo started (downloadTotal/uploadTotal).
+export async function getTotals(): Promise<TrafficTotals> {
+  const r = await call("/connections");
+  if (!r.ok) throw new Error(`mihomo /connections returned HTTP ${r.status}`);
+  const { downloadTotal, uploadTotal } = connectionsTotalsSchema.parse(await r.json());
+  return { up: uploadTotal, down: downloadTotal };
 }
 
 export async function selectProxy(group: string, name: string): Promise<void> {

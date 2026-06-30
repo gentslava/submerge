@@ -40,12 +40,18 @@ export const nodeItemSchema = z.object({
   type: z.string(),
   delay: z.number().nullable(), // null = unreachable or not yet tested
   udp: z.boolean().optional(),
+  // mihomo's recorded delay history (ms, oldest → newest, timeouts dropped) — drives
+  // the live latency chart for the active node.
+  history: z.array(z.number()).default([]),
 });
 export type NodeItem = z.infer<typeof nodeItemSchema>;
 
 // The PROXY select group: currently selected node + all selectable members.
 export const nodeViewSchema = z.object({
   now: z.string().nullable(),
+  // The node the AUTO (url-test) group currently resolves to, or null — lets the UI
+  // show "выбран автоматически: X" and pin it when switching Авто → Ручной.
+  autoNow: z.string().nullable(),
   all: z.array(nodeItemSchema),
 });
 export type NodeView = z.infer<typeof nodeViewSchema>;
@@ -69,6 +75,8 @@ export type TrafficSample = z.infer<typeof trafficSampleSchema>;
 export const liveEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("nodeUpdate"), view: nodeViewSchema }),
   z.object({ type: z.literal("traffic"), up: z.number(), down: z.number() }),
+  // Cumulative bytes received/sent since mihomo started (per-poll snapshot).
+  z.object({ type: z.literal("totals"), up: z.number(), down: z.number() }),
   z.object({ type: z.literal("health"), mihomo: z.boolean() }),
 ]);
 export type LiveEvent = z.infer<typeof liveEventSchema>;

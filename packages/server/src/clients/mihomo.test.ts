@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getDelay, getProxies, reloadConfig, selectProxy, streamTraffic } from "./mihomo.js";
+import {
+  getDelay,
+  getProxies,
+  getTotals,
+  reloadConfig,
+  selectProxy,
+  streamTraffic,
+} from "./mihomo.js";
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Promise<Response> | Response) {
   vi.stubGlobal("fetch", vi.fn(handler));
@@ -31,6 +38,14 @@ describe("mihomo client", () => {
   it("parses a delay response", async () => {
     mockFetch(() => json({ delay: 123 }));
     expect(await getDelay("A")).toEqual({ delay: 123 });
+  });
+
+  it("maps /connections totals to { up, down } and ignores the rest", async () => {
+    mockFetch((url) => {
+      expect(url).toContain("/connections");
+      return json({ downloadTotal: 8400, uploadTotal: 1200, connections: [{ id: "x" }] });
+    });
+    expect(await getTotals()).toEqual({ up: 1200, down: 8400 });
   });
 
   it("throws on an error status", async () => {

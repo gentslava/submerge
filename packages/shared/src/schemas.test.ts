@@ -27,16 +27,23 @@ describe("schemas", () => {
 });
 
 describe("nodeView + tRPC input schemas", () => {
-  it("validates a node view", () => {
-    const v = nodeViewSchema.parse({ now: "n1", all: [{ name: "n1", type: "vless", delay: 42 }] });
+  it("validates a node view (history defaults to [])", () => {
+    const v = nodeViewSchema.parse({
+      now: "n1",
+      autoNow: null,
+      all: [{ name: "n1", type: "vless", delay: 42 }],
+    });
     expect(v.all[0]?.delay).toBe(42);
+    expect(v.all[0]?.history).toEqual([]);
   });
   it("allows a null delay (unreachable / untested)", () => {
     const v = nodeViewSchema.parse({
       now: null,
-      all: [{ name: "n1", type: "vless", delay: null }],
+      autoNow: null,
+      all: [{ name: "n1", type: "vless", delay: null, history: [120, 0, 95] }],
     });
     expect(v.all[0]?.delay).toBeNull();
+    expect(v.all[0]?.history).toEqual([120, 0, 95]);
   });
   it("validates select + reorder inputs", () => {
     expect(selectNodeInput.parse({ group: "PROXY", name: "n1" }).group).toBe("PROXY");

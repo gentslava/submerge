@@ -14,7 +14,7 @@ function unwrap(v: unknown): unknown {
 describe("live router", () => {
   it("replays the hub snapshot to a new subscriber", async () => {
     const hub = new LiveHub({
-      fetchView: async () => ({ now: "NL-1", all: [] }),
+      fetchView: async () => ({ now: "NL-1", autoNow: null, all: [] }),
       streamTraffic: async function* () {},
       getInterval: () => 1000,
     });
