@@ -14,6 +14,7 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.0.2",
     "@submerge/shared": "workspace:*",
     "@trpc/server": "latest",
     "better-sqlite3": "latest",

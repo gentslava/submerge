@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
@@ -16,6 +17,9 @@ export function SettingsScreen() {
   const trpc = useTRPC();
   const qc = useQueryClient();
   const { theme, setTheme } = useTheme();
+
+  const authStatus = useAuthStatus();
+  const logout = useLogout();
 
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const data = settingsQuery.data;
@@ -156,6 +160,22 @@ export function SettingsScreen() {
               </p>
             )}
           </Card>
+
+          {authStatus.data?.required ? (
+            <Card className="p-5">
+              <h2 className="mb-4 text-sm font-semibold text-text-primary">Сессия</h2>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-sm text-text-secondary">Выйти из аккаунта</span>
+                <Button
+                  variant="destructive"
+                  disabled={logout.isPending}
+                  onClick={() => logout.mutate()}
+                >
+                  Выйти
+                </Button>
+              </div>
+            </Card>
+          ) : null}
         </div>
       )}
     </div>

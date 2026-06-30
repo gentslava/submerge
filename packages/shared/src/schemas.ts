@@ -72,3 +72,10 @@ export const liveEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("health"), mihomo: z.boolean() }),
 ]);
 export type LiveEvent = z.infer<typeof liveEventSchema>;
+
+// Auth (Phase 5) — single-admin optional password.
+export const loginInput = z.object({ password: z.string().min(1) });
+export type LoginInput = z.infer<typeof loginInput>;
+
+export const sessionStatusSchema = z.object({ authed: z.boolean(), required: z.boolean() });
+export type SessionStatus = z.infer<typeof sessionStatusSchema>;

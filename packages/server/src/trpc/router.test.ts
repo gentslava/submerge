@@ -7,7 +7,8 @@ import { appRouter } from "./router.js";
 import { createCallerFactory } from "./trpc.js";
 
 const createCaller = createCallerFactory(appRouter);
-const caller = () => createCaller({ authed: true });
+const caller = () =>
+  createCaller({ authed: true, authRequired: false, req: {} as never, res: {} as never });
 
 // The settings/sources routers use the singleton db (a real file at env.DB_PATH).
 // Apply migrations so the tables exist regardless of the file's prior state

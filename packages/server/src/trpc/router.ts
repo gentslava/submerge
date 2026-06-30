@@ -1,3 +1,4 @@
+import { authRouter } from "../auth/router.js";
 import { makeLiveRouter } from "../live/router.js";
 import { liveHub } from "../live/singleton.js";
 import { nodesRouter } from "../modules/nodes/router.js";
@@ -10,6 +11,7 @@ export const appRouter = router({
     // Returns ok + current server version — used as a liveness check
     ping: publicProcedure.query(() => ({ ok: true, version: "0.2.0" })),
   }),
+  auth: authRouter,
   sources: sourcesRouter,
   nodes: nodesRouter,
   settings: settingsRouter,
