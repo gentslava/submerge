@@ -5,6 +5,10 @@ services:
   mihomo:
     image: metacubex/mihomo:latest
     container_name: submerge-mihomo
+    # Force the RESTful API on :9090 even on a fresh config volume — mihomo's auto-generated
+    # default config has no external-controller, so submerge (MIHOMO_API) couldn't reach it.
+    # submerge's generated config keeps external-controller:9090 + secret once sources exist.
+    command: -d /root/.config/mihomo -ext-ctl 0.0.0.0:9090
     restart: unless-stopped
     volumes:
       - ./mihomo:/root/.config/mihomo

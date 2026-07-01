@@ -10,6 +10,7 @@ on:
       - "**.md"
       - "docs/**"
       - "pencil/**"
+      - "docker-compose.yml"
   workflow_dispatch:
 
 # A newer push supersedes an in-flight build of the same ref.
