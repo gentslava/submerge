@@ -93,6 +93,18 @@ export class ChannelController {
     return [...this.log].reverse(); // newest first
   }
 
+  // Clear only the transient control state — not the decision log. Call this when
+  // the channel's policy changes at runtime (e.g. channels.setPolicy) so stale state
+  // from the previous policy session doesn't leak into the new one: a leftover
+  // `heldSince` could misfire `maxHoldHours`, a leftover `failures` count could
+  // shorten the next failover, and a stale `lastCheck` could skip the first check.
+  reset(): void {
+    this.failures = 0;
+    this.heldSince = null;
+    this.lastCheck = Number.NEGATIVE_INFINITY;
+    this.lastSpeedNow = null;
+  }
+
   protected record(entry: DecisionEntry): void {
     this.log.push(entry);
     const cap = this.deps.ringSize ?? 20;

@@ -220,3 +220,60 @@ describe("ChannelController manual", () => {
     expect(h.reasons.at(-1)?.reason).toContain("fell back");
   });
 });
+
+describe("ChannelController reset", () => {
+  it("clears transient control state so the next tick re-adopts instead of misfiring max-hold", async () => {
+    const h = harness(stickyPolicy({ maxHoldHours: 1 }));
+    h.setProbe(() => 30); // always healthy
+    // Adopt A and pin its hold window at t=0.
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    const afterAdopt = h.selected.length;
+
+    // Advance close to (but under) maxHoldHours, then reset — this must drop
+    // heldSince so the next tick starts a fresh hold window instead of treating
+    // the policy-change moment as if the node had been held since t=0.
+    h.setClock(59 * 60_000);
+    h.ctrl.reset();
+
+    // Jump past what would have been the max-hold deadline from the stale
+    // heldSince (t=0 + 1h). If reset() didn't clear heldSince, this tick would
+    // force a re-pick ("max-hold" reason). With state cleared, heldSince is
+    // re-adopted fresh at this tick and no re-pick fires.
+    h.setClock(61 * 60_000);
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    expect(h.selected.length).toBe(afterAdopt); // no extra select — stale hold window did not misfire
+    expect(h.reasons.length).toBe(0); // no max-hold re-pick was recorded either
+  });
+
+  it("clears the failure counter so a single post-reset failure does not immediately switch", async () => {
+    const h = harness(stickyPolicy({ failureThreshold: 3 }));
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A")); // adopt A
+    const base = h.selected.length;
+
+    // Accumulate 2 failures (below threshold 3).
+    h.setProbe((n) => (n === "A" ? null : 25));
+    h.setClock(60_000);
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    h.setClock(120_000);
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    expect(h.selected.length).toBe(base); // still holding, below threshold
+
+    h.ctrl.reset();
+
+    // One more failure right after reset must not switch — reset should have
+    // zeroed the counter, so this is failure 1/3, not 3/3.
+    h.setClock(180_000);
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    expect(h.selected.length).toBe(base); // no switch: counter was cleared by reset
+  });
+
+  it("does not clear the decision log", async () => {
+    const h = harness(stickyPolicy());
+    // No valid pre-existing pin → this tick logs an "initial pick" decision.
+    await h.ctrl.tick(view(["AUTO", "A", "B"], null));
+    const before = h.ctrl.recent();
+    expect(before.length).toBeGreaterThan(0);
+    h.ctrl.reset();
+    expect(h.ctrl.recent()).toEqual(before);
+  });
+});

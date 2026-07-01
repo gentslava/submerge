@@ -181,10 +181,7 @@ export function SettingsScreen() {
             </Row>
           </Section>
 
-          <Section
-            title="Авто-выбор узла"
-            desc="Политика группы PROXY: submerge сам держит активным лучший узел."
-          >
+          <Section title="Авто-выбор узла" desc="Как submerge держит активным лучший узел.">
             <Row label="Политика" sub="По задержке — гонка; стабильный IP — держит узел дольше">
               <Segmented
                 aria-label="Политика выбора"
