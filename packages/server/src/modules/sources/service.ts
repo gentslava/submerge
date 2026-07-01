@@ -36,8 +36,13 @@ export async function addSource(
   configPath: string = env.MIHOMO_CONFIG_PATH,
   hwidFile: string = env.HWID_FILE,
 ): Promise<Source> {
+  const value = input.value.trim();
+  // Reject an already-added source (same value) up front — before any decode/network
+  // work — so the same subscription can't be added twice.
+  const existing = db.select().from(sources).where(eq(sources.value, value)).get();
+  if (existing) throw new Error("Источник уже добавлен");
   const hwid = input.hwid ? getOrCreateHwid(db, hwidFile) : "";
-  const result = await ingestSource(input.value, input.hwid, hwid);
+  const result = await ingestSource(value, input.hwid, hwid);
   const maxRow = db
     .select({ max: sql<number>`coalesce(max(${sources.sortOrder}), -1)` })
     .from(sources)
@@ -47,7 +52,7 @@ export async function addSource(
     .insert(sources)
     .values({
       kind: result.kind,
-      value: input.value,
+      value,
       label: result.label,
       hwid: input.hwid,
       sortOrder,

@@ -56,6 +56,17 @@ describe("sources service", () => {
     expect(list[0]?.id).toBe(src.id);
   });
 
+  it("rejects a duplicate source value (trimmed) without inserting it", async () => {
+    const db = freshDb();
+    stubNet();
+    await addSource(db, { value: "vless://u@ex.com:443#A", hwid: false }, tmpConfig(), hwidFile());
+    await expect(
+      // same value with surrounding whitespace — must still be caught
+      addSource(db, { value: "  vless://u@ex.com:443#A  ", hwid: false }, tmpConfig(), hwidFile()),
+    ).rejects.toThrow(/уже добавлен/);
+    expect(await listSources(db)).toHaveLength(1);
+  });
+
   it("appends sources with increasing sortOrder", async () => {
     const db = freshDb();
     stubNet();
