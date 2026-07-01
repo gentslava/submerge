@@ -82,13 +82,21 @@ The approved UI is the **Indigo Console** design in [`pencil/web-ui.pen`](pencil
 
 Every change moves through these stages. Gates marked **⛔** are mandatory and **block progression** — do not advance (or offer to) until the current gate is green. Trivial, mechanical edits (typo, one-line fix, rename) may skip to *Implement*; anything that adds or changes behavior runs the whole flow.
 
+**Review runs at two scales — both required, they see different things.** The *incremental* review (2c) looks **narrow and deep** at one slice while the context is fresh; the *final* review (stage 3) looks **wide** across the whole feature for integration and coherence. Trees vs. forest — neither replaces the other.
+
 1. **Spec / design** — for a new feature or behavior change, agree the approach first (no code without a spec). Specs live in `docs/specs/`, phased plans in `docs/plans/`. Check current library APIs via **Context7 MCP** (Zod 4, tRPC v11, Drizzle, React 19) — versions are latest, the API may have shifted.
-2. **Implement** — **TDD**: failing test first, then the minimal code to pass; cover parsing/ingest logic with unit tests. Build in small vertical slices. Follow the conventions and design-system gates above (tokens-in-config, measure don't invent).
-3. ⛔ **Self-verify** — `./node_modules/.bin/biome ci packages/ && pnpm typecheck && pnpm test` green. (Use **raw biome**: the rtk hook masks `pnpm lint`'s exit code — it can read green while failing.) **Green gates ≠ correct.** lint/typecheck/tests do not see layout, visual, responsive, or behavioral bugs — close that blind spot yourself: for UI, render at the mockup viewport (1440×1024, dark) **and** sweep the breakpoint boundaries (390 up through the sm/md edges), checking for horizontal overflow and clipped/misaligned controls; for logic, exercise the risky states (empty / error / collapsed), not just the happy path.
-4. ⛔ **Code review** — run `/code-review` (or an independent adversarial pass) **before offering to commit**, and resolve its findings. Review is a gate, **not** an option the user must ask for: never present a commit as available until review has run. Self-review by the author who just wrote the code is not a substitute for it.
-5. **Commit** — only once stages 3 + 4 are green. Frequent **atomic** commits, conventional (`feat:`, `fix:`, `chore:`, `docs:`). End the body with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Commit/push only when the user asks — this is a shared, deploy-triggering repo.
-6. **Ship** — push to `master` → GHA (`.github/workflows/docker.yml`) builds the multiarch images → redeploy so Dokploy pulls the fresh `:latest`.
-7. ⛔ **Verify in prod** — confirm the change is actually live and correct on the deployed instance. "Deployment queued" is not "done": load the running site and check the change.
+
+2. **Implement — the slice loop.** Build in small vertical slices; repeat per slice:
+   - **a. TDD** — failing test first, then the minimal code to pass. Cover parsing/ingest logic with unit tests. Follow the conventions and design-system gates above (tokens-in-config, measure don't invent).
+   - **b. ⛔ Self-verify** — `./node_modules/.bin/biome ci packages/ && pnpm typecheck && pnpm test` green. Use **raw biome** (the rtk hook masks `pnpm lint`'s exit code — it can read green while failing). **Green gates ≠ correct**: they don't see layout/visual/responsive/behavior — check those yourself for the slice.
+   - **c. ⛔ Incremental review** — review *this slice's* diff (narrow, deep): correctness, and does it fit the conventions + design system. Cheap and early — catches issues before they compound across later slices.
+   - **d. Commit** — atomic, conventional (`feat:`, `fix:`, `chore:`, `docs:`), body ending `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Keep slices small so each review stays narrow.
+
+3. ⛔ **Final review** — once the feature is complete, review the **whole change as one** (wide scope): integration between slices, cross-cutting concerns, coherence, regressions one slice introduced against another, plus the full UI sweep — mockup viewport (1440×1024, dark) **and** the breakpoint boundaries (390 up through the sm/md edges), checking horizontal overflow and clipped/misaligned controls; for logic, the risky states (empty / error / collapsed), not just the happy path. Run `/code-review` (an independent adversarial pass) and resolve findings **before offering to ship**. This is a gate, not an option the user must ask for; self-review by the author is not a substitute.
+
+4. **Ship** — push to `master` → GHA (`.github/workflows/docker.yml`) builds the multiarch images → redeploy so Dokploy pulls the fresh `:latest`. Commit/push only when the user asks — this is a shared, deploy-triggering repo.
+
+5. ⛔ **Verify in prod** — confirm the change is actually live and correct on the deployed instance. "Deployment queued" is not "done": load the running site and check the change.
 
 ## Do not
 
