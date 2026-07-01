@@ -57,7 +57,7 @@ function SourceMeta({ meta }: { meta: SubscriptionMeta }) {
       {hasTraffic && (
         <div className="flex min-w-0 items-center gap-2">
           {total != null && (
-            <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-canvas md:w-24">
+            <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-hover md:w-24">
               <span
                 className="block h-full rounded-full bg-accent"
                 style={{ width: `${pct ?? 0}%` }}
