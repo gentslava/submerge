@@ -24284,7 +24284,8 @@
                                   "fill": "$c-text",
                                   "content": "SMART-Сингапур",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -24471,7 +24472,8 @@
                                   "fill": "$c-text",
                                   "content": "SMART-США",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -24658,7 +24660,8 @@
                                   "fill": "$c-text",
                                   "content": "BRIDGE-Швеция",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -24845,7 +24848,8 @@
                                   "fill": "$c-text",
                                   "content": "SMART-Япония",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -25032,7 +25036,8 @@
                                   "fill": "$c-text",
                                   "content": "LTE-Германия",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -25215,7 +25220,8 @@
                                   "fill": "$c-text",
                                   "content": "BRIDGE-Нидерланды",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -28651,7 +28657,8 @@
                                   "width": "fill_container",
                                   "content": "SMART-Сингапур",
                                   "fontFamily": "Inter",
-                                  "fontSize": 14
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -28720,7 +28727,8 @@
                                   "width": "fill_container",
                                   "content": "SMART-США",
                                   "fontFamily": "Inter",
-                                  "fontSize": 14
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -28789,7 +28797,8 @@
                                   "width": "fill_container",
                                   "content": "BRIDGE-Швеция",
                                   "fontFamily": "Inter",
-                                  "fontSize": 14
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -28858,7 +28867,8 @@
                                   "width": "fill_container",
                                   "content": "LTE-Германия",
                                   "fontFamily": "Inter",
-                                  "fontSize": 14
+                                  "fontSize": 14,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -29184,7 +29194,8 @@
                               "fill": "#8A8F98",
                               "content": "Источники",
                               "fontFamily": "Inter",
-                              "fontSize": 13
+                              "fontSize": 13,
+                              "fontWeight": "normal"
                             }
                           ]
                         },
@@ -29218,7 +29229,8 @@
                               "fill": "#8A8F98",
                               "content": "Настройки",
                               "fontFamily": "Inter",
-                              "fontSize": 13
+                              "fontSize": 13,
+                              "fontWeight": "normal"
                             }
                           ]
                         }
@@ -29415,7 +29427,8 @@
                                   "fill": "#F7F8F8",
                                   "content": "SMART-Сингапур",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -29472,7 +29485,8 @@
                                   "fill": "#F7F8F8",
                                   "content": "SMART-США",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -29529,7 +29543,8 @@
                                   "fill": "#F7F8F8",
                                   "content": "SMART-Япония",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -29586,7 +29601,8 @@
                                   "fill": "#F7F8F8",
                                   "content": "BRIDGE-Швеция",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -29643,7 +29659,8 @@
                                   "fill": "#F7F8F8",
                                   "content": "BRIDGE-Нидерланды",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -29696,7 +29713,8 @@
                                   "fill": "#F7F8F8",
                                   "content": "LTE-Германия",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -29846,7 +29864,8 @@
                               "fill": "#A99FC9",
                               "content": "Проблемные",
                               "fontFamily": "Rubik",
-                              "fontSize": 13
+                              "fontSize": 13,
+                              "fontWeight": "normal"
                             }
                           ]
                         },
@@ -29868,7 +29887,8 @@
                               "fill": "#A99FC9",
                               "content": "Офлайн",
                               "fontFamily": "Rubik",
-                              "fontSize": 13
+                              "fontSize": 13,
+                              "fontWeight": "normal"
                             }
                           ]
                         },
@@ -31936,7 +31956,8 @@
                                   "fill": "#061B31",
                                   "content": "SMART-Сингапур",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -32086,7 +32107,8 @@
                                   "fill": "#061B31",
                                   "content": "SMART-США",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -32236,7 +32258,8 @@
                                   "fill": "#061B31",
                                   "content": "BRIDGE-Швеция",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -32382,7 +32405,8 @@
                                   "fill": "#061B31",
                                   "content": "LTE-Германия",
                                   "fontFamily": "Inter",
-                                  "fontSize": 13
+                                  "fontSize": 13,
+                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -32952,7 +32976,8 @@
                                   "fill": "#202124",
                                   "content": "SMART-Сингапур",
                                   "fontFamily": "Roboto",
-                                  "fontSize": 16
+                                  "fontSize": 16,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -33051,7 +33076,8 @@
                                   "fill": "#202124",
                                   "content": "SMART-США",
                                   "fontFamily": "Roboto",
-                                  "fontSize": 16
+                                  "fontSize": 16,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -33150,7 +33176,8 @@
                                   "fill": "#202124",
                                   "content": "BRIDGE-Швеция",
                                   "fontFamily": "Roboto",
-                                  "fontSize": 16
+                                  "fontSize": 16,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
@@ -33249,7 +33276,8 @@
                                   "fill": "#202124",
                                   "content": "LTE-Германия",
                                   "fontFamily": "Roboto",
-                                  "fontSize": 16
+                                  "fontSize": 16,
+                                  "fontWeight": "normal"
                                 },
                                 {
                                   "type": "text",
