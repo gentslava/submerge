@@ -78,13 +78,17 @@ The approved UI is the **Indigo Console** design in [`pencil/web-ui.pen`](pencil
 - **Behavior, not just looks.** Controls must work — no dead buttons or decorative tabs. If the engine genuinely can't back a control, that's a product decision: raise it, don't silently fake or drop it.
 - **Honesty over fidelity.** Don't render data we don't have (fake quotas/totals) — show the real value or omit it, and say why.
 
-## Workflow
+## Workflow — the development flow
 
-- **TDD**: failing test first, then minimal implementation. Cover parsing/ingest logic with unit tests.
-- **Frequent atomic commits**, conventional commits (`feat:`, `fix:`, `chore:`, `docs:`). End the body with:
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`
-- **Pre-commit gates:** `pnpm lint && pnpm typecheck && pnpm test` — green.
-- Before using libraries, check the current API via **Context7 MCP** (Zod 4, tRPC v11, Drizzle, React 19) — versions are latest, the API may have changed.
+Every change moves through these stages. Gates marked **⛔** are mandatory and **block progression** — do not advance (or offer to) until the current gate is green. Trivial, mechanical edits (typo, one-line fix, rename) may skip to *Implement*; anything that adds or changes behavior runs the whole flow.
+
+1. **Spec / design** — for a new feature or behavior change, agree the approach first (no code without a spec). Specs live in `docs/specs/`, phased plans in `docs/plans/`. Check current library APIs via **Context7 MCP** (Zod 4, tRPC v11, Drizzle, React 19) — versions are latest, the API may have shifted.
+2. **Implement** — **TDD**: failing test first, then the minimal code to pass; cover parsing/ingest logic with unit tests. Build in small vertical slices. Follow the conventions and design-system gates above (tokens-in-config, measure don't invent).
+3. ⛔ **Self-verify** — `./node_modules/.bin/biome ci packages/ && pnpm typecheck && pnpm test` green. (Use **raw biome**: the rtk hook masks `pnpm lint`'s exit code — it can read green while failing.) **Green gates ≠ correct.** lint/typecheck/tests do not see layout, visual, responsive, or behavioral bugs — close that blind spot yourself: for UI, render at the mockup viewport (1440×1024, dark) **and** sweep the breakpoint boundaries (390 up through the sm/md edges), checking for horizontal overflow and clipped/misaligned controls; for logic, exercise the risky states (empty / error / collapsed), not just the happy path.
+4. ⛔ **Code review** — run `/code-review` (or an independent adversarial pass) **before offering to commit**, and resolve its findings. Review is a gate, **not** an option the user must ask for: never present a commit as available until review has run. Self-review by the author who just wrote the code is not a substitute for it.
+5. **Commit** — only once stages 3 + 4 are green. Frequent **atomic** commits, conventional (`feat:`, `fix:`, `chore:`, `docs:`). End the body with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Commit/push only when the user asks — this is a shared, deploy-triggering repo.
+6. **Ship** — push to `master` → GHA (`.github/workflows/docker.yml`) builds the multiarch images → redeploy so Dokploy pulls the fresh `:latest`.
+7. ⛔ **Verify in prod** — confirm the change is actually live and correct on the deployed instance. "Deployment queued" is not "done": load the running site and check the change.
 
 ## Do not
 
