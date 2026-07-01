@@ -10,20 +10,13 @@ const TABS = [
   { key: "auto", label: "Авто", Icon: Sparkles },
 ] as const;
 
-// Mirror of the editable AUTO group tuning (Settings → Авто-выбор узла).
+// Mirror of the Default channel's speed policy (Settings → Авто-выбор узла).
 export interface AutoInfo {
-  strategy: string; // "url-test" | "fallback" | "load-balance"
-  url: string;
-  interval: number; // seconds between mihomo re-tests (NOT the panel poll)
-  tolerance: number;
-  switchOnTimeout: boolean;
+  testUrl: string;
+  intervalSec: number; // seconds between mihomo re-tests (NOT the panel poll)
+  toleranceMs: number;
+  reevaluateWhileHealthy: boolean;
 }
-
-const STRATEGY_LABELS: Record<string, string> = {
-  "url-test": "По задержке",
-  fallback: "Отказоустойчивость",
-  "load-balance": "Нагрузка",
-};
 
 interface AutoStrategyCardProps {
   auto: AutoInfo;
@@ -44,14 +37,11 @@ export function AutoStrategyCard({
   onManual,
   pending = false,
 }: AutoStrategyCardProps) {
-  // Tolerance only applies to the url-test strategy (mihomo ignores it for
-  // fallback / load-balance) — don't show a param that has no effect.
   const params: { caption: string; value: string; grow?: boolean }[] = [
-    { caption: "СТРАТЕГИЯ", value: STRATEGY_LABELS[auto.strategy] ?? auto.strategy },
-    { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.url.replace(/^https?:\/\//, ""), grow: true },
-    { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: formatInterval(auto.interval) },
-    ...(auto.strategy === "url-test" ? [{ caption: "ДОПУСК", value: `${auto.tolerance} ms` }] : []),
-    { caption: "ПЕРЕКЛЮЧАТЬ ПРИ", value: auto.switchOnTimeout ? "таймаут" : "вручную" },
+    { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.testUrl.replace(/^https?:\/\//, ""), grow: true },
+    { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: formatInterval(auto.intervalSec) },
+    { caption: "ДОПУСК", value: `${auto.toleranceMs} ms` },
+    { caption: "ПЕРЕОЦЕНКА", value: auto.reevaluateWhileHealthy ? "всегда" : "пока жив" },
   ];
 
   const status = isAuto

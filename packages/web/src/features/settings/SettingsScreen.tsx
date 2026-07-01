@@ -1,10 +1,4 @@
-import {
-  DEFAULT_AUTO_STRATEGY,
-  DEFAULT_AUTO_TEST_INTERVAL,
-  DEFAULT_AUTO_TEST_URL,
-  DEFAULT_AUTO_TOLERANCE,
-  DEFAULT_POLL_INTERVAL,
-} from "@submerge/shared";
+import { type ChannelPolicy, DEFAULT_POLL_INTERVAL, DEFAULT_SPEED_POLICY } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -23,11 +17,6 @@ import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
-const STRATEGY_OPTIONS = [
-  { value: "url-test", label: "По задержке" },
-  { value: "fallback", label: "Отказоустойчивость" },
-  { value: "load-balance", label: "Нагрузка" },
-];
 const POLL_PRESETS = [1, 2, 5, 10, 30];
 // Check interval: from the most frequent (unstable links — fastest switching) to the
 // longest (stable — don't keep pinging configs). Large values read as minutes.
@@ -57,6 +46,7 @@ export function SettingsScreen() {
 
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const data = settingsQuery.data;
+  const channelQuery = useQuery(trpc.channels.get.queryOptions());
 
   // Engine reachability — polled at the panel's poll cadence and on demand
   // ("Проверить"), so the status updates live without a page reload (this is a
@@ -78,12 +68,15 @@ export function SettingsScreen() {
     }),
   );
 
-  function persistInt(key: string, raw: string, min: number) {
-    const trimmed = raw.trim();
-    if (!/^\d+$/.test(trimmed)) return; // reject empty / non-integer input
-    if (Number(trimmed) < min) return;
-    settingsMutation.mutate({ key, value: String(Number(trimmed)) });
-  }
+  const setPolicyMutation = useMutation(
+    trpc.channels.setPolicy.mutationOptions({
+      onSuccess: () => {
+        void qc.invalidateQueries({ queryKey: trpc.channels.get.queryKey() });
+        toast.success("Сохранено");
+      },
+      onError: (e) => toast.error(e.message),
+    }),
+  );
 
   function persistText(key: string, raw: string) {
     const v = raw.trim();
@@ -91,14 +84,21 @@ export function SettingsScreen() {
     settingsMutation.mutate({ key, value: v });
   }
 
+  // The Default channel's speed policy — Phase 1 always ships `speed`, so this is
+  // the only variant we bind to; sticky/manual editing lands with multi-channel UI.
+  const policy = channelQuery.data?.policy;
+  const speedPolicy: Extract<ChannelPolicy, { kind: "speed" }> =
+    policy?.kind === "speed"
+      ? policy
+      : (DEFAULT_SPEED_POLICY as Extract<ChannelPolicy, { kind: "speed" }>);
+  function updateSpeed(patch: Partial<Extract<ChannelPolicy, { kind: "speed" }>>) {
+    if (policy?.kind !== "speed") return;
+    setPolicyMutation.mutate({ id: "default", policy: { ...policy, ...patch } });
+  }
+
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret ?? "";
   const proxyEndpoint = data?.proxyEndpoint ?? PROXY_ENDPOINT;
-  const autoStrategy = data?.autoStrategy ?? DEFAULT_AUTO_STRATEGY;
-  const autoUrl = data?.autoTestUrl ?? DEFAULT_AUTO_TEST_URL;
-  const autoInterval = data?.autoTestInterval ?? String(DEFAULT_AUTO_TEST_INTERVAL);
-  const autoTolerance = data?.autoTestTolerance ?? String(DEFAULT_AUTO_TOLERANCE);
-  const autoSwitch = (data?.autoSwitchOnTimeout ?? "true") === "true";
   const pollInterval = data?.pollInterval ?? String(DEFAULT_POLL_INTERVAL);
   const engine = healthQuery.isLoading
     ? { dot: "bg-idle", label: "Проверка" }
@@ -159,57 +159,52 @@ export function SettingsScreen() {
             title="Авто-выбор узла"
             desc="Политика группы PROXY: submerge сам держит активным лучший узел."
           >
-            <Row label="Стратегия" sub="Как выбирать активный узел">
-              <Segmented
-                aria-label="Стратегия"
-                options={STRATEGY_OPTIONS}
-                value={autoStrategy}
-                onChange={(v) => settingsMutation.mutate({ key: "autoStrategy", value: v })}
-              />
-            </Row>
             <Row label="Тест-URL" sub="Куда mihomo шлёт проверочный запрос">
               <Input
-                key={autoUrl}
+                key={speedPolicy.testUrl}
                 type="url"
                 aria-label="Тест-URL"
-                defaultValue={autoUrl}
-                onBlur={(e) => persistText("autoTestUrl", e.target.value)}
+                defaultValue={speedPolicy.testUrl}
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v.length > 0) updateSpeed({ testUrl: v });
+                }}
                 className="w-full font-mono text-[13px] md:w-[360px]"
               />
             </Row>
             <Row label="Интервал проверки" sub="Как часто переизмерять задержку">
               <Select
                 aria-label="Интервал проверки"
-                value={autoInterval}
-                onChange={(e) =>
-                  settingsMutation.mutate({ key: "autoTestInterval", value: e.target.value })
-                }
+                value={String(speedPolicy.intervalSec)}
+                onChange={(e) => updateSpeed({ intervalSec: Number(e.target.value) })}
               >
-                {secondsOptions(CHECK_PRESETS, autoInterval)}
+                {secondsOptions(CHECK_PRESETS, String(speedPolicy.intervalSec))}
               </Select>
             </Row>
             <Row label="Допуск, мс" sub="Не переключаться при разнице меньше допуска">
               <Input
-                key={autoTolerance}
+                key={speedPolicy.toleranceMs}
                 type="number"
                 aria-label="Допуск (мс)"
                 min={0}
                 step={1}
-                defaultValue={autoTolerance}
-                onBlur={(e) => persistInt("autoTestTolerance", e.target.value, 0)}
+                defaultValue={speedPolicy.toleranceMs}
+                onBlur={(e) => {
+                  const trimmed = e.target.value.trim();
+                  if (!/^\d+$/.test(trimmed)) return;
+                  updateSpeed({ toleranceMs: Number(trimmed) });
+                }}
                 className="w-[90px] text-center font-mono"
               />
             </Row>
             <Row
-              label="Переключаться при таймауте"
-              sub="Сразу выбрать другой узел, если активный отвалился"
+              label="Переоценивать, пока узел жив"
+              sub="Переизмерять задержку каждый интервал, даже если активный узел здоров"
             >
               <Switch
-                checked={autoSwitch}
-                onCheckedChange={(v) =>
-                  settingsMutation.mutate({ key: "autoSwitchOnTimeout", value: String(v) })
-                }
-                aria-label="Переключаться при таймауте"
+                checked={speedPolicy.reevaluateWhileHealthy}
+                onCheckedChange={(v) => updateSpeed({ reevaluateWhileHealthy: v })}
+                aria-label="Переоценивать, пока узел жив"
               />
             </Row>
           </Section>

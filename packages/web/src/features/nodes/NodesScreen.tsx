@@ -1,9 +1,7 @@
 import {
-  DEFAULT_AUTO_STRATEGY,
-  DEFAULT_AUTO_TEST_INTERVAL,
-  DEFAULT_AUTO_TEST_URL,
-  DEFAULT_AUTO_TOLERANCE,
+  type ChannelPolicy,
   DEFAULT_POLL_INTERVAL,
+  DEFAULT_SPEED_POLICY,
   type NodeItem,
   type Source,
 } from "@submerge/shared";
@@ -29,6 +27,7 @@ export function NodesScreen() {
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
+  const channelQuery = useQuery(trpc.channels.get.queryOptions());
 
   // Real poll cadence the server uses (settings-driven) — the active node is
   // measured this often, so the latency chart grows at this rate.
@@ -36,21 +35,18 @@ export function NodesScreen() {
     1,
     Number(settingsQuery.data?.pollInterval ?? DEFAULT_POLL_INTERVAL) || DEFAULT_POLL_INTERVAL,
   );
-  // The AUTO group's own tuning (Settings → Авто-выбор узла) — distinct from the
-  // panel poll above; drives the strategy card's params.
-  const s = settingsQuery.data;
+  // The Default channel's speed policy (Settings → Авто-выбор узла) — distinct from
+  // the panel poll above; drives the strategy card's params.
+  const policy = channelQuery.data?.policy;
+  const speedPolicy: Extract<ChannelPolicy, { kind: "speed" }> =
+    policy?.kind === "speed"
+      ? policy
+      : (DEFAULT_SPEED_POLICY as Extract<ChannelPolicy, { kind: "speed" }>);
   const auto: AutoInfo = {
-    strategy: s?.autoStrategy ?? DEFAULT_AUTO_STRATEGY,
-    url: s?.autoTestUrl ?? DEFAULT_AUTO_TEST_URL,
-    interval: Math.max(
-      1,
-      Number(s?.autoTestInterval ?? DEFAULT_AUTO_TEST_INTERVAL) || DEFAULT_AUTO_TEST_INTERVAL,
-    ),
-    tolerance: Math.max(
-      0,
-      Number(s?.autoTestTolerance ?? DEFAULT_AUTO_TOLERANCE) || DEFAULT_AUTO_TOLERANCE,
-    ),
-    switchOnTimeout: (s?.autoSwitchOnTimeout ?? "true") === "true",
+    testUrl: speedPolicy.testUrl,
+    intervalSec: Math.max(1, speedPolicy.intervalSec),
+    toleranceMs: Math.max(0, speedPolicy.toleranceMs),
+    reevaluateWhileHealthy: speedPolicy.reevaluateWhileHealthy,
   };
 
   // Per-node "being pinged" set — drives the progressive loaders in each row.
@@ -214,7 +210,7 @@ function Body({
         all={all}
         totals={totals}
         latency={latency}
-        checkInterval={auto.interval}
+        checkInterval={auto.intervalSec}
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">
