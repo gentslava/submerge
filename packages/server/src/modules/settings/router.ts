@@ -9,8 +9,6 @@ export const settingsRouter = router({
   get: protectedProcedure.query(() => getSettingsView(db)),
   set: protectedProcedure.input(setSettingInput).mutation(async ({ input }) => {
     setSetting(db, input.key, input.value);
-    // AUTO tuning lives in the mihomo config — regenerate + reload so it takes effect.
-    if (input.key.startsWith("auto")) await applyConfig(db);
     // The secret is editable: it's written into the regenerated config (rotating a
     // sidecar engine) AND it's the panel's client credential. reloadConfig authenticates
     // with the CURRENT (old) secret, so we rotate first, then re-point the client in a

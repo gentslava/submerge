@@ -2,6 +2,7 @@ import type { inferRouterOutputs } from "@trpc/server";
 import { authRouter } from "../auth/router.js";
 import { makeLiveRouter } from "../live/router.js";
 import { liveHub } from "../live/singleton.js";
+import { channelsRouter } from "../modules/channels/router.js";
 import { nodesRouter } from "../modules/nodes/router.js";
 import { settingsRouter } from "../modules/settings/router.js";
 import { sourcesRouter } from "../modules/sources/router.js";
@@ -15,6 +16,7 @@ export const appRouter = router({
   auth: authRouter,
   sources: sourcesRouter,
   nodes: nodesRouter,
+  channels: channelsRouter,
   settings: settingsRouter,
   live: makeLiveRouter(liveHub),
 });
