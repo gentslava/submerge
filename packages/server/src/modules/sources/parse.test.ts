@@ -230,6 +230,11 @@ describe("parseVmess", () => {
     const uri = `vmess://${Buffer.from(JSON.stringify({ add: "h", port: "1", id: "u" })).toString("base64")}`;
     expect(detectKind(uri)).toBe("vmess");
   });
+  it("reads the scy cipher when present", () => {
+    const conf = { ps: "VM", add: "ex.com", port: "443", id: "u", net: "tcp", scy: "aes-128-gcm" };
+    const uri = `vmess://${Buffer.from(JSON.stringify(conf)).toString("base64")}`;
+    expect(parseVmess(uri).cipher).toBe("aes-128-gcm");
+  });
 });
 
 describe("parseShadowsocks", () => {
@@ -335,6 +340,15 @@ describe("parseProxiesFromText", () => {
     expect(
       parseProxiesFromText("vless://bad\nvless://u@ex.com:443#A").proxies.map((p) => p.name),
     ).toEqual(["A"]);
+  });
+  it("defaults a missing JSON server_port instead of emitting NaN (would break mihomo config)", () => {
+    const { proxies } = parseProxiesFromText(
+      JSON.stringify({
+        outbounds: [{ type: "hysteria2", tag: "HY", server: "ex.com", password: "pw" }], // no server_port
+      }),
+    );
+    expect(proxies[0]?.port).toBe(443);
+    expect(Number.isNaN(proxies[0]?.port)).toBe(false);
   });
 });
 

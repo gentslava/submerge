@@ -32,6 +32,12 @@ interface SourceRowProps {
 const KIND_SHORT: Partial<Record<SourceKind, string>> = {
   sub: "подписка",
   happ: "happ",
+  vless: "VLESS",
+  hysteria2: "Hysteria2",
+  vmess: "VMess",
+  trojan: "Trojan",
+  ss: "Shadowsocks",
+  tuic: "TUIC",
 };
 
 function KindIcon({ kind }: { kind: SourceKind }) {
