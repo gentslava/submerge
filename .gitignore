@@ -29,3 +29,8 @@ smoke-*.png
 *.deb
 out/
 .DS_Store
+
+# local manual-run stack (mihomo config, sqlite db, dev logs)
+.local-run/
+# browser-driver scratch (screenshots, snapshots)
+.playwright-mcp/
