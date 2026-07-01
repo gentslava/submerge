@@ -174,3 +174,13 @@ export const setChannelPolicyInput = z.object({
   policy: channelPolicySchema,
 });
 export type SetChannelPolicyInput = z.infer<typeof setChannelPolicyInput>;
+
+// A single controller decision, surfaced in the UI ("why did it switch?").
+export const decisionEntrySchema = z.object({
+  at: z.number(), // epoch ms
+  channelId: z.string(),
+  from: z.string().nullable(),
+  to: z.string(),
+  reason: z.string(),
+});
+export type DecisionEntry = z.infer<typeof decisionEntrySchema>;
