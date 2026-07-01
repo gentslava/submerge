@@ -1,25 +1,64 @@
+import type { ChannelPolicy } from "@submerge/shared";
 import { Link } from "@tanstack/react-router";
 import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { formatInterval, formatRelative } from "@/lib/duration";
 import { cn } from "@/lib/utils";
 
-// Авто = the AUTO group picks the node automatically (its strategy/tuning is set in
+// Авто = the AUTO group picks the node automatically (its policy/tuning is set in
 // Settings → Авто-выбор узла); Ручной pins a specific node on the PROXY selector.
 const TABS = [
   { key: "manual", label: "Ручной", Icon: MousePointer2 },
   { key: "auto", label: "Авто", Icon: Sparkles },
 ] as const;
 
-// Mirror of the Default channel's speed policy (Settings → Авто-выбор узла).
-export interface AutoInfo {
-  testUrl: string;
-  intervalSec: number; // seconds between mihomo re-tests (NOT the panel poll)
-  toleranceMs: number;
-  reevaluateWhileHealthy: boolean;
+const POLICY_LABEL: Record<ChannelPolicy["kind"], string> = {
+  speed: "По задержке",
+  sticky: "Стабильный IP",
+  manual: "Приоритетный узел",
+};
+const CRITERION_LABEL: Record<"fastest" | "lowest-loss", string> = {
+  fastest: "По скорости",
+  "lowest-loss": "По стабильности",
+};
+const ON_FAILURE_LABEL: Record<"fallback" | "hold", string> = {
+  fallback: "Запасной узел",
+  hold: "Держать",
+};
+
+type Param = { caption: string; value: string; grow?: boolean };
+
+// Compact read-only summary of the active Default-channel policy, shaped per kind so
+// the card reflects the REAL policy (not just speed defaults).
+function policyParams(policy: ChannelPolicy): Param[] {
+  const mode: Param = { caption: "ПОЛИТИКА", value: POLICY_LABEL[policy.kind] };
+  if (policy.kind === "manual") {
+    return [
+      mode,
+      { caption: "ПРИОРИТЕТНЫЙ УЗЕЛ", value: policy.pinnedNode, grow: true },
+      { caption: "ПРИ ОТКАЗЕ", value: ON_FAILURE_LABEL[policy.onFailure] },
+    ];
+  }
+  const common: Param[] = [
+    mode,
+    { caption: "ПРОВЕРОЧНЫЙ URL", value: policy.testUrl.replace(/^https?:\/\//, ""), grow: true },
+    { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: formatInterval(policy.intervalSec) },
+  ];
+  if (policy.kind === "speed") {
+    return [
+      ...common,
+      { caption: "ДОПУСК", value: `${policy.toleranceMs} ms` },
+      { caption: "ПЕРЕОЦЕНКА", value: policy.reevaluateWhileHealthy ? "всегда" : "пока жив" },
+    ];
+  }
+  return [
+    ...common,
+    { caption: "ПОРОГ СБОЕВ", value: String(policy.failureThreshold) },
+    { caption: "КРИТЕРИЙ", value: CRITERION_LABEL[policy.initialCriterion] },
+  ];
 }
 
 interface AutoStrategyCardProps {
-  auto: AutoInfo;
+  policy: ChannelPolicy;
   isAuto: boolean;
   autoNow: string | null;
   now: string | null;
@@ -32,7 +71,7 @@ interface AutoStrategyCardProps {
 }
 
 export function AutoStrategyCard({
-  auto,
+  policy,
   isAuto,
   autoNow,
   now,
@@ -41,12 +80,7 @@ export function AutoStrategyCard({
   pending = false,
   lastDecision,
 }: AutoStrategyCardProps) {
-  const params: { caption: string; value: string; grow?: boolean }[] = [
-    { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.testUrl.replace(/^https?:\/\//, ""), grow: true },
-    { caption: "ИНТЕРВАЛ ПРОВЕРКИ", value: formatInterval(auto.intervalSec) },
-    { caption: "ДОПУСК", value: `${auto.toleranceMs} ms` },
-    { caption: "ПЕРЕОЦЕНКА", value: auto.reevaluateWhileHealthy ? "всегда" : "пока жив" },
-  ];
+  const params = policyParams(policy);
 
   const status = isAuto
     ? autoNow

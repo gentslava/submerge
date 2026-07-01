@@ -1,5 +1,6 @@
 import {
   type ChannelPolicy,
+  DEFAULT_AUTO_TEST_INTERVAL,
   DEFAULT_POLL_INTERVAL,
   DEFAULT_SPEED_POLICY,
   type NodeItem,
@@ -14,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useLiveState } from "@/features/live/LiveProvider";
 import { useTRPC } from "@/lib/trpc";
 import { ActiveNodeCard } from "./ActiveNodeCard";
-import { type AutoInfo, AutoStrategyCard } from "./AutoStrategyCard";
+import { AutoStrategyCard } from "./AutoStrategyCard";
 import { NodeList } from "./NodeList";
 import { NodesHeader } from "./NodesHeader";
 import { isPseudo } from "./nodeView";
@@ -35,19 +36,12 @@ export function NodesScreen() {
     1,
     Number(settingsQuery.data?.pollInterval ?? DEFAULT_POLL_INTERVAL) || DEFAULT_POLL_INTERVAL,
   );
-  // The Default channel's speed policy (Settings → Авто-выбор узла) — distinct from
-  // the panel poll above; drives the strategy card's params.
-  const policy = channelQuery.data?.policy;
-  const speedPolicy: Extract<ChannelPolicy, { kind: "speed" }> =
-    policy?.kind === "speed"
-      ? policy
-      : (DEFAULT_SPEED_POLICY as Extract<ChannelPolicy, { kind: "speed" }>);
-  const auto: AutoInfo = {
-    testUrl: speedPolicy.testUrl,
-    intervalSec: Math.max(1, speedPolicy.intervalSec),
-    toleranceMs: Math.max(0, speedPolicy.toleranceMs),
-    reevaluateWhileHealthy: speedPolicy.reevaluateWhileHealthy,
-  };
+  // The Default channel's policy (Settings → Авто-выбор узла) — drives the strategy
+  // card's params. Distinct from the panel poll above. `manual` has no probe interval
+  // of its own, so the chart uses the engine default for its check cadence.
+  const policy: ChannelPolicy = channelQuery.data?.policy ?? DEFAULT_SPEED_POLICY;
+  const checkIntervalSec =
+    policy.kind === "manual" ? DEFAULT_AUTO_TEST_INTERVAL : Math.max(1, policy.intervalSec);
 
   // Per-node "being pinged" set — drives the progressive loaders in each row.
   const [pingingNames, setPingingNames] = useState<Set<string>>(() => new Set());
@@ -144,7 +138,8 @@ export function NodesScreen() {
           now={now}
           autoNow={autoNow}
           isAuto={isAuto}
-          auto={auto}
+          policy={policy}
+          checkIntervalSec={checkIntervalSec}
           all={all}
           sources={sourcesQuery.data ?? []}
           totals={totals}
@@ -169,7 +164,8 @@ function Body({
   now,
   autoNow,
   isAuto,
-  auto,
+  policy,
+  checkIntervalSec,
   all,
   sources,
   totals,
@@ -185,7 +181,8 @@ function Body({
   now: string | null;
   autoNow: string | null;
   isAuto: boolean;
-  auto: AutoInfo;
+  policy: ChannelPolicy;
+  checkIntervalSec: number;
   all: NodeItem[];
   sources: Source[];
   totals: ReturnType<typeof useLiveState>["totals"];
@@ -201,7 +198,7 @@ function Body({
   return (
     <>
       <AutoStrategyCard
-        auto={auto}
+        policy={policy}
         isAuto={isAuto}
         autoNow={autoNow}
         now={now}
@@ -217,7 +214,7 @@ function Body({
         all={all}
         totals={totals}
         latency={latency}
-        checkInterval={auto.intervalSec}
+        checkInterval={checkIntervalSec}
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">
