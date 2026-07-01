@@ -47,6 +47,15 @@ export const addSourceInput = z.object({
 });
 export type AddSourceInput = z.infer<typeof addSourceInput>;
 
+// A member server inside a collapsed url-test node (view-only in v1).
+export const nodeMemberSchema = z.object({
+  name: z.string(),
+  delay: z.number().nullable(),
+  history: z.array(z.number()).default([]),
+  active: z.boolean(), // true = the group's currently-routed member (`now`)
+});
+export type NodeMember = z.infer<typeof nodeMemberSchema>;
+
 // A single node as shown in the UI: live "now"/delay come from mihomo, not the DB.
 export const nodeItemSchema = z.object({
   name: z.string(),
@@ -56,6 +65,8 @@ export const nodeItemSchema = z.object({
   // mihomo's recorded delay history (ms, oldest → newest; timeouts kept as 0 so the
   // chart can render them as instability) — drives the live latency chart.
   history: z.array(z.number()).default([]),
+  // Present only for a collapsed group node: its member servers.
+  members: z.array(nodeMemberSchema).optional(),
 });
 export type NodeItem = z.infer<typeof nodeItemSchema>;
 

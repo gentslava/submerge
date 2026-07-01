@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  nodeItemSchema,
   nodeViewSchema,
   proxySchema,
   reorderInput,
@@ -51,5 +52,21 @@ describe("nodeView + tRPC input schemas", () => {
   });
   it("rejects an empty group", () => {
     expect(() => selectNodeInput.parse({ group: "", name: "n1" })).toThrow();
+  });
+});
+
+describe("nodeItemSchema.members", () => {
+  it("accepts a node without members", () => {
+    const n = nodeItemSchema.parse({ name: "A", type: "vless", delay: 47 });
+    expect(n.members).toBeUndefined();
+  });
+  it("parses a collapsed group's members", () => {
+    const n = nodeItemSchema.parse({
+      name: "G",
+      type: "URLTest",
+      delay: 40,
+      members: [{ name: "G #1", delay: 40, active: true }],
+    });
+    expect(n.members).toEqual([{ name: "G #1", delay: 40, history: [], active: true }]);
   });
 });
