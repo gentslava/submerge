@@ -104,6 +104,37 @@ export function parseVless(uri: string): ProxyConfig {
   return p as ProxyConfig;
 }
 
+// ── hysteria2:// (and hy2://) → mihomo proxy ────────────────────────
+export function parseHysteria2(uri: string): ProxyConfig {
+  const raw = uri.trim();
+  // Port hopping "host:port,<ranges>" — URL() rejects the comma, so pull ranges out first.
+  let ports: string | undefined;
+  const cleaned = raw.replace(/(:\d+),([\d,-]+)/, (_m, port: string, ranges: string) => {
+    ports = ranges;
+    return port;
+  });
+  const u = new URL(cleaned);
+  if (u.protocol !== "hysteria2:" && u.protocol !== "hy2:")
+    throw new Error("not a hysteria2:// link");
+  const q = u.searchParams;
+  const server = u.hostname;
+  const port = Number(u.port) || 443;
+  const password = decodeURIComponent(u.password || u.username || "");
+  const name = u.hash ? decodeURIComponent(u.hash.slice(1)) : `${server}:${port}`;
+  const p: Record<string, unknown> = { name, type: "hysteria2", server, port, password, udp: true };
+  const sni = q.get("sni");
+  if (sni) p.sni = sni;
+  if (q.get("insecure") === "1") p["skip-cert-verify"] = true;
+  const obfs = q.get("obfs");
+  if (obfs) {
+    p.obfs = obfs;
+    const op = q.get("obfs-password");
+    if (op) p["obfs-password"] = op;
+  }
+  if (ports) p.ports = ports;
+  return p as ProxyConfig;
+}
+
 // Return the URL scheme with its colon ("vless:") for a scheme://… string, else null.
 function schemeOf(value: string): string | null {
   const m = value.match(/^([a-z][a-z0-9.+-]*):\/\//i);
@@ -114,20 +145,13 @@ function schemeOf(value: string): string | null {
 // IS the protocol (personalized). Grows one entry per protocol slice.
 const SINGLE_LINK: Record<string, { kind: SourceKind; parse: (uri: string) => ProxyConfig }> = {
   "vless:": { kind: "vless", parse: parseVless },
+  "hysteria2:": { kind: "hysteria2", parse: parseHysteria2 },
+  "hy2:": { kind: "hysteria2", parse: parseHysteria2 },
 };
 
 // Single-node schemes we recognize but don't support yet (ssr never). Shrinks as
 // slices move a scheme into SINGLE_LINK. Kept only for a helpful detectKind error.
-const UNSUPPORTED_SINGLE = new Set([
-  "vmess:",
-  "trojan:",
-  "ss:",
-  "ssr:",
-  "hysteria:",
-  "hysteria2:",
-  "hy2:",
-  "tuic:",
-]);
+const UNSUPPORTED_SINGLE = new Set(["vmess:", "trojan:", "ss:", "ssr:", "hysteria:", "tuic:"]);
 
 // Dispatch a single-node link to its protocol parser.
 export function parseSingleLink(uri: string): ProxyConfig {
@@ -177,6 +201,23 @@ function v2rayOutboundToMihomo(ob: any, remark?: string): ProxyConfig | null {
 // ── sing-box outbound → mihomo proxy (type/server/server_port) ──────
 // biome-ignore lint/suspicious/noExplicitAny: external untyped JSON
 function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
+  if (ob?.type === "hysteria2" && ob.server) {
+    const p: Record<string, unknown> = {
+      name: ob.tag || `${ob.server}:${ob.server_port}`,
+      type: "hysteria2",
+      server: ob.server,
+      port: Number(ob.server_port),
+      password: ob.password,
+      udp: true,
+    };
+    if (ob.obfs?.type) {
+      p.obfs = ob.obfs.type;
+      if (ob.obfs.password) p["obfs-password"] = ob.obfs.password;
+    }
+    if (ob.tls?.server_name) p.sni = ob.tls.server_name;
+    if (ob.tls?.insecure) p["skip-cert-verify"] = true;
+    return p as ProxyConfig;
+  }
   if (ob?.type !== "vless" || !ob.server) return null;
   const net = ob.transport?.type || "tcp";
   const p: Record<string, unknown> = {

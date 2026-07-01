@@ -43,11 +43,15 @@ export const latencyTextColors: Record<LatencyClass, string> = {
   idle: "text-text-tertiary",
 };
 
-// Transport badge for a real node (uppercased: TCP/WS/GRPC/…). Falls back to TCP
-// when the config omitted `network` (clash omits it for plain tcp) but we still
-// know it's a real node (security present). null when neither is known (a group).
+// QUIC-family proxy types have no tcp/tls transport — their transport is QUIC.
+const QUIC_TYPES = new Set(["hysteria", "hysteria2", "tuic"]);
+
+// Transport badge for a real node (uppercased: TCP/WS/GRPC/…). `node.network` wins;
+// otherwise QUIC for QUIC-family types, TCP for the tcp family. null when neither
+// transport nor a real-node signal is known (e.g. a group).
 export function transportBadge(node: NodeItem): string | null {
   if (node.network) return node.network.toUpperCase();
+  if (node.type && QUIC_TYPES.has(node.type.toLowerCase())) return "QUIC";
   if (node.security) return "TCP";
   return null;
 }

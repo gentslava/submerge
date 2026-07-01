@@ -4,6 +4,7 @@ import {
   detectKind,
   detectKindSafe,
   extractSubUrl,
+  parseHysteria2,
   parseProxiesFromText,
   parseSingleLink,
   parseVless,
@@ -99,6 +100,73 @@ describe("parseVless", () => {
   });
   it("throws when the uuid is missing", () => {
     expect(() => parseVless("vless://@ex.com:443")).toThrow();
+  });
+});
+
+describe("parseHysteria2", () => {
+  it("maps a hysteria2:// URI to a mihomo proxy", () => {
+    const p = parseHysteria2(
+      "hysteria2://pass@ex.com:443/?sni=real.ex.com&obfs=salamander&obfs-password=ob&insecure=1#DE",
+    );
+    expect(p).toMatchObject({
+      name: "DE",
+      type: "hysteria2",
+      server: "ex.com",
+      port: 443,
+      password: "pass",
+      sni: "real.ex.com",
+      obfs: "salamander",
+      "obfs-password": "ob",
+      "skip-cert-verify": true,
+    });
+  });
+  it("accepts the hy2:// alias and defaults the name to host:port", () => {
+    const p = parseHysteria2("hy2://pw@ex.com:8443");
+    expect(p.type).toBe("hysteria2");
+    expect(p.name).toBe("ex.com:8443");
+  });
+  it("handles the real minimal shape: token auth, sni-only, spaced/cyrillic name", () => {
+    const p = parseHysteria2(
+      "hysteria2://abc123token@se.allgoodvpn.su:8443?sni=se.allgoodvpn.su#AllGood | Стокгольм (Hysteria2)",
+    );
+    expect(p).toMatchObject({
+      type: "hysteria2",
+      server: "se.allgoodvpn.su",
+      port: 8443,
+      password: "abc123token",
+      sni: "se.allgoodvpn.su",
+    });
+    expect(p.name).toBe("AllGood | Стокгольм (Hysteria2)");
+    expect((p as Record<string, unknown>)["skip-cert-verify"]).toBeUndefined();
+    expect((p as Record<string, unknown>).obfs).toBeUndefined();
+  });
+  it("is reachable via detectKind + parseSingleLink", () => {
+    expect(detectKind("hysteria2://pw@ex.com:443")).toBe("hysteria2");
+    expect(parseSingleLink("hy2://pw@ex.com:443").type).toBe("hysteria2");
+  });
+  it("maps a sing-box hysteria2 outbound", () => {
+    const { proxies } = parseProxiesFromText(
+      JSON.stringify({
+        outbounds: [
+          {
+            type: "hysteria2",
+            tag: "HY",
+            server: "ex.com",
+            server_port: 443,
+            password: "pw",
+            obfs: { type: "salamander", password: "ob" },
+            tls: { server_name: "ex.com", insecure: false },
+          },
+        ],
+      }),
+    );
+    expect(proxies[0]).toMatchObject({
+      type: "hysteria2",
+      server: "ex.com",
+      port: 443,
+      password: "pw",
+      obfs: "salamander",
+    });
   });
 });
 

@@ -100,6 +100,9 @@ describe("nodeView", () => {
     expect(transportBadge(n({ security: "reality" }))).toBe("TCP"); // clash omits network for tcp
     expect(transportBadge(n({ security: "none" }))).toBe("TCP");
     expect(transportBadge(node("x"))).toBeNull(); // neither known (e.g. group)
+    expect(transportBadge({ ...node("x"), type: "hysteria2" })).toBe("QUIC");
+    expect(transportBadge({ ...node("x"), type: "Tuic" })).toBe("QUIC");
+    expect(transportBadge({ ...node("x"), type: "hysteria2", network: "ws" })).toBe("WS"); // network wins
   });
 
   it("derives the security badge, omitting none/unknown", () => {
