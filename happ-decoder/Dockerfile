@@ -40,7 +40,12 @@ RUN set -eux; \
     update-ca-certificates
 
 COPY mitm_capture.py server.py /app/
-ENV LD_LIBRARY_PATH=/happ/lib QT_QPA_PLATFORM=xcb LANG=C.UTF-8 \
+# NB: do NOT set LD_LIBRARY_PATH=/happ/lib globally. Happ bundles an older libzstd (1.4.8)
+# in /happ/lib; if mitmdump inherits that path it loads it instead of the system 1.5.5 and
+# crashes on import (zstandard C-API mismatch), silently killing the capture proxy — Happ
+# then can't fetch the subscription and every decode times out. Only the Happ binary needs
+# /happ/lib, and decode() sets LD_LIBRARY_PATH explicitly for that subprocess.
+ENV QT_QPA_PLATFORM=xcb LANG=C.UTF-8 \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt PORT=8080
 EXPOSE 8080
 CMD ["python3", "/app/server.py"]
