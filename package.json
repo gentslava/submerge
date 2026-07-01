@@ -3,10 +3,12 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "build": "pnpm -r run build",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && pnpm -F @submerge/web typecheck",
     "lint": "biome ci .",
     "format": "biome format --write .",
     "test": "pnpm -r run test"
