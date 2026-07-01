@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { NodeItem, NodeMember, NodeView, Proxy as ProxyConfig } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
@@ -69,7 +69,14 @@ export async function applyConfig(
   // The config's `secret:` is the editable panel secret (seeded from env on first run):
   // the panel owns mihomo's config, so editing the secret rotates the engine too. The
   // settings router re-points the client in a `finally`, so a failed reload can't lock out.
-  writeFileSync(configPath, buildConfig(proxies, readAutoConfig(db), readMihomoSecret(db)), "utf8");
+  //
+  // Write atomically (temp file + rename) so mihomo never reads a half-written config on
+  // reload: an in-place writeFileSync truncates first, and mihomo can catch that empty
+  // window — especially across a slow bind mount — and reject the reload with HTTP 400.
+  const content = buildConfig(proxies, readAutoConfig(db), readMihomoSecret(db));
+  const tmpPath = `${configPath}.tmp`;
+  writeFileSync(tmpPath, content, "utf8");
+  renameSync(tmpPath, configPath);
   await reloadConfig(targetPath);
   return { nodes: proxies.length };
 }

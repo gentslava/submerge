@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
@@ -67,6 +67,22 @@ describe("applyConfig", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
     expect(cfg.proxies[0].name).toBe("A");
+  });
+
+  it("writes the config atomically, leaving no temp file behind", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const dir = mkdtempSync(join(tmpdir(), "submerge-"));
+    const configPath = join(dir, "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    // atomic write = temp file renamed into place; the dir holds only the final config
+    expect(readdirSync(dir)).toEqual(["config.yaml"]);
   });
 });
 
