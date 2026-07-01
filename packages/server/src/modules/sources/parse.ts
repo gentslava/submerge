@@ -135,6 +135,39 @@ export function parseHysteria2(uri: string): ProxyConfig {
   return p as ProxyConfig;
 }
 
+// ── trojan:// → mihomo proxy ────────────────────────────────────────
+export function parseTrojan(uri: string): ProxyConfig {
+  const u = new URL(uri.trim());
+  if (u.protocol !== "trojan:") throw new Error("not a trojan:// link");
+  const q = u.searchParams;
+  const server = u.hostname;
+  const port = Number(u.port) || 443;
+  const password = decodeURIComponent(u.username || "");
+  const name = u.hash ? decodeURIComponent(u.hash.slice(1)) : `${server}:${port}`;
+  const net = q.get("type") || "tcp";
+  const p: Record<string, unknown> = {
+    name,
+    type: "trojan",
+    server,
+    port,
+    password,
+    udp: true,
+    network: net === "h2" ? "http" : net,
+  };
+  const sni = q.get("sni") || q.get("host");
+  if (sni) p.sni = sni;
+  if (q.get("allowInsecure") === "1") p["skip-cert-verify"] = true;
+  const fp = q.get("fp");
+  if (fp) p["client-fingerprint"] = fp;
+  if (net === "ws")
+    p["ws-opts"] = {
+      path: q.get("path") ? decodeURIComponent(q.get("path") as string) : "/",
+      headers: { Host: q.get("host") || sni || server },
+    };
+  else if (net === "grpc") p["grpc-opts"] = { "grpc-service-name": q.get("serviceName") || "" };
+  return p as ProxyConfig;
+}
+
 // Return the URL scheme with its colon ("vless:") for a scheme://… string, else null.
 function schemeOf(value: string): string | null {
   const m = value.match(/^([a-z][a-z0-9.+-]*):\/\//i);
@@ -147,11 +180,12 @@ const SINGLE_LINK: Record<string, { kind: SourceKind; parse: (uri: string) => Pr
   "vless:": { kind: "vless", parse: parseVless },
   "hysteria2:": { kind: "hysteria2", parse: parseHysteria2 },
   "hy2:": { kind: "hysteria2", parse: parseHysteria2 },
+  "trojan:": { kind: "trojan", parse: parseTrojan },
 };
 
 // Single-node schemes we recognize but don't support yet (ssr never). Shrinks as
 // slices move a scheme into SINGLE_LINK. Kept only for a helpful detectKind error.
-const UNSUPPORTED_SINGLE = new Set(["vmess:", "trojan:", "ss:", "ssr:", "hysteria:", "tuic:"]);
+const UNSUPPORTED_SINGLE = new Set(["vmess:", "ss:", "ssr:", "hysteria:", "tuic:"]);
 
 // Dispatch a single-node link to its protocol parser.
 export function parseSingleLink(uri: string): ProxyConfig {
@@ -164,38 +198,61 @@ export function parseSingleLink(uri: string): ProxyConfig {
 // ── v2ray/xray JSON outbound → mihomo proxy (best-effort, Happ format) ──
 // biome-ignore lint/suspicious/noExplicitAny: external untyped JSON
 function v2rayOutboundToMihomo(ob: any, remark?: string): ProxyConfig | null {
-  if (ob?.protocol !== "vless") return null; // freedom/blackhole/direct skipped
-  const vnext = ob.settings?.vnext?.[0];
-  const user = vnext?.users?.[0];
-  if (!vnext || !user) return null;
-  const ss = ob.streamSettings || {};
-  const net = ss.network || "tcp";
-  const p: Record<string, unknown> = {
-    name: remark || ob.tag || `${vnext.address}:${vnext.port}`,
-    type: "vless",
-    server: vnext.address,
-    port: Number(vnext.port),
-    uuid: user.id,
-    udp: true,
-    network: net === "h2" ? "http" : net,
-  };
-  if (user.flow) p.flow = user.flow;
-  const sec = ss.security || "none";
-  if (sec === "tls" || sec === "reality") {
-    p.tls = true;
-    const t = ss.tlsSettings || ss.realitySettings || {};
-    p.servername = t.serverName || vnext.address;
-    if (t.fingerprint) p["client-fingerprint"] = t.fingerprint;
-    if (sec === "reality") {
-      const r = ss.realitySettings || {};
-      p["reality-opts"] = { "public-key": r.publicKey || "", "short-id": r.shortId || "" };
+  if (ob?.protocol === "vless") {
+    const vnext = ob.settings?.vnext?.[0];
+    const user = vnext?.users?.[0];
+    if (!vnext || !user) return null;
+    const ss = ob.streamSettings || {};
+    const net = ss.network || "tcp";
+    const p: Record<string, unknown> = {
+      name: remark || ob.tag || `${vnext.address}:${vnext.port}`,
+      type: "vless",
+      server: vnext.address,
+      port: Number(vnext.port),
+      uuid: user.id,
+      udp: true,
+      network: net === "h2" ? "http" : net,
+    };
+    if (user.flow) p.flow = user.flow;
+    const sec = ss.security || "none";
+    if (sec === "tls" || sec === "reality") {
+      p.tls = true;
+      const t = ss.tlsSettings || ss.realitySettings || {};
+      p.servername = t.serverName || vnext.address;
+      if (t.fingerprint) p["client-fingerprint"] = t.fingerprint;
+      if (sec === "reality") {
+        const r = ss.realitySettings || {};
+        p["reality-opts"] = { "public-key": r.publicKey || "", "short-id": r.shortId || "" };
+      }
     }
+    if (net === "ws")
+      p["ws-opts"] = { path: ss.wsSettings?.path || "/", headers: ss.wsSettings?.headers || {} };
+    else if (net === "grpc")
+      p["grpc-opts"] = { "grpc-service-name": ss.grpcSettings?.serviceName || "" };
+    return p as ProxyConfig;
   }
-  if (net === "ws")
-    p["ws-opts"] = { path: ss.wsSettings?.path || "/", headers: ss.wsSettings?.headers || {} };
-  else if (net === "grpc")
-    p["grpc-opts"] = { "grpc-service-name": ss.grpcSettings?.serviceName || "" };
-  return p as ProxyConfig;
+  if (ob?.protocol === "trojan") {
+    const s = ob.settings?.servers?.[0];
+    if (!s) return null;
+    const ss = ob.streamSettings || {};
+    const net = ss.network || "tcp";
+    const p: Record<string, unknown> = {
+      name: remark || ob.tag || `${s.address}:${s.port}`,
+      type: "trojan",
+      server: s.address,
+      port: Number(s.port),
+      password: s.password,
+      udp: true,
+      network: net === "h2" ? "http" : net,
+    };
+    const t = ss.tlsSettings || {};
+    if (t.serverName) p.sni = t.serverName;
+    if (t.fingerprint) p["client-fingerprint"] = t.fingerprint;
+    if (net === "ws")
+      p["ws-opts"] = { path: ss.wsSettings?.path || "/", headers: ss.wsSettings?.headers || {} };
+    return p as ProxyConfig;
+  }
+  return null; // freedom/blackhole/direct skipped
 }
 
 // ── sing-box outbound → mihomo proxy (type/server/server_port) ──────
@@ -214,6 +271,19 @@ function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
       p.obfs = ob.obfs.type;
       if (ob.obfs.password) p["obfs-password"] = ob.obfs.password;
     }
+    if (ob.tls?.server_name) p.sni = ob.tls.server_name;
+    if (ob.tls?.insecure) p["skip-cert-verify"] = true;
+    return p as ProxyConfig;
+  }
+  if (ob?.type === "trojan" && ob.server) {
+    const p: Record<string, unknown> = {
+      name: ob.tag || `${ob.server}:${ob.server_port}`,
+      type: "trojan",
+      server: ob.server,
+      port: Number(ob.server_port),
+      password: ob.password,
+      udp: true,
+    };
     if (ob.tls?.server_name) p.sni = ob.tls.server_name;
     if (ob.tls?.insecure) p["skip-cert-verify"] = true;
     return p as ProxyConfig;

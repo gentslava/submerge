@@ -7,6 +7,7 @@ import {
   parseHysteria2,
   parseProxiesFromText,
   parseSingleLink,
+  parseTrojan,
   parseVless,
 } from "./parse.js";
 
@@ -36,8 +37,7 @@ describe("detectKind", () => {
   it("detects a non-crypt happ:// without an embedded url as happ", () =>
     expect(detectKind("happ://import/abc")).toBe("happ"));
   it("throws on an empty string", () => expect(() => detectKind("")).toThrow());
-  it("rejects non-vless single nodes", () =>
-    expect(() => detectKind("trojan://x@h:443")).toThrow());
+  it("rejects unsupported single nodes", () => expect(() => detectKind("ssr://xxx")).toThrow());
 });
 
 describe("parseSingleLink", () => {
@@ -54,7 +54,7 @@ describe("parseSingleLink", () => {
 describe("detectKind single links", () => {
   it("detects vless", () => expect(detectKind("vless://u@h:443")).toBe("vless"));
   it("still rejects a not-yet-supported single link with a clear message", () => {
-    expect(() => detectKind("trojan://p@h:443")).toThrow(/not supported yet|subscription/i);
+    expect(() => detectKind("hysteria://p@h:443")).toThrow(/supported yet|subscription/i);
   });
 });
 
@@ -167,6 +167,24 @@ describe("parseHysteria2", () => {
       password: "pw",
       obfs: "salamander",
     });
+  });
+});
+
+describe("parseTrojan", () => {
+  it("maps trojan://pass@host:port?sni=&type= to a mihomo proxy", () => {
+    const p = parseTrojan("trojan://secret@ex.com:443?sni=ex.com&type=tcp#TR");
+    expect(p).toMatchObject({
+      name: "TR",
+      type: "trojan",
+      server: "ex.com",
+      port: 443,
+      password: "secret",
+      sni: "ex.com",
+      network: "tcp",
+    });
+  });
+  it("is reachable via detectKind", () => {
+    expect(detectKind("trojan://p@ex.com:443")).toBe("trojan");
   });
 });
 
