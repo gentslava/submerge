@@ -243,6 +243,33 @@ export function parseShadowsocks(uri: string): ProxyConfig {
   } as ProxyConfig;
 }
 
+// ── tuic:// → mihomo proxy ──────────────────────────────────────────
+export function parseTuic(uri: string): ProxyConfig {
+  const u = new URL(uri.trim());
+  if (u.protocol !== "tuic:") throw new Error("not a tuic:// link");
+  const q = u.searchParams;
+  const server = u.hostname;
+  const port = Number(u.port) || 443;
+  const name = u.hash ? decodeURIComponent(u.hash.slice(1)) : `${server}:${port}`;
+  const p: Record<string, unknown> = {
+    name,
+    type: "tuic",
+    server,
+    port,
+    uuid: decodeURIComponent(u.username || ""),
+    password: decodeURIComponent(u.password || ""),
+    udp: true,
+  };
+  const sni = q.get("sni");
+  if (sni) p.sni = sni;
+  const alpn = q.get("alpn");
+  if (alpn) p.alpn = alpn.split(",");
+  const cc = q.get("congestion_control");
+  if (cc) p["congestion-controller"] = cc;
+  if (q.get("allow_insecure") === "1") p["skip-cert-verify"] = true;
+  return p as ProxyConfig;
+}
+
 // Return the URL scheme with its colon ("vless:") for a scheme://… string, else null.
 function schemeOf(value: string): string | null {
   const m = value.match(/^([a-z][a-z0-9.+-]*):\/\//i);
@@ -258,11 +285,12 @@ const SINGLE_LINK: Record<string, { kind: SourceKind; parse: (uri: string) => Pr
   "trojan:": { kind: "trojan", parse: parseTrojan },
   "vmess:": { kind: "vmess", parse: parseVmess },
   "ss:": { kind: "ss", parse: parseShadowsocks },
+  "tuic:": { kind: "tuic", parse: parseTuic },
 };
 
 // Single-node schemes we recognize but don't support yet (ssr never). Shrinks as
 // slices move a scheme into SINGLE_LINK. Kept only for a helpful detectKind error.
-const UNSUPPORTED_SINGLE = new Set(["ssr:", "hysteria:", "tuic:"]);
+const UNSUPPORTED_SINGLE = new Set(["ssr:", "hysteria:"]);
 
 // Dispatch a single-node link to its protocol parser.
 export function parseSingleLink(uri: string): ProxyConfig {
@@ -418,6 +446,20 @@ function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
       password: ob.password,
       udp: true,
     } as ProxyConfig;
+  }
+  if (ob?.type === "tuic" && ob.server) {
+    const p: Record<string, unknown> = {
+      name: ob.tag || `${ob.server}:${ob.server_port}`,
+      type: "tuic",
+      server: ob.server,
+      port: Number(ob.server_port),
+      uuid: ob.uuid,
+      password: ob.password,
+      udp: true,
+    };
+    if (ob.tls?.server_name) p.sni = ob.tls.server_name;
+    if (ob.congestion_control) p["congestion-controller"] = ob.congestion_control;
+    return p as ProxyConfig;
   }
   if (ob?.type !== "vless" || !ob.server) return null;
   const net = ob.transport?.type || "tcp";

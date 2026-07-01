@@ -9,6 +9,7 @@ import {
   parseShadowsocks,
   parseSingleLink,
   parseTrojan,
+  parseTuic,
   parseVless,
   parseVmess,
 } from "./parse.js";
@@ -247,6 +248,25 @@ describe("parseShadowsocks", () => {
   it("is reachable via detectKind", () => {
     const userinfo = Buffer.from("aes-256-gcm:pw").toString("base64url");
     expect(detectKind(`ss://${userinfo}@ex.com:8388`)).toBe("ss");
+  });
+});
+
+describe("parseTuic", () => {
+  it("maps a tuic:// URI", () => {
+    const p = parseTuic("tuic://uuid-1:secret@ex.com:443?sni=ex.com&congestion_control=bbr#TU");
+    expect(p).toMatchObject({
+      name: "TU",
+      type: "tuic",
+      server: "ex.com",
+      port: 443,
+      uuid: "uuid-1",
+      password: "secret",
+      sni: "ex.com",
+      "congestion-controller": "bbr",
+    });
+  });
+  it("is reachable via detectKind", () => {
+    expect(detectKind("tuic://u:p@ex.com:443")).toBe("tuic");
   });
 });
 
