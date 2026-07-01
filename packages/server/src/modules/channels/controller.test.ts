@@ -213,7 +213,9 @@ describe("ChannelController manual", () => {
   it("falls back to another node when the pin is down and onFailure=fallback", async () => {
     const h = harness(manualPolicy("fallback"));
     h.setProbe((n) => (n === "A" ? null : 20));
-    await h.ctrl.tick(view(["AUTO", "A", "B"], "B"));
+    // AUTO currently sits on the dead pin "A": the fallback to "B" is a genuine
+    // node change, so apply() must actually call select("B").
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
     expect(h.selected.at(-1)).toBe("B");
     expect(h.reasons.at(-1)?.reason).toContain("fell back");
   });
