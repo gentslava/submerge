@@ -1,6 +1,6 @@
-import type { NodeItem, NodeView } from "@submerge/shared";
+import type { Channel, ChannelPolicy, NodeItem, NodeView } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
-import { pickBest, selectableNames } from "./controller.js";
+import { ChannelController, pickBest, selectableNames } from "./controller.js";
 
 const node = (name: string, delay: number | null = null): NodeItem => ({
   name,
@@ -48,5 +48,126 @@ describe("pickBest", () => {
   });
   it("returns null for an empty candidate list", async () => {
     expect(await pickBest([], "u", "fastest", async () => 1)).toBeNull();
+  });
+});
+
+const stickyPolicy = (
+  over: Partial<Extract<ChannelPolicy, { kind: "sticky" }>> = {},
+): ChannelPolicy => ({
+  kind: "sticky",
+  testUrl: "https://probe",
+  intervalSec: 60,
+  failureThreshold: 3,
+  maxHoldHours: null,
+  initialCriterion: "fastest",
+  ...over,
+});
+
+const channel = (policy: ChannelPolicy): Channel => ({
+  id: "default",
+  name: "Default",
+  priority: 0,
+  enabled: true,
+  isDefault: true,
+  policy,
+  matcher: { presets: [], domains: [] },
+  lastReason: null,
+  lastReasonAt: null,
+});
+
+interface Harness {
+  ctrl: ChannelController;
+  selected: string[];
+  reasons: { reason: string; at: number }[];
+  setClock: (t: number) => void;
+  setProbe: (fn: (name: string) => number | null) => void;
+}
+
+function harness(policy: ChannelPolicy): Harness {
+  let clock = 0;
+  let probeFn: (name: string) => number | null = () => 50;
+  const selected: string[] = [];
+  const reasons: { reason: string; at: number }[] = [];
+  const ctrl = new ChannelController({
+    readChannel: () => channel(policy),
+    probe: async (name) => probeFn(name),
+    select: async (_group, name) => {
+      selected.push(name);
+    },
+    persistReason: (reason, at) => reasons.push({ reason, at }),
+    now: () => clock,
+  });
+  return {
+    ctrl,
+    selected,
+    reasons,
+    setClock: (t) => {
+      clock = t;
+    },
+    setProbe: (fn) => {
+      probeFn = fn;
+    },
+  };
+}
+
+describe("ChannelController sticky", () => {
+  it("pins a best node on the first tick when AUTO points nowhere valid", async () => {
+    const h = harness(stickyPolicy());
+    h.setProbe((n) => (n === "B" ? 20 : 90));
+    await h.ctrl.tick(view(["AUTO", "A", "B", "DIRECT"], null));
+    expect(h.selected).toEqual(["B"]); // fastest
+    expect(h.reasons.at(-1)?.reason).toContain("initial");
+  });
+
+  it("holds a healthy pinned node — no switch across many ticks", async () => {
+    const h = harness(stickyPolicy());
+    h.setProbe(() => 30); // always healthy
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A")); // adopt A (in-candidate)
+    const afterAdopt = h.selected.length;
+    for (let i = 1; i <= 10; i++) {
+      h.setClock(i * 60_000);
+      await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    }
+    expect(h.selected.length).toBe(afterAdopt); // never switched away
+  });
+
+  it("switches only after failureThreshold consecutive failures", async () => {
+    const h = harness(stickyPolicy({ failureThreshold: 3 }));
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A")); // adopt A
+    const base = h.selected.length;
+    // A now dead, B healthy.
+    h.setProbe((n) => (n === "A" ? null : 25));
+    for (let i = 1; i <= 2; i++) {
+      h.setClock(i * 60_000);
+      await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    }
+    expect(h.selected.length).toBe(base); // 2 failures < threshold: still holding
+    h.setClock(3 * 60_000);
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("×3");
+  });
+
+  it("throttles health checks to intervalSec (a failure within the interval does not count)", async () => {
+    const h = harness(stickyPolicy({ failureThreshold: 1, intervalSec: 60 }));
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A")); // adopt A at t=0
+    const base = h.selected.length;
+    h.setProbe((n) => (n === "A" ? null : 25));
+    h.setClock(30_000); // < interval: skipped
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    expect(h.selected.length).toBe(base); // not checked yet
+    h.setClock(60_000); // interval elapsed: one failure, threshold 1 → switch
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    expect(h.selected.at(-1)).toBe("B");
+  });
+
+  it("re-picks after maxHoldHours even while healthy", async () => {
+    const h = harness(stickyPolicy({ maxHoldHours: 1 }));
+    h.setProbe((n) => (n === "B" ? 10 : 90)); // B fastest
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A")); // adopt A at t=0
+    h.setClock(60 * 60_000 + 60_000); // > 1h later
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("max-hold");
   });
 });

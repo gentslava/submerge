@@ -1,4 +1,5 @@
-import type { Channel, DecisionEntry, NodeView } from "@submerge/shared";
+import type { Channel, ChannelPolicy, DecisionEntry, NodeView } from "@submerge/shared";
+import { policyProbe } from "./service.js";
 
 // mihomo built-in policies + our routing groups — never selectable exit nodes.
 const PSEUDO = new Set([
@@ -80,7 +81,9 @@ const AUTO_GROUP = "AUTO";
 export class ChannelController {
   private failures = 0;
   private heldSince: number | null = null;
-  private lastCheck = 0;
+  // -Infinity (not 0) so the very first tick always runs the health check,
+  // even when the injected clock also starts at 0 (as in tests).
+  private lastCheck = Number.NEGATIVE_INFINITY;
   private lastSpeedNow: string | null = null;
   private log: DecisionEntry[] = [];
 
@@ -111,7 +114,79 @@ export class ChannelController {
     this.record({ at, channelId, from, to, reason });
   }
 
-  async tick(_view: NodeView): Promise<void> {
-    // Implemented across Tasks 3 (sticky) and 4 (speed/manual).
+  async tick(view: NodeView): Promise<void> {
+    const channel = this.deps.readChannel();
+    const policy = channel.policy;
+    if (policy.kind === "speed") {
+      this.tickSpeed(view, channel.id); // Task 4
+      return;
+    }
+    // Active policies (sticky/manual) health-check on the channel's own cadence,
+    // not every poll — throttle to intervalSec (1 s slack for poll jitter).
+    const { url, intervalSec } = policyProbe(policy);
+    const t = this.deps.now();
+    if (t - this.lastCheck < intervalSec * 1000 - 1000) return;
+    this.lastCheck = t;
+    if (policy.kind === "manual") {
+      await this.tickManual(view, channel.id, policy, url, t); // Task 4
+      return;
+    }
+    await this.tickSticky(view, channel.id, policy, url, t);
   }
+
+  private async tickSticky(
+    view: NodeView,
+    channelId: string,
+    policy: Extract<ChannelPolicy, { kind: "sticky" }>,
+    url: string,
+    at: number,
+  ): Promise<void> {
+    const candidates = selectableNames(view);
+    if (candidates.length === 0) return;
+    const active = view.autoNow;
+
+    // No valid pin yet → choose the best node and pin it.
+    if (!active || !candidates.includes(active)) {
+      const best = await pickBest(candidates, url, policy.initialCriterion, this.deps.probe);
+      if (best) await this.apply(channelId, active, best, `initial pick: ${best}`, at);
+      this.failures = 0;
+      return;
+    }
+
+    // Adopt a pre-existing valid pin without switching (start its hold window).
+    if (this.heldSince === null) this.heldSince = at;
+
+    // Forced refresh after max-hold, even while healthy.
+    if (policy.maxHoldHours != null && at - this.heldSince >= policy.maxHoldHours * 3_600_000) {
+      const best = await pickBest(candidates, url, policy.initialCriterion, this.deps.probe);
+      if (best && best !== active) {
+        await this.apply(channelId, active, best, `max-hold ${policy.maxHoldHours}h reached`, at);
+        this.failures = 0;
+        return;
+      }
+      this.heldSince = at; // same node stayed best — reset the window, keep holding
+    }
+
+    // Health-check the pinned node; count consecutive failures.
+    const d = await this.deps.probe(active, url);
+    if (d == null || d <= 0) this.failures++;
+    else this.failures = 0;
+
+    if (this.failures >= policy.failureThreshold) {
+      const others = candidates.filter((c) => c !== active);
+      const best =
+        (await pickBest(others, url, policy.initialCriterion, this.deps.probe)) ?? active;
+      await this.apply(channelId, active, best, `${active} failed ×${this.failures}`, at);
+      this.failures = 0;
+    }
+  }
+
+  private tickSpeed(_view: NodeView, _channelId: string): void {}
+  private async tickManual(
+    _view: NodeView,
+    _channelId: string,
+    _policy: Extract<ChannelPolicy, { kind: "manual" }>,
+    _url: string,
+    _at: number,
+  ): Promise<void> {}
 }
