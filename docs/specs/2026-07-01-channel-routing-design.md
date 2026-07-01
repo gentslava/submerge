@@ -110,12 +110,30 @@ The **Default channel** is seeded by a migration: it inherits the current `autoS
   - `testUrl: string`, `intervalSec: number` — active-node health probe.
   - `failureThreshold: number` (K) — consecutive failures before switching.
   - `maxHoldHours: number | null` — optional forced re-pick after N hours even if healthy (default `null` = never).
-  - `initialCriterion: 'fastest' | 'lowest-loss'` — how the "best" node is chosen when (re)picking.
+  - `initialCriterion: 'fastest' | 'lowest-loss' | 'highest-bandwidth'` — how the "best" node is chosen when (re)picking (see Scoring inputs below; `highest-bandwidth` uses cached values and is a phase-4 addition).
 
 ### `manual` (Pinned)
 
 - The user pins a specific node for the channel; the server holds it.
 - **Params:** `pinnedNode: string`, `onFailure: 'hold' | 'fallback'` — on pinned-node failure, either keep it (and surface an error) or fall back to a server-picked node from the pool.
+
+### Scoring inputs
+
+The "best node" decision (used by `sticky` re-pick and surfaced for `speed`) can draw on several signals. They differ sharply in cost, which dictates where each is used.
+
+| signal | how measured | cost | use |
+|---|---|---|---|
+| **latency** | `/proxies/{name}/delay` (HTTP GET to test URL) | cheap, active, per-node | primary; every tick |
+| **jitter** | variance across a short series of latency probes | ~same as latency | quality proxy; cheap tiebreaker |
+| **loss** | failed vs total delay probes over a window | cheap | `lowest-loss` criterion |
+| **passive bandwidth** | observed up/down bytes/sec of the active node from `/traffic` counters (already streamed) | free | display + cached scoring; **active node only, demand-limited** |
+| **on-demand bandwidth** | download a fixed test payload through a specific node, bytes/sec | expensive — burns real quota, seconds per node, disrupts the node | user-triggered only; cached as a scoring weight |
+
+**Latency measures responsiveness (ping); it does not measure capacity (throughput).** A low-latency node can still be bandwidth-limited. Capacity is therefore treated as a **cached, secondary** signal, never a per-tick active probe (see §11 for the quota rationale).
+
+**On-demand speed test (mechanism).** mihomo has no "request through node X" endpoint and no throughput test. To measure a specific node in isolation without disturbing live routing, use a dedicated hidden `PROBE` `select` group containing all nodes plus a rule routing a reserved probe host to `PROBE`: the server sets `PROBE.now = node`, issues an HTTP GET for a fixed-size payload on that host through mihomo's local proxy port, measures bytes/sec, then restores. Exposed as a per-node/per-pool **"Speed test"** UI action with an explicit traffic-cost warning. Results are cached (last value + timestamp) per node.
+
+Adds a `sticky` criterion: `initialCriterion: 'fastest' | 'lowest-loss' | 'highest-bandwidth'`. `highest-bandwidth` ranks by the **cached** bandwidth value (on-demand or passive); nodes without a cached value fall back to `fastest` ordering.
 
 ## 6. Controller (single server-side loop)
 
@@ -139,6 +157,7 @@ each tick:
 - **Decision log:** an **in-memory ring buffer** of the last N decisions per channel (`{ ts, channelId, from, to, reason }`). The **last decision per channel is persisted** as `last_reason` + `last_reason_at` columns on the `channels` table, so the UI shows something meaningful immediately after a restart; older ring entries are lost on restart (acceptable for a single-admin tool).
 - **UI per channel:** current node, policy, and the last decision + reason + relative time ("holding — node alive 2 h 14 m" / "switched A→B: A failed ×3").
 - **Latency history:** bar chart, consistent with the rest of the UI (see the project chart-style convention).
+- **Passive bandwidth:** show the active node's observed up/down Mbps from the live `/traffic` counters (free; reflects real usage, not capacity).
 
 ## 8. mihomo config generation
 
@@ -161,7 +180,7 @@ New **Routing** section:
 - List of channels, drag to reorder (= priority). Default pinned at the bottom, non-deletable.
 - Per channel editor: name, matcher (preset chips + custom-domain field), pool (checkboxes over sources and live nodes), policy selector + that policy's knobs.
 - Per channel status: current node, last decision + reason (from §7).
-- Nodes screen: show which channel(s) route through each node and the active pick per channel.
+- Nodes screen: show which channel(s) route through each node and the active pick per channel; show the active node's passive Mbps; a per-node/per-pool **"Speed test"** action (on-demand bandwidth, §5) gated behind a traffic-cost warning.
 
 All controls follow the design-system gates (tokens-in-config, measure-don't-invent, control-type fidelity, visual verification at 1440×1024 dark + breakpoints).
 
@@ -172,7 +191,9 @@ Even as one model, ship incrementally; each slice is behaviour-verifiable.
 1. **Abstraction + Default (no behaviour change).** Introduce `channels`/`channel_pool`, seed a single Default channel from current settings, route everything through it, rename `switchOnTimeout` → `reevaluateWhileHealthy`. Settings become honest; behaviour identical.
 2. **`sticky` + controller.** Add the `sticky` policy, the server pin loop, the decision log, and the "why" UI on the Default channel. **Delivers the immediate IP-stability win.**
 3. **Multiple channels + rules.** Channel CRUD, preset+custom matchers, per-channel groups and `rules:` generation. **This is multi-mode routing.**
-4. **Polish.** Reachability-weighted test targets, scheduled rotation (`maxHoldHours`), rule-providers.
+4. **Polish.** Reachability-weighted test targets, scheduled rotation (`maxHoldHours`), rule-providers, on-demand speed test + `highest-bandwidth` criterion.
+
+Passive-bandwidth display (§7) is nearly free and may land earlier (alongside phase 2/3) rather than waiting for phase 4; active bandwidth (the `PROBE`-group speed test and `highest-bandwidth`) stays in phase 4 because of its traffic cost.
 
 ## 11. Risks & tradeoffs
 
@@ -180,4 +201,5 @@ Even as one model, ship incrementally; each slice is behaviour-verifiable.
 - **Sticky failover latency.** With server-controlled pin, worst-case failover is one control-loop tick (~5–10 s) plus `K × intervalSec` to confirm the outage. Acceptable for a single-admin self-hosted tool; the active node is probed more frequently than the interval to keep this tight.
 - **Stale node pool entries.** Handled explicitly (§4): surfaced, excluded, never silently substituted.
 - **Rules ordering correctness.** Channel priority must deterministically produce rule order; the Default terminal `MATCH` must always be last. Covered by unit tests on config generation.
+- **Bandwidth probing burns quota.** Many subscriptions are metered (some are device-bound via HWID). Active throughput measurement consumes real traffic, so it is never run on a periodic schedule — only user-triggered, one node/pool at a time, behind an explicit warning, with results cached. Latency/jitter/loss (cheap, active) and passive bandwidth (free) carry the periodic scoring; capacity is a cached secondary signal only.
 ```
