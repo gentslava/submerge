@@ -10,6 +10,34 @@ import {
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
 
+export type TopLevelEntry =
+  | { kind: "single"; proxy: ProxyConfig }
+  | { kind: "group"; base: string; members: ProxyConfig[] };
+
+// Group raw proxies by exact name (pre-dedupe). Within a same-name set, drop
+// true duplicates sharing a server:port. A name with ≥2 distinct endpoints
+// becomes a collapsed group; otherwise it stays a single proxy. Order follows
+// each name's first appearance.
+export function groupProxies(proxies: ProxyConfig[]): TopLevelEntry[] {
+  const order: string[] = [];
+  const byName = new Map<string, ProxyConfig[]>();
+  for (const p of proxies) {
+    const bucket = byName.get(p.name);
+    if (!bucket) {
+      byName.set(p.name, [p]);
+      order.push(p.name);
+    } else if (!bucket.some((q) => q.server === p.server && q.port === p.port)) {
+      bucket.push(p);
+    }
+  }
+  return order.map((name) => {
+    const members = byName.get(name) as ProxyConfig[];
+    return members.length > 1
+      ? { kind: "group" as const, base: name, members }
+      : { kind: "single" as const, proxy: members[0] as ProxyConfig };
+  });
+}
+
 // Ensure unique proxy names (mihomo requires it). Deterministic suffix so the
 // generated config is stable across reloads and testable (PoC used Math.random).
 // Tracks the full set of emitted names — including generated suffixes — so a

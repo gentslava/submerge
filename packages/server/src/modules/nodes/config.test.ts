@@ -1,7 +1,7 @@
 import type { Proxy as ProxyConfig } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { buildConfig, dedupeNames } from "./config.js";
+import { buildConfig, dedupeNames, groupProxies } from "./config.js";
 
 const proxy = (name: string): ProxyConfig => ({
   name,
@@ -33,6 +33,38 @@ describe("dedupeNames", () => {
       "A",
       "A-3",
     ]);
+  });
+});
+
+const px = (name: string, server = "ex.com", port = 443): ProxyConfig => ({
+  name,
+  type: "vless",
+  server,
+  port,
+  uuid: "u",
+});
+
+describe("groupProxies", () => {
+  it("keeps unique names as singles, order preserved", () => {
+    const r = groupProxies([px("A"), px("B")]);
+    expect(r).toEqual([
+      { kind: "single", proxy: px("A") },
+      { kind: "single", proxy: px("B") },
+    ]);
+  });
+  it("collapses same-name distinct endpoints into a group", () => {
+    const r = groupProxies([px("A", "1.1.1.1"), px("A", "2.2.2.2")]);
+    expect(r).toEqual([
+      { kind: "group", base: "A", members: [px("A", "1.1.1.1"), px("A", "2.2.2.2")] },
+    ]);
+  });
+  it("drops a true duplicate (same server:port); leftover single stays single", () => {
+    const r = groupProxies([px("A", "1.1.1.1"), px("A", "1.1.1.1")]);
+    expect(r).toEqual([{ kind: "single", proxy: px("A", "1.1.1.1") }]);
+  });
+  it("places a group at the position of its first member", () => {
+    const r = groupProxies([px("A", "1.1.1.1"), px("B"), px("A", "2.2.2.2")]);
+    expect(r.map((e) => (e.kind === "group" ? e.base : e.proxy.name))).toEqual(["A", "B"]);
   });
 });
 
