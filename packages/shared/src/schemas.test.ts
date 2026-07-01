@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  channelPolicySchema,
+  channelSchema,
   nodeItemSchema,
   nodeViewSchema,
   proxySchema,
   reorderInput,
   selectNodeInput,
+  setChannelPolicyInput,
   sourceKindSchema,
 } from "./schemas.js";
 
@@ -68,5 +71,72 @@ describe("nodeItemSchema.members", () => {
       members: [{ name: "G #1", delay: 40, active: true }],
     });
     expect(n.members).toEqual([{ name: "G #1", delay: 40, history: [], active: true }]);
+  });
+});
+
+describe("channelPolicySchema", () => {
+  it("accepts a speed policy", () => {
+    const p = channelPolicySchema.parse({
+      kind: "speed",
+      testUrl: "https://x/generate_204",
+      intervalSec: 300,
+      toleranceMs: 50,
+      reevaluateWhileHealthy: true,
+    });
+    expect(p.kind).toBe("speed");
+  });
+  it("accepts a sticky policy with null maxHoldHours", () => {
+    const p = channelPolicySchema.parse({
+      kind: "sticky",
+      testUrl: "https://x/generate_204",
+      intervalSec: 60,
+      failureThreshold: 3,
+      maxHoldHours: null,
+      initialCriterion: "fastest",
+    });
+    expect(p.kind === "sticky" && p.maxHoldHours).toBeNull();
+  });
+  it("rejects an unknown kind", () => {
+    expect(() => channelPolicySchema.parse({ kind: "nope" })).toThrow();
+  });
+  it("rejects intervalSec below 1", () => {
+    expect(() =>
+      channelPolicySchema.parse({
+        kind: "speed",
+        testUrl: "u",
+        intervalSec: 0,
+        toleranceMs: 0,
+        reevaluateWhileHealthy: false,
+      }),
+    ).toThrow();
+  });
+});
+
+describe("channelSchema", () => {
+  it("parses a default channel row", () => {
+    const c = channelSchema.parse({
+      id: "default",
+      name: "Default",
+      priority: 0,
+      enabled: true,
+      isDefault: true,
+      policy: {
+        kind: "speed",
+        testUrl: "u",
+        intervalSec: 300,
+        toleranceMs: 50,
+        reevaluateWhileHealthy: true,
+      },
+      matcher: { presets: [], domains: [] },
+      lastReason: null,
+      lastReasonAt: null,
+    });
+    expect(c.isDefault).toBe(true);
+  });
+});
+
+describe("setChannelPolicyInput", () => {
+  it("requires id and a valid policy", () => {
+    expect(() => setChannelPolicyInput.parse({ id: "", policy: {} })).toThrow();
   });
 });

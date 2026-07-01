@@ -111,3 +111,66 @@ export type LoginInput = z.infer<typeof loginInput>;
 
 export const sessionStatusSchema = z.object({ authed: z.boolean(), required: z.boolean() });
 export type SessionStatus = z.infer<typeof sessionStatusSchema>;
+
+// ── Channels (routing) ────────────────────────────────────────────
+// A channel binds { matcher, pool, policy }. Phase 1 ships only the Default
+// channel with the `speed` policy; sticky/manual are contract-complete here but
+// wired end-to-end in Phase 2. The policy is a discriminated union stored as JSON.
+
+export const speedPolicySchema = z.object({
+  kind: z.literal("speed"),
+  testUrl: z.string().min(1),
+  intervalSec: z.number().int().min(1), // seconds between mihomo re-tests
+  toleranceMs: z.number().int().min(0), // latency hysteresis before switching
+  // Re-evaluate the group every interval even while the current node is healthy.
+  // Maps to mihomo `lazy = !reevaluateWhileHealthy`. (Replaces the old, mislabelled
+  // `switchOnTimeout`.)
+  reevaluateWhileHealthy: z.boolean(),
+});
+
+export const stickyPolicySchema = z.object({
+  kind: z.literal("sticky"),
+  testUrl: z.string().min(1),
+  intervalSec: z.number().int().min(1),
+  failureThreshold: z.number().int().min(1), // consecutive fails before switching
+  maxHoldHours: z.number().int().min(1).nullable(), // null = hold indefinitely
+  initialCriterion: z.enum(["fastest", "lowest-loss"]), // highest-bandwidth: phase 4
+});
+
+export const manualPolicySchema = z.object({
+  kind: z.literal("manual"),
+  pinnedNode: z.string().min(1),
+  onFailure: z.enum(["hold", "fallback"]),
+});
+
+export const channelPolicySchema = z.discriminatedUnion("kind", [
+  speedPolicySchema,
+  stickyPolicySchema,
+  manualPolicySchema,
+]);
+export type ChannelPolicy = z.infer<typeof channelPolicySchema>;
+
+export const channelMatcherSchema = z.object({
+  presets: z.array(z.string()).default([]),
+  domains: z.array(z.string()).default([]),
+});
+export type ChannelMatcher = z.infer<typeof channelMatcherSchema>;
+
+export const channelSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  priority: z.number().int(),
+  enabled: z.boolean(),
+  isDefault: z.boolean(),
+  policy: channelPolicySchema,
+  matcher: channelMatcherSchema,
+  lastReason: z.string().nullable(),
+  lastReasonAt: z.number().nullable(), // epoch ms of the last controller decision
+});
+export type Channel = z.infer<typeof channelSchema>;
+
+export const setChannelPolicyInput = z.object({
+  id: z.string().min(1),
+  policy: channelPolicySchema,
+});
+export type SetChannelPolicyInput = z.infer<typeof setChannelPolicyInput>;
