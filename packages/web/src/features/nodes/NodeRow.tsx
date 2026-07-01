@@ -26,7 +26,7 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
   const isGroup = members.length > 0;
   const [expanded, setExpanded] = useState(false);
   // Sub-line: a collapsed group shows its server count ("5 серверов"); a plain
-  // node shows its protocol badges (VLESS · Reality / · WS / · TCP).
+  // node shows its protocol badges (VLESS · TCP · Reality / · WS · TLS).
   const sub = isGroup ? serverCountLabel(members.length) : typeBadges(item).join(" · ");
 
   // Dot + name (+ trailing chevron for groups) + sub. The dot stays the first

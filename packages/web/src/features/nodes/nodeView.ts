@@ -43,25 +43,32 @@ export const latencyTextColors: Record<LatencyClass, string> = {
   idle: "text-text-tertiary",
 };
 
-// The node's single most-telling connection descriptor, matching the mockup's
-// second badge: Reality > non-tcp transport (WS/GRPC/…) > TLS > TCP. Returns null
-// when we know neither transport nor security (e.g. a group node).
+// Transport badge for a real node (uppercased: TCP/WS/GRPC/…). Falls back to TCP
+// when the config omitted `network` (clash omits it for plain tcp) but we still
+// know it's a real node (security present). null when neither is known (a group).
 export function transportBadge(node: NodeItem): string | null {
-  if (node.security === "reality") return "Reality";
-  if (node.network && node.network !== "tcp") return node.network.toUpperCase();
-  if (node.security === "tls") return "TLS";
-  if (node.network || node.security) return "TCP";
+  if (node.network) return node.network.toUpperCase();
+  if (node.security) return "TCP";
   return null;
 }
 
-// Type badges derived from a node: its protocol (uppercased) plus the connection
-// descriptor ("VLESS · Reality" / "· WS" / "· TCP") — the real transport/security,
-// not the old uniform "· UDP" flag.
+// Security badge: Reality/TLS surfaced, "none" and unknown omitted.
+export function securityBadge(node: NodeItem): string | null {
+  if (node.security === "reality") return "Reality";
+  if (node.security === "tls") return "TLS";
+  return null;
+}
+
+// Type badges derived from a node: protocol · transport · security — the real
+// connection metadata ("VLESS · TCP · Reality" / "· WS · TLS"), matching Happ's
+// tags minus the non-node "JSON" format field. security is dropped when it's none.
 export function typeBadges(node: NodeItem): string[] {
   const badges: string[] = [];
   if (node.type) badges.push(node.type.toUpperCase());
-  const descriptor = transportBadge(node);
-  if (descriptor) badges.push(descriptor);
+  const transport = transportBadge(node);
+  if (transport) badges.push(transport);
+  const security = securityBadge(node);
+  if (security) badges.push(security);
   return badges;
 }
 

@@ -32,7 +32,7 @@ describe("NodeRow", () => {
     };
     render(<NodeRow {...base} item={item} />);
 
-    expect(screen.getByText("VLESS · Reality")).toBeInTheDocument();
+    expect(screen.getByText("VLESS · TCP · Reality")).toBeInTheDocument();
   });
 
   it("shows the timeout label for a non-positive delay", () => {

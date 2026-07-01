@@ -6,6 +6,7 @@ import {
   groupNodes,
   latencyClass,
   latencyLabel,
+  securityBadge,
   serverCountLabel,
   splitNodes,
   transportBadge,
@@ -91,24 +92,36 @@ describe("nodeView", () => {
     expect(groups.map((g) => g.label)).toEqual(["Real"]);
   });
 
-  it("picks the connection descriptor: reality > non-tcp transport > tls > tcp", () => {
+  it("derives the transport badge, defaulting to TCP when network is omitted", () => {
     const n = (over: Partial<NodeItem>): NodeItem => ({ ...node("x"), ...over });
-    expect(transportBadge(n({ network: "tcp", security: "reality" }))).toBe("Reality");
     expect(transportBadge(n({ network: "ws", security: "tls" }))).toBe("WS");
     expect(transportBadge(n({ network: "grpc", security: "none" }))).toBe("GRPC");
-    expect(transportBadge(n({ network: "tcp", security: "tls" }))).toBe("TLS");
-    expect(transportBadge(n({ network: "tcp", security: "none" }))).toBe("TCP");
+    expect(transportBadge(n({ network: "tcp" }))).toBe("TCP");
+    expect(transportBadge(n({ security: "reality" }))).toBe("TCP"); // clash omits network for tcp
     expect(transportBadge(n({ security: "none" }))).toBe("TCP");
-    expect(transportBadge(node("x"))).toBeNull(); // no transport/security known (e.g. group)
+    expect(transportBadge(node("x"))).toBeNull(); // neither known (e.g. group)
   });
 
-  it("builds type badges as protocol + descriptor", () => {
-    expect(typeBadges({ ...node("x"), network: "tcp", security: "reality" })).toEqual([
+  it("derives the security badge, omitting none/unknown", () => {
+    const n = (over: Partial<NodeItem>): NodeItem => ({ ...node("x"), ...over });
+    expect(securityBadge(n({ security: "reality" }))).toBe("Reality");
+    expect(securityBadge(n({ security: "tls" }))).toBe("TLS");
+    expect(securityBadge(n({ security: "none" }))).toBeNull();
+    expect(securityBadge(node("x"))).toBeNull();
+  });
+
+  it("builds type badges as protocol · transport · security", () => {
+    expect(typeBadges({ ...node("x"), security: "reality" })).toEqual(["VLESS", "TCP", "Reality"]);
+    expect(typeBadges({ ...node("x"), network: "ws", security: "tls" })).toEqual([
       "VLESS",
-      "Reality",
+      "WS",
+      "TLS",
     ]);
-    expect(typeBadges({ ...node("x"), network: "ws", security: "none" })).toEqual(["VLESS", "WS"]);
-    expect(typeBadges(node("x"))).toEqual(["VLESS"]); // nothing to join → protocol only
+    expect(typeBadges({ ...node("x"), network: "tcp", security: "none" })).toEqual([
+      "VLESS",
+      "TCP",
+    ]);
+    expect(typeBadges(node("x"))).toEqual(["VLESS"]); // group/unknown → protocol only
   });
 
   it("formats traffic rates per second", () => {
