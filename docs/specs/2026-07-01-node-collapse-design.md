@@ -118,6 +118,21 @@ member (`#k`, absent from `PROXY.all`) after upgrade, so mihomo drops that
 `PROXY` selection and falls back to its default. One-time, non-critical;
 documented as expected.
 
+**Reserved-name collapse falls into "Прочие".** If a subscription literally
+names a node `AUTO`/`PROXY`/`DIRECT`/`REJECT`/`GLOBAL` and ships ≥2 of them, the
+reserved-name guard renames the emitted group (e.g. `AUTO-2`) to avoid colliding
+with the system groups. The source still stores the raw base name, so the
+UI's exact-name `groupNodes` match fails and this one group lands in "Прочие".
+Pathological input; cosmetic only (the group still routes and is selectable). Not
+fixed in v1 — a proper fix would carry the original base name through to the
+web for source-matching.
+
+**Same name across sources merges.** `groupProxies` groups the flat
+`collectProxies` stream by name across all sources, so identical names shipped by
+two different subscriptions collapse into one group, attached (by `groupNodes`)
+to whichever source lists that name first (by `sortOrder`). Consistent with "one
+node over N servers" regardless of origin, but a behavior change worth noting.
+
 ## Verification (source-driven, do before implementing)
 
 - **Nested url-test:** confirm mihomo allows a `url-test` group (`AUTO`) to
