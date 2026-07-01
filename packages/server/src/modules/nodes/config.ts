@@ -1,10 +1,7 @@
 // Generate the mihomo config.yaml from a set of proxies (ported from generate.js).
 import {
-  DEFAULT_AUTO_STRATEGY,
-  DEFAULT_AUTO_SWITCH_ON_TIMEOUT,
-  DEFAULT_AUTO_TEST_INTERVAL,
-  DEFAULT_AUTO_TEST_URL,
-  DEFAULT_AUTO_TOLERANCE,
+  type ChannelPolicy,
+  DEFAULT_SPEED_POLICY,
   type Proxy as ProxyConfig,
 } from "@submerge/shared";
 import * as yaml from "js-yaml";
@@ -57,31 +54,33 @@ export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
   });
 }
 
-// AUTO group policy — the mihomo group type that picks the active node.
-export type AutoStrategy = "url-test" | "fallback" | "load-balance";
-export const AUTO_STRATEGIES: AutoStrategy[] = ["url-test", "fallback", "load-balance"];
-
-// AUTO group tuning — editable via Settings; defaults baked here.
-export interface AutoConfig {
-  strategy: AutoStrategy;
-  url: string;
-  interval: number; // seconds between mihomo re-tests
-  tolerance: number; // ms hysteresis before switching (url-test only)
-  switchOnTimeout: boolean; // proactively re-test + switch (mihomo lazy: false)
-}
-export const AUTO_DEFAULTS: AutoConfig = {
-  strategy: DEFAULT_AUTO_STRATEGY,
-  url: DEFAULT_AUTO_TEST_URL,
-  interval: DEFAULT_AUTO_TEST_INTERVAL,
-  tolerance: DEFAULT_AUTO_TOLERANCE,
-  switchOnTimeout: DEFAULT_AUTO_SWITCH_ON_TIMEOUT,
-};
-
 const RESERVED_GROUP_NAMES = ["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"];
+
+// The mihomo tuning a `speed` policy contributes to url-test groups (AUTO + any
+// collapsed same-name subgroup). Non-speed policies make AUTO a plain `select`
+// that the server controller pins, so they contribute nothing here.
+interface UrlTestTuning {
+  url: string;
+  interval: number;
+  tolerance: number;
+  lazy: boolean;
+}
+function urlTestTuning(policy: ChannelPolicy): UrlTestTuning {
+  const p =
+    policy.kind === "speed"
+      ? policy
+      : (DEFAULT_SPEED_POLICY as Extract<ChannelPolicy, { kind: "speed" }>);
+  return {
+    url: p.testUrl,
+    interval: p.intervalSec,
+    tolerance: p.toleranceMs,
+    lazy: !p.reevaluateWhileHealthy,
+  };
+}
 
 export function buildConfig(
   proxies: ProxyConfig[],
-  auto: AutoConfig = AUTO_DEFAULTS,
+  policy: ChannelPolicy = DEFAULT_SPEED_POLICY,
   secret: string = env.MIHOMO_SECRET,
 ): string {
   const entries = groupProxies(proxies);
@@ -89,6 +88,7 @@ export function buildConfig(
   const topLevelNames: string[] = [];
   const flat: ProxyConfig[] = [];
   const subGroups: Record<string, unknown>[] = [];
+  const tuning = urlTestTuning(policy);
 
   for (const e of entries) {
     if (e.kind === "single") {
@@ -110,26 +110,34 @@ export function buildConfig(
     subGroups.push({
       name: gname,
       type: "url-test",
-      url: auto.url,
-      interval: auto.interval,
-      tolerance: auto.tolerance,
-      lazy: !auto.switchOnTimeout,
+      url: tuning.url,
+      interval: tuning.interval,
+      tolerance: tuning.tolerance,
+      lazy: tuning.lazy,
       proxies: memberNames,
     });
     topLevelNames.push(gname);
   }
 
   const unique = dedupeNames(flat);
-  const autoGroup: Record<string, unknown> = {
-    name: "AUTO",
-    type: auto.strategy,
-    url: auto.url,
-    interval: auto.interval,
-    lazy: !auto.switchOnTimeout,
-    proxies: topLevelNames.length ? topLevelNames : ["DIRECT"],
-  };
-  if (auto.strategy === "url-test") autoGroup.tolerance = auto.tolerance;
-  if (auto.strategy === "load-balance") autoGroup.strategy = "round-robin";
+  const members = topLevelNames.length ? topLevelNames : ["DIRECT"];
+  const autoGroup: Record<string, unknown> =
+    policy.kind === "speed"
+      ? {
+          name: "AUTO",
+          type: "url-test",
+          url: tuning.url,
+          interval: tuning.interval,
+          tolerance: tuning.tolerance,
+          lazy: tuning.lazy,
+          proxies: members,
+        }
+      : {
+          // sticky / manual: a dumb selector the server controller pins (Phase 2).
+          name: "AUTO",
+          type: "select",
+          proxies: members,
+        };
 
   const cfg = {
     "mixed-port": 7890,

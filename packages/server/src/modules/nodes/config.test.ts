@@ -1,4 +1,4 @@
-import type { Proxy as ProxyConfig } from "@submerge/shared";
+import type { ChannelPolicy, Proxy as ProxyConfig } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { buildConfig, dedupeNames, groupProxies } from "./config.js";
@@ -115,5 +115,44 @@ describe("buildConfig collapses same-named nodes", () => {
     const names = cfg["proxy-groups"].map((g: any) => g.name);
     expect(names).toContain("AUTO-2"); // the collapsed provider group, guarded
     expect(names[1]).toBe("AUTO"); // the system AUTO group is untouched
+  });
+});
+
+const speed = (over: Partial<Extract<ChannelPolicy, { kind: "speed" }>> = {}): ChannelPolicy => ({
+  kind: "speed",
+  testUrl: "https://x/generate_204",
+  intervalSec: 300,
+  toleranceMs: 50,
+  reevaluateWhileHealthy: true,
+  ...over,
+});
+
+describe("buildConfig policy mapping", () => {
+  it("maps speed.reevaluateWhileHealthy=true to AUTO lazy=false + tolerance", () => {
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(buildConfig([proxy("A")], speed())) as Record<string, any>;
+    const auto = cfg["proxy-groups"].find((g: any) => g.name === "AUTO");
+    expect(auto.type).toBe("url-test");
+    expect(auto.lazy).toBe(false);
+    expect(auto.tolerance).toBe(50);
+    expect(auto.url).toBe("https://x/generate_204");
+    expect(auto.interval).toBe(300);
+  });
+
+  it("makes AUTO a select group for a sticky policy (server pins it)", () => {
+    const sticky: ChannelPolicy = {
+      kind: "sticky",
+      testUrl: "https://x/generate_204",
+      intervalSec: 60,
+      failureThreshold: 3,
+      maxHoldHours: null,
+      initialCriterion: "fastest",
+    };
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(buildConfig([proxy("A"), proxy("B")], sticky)) as Record<string, any>;
+    const auto = cfg["proxy-groups"].find((g: any) => g.name === "AUTO");
+    expect(auto.type).toBe("select");
+    expect(auto.proxies).toEqual(["A", "B"]);
+    expect(auto.tolerance).toBeUndefined();
   });
 });
