@@ -23,6 +23,18 @@ describe("SourceForm", () => {
     expect(await screen.findByText(KIND_LABEL.vless)).toBeInTheDocument();
   });
 
+  it("disables the add button until a value is entered", () => {
+    renderWithClient(<SourceForm />);
+
+    const btn = screen.getByRole("button", { name: /Добавить/ });
+    expect(btn).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Ссылка источника"), {
+      target: { value: "vless://abc" },
+    });
+    expect(btn).toBeEnabled();
+  });
+
   it("toggles the HWID switch aria-checked", () => {
     renderWithClient(<SourceForm />);
 

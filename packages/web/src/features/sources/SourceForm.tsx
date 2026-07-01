@@ -29,14 +29,7 @@ export function SourceForm() {
     }),
   );
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    reset,
-    control,
-    formState: { errors },
-  } = useForm<FormValues>({
+  const { register, handleSubmit, watch, reset, control } = useForm<FormValues>({
     resolver: zodResolver(addSourceInput),
     defaultValues: { value: "", hwid: false },
   });
@@ -59,6 +52,8 @@ export function SourceForm() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-1">
+          {/* No inline validation: an empty value just disables Добавить (below); the
+              placeholder is the hint. Server-side failures surface via a toast. */}
           <Textarea
             id="source-value"
             {...register("value")}
@@ -66,7 +61,6 @@ export function SourceForm() {
             aria-label="Ссылка источника"
             className="h-[120px] resize-none p-3.5"
           />
-          {errors.value && <p className="text-xs text-timeout">{errors.value.message}</p>}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -107,7 +101,7 @@ export function SourceForm() {
         </div>
 
         <div className="flex justify-end">
-          <Button type="submit" disabled={addMutation.isPending}>
+          <Button type="submit" disabled={!typed || addMutation.isPending}>
             <Plus className="h-4 w-4" aria-hidden="true" />
             {addMutation.isPending ? "Добавляю…" : "Добавить"}
           </Button>
