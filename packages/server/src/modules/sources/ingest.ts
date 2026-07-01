@@ -7,6 +7,7 @@ export interface IngestResult {
   label: string;
   proxies: ProxyConfig[];
   meta: SubscriptionMeta | null;
+  skipped: string[];
 }
 
 // Source kinds that are a single-node link (the kind IS the protocol) — routed
@@ -112,7 +113,7 @@ export async function fetchSubscription(
   url: string,
   useHwid = false,
   hwid = "",
-): Promise<{ proxies: ProxyConfig[]; info: SubInfo }> {
+): Promise<{ proxies: ProxyConfig[]; info: SubInfo; skipped: string[] }> {
   const headers: Record<string, string> = { "User-Agent": "clash.meta" };
   if (useHwid && hwid) {
     headers["X-Hwid"] = hwid;
@@ -121,10 +122,10 @@ export async function fetchSubscription(
   const res = await fetch(url.trim(), { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`subscription returned HTTP ${res.status}`);
   const info = parseSubInfo(res.headers);
-  const proxies = parseProxiesFromText(await res.text());
+  const { proxies, skipped } = parseProxiesFromText(await res.text());
   if (!proxies.length)
     throw new Error("subscription had no nodes (clash-yaml / v2ray-json / base64)");
-  return { proxies, info };
+  return { proxies, info, skipped };
 }
 
 // happ:// → happ-decoder → sub-url/body → proxies. Proxies prefer the decoder's inline
@@ -133,14 +134,21 @@ export async function ingestHapp(
   link: string,
   useHwid = false,
   hwid = "",
-): Promise<{ via: string; proxies: ProxyConfig[]; info: SubInfo }> {
+): Promise<{ via: string; proxies: ProxyConfig[]; info: SubInfo; skipped: string[] }> {
   const decoded = await decodeHapp(link, useHwid);
-  let proxies = decoded.body ? parseProxiesFromText(decoded.body) : [];
+  const parsed = decoded.body
+    ? parseProxiesFromText(decoded.body)
+    : { proxies: [] as ProxyConfig[], skipped: [] as string[] };
+  let proxies = parsed.proxies;
+  let skipped = parsed.skipped;
   let info = EMPTY_INFO;
   if (decoded.url) {
     try {
       const fetched = await fetchSubscription(decoded.url, useHwid, hwid);
-      if (!proxies.length) proxies = fetched.proxies;
+      if (!proxies.length) {
+        proxies = fetched.proxies;
+        skipped = fetched.skipped; // proxies came from the fetch → report its skipped list
+      }
       info = fetched.info;
     } catch {
       /* fetch failed — keep the body's proxies (if any); no metadata */
@@ -160,7 +168,7 @@ export async function ingestHapp(
       `happ decoded (${decoded.url || "—"}) but the subscription format was not recognized`,
     );
   }
-  return { via: decoded.url || "happ", proxies, info };
+  return { via: decoded.url || "happ", proxies, info, skipped };
 }
 
 // Dispatch on detected kind and return a normalized ingest result (no DB writes).
@@ -172,19 +180,19 @@ export async function ingestSource(
   const kind = detectKind(value);
   if (SINGLE_LINK_KINDS.has(kind)) {
     const proxy = parseSingleLink(value);
-    return { kind, label: proxy.name, proxies: [proxy], meta: null };
+    return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [] };
   }
   if (kind === "sub") {
     const url = extractSubUrl(value);
     if (url) {
-      const { proxies, info } = await fetchSubscription(url, useHwid, hwid);
-      return { kind, label: info.title || url, proxies, meta: toMeta(info) };
+      const { proxies, info, skipped } = await fetchSubscription(url, useHwid, hwid);
+      return { kind, label: info.title || url, proxies, meta: toMeta(info), skipped };
     }
-    const proxies = parseProxiesFromText(value);
+    const { proxies, skipped } = parseProxiesFromText(value);
     if (!proxies.length) throw new Error("subscription had no nodes");
-    return { kind, label: "inline subscription", proxies, meta: null };
+    return { kind, label: "inline subscription", proxies, meta: null, skipped };
   }
   // happ
-  const { via, proxies, info } = await ingestHapp(value, useHwid, hwid);
-  return { kind, label: info.title || `happ → ${via}`, proxies, meta: toMeta(info) };
+  const { via, proxies, info, skipped } = await ingestHapp(value, useHwid, hwid);
+  return { kind, label: info.title || `happ → ${via}`, proxies, meta: toMeta(info), skipped };
 }

@@ -207,17 +207,24 @@ function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
   return p as ProxyConfig;
 }
 
+export interface ParsedProxies {
+  proxies: ProxyConfig[];
+  skipped: string[]; // deduped unsupported protocol/scheme names (e.g. ["ssr"])
+}
+
 // ── Parse subscription body text into mihomo proxies ────────────────
-export function parseProxiesFromText(text: string): ProxyConfig[] {
+export function parseProxiesFromText(text: string): ParsedProxies {
   // 1) clash/mihomo yaml
   // JSON parses as YAML but lacks .proxies, so it falls through to the JSON branch
   try {
     const doc = yaml.load(text) as { proxies?: unknown[] } | undefined;
     if (doc && Array.isArray(doc.proxies) && doc.proxies.length)
-      return doc.proxies as ProxyConfig[];
+      return { proxies: doc.proxies as ProxyConfig[], skipped: [] };
   } catch {
     /* not yaml */
   }
+
+  const skipped = new Set<string>();
 
   // 2) v2ray/xray JSON (array of profiles with outbounds, or {outbounds:[…]})
   try {
@@ -230,8 +237,13 @@ export function parseProxiesFromText(text: string): ProxyConfig[] {
         for (const ob of prof.outbounds || []) {
           const p = v2rayOutboundToMihomo(ob, prof.remarks) || singBoxOutboundToMihomo(ob);
           if (p) out.push(p);
+          else {
+            const t = ob?.protocol || ob?.type;
+            if (t && !["freedom", "blackhole", "direct", "dns", "block"].includes(t))
+              skipped.add(String(t));
+          }
         }
-      if (out.length) return out;
+      if (out.length || skipped.size) return { proxies: out, skipped: [...skipped] };
     }
   } catch {
     /* not json */
@@ -248,12 +260,17 @@ export function parseProxiesFromText(text: string): ProxyConfig[] {
   const out: ProxyConfig[] = [];
   for (const line of decoded.split(/\r?\n/)) {
     const s = line.trim();
-    if (!s.startsWith("vless://")) continue;
-    try {
-      out.push(parseVless(s));
-    } catch {
-      /* skip malformed line */
+    const scheme = schemeOf(s);
+    if (!scheme) continue;
+    if (SINGLE_LINK[scheme]) {
+      try {
+        out.push(SINGLE_LINK[scheme].parse(s));
+      } catch {
+        /* skip malformed line */
+      }
+    } else {
+      skipped.add(scheme.slice(0, -1)); // "ssr:" → "ssr"
     }
   }
-  return out;
+  return { proxies: out, skipped: [...skipped] };
 }

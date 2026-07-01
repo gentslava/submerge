@@ -105,7 +105,7 @@ describe("parseVless", () => {
 describe("parseProxiesFromText", () => {
   it("parses clash/mihomo yaml", () => {
     const yaml = "proxies:\n  - {name: A, type: vless, server: ex.com, port: 443, uuid: u}\n";
-    const out = parseProxiesFromText(yaml);
+    const out = parseProxiesFromText(yaml).proxies;
     expect(out).toHaveLength(1);
     expect(out[0]?.name).toBe("A");
   });
@@ -128,7 +128,7 @@ describe("parseProxiesFromText", () => {
         },
       ],
     });
-    const out = parseProxiesFromText(json);
+    const out = parseProxiesFromText(json).proxies;
     expect(out[0]).toMatchObject({ name: "R", server: "ex.com", port: 443, uuid: "u", tls: true });
   });
   it("parses a sing-box vless outbound", () => {
@@ -144,7 +144,7 @@ describe("parseProxiesFromText", () => {
         },
       ],
     });
-    const out = parseProxiesFromText(json);
+    const out = parseProxiesFromText(json).proxies;
     expect(out[0]).toMatchObject({
       name: "SB",
       server: "ex.com",
@@ -157,15 +157,24 @@ describe("parseProxiesFromText", () => {
   it("parses a base64 list of vless links", () => {
     const list = "vless://u@ex.com:443#A\nvless://u@ex.com:8443#B";
     const b64 = Buffer.from(list, "utf8").toString("base64");
-    const out = parseProxiesFromText(b64);
+    const out = parseProxiesFromText(b64).proxies;
     expect(out.map((p) => p.name)).toEqual(["A", "B"]);
   });
   it("returns an empty array for unrecognized text", () => {
-    expect(parseProxiesFromText("not a subscription")).toEqual([]);
+    expect(parseProxiesFromText("not a subscription").proxies).toEqual([]);
   });
   it("skips malformed vless lines and keeps the valid ones", () => {
-    expect(parseProxiesFromText("vless://bad\nvless://u@ex.com:443#A").map((p) => p.name)).toEqual([
-      "A",
-    ]);
+    expect(
+      parseProxiesFromText("vless://bad\nvless://u@ex.com:443#A").proxies.map((p) => p.name),
+    ).toEqual(["A"]);
+  });
+});
+
+describe("parseProxiesFromText skipped", () => {
+  it("returns parsed proxies and a deduped list of skipped schemes", () => {
+    const body = "vless://u@ex.com:443#A\nssr://xxx\nssr://yyy\n";
+    const { proxies, skipped } = parseProxiesFromText(body);
+    expect(proxies.map((p) => p.name)).toEqual(["A"]);
+    expect(skipped).toEqual(["ssr"]);
   });
 });

@@ -41,7 +41,7 @@ describe("sources service", () => {
   it("adds a vless source, snapshots its proxies, and lists it", async () => {
     const db = freshDb();
     stubNet();
-    const src = await addSource(
+    const { source: src } = await addSource(
       db,
       { value: "vless://u@ex.com:443?security=tls#NL", hwid: false },
       tmpConfig(),
@@ -70,13 +70,13 @@ describe("sources service", () => {
   it("appends sources with increasing sortOrder", async () => {
     const db = freshDb();
     stubNet();
-    const a = await addSource(
+    const { source: a } = await addSource(
       db,
       { value: "vless://u@ex.com:443#A", hwid: false },
       tmpConfig(),
       hwidFile(),
     );
-    const b = await addSource(
+    const { source: b } = await addSource(
       db,
       { value: "vless://u@ex.com:443#B", hwid: false },
       tmpConfig(),
@@ -89,7 +89,7 @@ describe("sources service", () => {
   it("toggles enabled and removes a source", async () => {
     const db = freshDb();
     stubNet();
-    const src = await addSource(
+    const { source: src } = await addSource(
       db,
       { value: "vless://u@ex.com:443#A", hwid: false },
       tmpConfig(),
@@ -104,13 +104,13 @@ describe("sources service", () => {
   it("reorders sources by id list", async () => {
     const db = freshDb();
     stubNet();
-    const a = await addSource(
+    const { source: a } = await addSource(
       db,
       { value: "vless://u@ex.com:443#A", hwid: false },
       tmpConfig(),
       hwidFile(),
     );
-    const b = await addSource(
+    const { source: b } = await addSource(
       db,
       { value: "vless://u@ex.com:443#B", hwid: false },
       tmpConfig(),
@@ -124,7 +124,7 @@ describe("sources service", () => {
   it("re-ingests and updates the snapshot on refresh", async () => {
     const db = freshDb();
     stubNet(); // first ingest → node "A"
-    const src = await addSource(
+    const { source: src } = await addSource(
       db,
       { value: "https://ex.com/sub", hwid: false },
       tmpConfig(),

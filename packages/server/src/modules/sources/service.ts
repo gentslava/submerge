@@ -35,7 +35,7 @@ export async function addSource(
   input: AddSourceInput,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   hwidFile: string = env.HWID_FILE,
-): Promise<Source> {
+): Promise<{ source: Source; skipped: string[] }> {
   const value = input.value.trim();
   // Reject an already-added source (same value) up front — before any decode/network
   // work — so the same subscription can't be added twice.
@@ -62,7 +62,7 @@ export async function addSource(
     .returning()
     .get();
   await applyConfig(db, configPath);
-  return toSource(row);
+  return { source: toSource(row), skipped: result.skipped };
 }
 
 export async function removeSource(

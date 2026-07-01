@@ -20,10 +20,14 @@ export function SourceForm() {
 
   const addMutation = useMutation(
     trpc.sources.add.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         reset();
         void qc.invalidateQueries({ queryKey: trpc.sources.list.queryKey() });
         toast.success("Источник добавлен");
+        if (data.skipped?.length)
+          toast.warning(
+            `Пропущено ${data.skipped.length}: неподдерживаемые протоколы (${data.skipped.join(", ")})`,
+          );
       },
       onError: (e) => toast.error(e.message),
     }),
