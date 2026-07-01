@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { PROXY_ENDPOINT } from "@/lib/constants";
-import { formatInterval } from "@/lib/duration";
+import { formatInterval, formatRelative } from "@/lib/duration";
 import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
@@ -47,6 +47,7 @@ export function SettingsScreen() {
   const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const data = settingsQuery.data;
   const channelQuery = useQuery(trpc.channels.get.queryOptions());
+  const decisionsQuery = useQuery(trpc.channels.recentDecisions.queryOptions());
 
   // Engine reachability — polled at the panel's poll cadence and on demand
   // ("Проверить"), so the status updates live without a page reload (this is a
@@ -322,6 +323,20 @@ export function SettingsScreen() {
                 </Row>
               </>
             )}
+            <div className="flex flex-col gap-2 px-[18px] py-4">
+              <span className="text-sm font-medium text-text-primary">История решений</span>
+              {decisionsQuery.data && decisionsQuery.data.length > 0 ? (
+                <ul className="flex flex-col gap-1.5">
+                  {decisionsQuery.data.slice(0, 10).map((entry) => (
+                    <li key={entry.at} className="font-mono text-xs text-text-tertiary">
+                      {entry.reason} · {formatRelative(entry.at)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="text-xs text-text-tertiary">Пока нет переключений</span>
+              )}
+            </div>
           </Section>
 
           <Section title="Подключение" desc="Доступ к API mihomo и локальному прокси.">

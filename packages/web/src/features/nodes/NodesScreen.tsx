@@ -155,6 +155,10 @@ export function NodesScreen() {
           onPing={pingOne}
           onAuto={onAuto}
           onManual={onManual}
+          lastDecision={{
+            reason: channelQuery.data?.lastReason ?? "",
+            at: channelQuery.data?.lastReasonAt ?? null,
+          }}
         />
       )}
     </div>
@@ -176,6 +180,7 @@ function Body({
   onPing,
   onAuto,
   onManual,
+  lastDecision,
 }: {
   now: string | null;
   autoNow: string | null;
@@ -191,6 +196,7 @@ function Body({
   onPing: (name: string) => void;
   onAuto: () => void;
   onManual: () => void;
+  lastDecision: { reason: string; at: number | null };
 }) {
   return (
     <>
@@ -202,6 +208,7 @@ function Body({
         onAuto={onAuto}
         onManual={onManual}
         pending={selectPending}
+        lastDecision={lastDecision}
       />
 
       <ActiveNodeCard

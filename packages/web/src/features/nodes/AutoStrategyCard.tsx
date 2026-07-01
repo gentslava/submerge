@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
-import { formatInterval } from "@/lib/duration";
+import { formatInterval, formatRelative } from "@/lib/duration";
 import { cn } from "@/lib/utils";
 
 // Авто = the AUTO group picks the node automatically (its strategy/tuning is set in
@@ -26,6 +26,9 @@ interface AutoStrategyCardProps {
   onAuto(): void;
   onManual(): void;
   pending?: boolean;
+  // The controller's last "why it switched" decision (Default channel), persisted
+  // server-side. Optional — NodesScreen omits it, SettingsScreen feeds it.
+  lastDecision?: { reason: string; at: number | null };
 }
 
 export function AutoStrategyCard({
@@ -36,6 +39,7 @@ export function AutoStrategyCard({
   onAuto,
   onManual,
   pending = false,
+  lastDecision,
 }: AutoStrategyCardProps) {
   const params: { caption: string; value: string; grow?: boolean }[] = [
     { caption: "ПРОВЕРОЧНЫЙ URL", value: auto.testUrl.replace(/^https?:\/\//, ""), grow: true },
@@ -137,9 +141,17 @@ export function AutoStrategyCard({
 
       <div className="h-px w-full bg-border-subtle" />
 
-      <div className="flex items-center gap-2.5 bg-elevated px-4 py-[11px]">
-        <History className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
-        <span className="font-mono text-xs text-text-tertiary">{status}</span>
+      <div className="flex flex-col gap-1 bg-elevated px-4 py-[11px]">
+        <div className="flex items-center gap-2.5">
+          <History className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+          <span className="font-mono text-xs text-text-tertiary">{status}</span>
+        </div>
+        {lastDecision?.reason && (
+          <span className="font-mono text-xs text-text-tertiary">
+            {lastDecision.reason}
+            {lastDecision.at ? ` · ${formatRelative(lastDecision.at)}` : ""}
+          </span>
+        )}
       </div>
     </section>
   );
