@@ -51,4 +51,28 @@ describe("NodeRow", () => {
     expect(screen.getByText("Активен")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Выбрать" })).toBeNull();
   });
+
+  it("expands a collapsed group to show view-only members", () => {
+    const item: NodeItem = {
+      name: "G",
+      type: "URLTest",
+      delay: 40,
+      history: [],
+      members: [
+        { name: "G #1", delay: 90, history: [], active: false },
+        { name: "G #2", delay: 40, history: [], active: true },
+      ],
+    };
+    render(<NodeRow {...base} item={item} />);
+
+    // group row shows the active member's ping and can still be selected as a whole
+    expect(screen.getByText("40 ms")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Выбрать" })).toBeInTheDocument();
+
+    // members hidden until expanded
+    expect(screen.queryByText("G #2 · активен")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Показать серверы G" }));
+    expect(screen.getByText("G #2 · активен")).toBeInTheDocument();
+    expect(screen.getByText("90 ms")).toBeInTheDocument();
+  });
 });
