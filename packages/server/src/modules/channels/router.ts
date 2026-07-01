@@ -2,6 +2,7 @@ import { setChannelPolicyInput } from "@submerge/shared";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import { applyConfig } from "../nodes/service.js";
+import { channelController } from "./instance.js";
 import { readDefaultChannel, setChannelPolicy } from "./service.js";
 
 export const channelsRouter = router({
@@ -13,4 +14,5 @@ export const channelsRouter = router({
     await applyConfig(db);
     return { ok: true as const };
   }),
+  recentDecisions: protectedProcedure.query(() => channelController.recent()),
 });

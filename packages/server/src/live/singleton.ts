@@ -1,6 +1,7 @@
 import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
 import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
+import { channelController } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
 import { toNodeView } from "../modules/nodes/service.js";
 import { getSetting } from "../modules/settings/service.js";
@@ -38,4 +39,5 @@ export const liveHub = new LiveHub({
     await getDelay(name, url);
   },
   fetchTotals: getTotals,
+  afterView: (view) => channelController.tick(view),
 });
