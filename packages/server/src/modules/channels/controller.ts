@@ -100,8 +100,11 @@ export class ChannelController {
     this.deps.persistReason(entry.reason, entry.at);
   }
 
-  // Apply a decision: select the node in mihomo (only if it actually changes),
-  // reset the hold window, and record the reason.
+  // Apply a decision: select the node in mihomo, reset the hold window, and
+  // record the reason. Callers already guard the common "nothing changed" case
+  // before calling this; the manual fallback path calls it unconditionally so a
+  // fallback/pin reason is still recorded (and the pin re-asserted in mihomo)
+  // even when `to` happens to equal `from`.
   protected async apply(
     channelId: string,
     from: string | null,
@@ -109,7 +112,7 @@ export class ChannelController {
     reason: string,
     at: number,
   ): Promise<void> {
-    if (to !== from) await this.deps.select(AUTO_GROUP, to);
+    await this.deps.select(AUTO_GROUP, to);
     this.heldSince = at;
     this.record({ at, channelId, from, to, reason });
   }
@@ -181,12 +184,50 @@ export class ChannelController {
     }
   }
 
-  private tickSpeed(_view: NodeView, _channelId: string): void {}
+  // Passive: mihomo's url-test owns the switch; we only record WHY it moved.
+  private tickSpeed(view: NodeView, channelId: string): void {
+    const active = view.autoNow;
+    if (this.lastSpeedNow && active && active !== this.lastSpeedNow) {
+      const to = view.all.find((n) => n.name === active);
+      const from = view.all.find((n) => n.name === this.lastSpeedNow);
+      const delta =
+        to?.delay != null && from?.delay != null ? ` (${to.delay} vs ${from.delay} ms)` : "";
+      const at = this.deps.now();
+      this.record({
+        at,
+        channelId,
+        from: this.lastSpeedNow,
+        to: active,
+        reason: `faster: ${this.lastSpeedNow} → ${active}${delta}`,
+      });
+    }
+    if (active) this.lastSpeedNow = active;
+  }
+
+  // Active: keep AUTO pinned to the chosen node; optionally fall back if it's down.
   private async tickManual(
-    _view: NodeView,
-    _channelId: string,
-    _policy: Extract<ChannelPolicy, { kind: "manual" }>,
-    _url: string,
-    _at: number,
-  ): Promise<void> {}
+    view: NodeView,
+    channelId: string,
+    policy: Extract<ChannelPolicy, { kind: "manual" }>,
+    url: string,
+    at: number,
+  ): Promise<void> {
+    const active = view.autoNow;
+    const pin = policy.pinnedNode;
+    const candidates = selectableNames(view);
+    if (policy.onFailure === "fallback") {
+      const d = await this.deps.probe(pin, url);
+      if (d == null || d <= 0) {
+        const others = candidates.filter((c) => c !== pin);
+        const best = await pickBest(others, url, "fastest", this.deps.probe);
+        if (best) {
+          // Always apply (even if AUTO already sits on `best`): the pin is down, so
+          // we still want the fallback reason recorded and the pick re-asserted.
+          await this.apply(channelId, active, best, `${pin} down; fell back to ${best}`, at);
+          return;
+        }
+      }
+    }
+    if (active !== pin) await this.apply(channelId, active, pin, `pinned ${pin}`, at);
+  }
 }

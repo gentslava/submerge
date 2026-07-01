@@ -171,3 +171,50 @@ describe("ChannelController sticky", () => {
     expect(h.reasons.at(-1)?.reason).toContain("max-hold");
   });
 });
+
+describe("ChannelController speed (passive)", () => {
+  const speedPolicy = (): ChannelPolicy => ({
+    kind: "speed",
+    testUrl: "https://probe",
+    intervalSec: 30,
+    toleranceMs: 50,
+    reevaluateWhileHealthy: true,
+  });
+
+  it("records a reason when AUTO.now moves, with the delta", async () => {
+    const h = harness(speedPolicy());
+    const v1: NodeView = {
+      now: "AUTO",
+      autoNow: "A",
+      all: [node("A", 180), node("B", 40)],
+    };
+    await h.ctrl.tick(v1); // establishes lastSpeedNow = A, no reason yet
+    expect(h.reasons.length).toBe(0);
+    await h.ctrl.tick({ ...v1, autoNow: "B" });
+    expect(h.reasons.at(-1)?.reason).toContain("A → B");
+    expect(h.reasons.at(-1)?.reason).toContain("40");
+    expect(h.selected.length).toBe(0); // speed is passive: never calls select
+  });
+});
+
+describe("ChannelController manual", () => {
+  const manualPolicy = (onFailure: "hold" | "fallback"): ChannelPolicy => ({
+    kind: "manual",
+    pinnedNode: "A",
+    onFailure,
+  });
+
+  it("selects the pinned node when AUTO points elsewhere", async () => {
+    const h = harness(manualPolicy("hold"));
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "B"));
+    expect(h.selected.at(-1)).toBe("A");
+  });
+
+  it("falls back to another node when the pin is down and onFailure=fallback", async () => {
+    const h = harness(manualPolicy("fallback"));
+    h.setProbe((n) => (n === "A" ? null : 20));
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "B"));
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("fell back");
+  });
+});
