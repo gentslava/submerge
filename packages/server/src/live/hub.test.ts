@@ -1,4 +1,4 @@
-import type { LiveEvent } from "@submerge/shared";
+import type { LiveEvent, NodeView } from "@submerge/shared";
 import { describe, expect, it, vi } from "vitest";
 import { LIVE_EVENT, LiveHub } from "./hub.js";
 
@@ -85,5 +85,35 @@ describe("LiveHub", () => {
     const got = collect(hub, 1);
     await hub.pollOnce();
     expect(await got).toEqual([{ type: "health", mihomo: false }]);
+  });
+
+  it("calls afterView with the fetched view each poll", async () => {
+    const view: NodeView = { now: "AUTO", autoNow: "A", all: [] };
+    const seen: NodeView[] = [];
+    const hub = new LiveHub({
+      fetchView: async () => view,
+      streamTraffic: async function* () {},
+      getInterval: () => 10_000,
+      afterView: async (v) => {
+        seen.push(v);
+      },
+    });
+    await hub.pollOnce();
+    expect(seen).toEqual([view]);
+  });
+
+  it("a throwing afterView does not fail the poll (health stays true)", async () => {
+    const events: LiveEvent[] = [];
+    const hub = new LiveHub({
+      fetchView: async () => ({ now: null, autoNow: null, all: [] }),
+      streamTraffic: async function* () {},
+      getInterval: () => 10_000,
+      afterView: async () => {
+        throw new Error("boom");
+      },
+    });
+    hub.emitter.on(LIVE_EVENT, (e: LiveEvent) => events.push(e));
+    await hub.pollOnce();
+    expect(events).toContainEqual({ type: "health", mihomo: true });
   });
 });

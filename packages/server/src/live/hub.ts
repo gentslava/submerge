@@ -16,6 +16,10 @@ export interface HubDeps {
   // Cumulative received/sent byte totals (from /connections). Optional — when set,
   // the hub emits a `totals` event each poll for the active-node "принято/отдано".
   fetchTotals?: () => Promise<{ up: number; down: number }>;
+  // Runs once per successful poll AFTER the nodeUpdate emit, with the fresh view.
+  // Best-effort: the hub swallows its errors so an active controller can never
+  // break live polling. Used by the channel controller to pin/switch nodes.
+  afterView?: (view: NodeView) => Promise<void>;
 }
 
 export class LiveHub {
@@ -64,6 +68,13 @@ export class LiveHub {
       this.lastActive = view.now === "AUTO" ? view.autoNow : view.now;
       this.setHealth(true);
       this.emit({ type: "nodeUpdate", view });
+      if (this.deps.afterView) {
+        try {
+          await this.deps.afterView(view);
+        } catch {
+          /* controller error — must not affect health or abort the poll */
+        }
+      }
       // Cumulative byte totals — best-effort, must not affect health or abort the poll.
       if (this.deps.fetchTotals) {
         try {
