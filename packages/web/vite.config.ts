@@ -9,7 +9,15 @@ export default defineConfig({
   resolve: { alias: { "@": resolve(__dirname, "src") } },
   server: {
     port: 5173,
-    proxy: { "/trpc": "http://localhost:3000" },
+    // Proxy the API (tRPC + SSE subscriptions both live under /trpc). Target is the
+    // local server by default; set VITE_PROXY_TARGET to develop against a remote
+    // deployment (e.g. the live instance) with real data + hot reload.
+    proxy: {
+      "/trpc": {
+        target: process.env.VITE_PROXY_TARGET ?? "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     environment: "jsdom",

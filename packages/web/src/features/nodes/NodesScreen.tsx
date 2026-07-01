@@ -129,7 +129,7 @@ export function NodesScreen() {
   };
 
   return (
-    <div className="flex flex-col gap-[22px] px-8 pt-[26px] pb-8">
+    <div className="flex flex-col gap-[22px] px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
       <NodesHeader
         nodeCount={realCount}
         pollInterval={pollInterval}

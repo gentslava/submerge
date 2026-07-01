@@ -53,18 +53,18 @@ function SourceMeta({ meta }: { meta: SubscriptionMeta }) {
   const hasTraffic = used != null || total != null;
   const pct = used != null && total ? Math.min(100, Math.round((used / total) * 100)) : null;
   return (
-    <div className="flex shrink-0 flex-col items-end gap-1.5">
+    <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5 md:flex-none md:shrink-0 md:items-end">
       {hasTraffic && (
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {total != null && (
-            <span className="h-1.5 w-24 overflow-hidden rounded-full bg-canvas">
+            <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-canvas md:w-24">
               <span
                 className="block h-full rounded-full bg-accent"
                 style={{ width: `${pct ?? 0}%` }}
               />
             </span>
           )}
-          <span className="font-mono text-xs text-text-secondary">
+          <span className="truncate font-mono text-xs text-text-secondary">
             {used != null ? formatBytes(used) : "—"}
             {total != null ? ` / ${formatBytes(total)}` : ""}
           </span>
@@ -152,61 +152,71 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
       ref={ref}
       style={style}
       className={cn(
-        "flex items-center gap-3.5 border-b border-border-subtle px-4 py-3.5 last:border-0",
+        "flex flex-col gap-3 border-b border-border-subtle px-4 py-3.5 last:border-0 md:flex-row md:items-center md:gap-3.5",
         !source.enabled && "opacity-50",
         overlay && "rounded-lg border bg-surface opacity-100 shadow-lg",
         className,
       )}
     >
-      {handle}
+      {/* Lead: handle + icon + name/badges. On desktop this trio is the row's flex-1
+          lead; on mobile it's the first stacked line. */}
+      <div className="flex min-w-0 items-center gap-3.5 md:flex-1">
+        {handle}
 
-      {/* Kind icon tile */}
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-elevated">
-        <KindIcon kind={source.kind} />
-      </span>
-
-      {/* Name + badges (fills) */}
-      <div className="flex min-w-0 flex-1 flex-col gap-[7px]">
-        <span className="truncate text-sm font-medium text-text-primary" title={source.value}>
-          {source.label || source.value}
+        {/* Kind icon tile */}
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-elevated">
+          <KindIcon kind={source.kind} />
         </span>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="mono">{KIND_SHORT[source.kind]}</Badge>
-          <span className="text-xs text-text-tertiary">
-            {source.proxies.length} {pluralRu(source.proxies.length, ["узел", "узла", "узлов"])}
+
+        {/* Name + badges (fills) */}
+        <div className="flex min-w-0 flex-1 flex-col gap-[7px]">
+          <span className="truncate text-sm font-medium text-text-primary" title={source.value}>
+            {source.label || source.value}
           </span>
-          {source.hwid && (
-            <Badge variant="accent">
-              <ShieldCheck className="h-[11px] w-[11px]" aria-hidden="true" />
-              HWID
-            </Badge>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="mono">{KIND_SHORT[source.kind]}</Badge>
+            <span className="text-xs text-text-tertiary">
+              {source.proxies.length} {pluralRu(source.proxies.length, ["узел", "узла", "узлов"])}
+            </span>
+            {source.hwid && (
+              <Badge variant="accent">
+                <ShieldCheck className="h-[11px] w-[11px]" aria-hidden="true" />
+                HWID
+              </Badge>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Subscription metadata (traffic / expiry / auto), or a note for plain vless configs */}
-      {source.meta ? (
-        <SourceMeta meta={source.meta} />
-      ) : source.kind === "vless" ? (
-        <span className="shrink-0 font-mono text-[11px] text-text-tertiary">
-          конфиг · без срока и лимита
-        </span>
-      ) : null}
+      {/* Meta + controls. md:contents dissolves this wrapper on desktop so both become
+          direct row children (meta then controls, right-aligned); on mobile they share
+          a second line — metadata left, controls right. */}
+      <div className="flex items-center justify-between gap-3 md:contents">
+        {/* Subscription metadata (traffic / expiry / auto), or a note for plain vless configs */}
+        {source.meta ? (
+          <SourceMeta meta={source.meta} />
+        ) : source.kind === "vless" ? (
+          <span className="shrink-0 font-mono text-[11px] text-text-tertiary">
+            конфиг · без срока и лимита
+          </span>
+        ) : null}
 
-      {/* Controls */}
-      <div className="flex shrink-0 items-center gap-2.5 pl-1.5">
-        <Switch
-          checked={source.enabled}
-          onCheckedChange={onToggle}
-          disabled={isBusy}
-          aria-label="Включить источник"
-        />
-        <IconBtn onClick={onRefresh} disabled={isBusy} label="Обновить источник">
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-        </IconBtn>
-        <IconBtn onClick={handleRemove} disabled={isBusy} label="Удалить источник" danger>
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-        </IconBtn>
+        {/* Controls — ml-auto keeps them right-aligned on mobile even when there's no
+            meta on the left; md:contents lets the desktop row lay them out normally. */}
+        <div className="flex shrink-0 items-center gap-2.5 ml-auto md:ml-0 md:pl-1.5">
+          <Switch
+            checked={source.enabled}
+            onCheckedChange={onToggle}
+            disabled={isBusy}
+            aria-label="Включить источник"
+          />
+          <IconBtn onClick={onRefresh} disabled={isBusy} label="Обновить источник">
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+          </IconBtn>
+          <IconBtn onClick={handleRemove} disabled={isBusy} label="Удалить источник" danger>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </IconBtn>
+        </div>
       </div>
     </div>
   );

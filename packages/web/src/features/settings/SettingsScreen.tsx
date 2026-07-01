@@ -107,7 +107,7 @@ export function SettingsScreen() {
       : { dot: "bg-timeout", label: "Отключено" };
 
   return (
-    <div className="flex flex-col gap-[26px] px-8 pt-[26px] pb-10">
+    <div className="flex flex-col gap-[26px] px-4 pt-5 pb-10 md:px-8 md:pt-[26px]">
       <header className="flex flex-col gap-[5px]">
         <h1 className="text-h1 text-text-primary">Настройки</h1>
         <p className="text-sub text-text-secondary">
@@ -174,7 +174,7 @@ export function SettingsScreen() {
                 aria-label="Тест-URL"
                 defaultValue={autoUrl}
                 onBlur={(e) => persistText("autoTestUrl", e.target.value)}
-                className="w-[360px] font-mono text-[13px]"
+                className="w-full font-mono text-[13px] md:w-[360px]"
               />
             </Row>
             <Row label="Интервал проверки" sub="Как часто переизмерять задержку">
@@ -247,13 +247,13 @@ export function SettingsScreen() {
               </Select>
             </Row>
             <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP — адрес для клиентов">
-              <div className="flex items-center gap-2.5">
+              <div className="flex w-full items-center gap-2.5 md:w-auto">
                 <Input
                   key={proxyEndpoint}
                   aria-label="Адрес прокси"
                   defaultValue={proxyEndpoint}
                   onBlur={(e) => persistText("proxyEndpoint", e.target.value)}
-                  className="w-[260px] font-mono text-[13px]"
+                  className="w-full font-mono text-[13px] md:w-[260px]"
                 />
                 <IconButton
                   onClick={() => copyToClipboard(proxyEndpoint)}
@@ -270,7 +270,7 @@ export function SettingsScreen() {
               {hwid ? (
                 <ReadonlyCopyField
                   value={hwid}
-                  widthClass="w-[260px]"
+                  widthClass="w-full md:w-[260px]"
                   copyLabel="Скопировать HWID"
                 />
               ) : (
@@ -316,12 +316,12 @@ function Section({ title, desc, children }: { title: string; desc: string; child
 
 function Row({ label, sub, children }: { label: string; sub: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-6 border-b border-border-subtle px-[18px] py-4 last:border-0">
+    <div className="flex flex-col gap-2 border-b border-border-subtle px-[18px] py-4 last:border-0 md:flex-row md:items-center md:justify-between md:gap-6">
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-medium text-text-primary">{label}</span>
         <span className="text-xs text-text-tertiary">{sub}</span>
       </div>
-      <div className="flex shrink-0 items-center gap-2.5">{children}</div>
+      <div className="flex w-full items-center gap-2.5 md:w-auto md:shrink-0">{children}</div>
     </div>
   );
 }
@@ -404,7 +404,7 @@ function ReadonlyCopyField({
 function SecretField({ value, onSave }: { value: string; onSave(v: string): void }) {
   const [reveal, setReveal] = useState(false);
   return (
-    <FieldBox className="w-[320px]">
+    <FieldBox className="w-full md:w-[320px]">
       <input
         key={value}
         type={reveal ? "text" : "password"}

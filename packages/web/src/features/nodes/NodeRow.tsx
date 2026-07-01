@@ -56,7 +56,7 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
     <>
       <div
         className={cn(
-          "flex items-center gap-4 border-b border-border-subtle px-4 py-[13px] last:border-b-0",
+          "flex items-center gap-2 border-b border-border-subtle px-4 py-[13px] last:border-b-0 md:gap-4",
           isActive && "bg-accent-bg",
         )}
       >
@@ -78,7 +78,7 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
         )}
 
         {/* Ping value — a spinner stands in while this node is being pinged */}
-        <div className="flex w-24 shrink-0 items-center justify-end">
+        <div className="flex w-16 shrink-0 items-center justify-end md:w-24">
           {pinging ? (
             <Loader2 className="h-4 w-4 animate-spin text-text-tertiary" aria-label="Опрос…" />
           ) : (
@@ -102,15 +102,25 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
         </div>
 
         {/* Action cell */}
-        <div className="flex w-[120px] shrink-0 justify-end">
+        <div className="flex w-auto shrink-0 justify-end md:w-[120px]">
           {isActive ? (
             // Solid accent (not opacity-dimmed) — the active node reads as "on", not disabled.
-            <Button variant="primary" size="sm" disabled className="w-[112px] disabled:opacity-100">
+            <Button
+              variant="primary"
+              size="sm"
+              disabled
+              className="w-[92px] disabled:opacity-100 md:w-[112px]"
+            >
               <Check className="h-4 w-4" aria-hidden="true" />
               Активен
             </Button>
           ) : (
-            <Button variant="secondary" size="sm" className="w-[112px]" onClick={onSelect}>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="w-[92px] md:w-[112px]"
+              onClick={onSelect}
+            >
               Выбрать
             </Button>
           )}
@@ -121,7 +131,7 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
         members.map((m) => (
           <div
             key={m.name}
-            className="flex items-center gap-4 border-b border-border-subtle bg-elevated px-4 py-2.5 pl-11 last:border-b-0"
+            className="flex items-center gap-2 border-b border-border-subtle bg-elevated px-4 py-2.5 pl-11 last:border-b-0 md:gap-4"
           >
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <span
@@ -132,13 +142,15 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
                 {m.active ? `${m.name} · активен` : m.name}
               </span>
             </div>
-            <div className="flex w-24 shrink-0 items-center justify-end">
+            <div className="flex w-16 shrink-0 items-center justify-end md:w-24">
               <span className={cn("font-mono text-sm", latencyTextColors[latencyClass(m.delay)])}>
                 {latencyLabel(m.delay)}
               </span>
             </div>
             <span aria-hidden="true" className="w-12 shrink-0" />
-            <span aria-hidden="true" className="w-[120px] shrink-0" />
+            {/* Match the parent row's action column so member delay values line up:
+                ~92px (the mobile button width) then the desktop w-[120px]. */}
+            <span aria-hidden="true" className="w-[92px] shrink-0 md:w-[120px]" />
           </div>
         ))}
     </>

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Menu, Radio } from "lucide-react";
+import { Menu } from "lucide-react";
 import { NAV_LINKS } from "./nav";
 
 const linkClass =
@@ -14,18 +14,7 @@ export function BottomNav() {
           {label}
         </Link>
       ))}
-      {/* Disabled placeholder */}
-      {/* biome-ignore lint/a11y/useSemanticElements: inert "coming soon" entry — a real <a> would imply a navigable destination */}
-      <div
-        role="link"
-        aria-disabled="true"
-        aria-label="Трафик (скоро)"
-        tabIndex={-1}
-        className="flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-text-disabled cursor-not-allowed"
-      >
-        <Radio size={18} />
-        Трафик
-      </div>
+      {/* Future sections (Трафик / Логи / …) live in "Ещё" as "СКОРО" rows — no dead tabs here. */}
       <Link to="/more" className={linkClass}>
         <Menu size={18} />
         Ещё

@@ -106,7 +106,7 @@ export function SourcesScreen() {
   ]);
 
   return (
-    <div className="flex flex-col gap-[22px] px-8 pt-[26px] pb-8">
+    <div className="flex flex-col gap-[22px] px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
       <header className="flex flex-col gap-[5px]">
         <h1 className="text-h1 text-text-primary">Источники</h1>
         <p className="text-sub text-text-secondary">

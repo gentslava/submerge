@@ -64,7 +64,7 @@ export function AutoStrategyCard({
 
   return (
     <section className="overflow-hidden rounded-lg border border-border-subtle bg-surface">
-      <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
         {/* biome-ignore lint/a11y/useSemanticElements: role="group" is the correct ARIA pattern for a segmented toggle of buttons; <fieldset> carries unwanted form-control semantics. */}
         <div
           role="group"
@@ -111,17 +111,22 @@ export function AutoStrategyCard({
 
       <div className="h-px w-full bg-border-subtle" />
 
-      {/* Content-flexible columns: the URL grows + truncates; short values size to content. */}
-      <div className="flex items-center px-4 py-3.5">
+      {/* Mobile: a 2-col grid (URL spans a full row, dense flow backfills the gap).
+          Desktop (md+): a single content-flexible row where the URL grows + truncates
+          and short values size to content, split by vertical dividers. */}
+      <div className="grid grid-flow-row-dense grid-cols-2 gap-x-4 gap-y-3.5 px-4 py-3.5 md:flex md:items-center md:gap-0">
         {params.map((p, i) => (
           <div
             key={p.caption}
-            className={cn("flex items-center", p.grow ? "min-w-0 flex-1" : "shrink-0")}
+            className={cn(
+              "flex items-center",
+              p.grow ? "col-span-2 md:min-w-0 md:flex-1" : "md:shrink-0",
+            )}
           >
             {i > 0 && (
               <span
                 aria-hidden="true"
-                className="mx-[18px] h-[34px] w-px shrink-0 bg-border-subtle"
+                className="mx-[18px] hidden h-[34px] w-px shrink-0 bg-border-subtle md:block"
               />
             )}
             <div className="flex min-w-0 flex-col gap-1.5">
