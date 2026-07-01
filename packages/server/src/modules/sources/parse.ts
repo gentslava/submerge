@@ -168,6 +168,41 @@ export function parseTrojan(uri: string): ProxyConfig {
   return p as ProxyConfig;
 }
 
+// ── vmess:// (base64 v2rayN JSON) → mihomo proxy ────────────────────
+export function parseVmess(uri: string): ProxyConfig {
+  const b64 = uri.trim().replace(/^vmess:\/\//i, "");
+  let conf: Record<string, unknown>;
+  try {
+    conf = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
+  } catch {
+    throw new Error("could not parse the vmess:// payload");
+  }
+  const str = (k: string) => (conf[k] == null ? "" : String(conf[k]));
+  const server = str("add");
+  const port = Number(str("port")) || 443;
+  const net = str("net") || "tcp";
+  const p: Record<string, unknown> = {
+    name: str("ps") || `${server}:${port}`,
+    type: "vmess",
+    server,
+    port,
+    uuid: str("id"),
+    alterId: Number(str("aid")) || 0,
+    cipher: "auto",
+    udp: true,
+    network: net === "h2" ? "http" : net,
+  };
+  if (str("tls") === "tls") {
+    p.tls = true;
+    p.servername = str("sni") || str("host") || server;
+  }
+  const host = str("host");
+  const path = str("path") || "/";
+  if (net === "ws") p["ws-opts"] = { path, headers: { Host: host || str("sni") || server } };
+  else if (net === "grpc") p["grpc-opts"] = { "grpc-service-name": path.replace(/^\//, "") };
+  return p as ProxyConfig;
+}
+
 // Return the URL scheme with its colon ("vless:") for a scheme://… string, else null.
 function schemeOf(value: string): string | null {
   const m = value.match(/^([a-z][a-z0-9.+-]*):\/\//i);
@@ -181,11 +216,12 @@ const SINGLE_LINK: Record<string, { kind: SourceKind; parse: (uri: string) => Pr
   "hysteria2:": { kind: "hysteria2", parse: parseHysteria2 },
   "hy2:": { kind: "hysteria2", parse: parseHysteria2 },
   "trojan:": { kind: "trojan", parse: parseTrojan },
+  "vmess:": { kind: "vmess", parse: parseVmess },
 };
 
 // Single-node schemes we recognize but don't support yet (ssr never). Shrinks as
 // slices move a scheme into SINGLE_LINK. Kept only for a helpful detectKind error.
-const UNSUPPORTED_SINGLE = new Set(["vmess:", "ss:", "ssr:", "hysteria:", "tuic:"]);
+const UNSUPPORTED_SINGLE = new Set(["ss:", "ssr:", "hysteria:", "tuic:"]);
 
 // Dispatch a single-node link to its protocol parser.
 export function parseSingleLink(uri: string): ProxyConfig {
@@ -252,6 +288,32 @@ function v2rayOutboundToMihomo(ob: any, remark?: string): ProxyConfig | null {
       p["ws-opts"] = { path: ss.wsSettings?.path || "/", headers: ss.wsSettings?.headers || {} };
     return p as ProxyConfig;
   }
+  if (ob?.protocol === "vmess") {
+    const vnext = ob.settings?.vnext?.[0];
+    const user = vnext?.users?.[0];
+    if (!vnext || !user) return null;
+    const ss = ob.streamSettings || {};
+    const net = ss.network || "tcp";
+    const p: Record<string, unknown> = {
+      name: remark || ob.tag || `${vnext.address}:${vnext.port}`,
+      type: "vmess",
+      server: vnext.address,
+      port: Number(vnext.port),
+      uuid: user.id,
+      alterId: user.alterId ?? 0,
+      cipher: user.security || "auto",
+      udp: true,
+      network: net === "h2" ? "http" : net,
+    };
+    if ((ss.security || "none") === "tls") {
+      p.tls = true;
+      const t = ss.tlsSettings || {};
+      p.servername = t.serverName || vnext.address;
+    }
+    if (net === "ws")
+      p["ws-opts"] = { path: ss.wsSettings?.path || "/", headers: ss.wsSettings?.headers || {} };
+    return p as ProxyConfig;
+  }
   return null; // freedom/blackhole/direct skipped
 }
 
@@ -286,6 +348,23 @@ function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
     };
     if (ob.tls?.server_name) p.sni = ob.tls.server_name;
     if (ob.tls?.insecure) p["skip-cert-verify"] = true;
+    return p as ProxyConfig;
+  }
+  if (ob?.type === "vmess" && ob.server) {
+    const p: Record<string, unknown> = {
+      name: ob.tag || `${ob.server}:${ob.server_port}`,
+      type: "vmess",
+      server: ob.server,
+      port: Number(ob.server_port),
+      uuid: ob.uuid,
+      alterId: ob.alter_id ?? 0,
+      cipher: ob.security || "auto",
+      udp: true,
+    };
+    if (ob.tls?.enabled) {
+      p.tls = true;
+      p.servername = ob.tls.server_name || ob.server;
+    }
     return p as ProxyConfig;
   }
   if (ob?.type !== "vless" || !ob.server) return null;

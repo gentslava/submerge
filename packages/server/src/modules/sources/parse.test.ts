@@ -9,6 +9,7 @@ import {
   parseSingleLink,
   parseTrojan,
   parseVless,
+  parseVmess,
 } from "./parse.js";
 
 describe("extractSubUrl", () => {
@@ -185,6 +186,47 @@ describe("parseTrojan", () => {
   });
   it("is reachable via detectKind", () => {
     expect(detectKind("trojan://p@ex.com:443")).toBe("trojan");
+  });
+});
+
+describe("parseVmess", () => {
+  it("maps a vmess:// base64 JSON link", () => {
+    const conf = {
+      v: "2",
+      ps: "VM",
+      add: "ex.com",
+      port: "443",
+      id: "uuid-1",
+      aid: "0",
+      net: "ws",
+      type: "none",
+      host: "ex.com",
+      path: "/ws",
+      tls: "tls",
+      sni: "ex.com",
+    };
+    const uri = `vmess://${Buffer.from(JSON.stringify(conf)).toString("base64")}`;
+    const p = parseVmess(uri);
+    expect(p).toMatchObject({
+      name: "VM",
+      type: "vmess",
+      server: "ex.com",
+      port: 443,
+      uuid: "uuid-1",
+      alterId: 0,
+      cipher: "auto",
+      network: "ws",
+      tls: true,
+      servername: "ex.com",
+    });
+    expect((p as Record<string, unknown>)["ws-opts"]).toEqual({
+      path: "/ws",
+      headers: { Host: "ex.com" },
+    });
+  });
+  it("is reachable via detectKind", () => {
+    const uri = `vmess://${Buffer.from(JSON.stringify({ add: "h", port: "1", id: "u" })).toString("base64")}`;
+    expect(detectKind(uri)).toBe("vmess");
   });
 });
 
