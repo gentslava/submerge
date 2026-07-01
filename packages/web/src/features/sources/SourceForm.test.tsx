@@ -28,11 +28,15 @@ describe("SourceForm", () => {
 
     const btn = screen.getByRole("button", { name: /Добавить/ });
     expect(btn).toBeDisabled();
+    // hover hint explaining why it's inactive (on the wrapper — the button has
+    // pointer-events:none while disabled)
+    expect(btn.parentElement).toHaveAttribute("title", "Вставьте ссылку источника");
 
     fireEvent.change(screen.getByLabelText("Ссылка источника"), {
       target: { value: "vless://abc" },
     });
     expect(btn).toBeEnabled();
+    expect(btn.parentElement).not.toHaveAttribute("title");
   });
 
   it("toggles the HWID switch aria-checked", () => {

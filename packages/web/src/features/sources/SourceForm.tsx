@@ -101,10 +101,14 @@ export function SourceForm() {
         </div>
 
         <div className="flex justify-end">
-          <Button type="submit" disabled={!typed || addMutation.isPending}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            {addMutation.isPending ? "Добавляю…" : "Добавить"}
-          </Button>
+          {/* The button sets disabled:pointer-events-none, so hover passes to this
+              span — its title explains why Добавить is inactive while empty. */}
+          <span title={typed ? undefined : "Вставьте ссылку источника"} className="inline-flex">
+            <Button type="submit" disabled={!typed || addMutation.isPending}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              {addMutation.isPending ? "Добавляю…" : "Добавить"}
+            </Button>
+          </span>
         </div>
       </form>
     </section>
