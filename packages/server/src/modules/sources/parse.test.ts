@@ -6,6 +6,7 @@ import {
   extractSubUrl,
   parseHysteria2,
   parseProxiesFromText,
+  parseShadowsocks,
   parseSingleLink,
   parseTrojan,
   parseVless,
@@ -227,6 +228,25 @@ describe("parseVmess", () => {
   it("is reachable via detectKind", () => {
     const uri = `vmess://${Buffer.from(JSON.stringify({ add: "h", port: "1", id: "u" })).toString("base64")}`;
     expect(detectKind(uri)).toBe("vmess");
+  });
+});
+
+describe("parseShadowsocks", () => {
+  it("maps a SIP002 ss:// link", () => {
+    const userinfo = Buffer.from("aes-256-gcm:secret").toString("base64url");
+    const p = parseShadowsocks(`ss://${userinfo}@ex.com:8388#SS`);
+    expect(p).toMatchObject({
+      name: "SS",
+      type: "ss",
+      server: "ex.com",
+      port: 8388,
+      cipher: "aes-256-gcm",
+      password: "secret",
+    });
+  });
+  it("is reachable via detectKind", () => {
+    const userinfo = Buffer.from("aes-256-gcm:pw").toString("base64url");
+    expect(detectKind(`ss://${userinfo}@ex.com:8388`)).toBe("ss");
   });
 });
 

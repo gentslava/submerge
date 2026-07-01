@@ -203,6 +203,46 @@ export function parseVmess(uri: string): ProxyConfig {
   return p as ProxyConfig;
 }
 
+// ── ss:// (SIP002, with legacy fallback) → mihomo proxy ─────────────
+export function parseShadowsocks(uri: string): ProxyConfig {
+  const raw = uri.trim();
+  const hash = raw.indexOf("#");
+  const name = hash >= 0 ? decodeURIComponent(raw.slice(hash + 1)) : "";
+  const body = (hash >= 0 ? raw.slice(0, hash) : raw).replace(/^ss:\/\//i, "");
+  let cipher: string;
+  let password: string;
+  let server: string;
+  let port: number;
+  const at = body.lastIndexOf("@");
+  if (at >= 0) {
+    const decoded = Buffer.from(body.slice(0, at), "base64url").toString("utf8");
+    const c = decoded.indexOf(":");
+    cipher = decoded.slice(0, c);
+    password = decoded.slice(c + 1);
+    const hostPort = body.slice(at + 1);
+    const cp = hostPort.lastIndexOf(":");
+    server = hostPort.slice(0, cp);
+    port = Number(hostPort.slice(cp + 1)) || 8388;
+  } else {
+    const dec = Buffer.from(body, "base64").toString("utf8");
+    const m = dec.match(/^(.*?):(.*)@(.*):(\d+)$/);
+    if (!m) throw new Error("could not parse the ss:// payload");
+    cipher = m[1] as string;
+    password = m[2] as string;
+    server = m[3] as string;
+    port = Number(m[4]);
+  }
+  return {
+    name: name || `${server}:${port}`,
+    type: "ss",
+    server,
+    port,
+    cipher,
+    password,
+    udp: true,
+  } as ProxyConfig;
+}
+
 // Return the URL scheme with its colon ("vless:") for a scheme://… string, else null.
 function schemeOf(value: string): string | null {
   const m = value.match(/^([a-z][a-z0-9.+-]*):\/\//i);
@@ -217,11 +257,12 @@ const SINGLE_LINK: Record<string, { kind: SourceKind; parse: (uri: string) => Pr
   "hy2:": { kind: "hysteria2", parse: parseHysteria2 },
   "trojan:": { kind: "trojan", parse: parseTrojan },
   "vmess:": { kind: "vmess", parse: parseVmess },
+  "ss:": { kind: "ss", parse: parseShadowsocks },
 };
 
 // Single-node schemes we recognize but don't support yet (ssr never). Shrinks as
 // slices move a scheme into SINGLE_LINK. Kept only for a helpful detectKind error.
-const UNSUPPORTED_SINGLE = new Set(["ss:", "ssr:", "hysteria:", "tuic:"]);
+const UNSUPPORTED_SINGLE = new Set(["ssr:", "hysteria:", "tuic:"]);
 
 // Dispatch a single-node link to its protocol parser.
 export function parseSingleLink(uri: string): ProxyConfig {
@@ -366,6 +407,17 @@ function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
       p.servername = ob.tls.server_name || ob.server;
     }
     return p as ProxyConfig;
+  }
+  if (ob?.type === "shadowsocks" && ob.server) {
+    return {
+      name: ob.tag || `${ob.server}:${ob.server_port}`,
+      type: "ss",
+      server: ob.server,
+      port: Number(ob.server_port),
+      cipher: ob.method,
+      password: ob.password,
+      udp: true,
+    } as ProxyConfig;
   }
   if (ob?.type !== "vless" || !ob.server) return null;
   const net = ob.transport?.type || "tcp";
