@@ -43,11 +43,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Resolve the latest Happ desktop release so happ-decoder builds against it (build-arg
+      # below); falls back to the Dockerfile's pinned HAPP_VERSION default if the API is down.
+      - id: happ
+        if: matrix.image == 'submerge-happ-decoder'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "version=$(gh api repos/Happ-proxy/happ-desktop/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
+          build-args: ${{ steps.happ.outputs.version && format('HAPP_VERSION={0}', steps.happ.outputs.version) || '' }}
           push: true
           tags: |
             ghcr.io/gentslava/${{ matrix.image }}:latest
