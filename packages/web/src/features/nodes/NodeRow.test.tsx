@@ -65,8 +65,10 @@ describe("NodeRow", () => {
     };
     render(<NodeRow {...base} item={item} />);
 
-    // group row shows the active member's ping and can still be selected as a whole
+    // group row shows the active member's ping, a server-count sub-line (not
+    // "URLTEST"), and can still be selected as a whole
     expect(screen.getByText("40 ms")).toBeInTheDocument();
+    expect(screen.getByText("2 сервера")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Выбрать" })).toBeInTheDocument();
 
     // members hidden until expanded

@@ -6,6 +6,7 @@ import {
   groupNodes,
   latencyClass,
   latencyLabel,
+  serverCountLabel,
   splitNodes,
 } from "./nodeView";
 
@@ -100,5 +101,15 @@ describe("nodeView", () => {
     expect(formatBytes(900)).toBe("900 Б");
     expect(formatBytes(1536)).toBe("1.5 КБ");
     expect(formatBytes(9_019_431_321)).toBe("8.4 ГБ");
+  });
+
+  it("pluralizes the group server count in Russian", () => {
+    expect(serverCountLabel(1)).toBe("1 сервер");
+    expect(serverCountLabel(2)).toBe("2 сервера");
+    expect(serverCountLabel(4)).toBe("4 сервера");
+    expect(serverCountLabel(5)).toBe("5 серверов");
+    expect(serverCountLabel(7)).toBe("7 серверов");
+    expect(serverCountLabel(11)).toBe("11 серверов");
+    expect(serverCountLabel(21)).toBe("21 сервер");
   });
 });

@@ -3,7 +3,14 @@ import { Check, ChevronDown, Loader2, Zap } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { dotColors, latencyClass, latencyLabel, latencyTextColors, typeBadges } from "./nodeView";
+import {
+  dotColors,
+  latencyClass,
+  latencyLabel,
+  latencyTextColors,
+  serverCountLabel,
+  typeBadges,
+} from "./nodeView";
 
 interface NodeRowProps {
   item: NodeItem;
@@ -15,10 +22,35 @@ interface NodeRowProps {
 
 export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: NodeRowProps) {
   const lClass = latencyClass(item.delay);
-  // Protocol metadata is all we have (no geo) — show it honestly as the sub-line.
-  const sub = typeBadges(item).join(" · ");
   const members = item.members ?? [];
+  const isGroup = members.length > 0;
   const [expanded, setExpanded] = useState(false);
+  // Sub-line: a collapsed group shows its server count ("5 серверов"); a plain
+  // node shows its protocol badges (VLESS · UDP) — the honest metadata we have.
+  const sub = isGroup ? serverCountLabel(members.length) : typeBadges(item).join(" · ");
+
+  // Dot + name (+ trailing chevron for groups) + sub. The dot stays the first
+  // element in both the group and singleton layouts so status dots line up.
+  const nodeCell = (
+    <>
+      <span aria-hidden="true" className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])} />
+      <div className="flex min-w-0 flex-col gap-[3px]">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-sm font-semibold text-text-primary">{item.name}</span>
+          {isGroup && (
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "h-3.5 w-3.5 shrink-0 text-text-tertiary transition-transform",
+                !expanded && "-rotate-90",
+              )}
+            />
+          )}
+        </span>
+        {sub !== "" && <span className="truncate text-xs text-text-tertiary">{sub}</span>}
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -28,31 +60,22 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
           isActive && "bg-accent-bg",
         )}
       >
-        {/* Node cell (fills): optional expand chevron + status dot + name/sub */}
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          {members.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setExpanded((e) => !e)}
-              aria-expanded={expanded}
-              aria-label={`Показать серверы ${item.name}`}
-              className="-ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-tertiary transition-colors hover:text-text-primary"
-            >
-              <ChevronDown
-                className={cn("h-4 w-4 transition-transform", !expanded && "-rotate-90")}
-                aria-hidden="true"
-              />
-            </button>
-          )}
-          <span
-            aria-hidden="true"
-            className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])}
-          />
-          <div className="flex min-w-0 flex-col gap-[3px]">
-            <span className="truncate text-sm font-semibold text-text-primary">{item.name}</span>
-            {sub !== "" && <span className="truncate text-xs text-text-tertiary">{sub}</span>}
-          </div>
-        </div>
+        {/* Node cell (fills). For a group the whole cell is a toggle button so
+            clicking the name/row area expands its members; ⚡ and Выбрать stay
+            separate controls. Singletons render the same cell as a plain div. */}
+        {isGroup ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            aria-expanded={expanded}
+            aria-label={`Показать серверы ${item.name}`}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          >
+            {nodeCell}
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-3">{nodeCell}</div>
+        )}
 
         {/* Ping value — a spinner stands in while this node is being pinged */}
         <div className="flex w-24 shrink-0 items-center justify-end">

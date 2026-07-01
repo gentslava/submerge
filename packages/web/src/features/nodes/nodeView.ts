@@ -51,6 +51,18 @@ export function typeBadges(node: NodeItem): string[] {
   return badges;
 }
 
+// Russian-pluralized server count for a collapsed group's sub-line ("5 серверов").
+// A group is a url-test bundle of same-named servers, so its protocol badge would
+// read "URLTEST" — the count is the honest, meaningful thing to show instead.
+export function serverCountLabel(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  let word = "серверов";
+  if (m10 === 1 && m100 !== 11) word = "сервер";
+  else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = "сервера";
+  return `${n} ${word}`;
+}
+
 // A subscription group: the source's label + the real nodes whose name matches its
 // proxies[], plus a synthetic trailing group for nodes not owned by any source.
 export interface NodeGroup {
