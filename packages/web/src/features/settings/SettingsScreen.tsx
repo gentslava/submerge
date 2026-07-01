@@ -84,8 +84,8 @@ export function SettingsScreen() {
     settingsMutation.mutate({ key, value: v });
   }
 
-  // The Default channel's speed policy — Phase 1 always ships `speed`, so this is
-  // the only variant we bind to; sticky/manual editing lands with multi-channel UI.
+  // The Default channel's policy — Phase 2 adds the `sticky` variant alongside
+  // `speed`; `manual` is contract-complete but not editable from this screen yet.
   const policy = channelQuery.data?.policy;
   const speedPolicy: Extract<ChannelPolicy, { kind: "speed" }> =
     policy?.kind === "speed"
@@ -93,6 +93,31 @@ export function SettingsScreen() {
       : (DEFAULT_SPEED_POLICY as Extract<ChannelPolicy, { kind: "speed" }>);
   function updateSpeed(patch: Partial<Extract<ChannelPolicy, { kind: "speed" }>>) {
     if (policy?.kind !== "speed") return;
+    setPolicyMutation.mutate({ id: "default", policy: { ...policy, ...patch } });
+  }
+
+  // Switch the Default channel between the speed and sticky policies, carrying over
+  // shared fields (testUrl/intervalSec) and seeding the rest with sane defaults.
+  function switchPolicy(kind: "speed" | "sticky") {
+    if (!policy || policy.kind === kind) return;
+    const testUrl = "testUrl" in policy ? policy.testUrl : "https://www.gstatic.com/generate_204";
+    const intervalSec = "intervalSec" in policy ? policy.intervalSec : 60;
+    const next: ChannelPolicy =
+      kind === "speed"
+        ? { kind: "speed", testUrl, intervalSec, toleranceMs: 50, reevaluateWhileHealthy: true }
+        : {
+            kind: "sticky",
+            testUrl,
+            intervalSec,
+            failureThreshold: 3,
+            maxHoldHours: null,
+            initialCriterion: "fastest",
+          };
+    setPolicyMutation.mutate({ id: "default", policy: next });
+  }
+
+  function updateSticky(patch: Partial<Extract<ChannelPolicy, { kind: "sticky" }>>) {
+    if (policy?.kind !== "sticky") return;
     setPolicyMutation.mutate({ id: "default", policy: { ...policy, ...patch } });
   }
 
@@ -159,54 +184,144 @@ export function SettingsScreen() {
             title="Авто-выбор узла"
             desc="Политика группы PROXY: submerge сам держит активным лучший узел."
           >
-            <Row label="Тест-URL" sub="Куда mihomo шлёт проверочный запрос">
-              <Input
-                key={speedPolicy.testUrl}
-                type="url"
-                aria-label="Тест-URL"
-                defaultValue={speedPolicy.testUrl}
-                onBlur={(e) => {
-                  const v = e.target.value.trim();
-                  if (v.length > 0) updateSpeed({ testUrl: v });
-                }}
-                className="w-full font-mono text-[13px] md:w-[360px]"
+            <Row label="Политика" sub="По задержке — гонка; стабильный IP — держит узел дольше">
+              <Segmented
+                aria-label="Политика выбора"
+                value={policy?.kind === "sticky" ? "sticky" : "speed"}
+                onChange={(v) => switchPolicy(v as "speed" | "sticky")}
+                options={[
+                  { value: "speed", label: "По задержке" },
+                  { value: "sticky", label: "Стабильный IP" },
+                ]}
               />
             </Row>
-            <Row label="Интервал проверки" sub="Как часто переизмерять задержку">
-              <Select
-                aria-label="Интервал проверки"
-                value={String(speedPolicy.intervalSec)}
-                onChange={(e) => updateSpeed({ intervalSec: Number(e.target.value) })}
-              >
-                {secondsOptions(CHECK_PRESETS, String(speedPolicy.intervalSec))}
-              </Select>
-            </Row>
-            <Row label="Допуск, мс" sub="Не переключаться при разнице меньше допуска">
-              <Input
-                key={speedPolicy.toleranceMs}
-                type="number"
-                aria-label="Допуск (мс)"
-                min={0}
-                step={1}
-                defaultValue={speedPolicy.toleranceMs}
-                onBlur={(e) => {
-                  const trimmed = e.target.value.trim();
-                  if (!/^\d+$/.test(trimmed)) return;
-                  updateSpeed({ toleranceMs: Number(trimmed) });
-                }}
-                className="w-[90px] text-center font-mono"
-              />
-            </Row>
-            <Row
-              label="Переоценивать, пока узел жив"
-              sub="Переизмерять задержку каждый интервал, даже если активный узел здоров"
-            >
-              <Switch
-                checked={speedPolicy.reevaluateWhileHealthy}
-                onCheckedChange={(v) => updateSpeed({ reevaluateWhileHealthy: v })}
-                aria-label="Переоценивать, пока узел жив"
-              />
-            </Row>
+            {policy?.kind === "sticky" ? (
+              <>
+                <Row label="Проверочный URL" sub="Куда mihomo шлёт проверочный запрос">
+                  <Input
+                    key={policy.testUrl}
+                    type="url"
+                    aria-label="Проверочный URL"
+                    defaultValue={policy.testUrl}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v.length > 0) updateSticky({ testUrl: v });
+                    }}
+                    className="w-full font-mono text-[13px] md:w-[360px]"
+                  />
+                </Row>
+                <Row label="Интервал проверки, с" sub="Как часто переизмерять задержку">
+                  <Select
+                    aria-label="Интервал проверки"
+                    value={String(policy.intervalSec)}
+                    onChange={(e) => updateSticky({ intervalSec: Number(e.target.value) })}
+                  >
+                    {secondsOptions(CHECK_PRESETS, String(policy.intervalSec))}
+                  </Select>
+                </Row>
+                <Row label="Порог сбоев" sub="Подряд идущих неудач перед переключением узла">
+                  <Input
+                    key={policy.failureThreshold}
+                    type="number"
+                    aria-label="Порог сбоев"
+                    min={1}
+                    step={1}
+                    defaultValue={policy.failureThreshold}
+                    onBlur={(e) => {
+                      const trimmed = e.target.value.trim();
+                      if (!/^\d+$/.test(trimmed) || Number(trimmed) < 1) return;
+                      updateSticky({ failureThreshold: Number(trimmed) });
+                    }}
+                    className="w-[90px] text-center font-mono"
+                  />
+                </Row>
+                <Row label="Держать не дольше, ч" sub="Пусто — держать узел неограниченно долго">
+                  <Input
+                    key={policy.maxHoldHours ?? "unlimited"}
+                    type="number"
+                    aria-label="Держать не дольше (ч)"
+                    min={1}
+                    step={1}
+                    placeholder="∞"
+                    defaultValue={policy.maxHoldHours ?? ""}
+                    onBlur={(e) => {
+                      const trimmed = e.target.value.trim();
+                      if (trimmed === "") {
+                        updateSticky({ maxHoldHours: null });
+                        return;
+                      }
+                      if (!/^\d+$/.test(trimmed) || Number(trimmed) < 1) return;
+                      updateSticky({ maxHoldHours: Number(trimmed) });
+                    }}
+                    className="w-[90px] text-center font-mono"
+                  />
+                </Row>
+                <Row label="Критерий выбора" sub="Как выбирать узел при переключении">
+                  <Segmented
+                    aria-label="Критерий выбора"
+                    value={policy.initialCriterion}
+                    onChange={(v) =>
+                      updateSticky({ initialCriterion: v as "fastest" | "lowest-loss" })
+                    }
+                    options={[
+                      { value: "fastest", label: "Быстрейший" },
+                      { value: "lowest-loss", label: "Наименьшие потери" },
+                    ]}
+                  />
+                </Row>
+              </>
+            ) : (
+              <>
+                <Row label="Тест-URL" sub="Куда mihomo шлёт проверочный запрос">
+                  <Input
+                    key={speedPolicy.testUrl}
+                    type="url"
+                    aria-label="Тест-URL"
+                    defaultValue={speedPolicy.testUrl}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (v.length > 0) updateSpeed({ testUrl: v });
+                    }}
+                    className="w-full font-mono text-[13px] md:w-[360px]"
+                  />
+                </Row>
+                <Row label="Интервал проверки" sub="Как часто переизмерять задержку">
+                  <Select
+                    aria-label="Интервал проверки"
+                    value={String(speedPolicy.intervalSec)}
+                    onChange={(e) => updateSpeed({ intervalSec: Number(e.target.value) })}
+                  >
+                    {secondsOptions(CHECK_PRESETS, String(speedPolicy.intervalSec))}
+                  </Select>
+                </Row>
+                <Row label="Допуск, мс" sub="Не переключаться при разнице меньше допуска">
+                  <Input
+                    key={speedPolicy.toleranceMs}
+                    type="number"
+                    aria-label="Допуск (мс)"
+                    min={0}
+                    step={1}
+                    defaultValue={speedPolicy.toleranceMs}
+                    onBlur={(e) => {
+                      const trimmed = e.target.value.trim();
+                      if (!/^\d+$/.test(trimmed)) return;
+                      updateSpeed({ toleranceMs: Number(trimmed) });
+                    }}
+                    className="w-[90px] text-center font-mono"
+                  />
+                </Row>
+                <Row
+                  label="Переоценивать, пока узел жив"
+                  sub="Переизмерять задержку каждый интервал, даже если активный узел здоров"
+                >
+                  <Switch
+                    checked={speedPolicy.reevaluateWhileHealthy}
+                    onCheckedChange={(v) => updateSpeed({ reevaluateWhileHealthy: v })}
+                    aria-label="Переоценивать, пока узел жив"
+                  />
+                </Row>
+              </>
+            )}
           </Section>
 
           <Section title="Подключение" desc="Доступ к API mihomo и локальному прокси.">
