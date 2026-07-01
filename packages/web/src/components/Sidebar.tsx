@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Copy, Power, RotateCw } from "lucide-react";
 import { toast } from "sonner";
@@ -6,6 +7,7 @@ import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { useLiveState } from "@/features/live/LiveProvider";
 import { useActiveNode } from "@/features/nodes/useActiveNode";
 import { PROXY_ENDPOINT } from "@/lib/constants";
+import { useTRPC } from "@/lib/trpc";
 import { NAV_ENTRIES, type NavEntry } from "./nav";
 
 export function Sidebar() {
@@ -128,6 +130,9 @@ function TogglesCard() {
 function ProxyCard() {
   const { mihomo } = useLiveState();
   const activeNode = useActiveNode();
+  const trpc = useTRPC();
+  const { data } = useQuery(trpc.settings.get.queryOptions());
+  const proxy = data?.proxyEndpoint ?? PROXY_ENDPOINT;
 
   const status =
     mihomo === null
@@ -137,7 +142,7 @@ function ProxyCard() {
         : { dot: "bg-timeout", label: "Отключено" };
 
   const copyAddress = () => {
-    void navigator.clipboard.writeText(PROXY_ENDPOINT);
+    void navigator.clipboard.writeText(proxy);
     toast.success("Скопировано");
   };
 
@@ -148,7 +153,7 @@ function ProxyCard() {
         <span className="text-meta text-text-secondary">{status.label}</span>
       </div>
       <div className="flex items-center justify-between">
-        <span className="font-mono text-sub font-medium text-text-primary">{PROXY_ENDPOINT}</span>
+        <span className="font-mono text-sub font-medium text-text-primary">{proxy}</span>
         <button
           type="button"
           onClick={copyAddress}

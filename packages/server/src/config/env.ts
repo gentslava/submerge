@@ -6,6 +6,9 @@ const envSchema = z.object({
   MIHOMO_API: z.url().default("http://mihomo:9090"),
   MIHOMO_SECRET: z.string().default(""),
   HAPP_DECODER_URL: z.url().default("http://happ-decoder:8080"),
+  // Local SOCKS/HTTP proxy address shown in the UI (editable in Settings). Default is the
+  // host-published mihomo mixed-port; override per topology (e.g. mihomo:7890 inside compose).
+  PROXY_ENDPOINT: z.string().default("127.0.0.1:7890"),
   ADMIN_PASSWORD: z.string().optional(),
   // "true"/"false" env string → boolean; absent defaults to false (z.stringbool handles "false"→false correctly, unlike z.coerce.boolean which coerces any non-empty string to true).
   COOKIE_SECURE: z.stringbool().default(false),

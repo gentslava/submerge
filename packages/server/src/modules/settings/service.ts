@@ -23,6 +23,7 @@ export function getSettingsView(db: Db): Record<string, string> {
     ...getAllSettings(db),
     hwid: getOrCreateHwid(db),
     mihomoSecret: getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET,
+    proxyEndpoint: getSetting(db, "proxyEndpoint") || env.PROXY_ENDPOINT,
   };
 }
 

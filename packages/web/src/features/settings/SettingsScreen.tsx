@@ -93,6 +93,7 @@ export function SettingsScreen() {
 
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret ?? "";
+  const proxyEndpoint = data?.proxyEndpoint ?? PROXY_ENDPOINT;
   const autoStrategy = data?.autoStrategy ?? DEFAULT_AUTO_STRATEGY;
   const autoUrl = data?.autoTestUrl ?? DEFAULT_AUTO_TEST_URL;
   const autoInterval = data?.autoTestInterval ?? String(DEFAULT_AUTO_TEST_INTERVAL);
@@ -245,12 +246,22 @@ export function SettingsScreen() {
                 {secondsOptions(POLL_PRESETS, pollInterval)}
               </Select>
             </Row>
-            <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP, только чтение">
-              <ReadonlyCopyField
-                value={PROXY_ENDPOINT}
-                widthClass="w-[220px]"
-                copyLabel="Скопировать адрес"
-              />
+            <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP — адрес для клиентов">
+              <div className="flex items-center gap-2.5">
+                <Input
+                  key={proxyEndpoint}
+                  aria-label="Адрес прокси"
+                  defaultValue={proxyEndpoint}
+                  onBlur={(e) => persistText("proxyEndpoint", e.target.value)}
+                  className="w-[260px] font-mono text-[13px]"
+                />
+                <IconButton
+                  onClick={() => copyToClipboard(proxyEndpoint)}
+                  label="Скопировать адрес"
+                  icon={Copy}
+                  size={16}
+                />
+              </div>
             </Row>
           </Section>
 
