@@ -34,22 +34,23 @@ export function extractSubUrl(value: string): string | null {
 export function detectKind(value: string): SourceKind {
   const v = (value || "").trim();
   if (!v) throw new Error("empty string");
-  if (v.startsWith("vless://")) return "vless";
+  const scheme = schemeOf(v);
+  if (scheme && SINGLE_LINK[scheme]) return SINGLE_LINK[scheme].kind; // supported single link
   if (/^happ:\/\/crypt/i.test(v)) return "happ"; // encrypted happ → decoder
-  if (/^(vmess|trojan|ss|ssr|hysteria2?|tuic):\/\//i.test(v))
+  if (scheme && UNSUPPORTED_SINGLE.has(scheme))
     throw new Error(
-      "single nodes are only supported for vless:// (use a subscription for the rest)",
+      `single ${scheme.slice(0, -1)} links aren't supported yet — use a subscription instead`,
     );
-  if (extractSubUrl(v)) return "sub"; // url or client deep-link (incy/clash/sing-box/happ-add/…)
+  if (extractSubUrl(v)) return "sub"; // url or client deep-link
   if (/^happ:\/\//i.test(v)) return "happ"; // happ:// without an embedded url → decoder
   try {
     const d = Buffer.from(v.replace(/\s+/g, ""), "base64").toString("utf8");
-    if (d.includes("://")) return "sub"; // base64 subscription content pasted directly
+    if (d.includes("://")) return "sub"; // base64 subscription pasted directly
   } catch {
-    /* base64 decode never throws in Node; the :// check above filters non-subscription input */
+    /* base64 decode never throws in Node; the :// check filters non-subscription input */
   }
   throw new Error(
-    "could not detect kind: expected vless:// , happ:// , a subscription URL, or a client deep-link",
+    "could not detect kind: expected a single-node link, happ:// , a subscription URL, or a client deep-link",
   );
 }
 
@@ -101,6 +102,39 @@ export function parseVless(uri: string): ProxyConfig {
   else if (net === "xhttp")
     p["xhttp-opts"] = { path, host: host || sni, mode: q.get("mode") || "auto" };
   return p as ProxyConfig;
+}
+
+// Return the URL scheme with its colon ("vless:") for a scheme://… string, else null.
+function schemeOf(value: string): string | null {
+  const m = value.match(/^([a-z][a-z0-9.+-]*):\/\//i);
+  return m ? `${(m[1] as string).toLowerCase()}:` : null;
+}
+
+// Single-node link schemes we can parse → { source kind stored, parser }. The kind
+// IS the protocol (personalized). Grows one entry per protocol slice.
+const SINGLE_LINK: Record<string, { kind: SourceKind; parse: (uri: string) => ProxyConfig }> = {
+  "vless:": { kind: "vless", parse: parseVless },
+};
+
+// Single-node schemes we recognize but don't support yet (ssr never). Shrinks as
+// slices move a scheme into SINGLE_LINK. Kept only for a helpful detectKind error.
+const UNSUPPORTED_SINGLE = new Set([
+  "vmess:",
+  "trojan:",
+  "ss:",
+  "ssr:",
+  "hysteria:",
+  "hysteria2:",
+  "hy2:",
+  "tuic:",
+]);
+
+// Dispatch a single-node link to its protocol parser.
+export function parseSingleLink(uri: string): ProxyConfig {
+  const scheme = schemeOf(uri.trim());
+  const entry = scheme ? SINGLE_LINK[scheme] : undefined;
+  if (!entry) throw new Error(`unsupported single-node link: ${scheme ?? uri.slice(0, 12)}`);
+  return entry.parse(uri);
 }
 
 // ── v2ray/xray JSON outbound → mihomo proxy (best-effort, Happ format) ──

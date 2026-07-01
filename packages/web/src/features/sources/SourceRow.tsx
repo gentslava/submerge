@@ -27,9 +27,10 @@ interface SourceRowProps {
   busy?: boolean;
 }
 
-const KIND_SHORT: Record<SourceKind, string> = {
+// Short badge label per kind. Single-node protocol kinds (vless/trojan/…) fall back
+// to their own name — the kind IS the protocol, so it reads correctly as-is.
+const KIND_SHORT: Partial<Record<SourceKind, string>> = {
   sub: "подписка",
-  vless: "vless",
   happ: "happ",
 };
 
@@ -174,7 +175,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
             {source.label || source.value}
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant="mono">{KIND_SHORT[source.kind]}</Badge>
+            <Badge variant="mono">{KIND_SHORT[source.kind] ?? source.kind}</Badge>
             <span className="text-xs text-text-tertiary">
               {source.proxies.length} {pluralRu(source.proxies.length, ["узел", "узла", "узлов"])}
             </span>

@@ -5,6 +5,7 @@ import {
   detectKindSafe,
   extractSubUrl,
   parseProxiesFromText,
+  parseSingleLink,
   parseVless,
 } from "./parse.js";
 
@@ -36,6 +37,24 @@ describe("detectKind", () => {
   it("throws on an empty string", () => expect(() => detectKind("")).toThrow());
   it("rejects non-vless single nodes", () =>
     expect(() => detectKind("trojan://x@h:443")).toThrow());
+});
+
+describe("parseSingleLink", () => {
+  it("dispatches vless:// to parseVless", () => {
+    const p = parseSingleLink("vless://uuid@ex.com:443?type=tcp#N");
+    expect(p.type).toBe("vless");
+    expect(p.server).toBe("ex.com");
+  });
+  it("rejects an unsupported single-node scheme", () => {
+    expect(() => parseSingleLink("ssr://whatever")).toThrow(/unsupported/i);
+  });
+});
+
+describe("detectKind single links", () => {
+  it("detects vless", () => expect(detectKind("vless://u@h:443")).toBe("vless"));
+  it("still rejects a not-yet-supported single link with a clear message", () => {
+    expect(() => detectKind("trojan://p@h:443")).toThrow(/not supported yet|subscription/i);
+  });
 });
 
 describe("detectKindSafe", () => {

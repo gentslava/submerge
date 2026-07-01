@@ -1,6 +1,6 @@
 import type { Proxy as ProxyConfig, SourceKind, SubscriptionMeta } from "@submerge/shared";
 import { decodeHapp } from "../../clients/happDecoder.js";
-import { detectKind, extractSubUrl, parseProxiesFromText, parseVless } from "./parse.js";
+import { detectKind, extractSubUrl, parseProxiesFromText, parseSingleLink } from "./parse.js";
 
 export interface IngestResult {
   kind: SourceKind;
@@ -8,6 +8,17 @@ export interface IngestResult {
   proxies: ProxyConfig[];
   meta: SubscriptionMeta | null;
 }
+
+// Source kinds that are a single-node link (the kind IS the protocol) — routed
+// through parseSingleLink. Only vless is wired today; the rest throw until their slice.
+const SINGLE_LINK_KINDS = new Set<SourceKind>([
+  "vless",
+  "hysteria2",
+  "vmess",
+  "trojan",
+  "ss",
+  "tuic",
+]);
 
 // Subscription headers carry the name (`label`) plus the metadata kept in `meta`.
 interface SubInfo {
@@ -159,8 +170,8 @@ export async function ingestSource(
   hwid = "",
 ): Promise<IngestResult> {
   const kind = detectKind(value);
-  if (kind === "vless") {
-    const proxy = parseVless(value);
+  if (SINGLE_LINK_KINDS.has(kind)) {
+    const proxy = parseSingleLink(value);
     return { kind, label: proxy.name, proxies: [proxy], meta: null };
   }
   if (kind === "sub") {

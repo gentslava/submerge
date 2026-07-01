@@ -1,6 +1,15 @@
 import { z } from "zod";
 
-export const sourceKindSchema = z.enum(["sub", "vless", "happ"]);
+export const sourceKindSchema = z.enum([
+  "sub",
+  "happ",
+  "vless",
+  "hysteria2",
+  "vmess",
+  "trojan",
+  "ss",
+  "tuic",
+]);
 export type SourceKind = z.infer<typeof sourceKindSchema>;
 
 // mihomo proxy: pin only the required core fields, everything else passes through
