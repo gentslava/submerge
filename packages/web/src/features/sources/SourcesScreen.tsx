@@ -1,11 +1,31 @@
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { restrictToParentElement, restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { GripVertical } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { pluralRu } from "@/lib/plural";
 import { useTRPC } from "@/lib/trpc";
+import { reorderSourcesList } from "./reorder";
 import { SourceForm } from "./SourceForm";
-import { SourceRow } from "./SourceRow";
+import { SourceRow, SourceRowShell } from "./SourceRow";
 
 export function SourcesScreen() {
   const trpc = useTRPC();
@@ -42,6 +62,40 @@ export function SourcesScreen() {
     }),
   );
 
+  const sources = sourcesQuery.data ?? [];
+  const count = sources.length;
+
+  // Persist a drag reorder: the sortOrder carries to the Узлы screen (groups are
+  // ordered by it). refetch on settle reconciles both screens with the server.
+  const reorderMutation = useMutation(
+    trpc.sources.reorder.mutationOptions({
+      onError: (e) => toast.error(e.message),
+      onSettled: () => void qc.invalidateQueries({ queryKey: trpc.sources.list.queryKey() }),
+    }),
+  );
+
+  const sensors = useSensors(
+    // 5px activation distance so a click on the handle still toggles/refreshes cleanly.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  // The row being dragged is rendered in the DragOverlay (a floating copy) so neither it
+  // nor its neighbours "jump" when the list reorders on drop.
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const activeSource = activeId != null ? sources.find((s) => s.id === activeId) : undefined;
+
+  function onDragEnd(event: DragEndEvent) {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const next = reorderSourcesList(sources, Number(active.id), Number(over.id));
+    if (next === sources) return;
+    // Optimistic: show the new order immediately, then persist.
+    qc.setQueryData(trpc.sources.list.queryKey(), next);
+    reorderMutation.mutate({ ids: next.map((s) => s.id) });
+  }
+
   // Track all in-flight mutation ids
   const pendingIds = new Set<number>([
     ...(toggleMutation.isPending && toggleMutation.variables ? [toggleMutation.variables.id] : []),
@@ -50,9 +104,6 @@ export function SourcesScreen() {
       : []),
     ...(removeMutation.isPending && removeMutation.variables ? [removeMutation.variables.id] : []),
   ]);
-
-  const sources = sourcesQuery.data ?? [];
-  const count = sources.length;
 
   return (
     <div className="flex flex-col gap-[22px] px-8 pt-[26px] pb-8">
@@ -92,16 +143,46 @@ export function SourcesScreen() {
             </Button>
           </div>
         ) : count > 0 ? (
-          sources.map((source) => (
-            <SourceRow
-              key={source.id}
-              source={source}
-              busy={pendingIds.has(source.id)}
-              onToggle={() => toggleMutation.mutate({ id: source.id })}
-              onRefresh={() => refreshMutation.mutate({ id: source.id })}
-              onRemove={() => removeMutation.mutate({ id: source.id })}
-            />
-          ))
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
+            onDragStart={(e: DragStartEvent) => setActiveId(Number(e.active.id))}
+            onDragEnd={onDragEnd}
+            onDragCancel={() => setActiveId(null)}
+          >
+            <SortableContext
+              items={sources.map((s) => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {sources.map((source) => (
+                <SourceRow
+                  key={source.id}
+                  source={source}
+                  busy={pendingIds.has(source.id)}
+                  onToggle={() => toggleMutation.mutate({ id: source.id })}
+                  onRefresh={() => refreshMutation.mutate({ id: source.id })}
+                  onRemove={() => removeMutation.mutate({ id: source.id })}
+                />
+              ))}
+            </SortableContext>
+            <DragOverlay modifiers={[restrictToVerticalAxis]}>
+              {activeSource ? (
+                <SourceRowShell
+                  source={activeSource}
+                  overlay
+                  handle={
+                    <span className="flex h-8 w-5 shrink-0 items-center justify-center text-text-secondary">
+                      <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
+                    </span>
+                  }
+                  onToggle={() => {}}
+                  onRefresh={() => {}}
+                  onRemove={() => {}}
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         ) : (
           <div className="flex flex-col items-center gap-3 p-10 text-center text-text-secondary">
             <span>Пока нет источников — вставьте ссылку в форму выше.</span>

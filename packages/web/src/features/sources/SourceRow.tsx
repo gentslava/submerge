@@ -1,6 +1,9 @@
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import type { Source, SourceKind, SubscriptionMeta } from "@submerge/shared";
 import {
   Calendar,
+  GripVertical,
   Inbox,
   Link as LinkIcon,
   Lock,
@@ -9,7 +12,7 @@ import {
   Timer,
   Trash2,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { type CSSProperties, forwardRef, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { formatBytes } from "@/features/nodes/nodeView";
@@ -87,7 +90,57 @@ function SourceMeta({ meta }: { meta: SubscriptionMeta }) {
   );
 }
 
-export function SourceRow({ source, onToggle, onRefresh, onRemove, busy }: SourceRowProps) {
+// The sortable list row: wires dnd-kit and renders the shared shell with a live handle.
+export function SourceRow(props: SourceRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.source.id });
+  const style: CSSProperties = { transform: CSS.Transform.toString(transform), transition };
+  const label = props.source.label || props.source.value;
+
+  return (
+    <SourceRowShell
+      ref={setNodeRef}
+      style={style}
+      // While this row is the one being dragged, hide it in place — the DragOverlay
+      // renders the floating copy — so the drop can't "jump" between the two.
+      className={cn(isDragging && "opacity-0")}
+      handle={
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Перетащить «${label}» для сортировки`}
+          className="flex h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary active:cursor-grabbing"
+        >
+          <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
+        </button>
+      }
+      {...props}
+    />
+  );
+}
+
+interface ShellProps extends SourceRowProps {
+  handle: ReactNode;
+  style?: CSSProperties;
+  className?: string;
+  // The floating DragOverlay copy — reads as a lifted card.
+  overlay?: boolean;
+}
+
+// Presentational row shared by the sortable list and the DragOverlay copy.
+export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function SourceRowShell(
+  { source, onToggle, onRefresh, onRemove, busy, handle, style, className, overlay },
+  ref,
+) {
   const isBusy = busy === true;
 
   function handleRemove() {
@@ -96,11 +149,17 @@ export function SourceRow({ source, onToggle, onRefresh, onRemove, busy }: Sourc
 
   return (
     <div
+      ref={ref}
+      style={style}
       className={cn(
         "flex items-center gap-3.5 border-b border-border-subtle px-4 py-3.5 last:border-0",
         !source.enabled && "opacity-50",
+        overlay && "rounded-lg border bg-surface opacity-100 shadow-lg",
+        className,
       )}
     >
+      {handle}
+
       {/* Kind icon tile */}
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-elevated">
         <KindIcon kind={source.kind} />
@@ -151,7 +210,7 @@ export function SourceRow({ source, onToggle, onRefresh, onRemove, busy }: Sourc
       </div>
     </div>
   );
-}
+});
 
 function IconBtn({
   onClick,
