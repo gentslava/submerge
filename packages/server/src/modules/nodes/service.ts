@@ -1,6 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { NodeItem, NodeView, Proxy as ProxyConfig } from "@submerge/shared";
+import type { NodeItem, NodeMember, NodeView, Proxy as ProxyConfig } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/mihomo.js";
@@ -74,12 +74,36 @@ export async function applyConfig(
   return { nodes: proxies.length };
 }
 
+const PSEUDO_GROUPS = new Set(["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"]);
+
 // Pure normalization: map a ProxiesResponse to the UI-facing NodeView.
 export function toNodeView({ proxies }: ProxiesResponse): NodeView {
   const group = proxies.PROXY;
   if (!group?.all) return { now: null, autoNow: null, all: [] };
   const all: NodeItem[] = group.all.map((name) => {
     const info = proxies[name];
+    // A collapsed url-test group: a non-pseudo proxy that carries `all` (its members).
+    if (info?.all && !PSEUDO_GROUPS.has(name)) {
+      const active = info.now ? proxies[info.now] : undefined;
+      const aLast = active?.history.at(-1);
+      const members: NodeMember[] = info.all.map((m) => {
+        const mInfo = proxies[m];
+        const mLast = mInfo?.history.at(-1);
+        return {
+          name: m,
+          delay: mLast && mLast.delay > 0 ? mLast.delay : null,
+          history: (mInfo?.history ?? []).map((h) => h.delay),
+          active: m === info.now,
+        };
+      });
+      return {
+        name,
+        type: info.type,
+        delay: aLast && aLast.delay > 0 ? aLast.delay : null,
+        history: (active?.history ?? []).map((h) => h.delay),
+        members,
+      };
+    }
     const last = info?.history.at(-1);
     // Keep every measurement, including timeouts (mihomo records 0) — the chart
     // renders them as failure spikes so node stability is visible, not hidden.

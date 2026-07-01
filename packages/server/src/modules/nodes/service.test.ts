@@ -100,6 +100,32 @@ describe("listNodes", () => {
     const view = await listNodes();
     expect(view).toEqual({ now: null, autoNow: null, all: [] });
   });
+
+  it("attaches members and the active member's delay for a collapsed group", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        json({
+          proxies: {
+            PROXY: { name: "PROXY", type: "Selector", now: "G", all: ["G", "S"], history: [] },
+            G: { name: "G", type: "URLTest", now: "G #2", all: ["G #1", "G #2"], history: [] },
+            "G #1": { name: "G #1", type: "vless", history: [{ time: "t", delay: 90 }] },
+            "G #2": { name: "G #2", type: "vless", history: [{ time: "t", delay: 40 }] },
+            S: { name: "S", type: "vless", history: [{ time: "t", delay: 55 }] },
+          },
+        }),
+      ),
+    );
+    const view = await listNodes();
+    const g = view.all.find((n) => n.name === "G");
+    expect(g?.delay).toBe(40); // active member G #2
+    expect(g?.members).toEqual([
+      { name: "G #1", delay: 90, history: [90], active: false },
+      { name: "G #2", delay: 40, history: [40], active: true },
+    ]);
+    // a singleton is unchanged (no members)
+    expect(view.all.find((n) => n.name === "S")?.members).toBeUndefined();
+  });
 });
 
 describe("testDelay", () => {
