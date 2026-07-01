@@ -43,11 +43,25 @@ export const latencyTextColors: Record<LatencyClass, string> = {
   idle: "text-text-tertiary",
 };
 
-// Type badges derived from a node: its protocol (uppercased) plus UDP when enabled.
+// The node's single most-telling connection descriptor, matching the mockup's
+// second badge: Reality > non-tcp transport (WS/GRPC/…) > TLS > TCP. Returns null
+// when we know neither transport nor security (e.g. a group node).
+export function transportBadge(node: NodeItem): string | null {
+  if (node.security === "reality") return "Reality";
+  if (node.network && node.network !== "tcp") return node.network.toUpperCase();
+  if (node.security === "tls") return "TLS";
+  if (node.network || node.security) return "TCP";
+  return null;
+}
+
+// Type badges derived from a node: its protocol (uppercased) plus the connection
+// descriptor ("VLESS · Reality" / "· WS" / "· TCP") — the real transport/security,
+// not the old uniform "· UDP" flag.
 export function typeBadges(node: NodeItem): string[] {
   const badges: string[] = [];
   if (node.type) badges.push(node.type.toUpperCase());
-  if (node.udp) badges.push("UDP");
+  const descriptor = transportBadge(node);
+  if (descriptor) badges.push(descriptor);
   return badges;
 }
 

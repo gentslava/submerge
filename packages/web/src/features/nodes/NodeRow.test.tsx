@@ -21,11 +21,18 @@ describe("NodeRow", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it("derives the protocol sublabel from the node (type + UDP)", () => {
-    const item: NodeItem = { name: "NL-1", type: "vless", delay: 47, udp: true, history: [] };
+  it("derives the protocol sublabel from the node (type + transport/security)", () => {
+    const item: NodeItem = {
+      name: "NL-1",
+      type: "vless",
+      delay: 47,
+      network: "tcp",
+      security: "reality",
+      history: [],
+    };
     render(<NodeRow {...base} item={item} />);
 
-    expect(screen.getByText("VLESS · UDP")).toBeInTheDocument();
+    expect(screen.getByText("VLESS · Reality")).toBeInTheDocument();
   });
 
   it("shows the timeout label for a non-positive delay", () => {

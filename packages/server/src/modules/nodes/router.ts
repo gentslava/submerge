@@ -5,7 +5,7 @@ import { policyProbe, readDefaultPolicy } from "../channels/service.js";
 import { checkHealth, listNodes, selectNode, testDelay } from "./service.js";
 
 export const nodesRouter = router({
-  list: protectedProcedure.query(() => listNodes()),
+  list: protectedProcedure.query(() => listNodes(db)),
   // Is the panel reaching mihomo right now? Polled by Settings + the "Проверить" button.
   health: protectedProcedure.query(async () => ({ connected: await checkHealth() })),
   delay: protectedProcedure

@@ -3,7 +3,7 @@ import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihom
 import { db } from "../db/client.js";
 import { channelController } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
-import { toNodeView } from "../modules/nodes/service.js";
+import { collectProxies, proxyMeta, toNodeView } from "../modules/nodes/service.js";
 import { getSetting } from "../modules/settings/service.js";
 import { LiveHub } from "./hub.js";
 
@@ -27,7 +27,7 @@ function pollIntervalMs(): number {
 let lastProbe = 0;
 
 export const liveHub = new LiveHub({
-  fetchView: async () => toNodeView(await getProxies()),
+  fetchView: async () => toNodeView(await getProxies(), proxyMeta(collectProxies(db))),
   streamTraffic,
   getInterval: pollIntervalMs,
   probeActive: async (name) => {

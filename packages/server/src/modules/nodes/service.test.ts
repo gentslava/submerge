@@ -100,7 +100,7 @@ describe("listNodes", () => {
         }),
       ),
     );
-    const view = await listNodes();
+    const view = await listNodes(freshDb());
     expect(view.now).toBe("A");
     expect(view.all).toEqual([
       { name: "A", type: "vless", delay: 50, udp: true, history: [50] },
@@ -113,7 +113,7 @@ describe("listNodes", () => {
       "fetch",
       vi.fn(() => json({ proxies: {} })),
     );
-    const view = await listNodes();
+    const view = await listNodes(freshDb());
     expect(view).toEqual({ now: null, autoNow: null, all: [] });
   });
 
@@ -132,7 +132,7 @@ describe("listNodes", () => {
         }),
       ),
     );
-    const view = await listNodes();
+    const view = await listNodes(freshDb());
     const g = view.all.find((n) => n.name === "G");
     expect(g?.delay).toBe(40); // active member G #2
     expect(g?.members).toEqual([

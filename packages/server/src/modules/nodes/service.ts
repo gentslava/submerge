@@ -59,8 +59,30 @@ export async function applyConfig(
 
 const PSEUDO_GROUPS = new Set(["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"]);
 
-// Pure normalization: map a ProxiesResponse to the UI-facing NodeView.
-export function toNodeView({ proxies }: ProxiesResponse): NodeView {
+// Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose
+// these, so we join them from the stored ProxyConfig (the source of truth) for the
+// node's second badge — "Reality" / "WS" / "TCP" — instead of the uniform "UDP" flag.
+export interface ProxyMeta {
+  network?: string;
+  security: "reality" | "tls" | "none";
+}
+
+// Derive a name → { network, security } lookup from stored proxy configs. First
+// entry wins for duplicate names (same-named servers get collapsed into one group).
+export function proxyMeta(proxies: ProxyConfig[]): Map<string, ProxyMeta> {
+  const map = new Map<string, ProxyMeta>();
+  for (const p of proxies) {
+    if (map.has(p.name)) continue;
+    const network = typeof p.network === "string" ? p.network : undefined;
+    const security = p["reality-opts"] ? "reality" : p.tls === true ? "tls" : "none";
+    map.set(p.name, network !== undefined ? { network, security } : { security });
+  }
+  return map;
+}
+
+// Pure normalization: map a ProxiesResponse to the UI-facing NodeView. `meta` joins
+// transport/security from the stored configs (mihomo's /proxies omits them).
+export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, ProxyMeta>): NodeView {
   const group = proxies.PROXY;
   if (!group?.all) return { now: null, autoNow: null, all: [] };
   const all: NodeItem[] = group.all.map((name) => {
@@ -98,15 +120,21 @@ export function toNodeView({ proxies }: ProxiesResponse): NodeView {
       history,
     };
     if (info?.udp !== undefined) item.udp = info.udp;
+    const pm = meta?.get(name);
+    if (pm) {
+      if (pm.network) item.network = pm.network;
+      item.security = pm.security;
+    }
     return item;
   });
   // The AUTO url-test group reports the member it currently routes through via `now`.
   return { now: group.now ?? null, autoNow: proxies.AUTO?.now ?? null, all };
 }
 
-// Normalize the mihomo PROXY select group into the UI-facing NodeView.
-export async function listNodes(): Promise<NodeView> {
-  return toNodeView(await getProxies());
+// Normalize the mihomo PROXY select group into the UI-facing NodeView, joining
+// transport/security from the DB's proxy configs for the node badges.
+export async function listNodes(db: Db): Promise<NodeView> {
+  return toNodeView(await getProxies(), proxyMeta(collectProxies(db)));
 }
 
 export async function testDelay(name: string, url?: string): Promise<number | null> {
