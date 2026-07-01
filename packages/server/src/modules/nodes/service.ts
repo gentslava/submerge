@@ -7,33 +7,9 @@ import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/m
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
+import { readDefaultPolicy } from "../channels/service.js";
 import { getSetting } from "../settings/service.js";
-import {
-  AUTO_DEFAULTS,
-  AUTO_STRATEGIES,
-  type AutoConfig,
-  type AutoStrategy,
-  buildConfig,
-} from "./config.js";
-
-// Read the editable AUTO group tuning from settings, falling back to defaults.
-export function readAutoConfig(db: Db): AutoConfig {
-  const strategy = getSetting(db, "autoStrategy");
-  const url = getSetting(db, "autoTestUrl")?.trim();
-  const interval = Number.parseInt(getSetting(db, "autoTestInterval") ?? "", 10);
-  const tolerance = Number.parseInt(getSetting(db, "autoTestTolerance") ?? "", 10);
-  const switchOnTimeout = getSetting(db, "autoSwitchOnTimeout");
-  return {
-    strategy: AUTO_STRATEGIES.includes(strategy as AutoStrategy)
-      ? (strategy as AutoStrategy)
-      : AUTO_DEFAULTS.strategy,
-    url: url && url.length > 0 ? url : AUTO_DEFAULTS.url,
-    interval: Number.isFinite(interval) && interval >= 1 ? interval : AUTO_DEFAULTS.interval,
-    tolerance: Number.isFinite(tolerance) && tolerance >= 0 ? tolerance : AUTO_DEFAULTS.tolerance,
-    switchOnTimeout:
-      switchOnTimeout == null ? AUTO_DEFAULTS.switchOnTimeout : switchOnTimeout === "true",
-  };
-}
+import { buildConfig } from "./config.js";
 
 // The mihomo API secret — a Settings value wins over the env default (env only seeds it
 // on first run). Used BOTH as the panel's client credential AND as the `secret:` written
@@ -73,7 +49,7 @@ export async function applyConfig(
   // Write atomically (temp file + rename) so mihomo never reads a half-written config on
   // reload: an in-place writeFileSync truncates first, and mihomo can catch that empty
   // window — especially across a slow bind mount — and reject the reload with HTTP 400.
-  const content = buildConfig(proxies, readAutoConfig(db), readMihomoSecret(db));
+  const content = buildConfig(proxies, readDefaultPolicy(db), readMihomoSecret(db));
   const tmpPath = `${configPath}.tmp`;
   writeFileSync(tmpPath, content, "utf8");
   renameSync(tmpPath, configPath);

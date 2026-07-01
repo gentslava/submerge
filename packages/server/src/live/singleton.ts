@@ -1,7 +1,8 @@
 import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
 import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
-import { readAutoConfig, toNodeView } from "../modules/nodes/service.js";
+import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
+import { toNodeView } from "../modules/nodes/service.js";
 import { getSetting } from "../modules/settings/service.js";
 import { LiveHub } from "./hub.js";
 
@@ -30,11 +31,11 @@ export const liveHub = new LiveHub({
   getInterval: pollIntervalMs,
   probeActive: async (name) => {
     if (PSEUDO_NODES.has(name)) return;
-    const intervalMs = readAutoConfig(db).interval * 1000;
+    const { url, intervalSec } = policyProbe(readDefaultPolicy(db));
     const now = Date.now();
-    if (now - lastProbe < intervalMs - 1000) return;
+    if (now - lastProbe < intervalSec * 1000 - 1000) return;
     lastProbe = now;
-    await getDelay(name, readAutoConfig(db).url);
+    await getDelay(name, url);
   },
   fetchTotals: getTotals,
 });
