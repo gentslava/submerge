@@ -77,21 +77,56 @@ export const AUTO_DEFAULTS: AutoConfig = {
   switchOnTimeout: DEFAULT_AUTO_SWITCH_ON_TIMEOUT,
 };
 
+const RESERVED_GROUP_NAMES = ["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"];
+
 export function buildConfig(
   proxies: ProxyConfig[],
   auto: AutoConfig = AUTO_DEFAULTS,
   secret: string = env.MIHOMO_SECRET,
 ): string {
-  const unique = dedupeNames(proxies);
-  const names = unique.map((p) => p.name);
-  // The AUTO group's shape depends on its strategy (mihomo group type).
+  const entries = groupProxies(proxies);
+  const usedGroupNames = new Set<string>(RESERVED_GROUP_NAMES);
+  const topLevelNames: string[] = [];
+  const flat: ProxyConfig[] = [];
+  const subGroups: Record<string, unknown>[] = [];
+
+  for (const e of entries) {
+    if (e.kind === "single") {
+      topLevelNames.push(e.proxy.name);
+      flat.push(e.proxy);
+      continue;
+    }
+    let gname = e.base;
+    if (usedGroupNames.has(gname)) {
+      let n = 2;
+      while (usedGroupNames.has(`${e.base}-${n}`)) n++;
+      gname = `${e.base}-${n}`;
+    }
+    usedGroupNames.add(gname);
+    const memberNames = e.members.map((_, i) => `${gname} #${i + 1}`);
+    for (const [i, m] of e.members.entries()) {
+      flat.push({ ...m, name: memberNames[i] as string });
+    }
+    subGroups.push({
+      name: gname,
+      type: "url-test",
+      url: auto.url,
+      interval: auto.interval,
+      tolerance: auto.tolerance,
+      lazy: !auto.switchOnTimeout,
+      proxies: memberNames,
+    });
+    topLevelNames.push(gname);
+  }
+
+  const unique = dedupeNames(flat);
   const autoGroup: Record<string, unknown> = {
     name: "AUTO",
     type: auto.strategy,
     url: auto.url,
     interval: auto.interval,
     lazy: !auto.switchOnTimeout,
-    proxies: names.length ? names : ["DIRECT"],
+    proxies: topLevelNames.length ? topLevelNames : ["DIRECT"],
   };
   if (auto.strategy === "url-test") autoGroup.tolerance = auto.tolerance;
   if (auto.strategy === "load-balance") autoGroup.strategy = "round-robin";
@@ -107,10 +142,11 @@ export function buildConfig(
     secret,
     proxies: unique,
     "proxy-groups": [
-      { name: "PROXY", type: "select", proxies: ["AUTO", ...names, "DIRECT"] },
+      { name: "PROXY", type: "select", proxies: ["AUTO", ...topLevelNames, "DIRECT"] },
       autoGroup,
+      ...subGroups,
     ],
-    rules: [names.length ? "MATCH,PROXY" : "MATCH,DIRECT"],
+    rules: [topLevelNames.length ? "MATCH,PROXY" : "MATCH,DIRECT"],
   };
   return yaml.dump(cfg, { lineWidth: -1 });
 }

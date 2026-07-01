@@ -89,3 +89,31 @@ describe("buildConfig", () => {
     expect(cfg.rules).toEqual(["MATCH,DIRECT"]);
   });
 });
+
+describe("buildConfig collapses same-named nodes", () => {
+  it("emits a url-test subgroup and references it from PROXY/AUTO", () => {
+    const raw = buildConfig([px("A", "1.1.1.1"), px("A", "2.2.2.2"), px("B")]);
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(raw) as Record<string, any>;
+    const groups = cfg["proxy-groups"];
+    expect(groups[0].proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
+    expect(groups[1].name).toBe("AUTO");
+    expect(groups[1].proxies).toEqual(["A", "B"]);
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const sub = groups.find((g: any) => g.name === "A");
+    expect(sub.type).toBe("url-test");
+    expect(sub.proxies).toEqual(["A #1", "A #2"]);
+    // real servers carry the member names, base name is a group only
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    expect(cfg.proxies.map((p: any) => p.name)).toEqual(["A #1", "A #2", "B"]);
+  });
+  it("renames a group that collides with a reserved name", () => {
+    const raw = buildConfig([px("AUTO", "1.1.1.1"), px("AUTO", "2.2.2.2")]);
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(raw) as Record<string, any>;
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const names = cfg["proxy-groups"].map((g: any) => g.name);
+    expect(names).toContain("AUTO-2"); // the collapsed provider group, guarded
+    expect(names[1]).toBe("AUTO"); // the system AUTO group is untouched
+  });
+});
