@@ -1,4 +1,10 @@
-import type { Proxy as ProxyConfig, SubscriptionMeta } from "@submerge/shared";
+import type {
+  ChannelMatcher,
+  ChannelPolicy,
+  Proxy as ProxyConfig,
+  SubscriptionMeta,
+} from "@submerge/shared";
+import { DEFAULT_SPEED_POLICY } from "@submerge/shared";
 import { sql } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
@@ -36,4 +42,25 @@ export const settings = sqliteTable("settings", {
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
   expiresAt: integer("expires_at").notNull(),
+});
+
+// Routing channels: each binds a matcher + pool + policy. Phase 1 seeds exactly one
+// non-deletable Default channel (is_default = true). policy/matcher are JSON blobs
+// validated by the shared Zod schemas at the service boundary.
+export const channels = sqliteTable("channels", {
+  id: text("id").primaryKey(), // "default" for the Default channel
+  name: text("name").notNull(),
+  priority: integer("priority").notNull().default(0),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  policy: text("policy", { mode: "json" })
+    .$type<ChannelPolicy>()
+    .notNull()
+    .$defaultFn(() => DEFAULT_SPEED_POLICY),
+  matcher: text("matcher", { mode: "json" })
+    .$type<ChannelMatcher>()
+    .notNull()
+    .$defaultFn(() => ({ presets: [], domains: [] })),
+  lastReason: text("last_reason"),
+  lastReasonAt: integer("last_reason_at"),
 });
