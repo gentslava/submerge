@@ -22,6 +22,18 @@ const POLL_PRESETS = [1, 2, 5, 10, 30];
 // longest (stable — don't keep pinging configs). Large values read as minutes.
 const CHECK_PRESETS = [5, 10, 30, 60, 300, 600];
 
+// mihomo built-in groups/policies — never valid "priority node" (manual pin) targets.
+const PSEUDO_NODES = new Set([
+  "AUTO",
+  "PROXY",
+  "DIRECT",
+  "REJECT",
+  "REJECT-DROP",
+  "PASS",
+  "COMPATIBLE",
+  "GLOBAL",
+]);
+
 // Render interval <option>s (с / мин), keeping the current value present even off-preset.
 function secondsOptions(presets: number[], current: string) {
   const cur = Number(current);
@@ -48,6 +60,7 @@ export function SettingsScreen() {
   const data = settingsQuery.data;
   const channelQuery = useQuery(trpc.channels.get.queryOptions());
   const decisionsQuery = useQuery(trpc.channels.recentDecisions.queryOptions());
+  const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
 
   // Engine reachability — polled at the panel's poll cadence and on demand
   // ("Проверить"), so the status updates live without a page reload (this is a
@@ -85,9 +98,21 @@ export function SettingsScreen() {
     settingsMutation.mutate({ key, value: v });
   }
 
-  // The Default channel's policy — Phase 2 adds the `sticky` variant alongside
-  // `speed`; `manual` is contract-complete but not editable from this screen yet.
+  // The Default channel's policy — `speed`, `sticky`, and `manual` (priority node)
+  // are all editable from this screen.
   const policy = channelQuery.data?.policy;
+  // Real (pinnable) exit nodes for the manual policy's dropdown — mihomo's built-in
+  // groups/policies aren't valid pin targets.
+  const nodeNames = (nodesQuery.data?.all ?? [])
+    .map((n) => n.name)
+    .filter((n) => !PSEUDO_NODES.has(n));
+  // Seed the manual pin from the currently-active node, else the first available one.
+  function defaultPinnedNode(): string | undefined {
+    const view = nodesQuery.data;
+    const active = view ? (view.now === "AUTO" ? view.autoNow : view.now) : null;
+    if (active && nodeNames.includes(active)) return active;
+    return nodeNames[0];
+  }
   const speedPolicy: Extract<ChannelPolicy, { kind: "speed" }> =
     policy?.kind === "speed"
       ? policy
@@ -97,10 +122,23 @@ export function SettingsScreen() {
     setPolicyMutation.mutate({ id: "default", policy: { ...policy, ...patch } });
   }
 
-  // Switch the Default channel between the speed and sticky policies, carrying over
-  // shared fields (testUrl/intervalSec) and seeding the rest with sane defaults.
-  function switchPolicy(kind: "speed" | "sticky") {
+  // Switch the Default channel's policy kind, carrying over shared fields where they
+  // exist and seeding the rest with sane defaults. `manual` needs a concrete node, so
+  // it seeds from the current active node (or the first available one).
+  function switchPolicy(kind: ChannelPolicy["kind"]) {
     if (!policy || policy.kind === kind) return;
+    if (kind === "manual") {
+      const pinnedNode = defaultPinnedNode();
+      if (!pinnedNode) {
+        toast.error("Нет доступных узлов для закрепления");
+        return;
+      }
+      setPolicyMutation.mutate({
+        id: "default",
+        policy: { kind: "manual", pinnedNode, onFailure: "fallback" },
+      });
+      return;
+    }
     const testUrl = "testUrl" in policy ? policy.testUrl : "https://www.gstatic.com/generate_204";
     const intervalSec = "intervalSec" in policy ? policy.intervalSec : 60;
     const next: ChannelPolicy =
@@ -119,6 +157,11 @@ export function SettingsScreen() {
 
   function updateSticky(patch: Partial<Extract<ChannelPolicy, { kind: "sticky" }>>) {
     if (policy?.kind !== "sticky") return;
+    setPolicyMutation.mutate({ id: "default", policy: { ...policy, ...patch } });
+  }
+
+  function updateManual(patch: Partial<Extract<ChannelPolicy, { kind: "manual" }>>) {
+    if (policy?.kind !== "manual") return;
     setPolicyMutation.mutate({ id: "default", policy: { ...policy, ...patch } });
   }
 
@@ -182,14 +225,18 @@ export function SettingsScreen() {
           </Section>
 
           <Section title="Авто-выбор узла" desc="Как submerge держит активным лучший узел.">
-            <Row label="Политика" sub="По задержке — гонка; стабильный IP — держит узел дольше">
+            <Row
+              label="Политика"
+              sub="По задержке — гонка; стабильный IP — держит узел; приоритетный — ваш узел"
+            >
               <Segmented
                 aria-label="Политика выбора"
-                value={policy?.kind === "sticky" ? "sticky" : "speed"}
-                onChange={(v) => switchPolicy(v as "speed" | "sticky")}
+                value={policy?.kind ?? "speed"}
+                onChange={(v) => switchPolicy(v as ChannelPolicy["kind"])}
                 options={[
                   { value: "speed", label: "По задержке" },
                   { value: "sticky", label: "Стабильный IP" },
+                  { value: "manual", label: "Приоритетный узел" },
                 ]}
               />
             </Row>
@@ -254,7 +301,10 @@ export function SettingsScreen() {
                     className="w-[90px] text-center font-mono"
                   />
                 </Row>
-                <Row label="Критерий выбора" sub="Как выбирать узел при переключении">
+                <Row
+                  label="Критерий выбора"
+                  sub="По скорости — наименьший пинг; по стабильности — узел с меньшими потерями пакетов"
+                >
                   <Segmented
                     aria-label="Критерий выбора"
                     value={policy.initialCriterion}
@@ -262,8 +312,43 @@ export function SettingsScreen() {
                       updateSticky({ initialCriterion: v as "fastest" | "lowest-loss" })
                     }
                     options={[
-                      { value: "fastest", label: "Быстрейший" },
-                      { value: "lowest-loss", label: "Наименьшие потери" },
+                      { value: "fastest", label: "По скорости" },
+                      { value: "lowest-loss", label: "По стабильности" },
+                    ]}
+                  />
+                </Row>
+              </>
+            ) : policy?.kind === "manual" ? (
+              <>
+                <Row label="Приоритетный узел" sub="Через него идёт трафик большую часть времени">
+                  <Select
+                    aria-label="Приоритетный узел"
+                    value={policy.pinnedNode}
+                    onChange={(e) => updateManual({ pinnedNode: e.target.value })}
+                    className="w-full md:w-[280px]"
+                  >
+                    {/* Keep the current pin present even if it's momentarily absent from the live list. */}
+                    {(nodeNames.includes(policy.pinnedNode)
+                      ? nodeNames
+                      : [policy.pinnedNode, ...nodeNames]
+                    ).map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </Select>
+                </Row>
+                <Row
+                  label="При отказе узла"
+                  sub="Если приоритетный узел недоступен — уйти на запасной или держать его"
+                >
+                  <Segmented
+                    aria-label="При отказе узла"
+                    value={policy.onFailure}
+                    onChange={(v) => updateManual({ onFailure: v as "fallback" | "hold" })}
+                    options={[
+                      { value: "fallback", label: "Запасной узел" },
+                      { value: "hold", label: "Держать" },
                     ]}
                   />
                 </Row>
