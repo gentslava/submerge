@@ -55,7 +55,8 @@ Server runs `.ts` via `tsx` (Node 24 strip-types does not remap `.js`→`.ts` sp
 
 ## Deploy
 
-- **`COOKIE_SECURE`**: behind TLS set `COOKIE_SECURE=true` on the `submerge` service. Do **not** leave it blank — `z.stringbool()` rejects `""` and the server won't boot. The compose default is `"false"` (plain HTTP on localhost). `ADMIN_PASSWORD` is optional (auth is off when unset).
+- **Config via `.env`**: compose interpolates `ADMIN_PASSWORD`, `COOKIE_SECURE`, `MIHOMO_SECRET`, and `SUBMERGE_BIND` from a git-ignored `.env` next to `docker-compose.yml` (template: `.env.example`). Built-in defaults keep the localhost case working with no `.env`. **Internet-facing deploy = copy `.env.example` → `.env`, set a strong `ADMIN_PASSWORD` + `COOKIE_SECURE=true`, and front the loopback-bound `:3000` with a TLS reverse-proxy.**
+- **`COOKIE_SECURE`**: behind TLS set `COOKIE_SECURE=true`. Do **not** leave it blank — `z.stringbool()` rejects `""` and the server won't boot. The compose default is `"false"` (plain HTTP on localhost). `ADMIN_PASSWORD` is optional (auth is off when unset — leave empty only for trusted localhost).
 - **mihomo config write (uid 999)**: the `submerge` container runs as a non-root user (uid 999) and writes the shared mihomo config to the bind-mounted `./mihomo`. On **Linux hosts** the bind mount keeps host ownership, so `./mihomo` must be writable by uid 999 — e.g. `chown -R 999:999 mihomo` (or add a matching `user:` override to the service). On Docker Desktop (Mac/Windows) this is automatic.
 
 ## Conventions

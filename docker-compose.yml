@@ -1,6 +1,11 @@
 # Deploy compose — pulls prebuilt images from GHCR (built by .github/workflows/docker.yml
 # on push to master). To build locally instead: `docker build -t ghcr.io/gentslava/submerge .`
 # and `docker build -t ghcr.io/gentslava/submerge-happ-decoder ./happ-decoder`.
+#
+# Config comes from a `.env` file next to this compose (Compose auto-loads it).
+# For localhost the built-in defaults below are fine — no `.env` needed. For an
+# internet-facing deploy, copy `.env.example` → `.env` and fill it in (at minimum
+# ADMIN_PASSWORD + COOKIE_SECURE=true). `.env` is git-ignored; `.env.example` is tracked.
 services:
   mihomo:
     image: metacubex/mihomo:latest
@@ -22,16 +27,20 @@ services:
     restart: unless-stopped
     environment:
       MIHOMO_API: "http://mihomo:9090"
-      MIHOMO_SECRET: "poc"
+      MIHOMO_SECRET: "${MIHOMO_SECRET:-poc}"
       HAPP_DECODER_URL: "http://happ-decoder:8080"
-      # Auth off unless ADMIN_PASSWORD is set. Behind TLS, set COOKIE_SECURE=true.
-      # ADMIN_PASSWORD: "change-me"
-      COOKIE_SECURE: "false"
+      # Auth is OFF unless ADMIN_PASSWORD is set — leave empty for open localhost use,
+      # set a strong value in `.env` before exposing the panel to the internet.
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      # Must be "true" behind TLS (Secure cookie); keep "false" for plain-HTTP localhost.
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     volumes:
       - ./mihomo:/mihomo            # shared config + hwid.txt (server writes config.yaml)
       - submerge-data:/app/data     # persistent SQLite DB
     ports:
-      - "127.0.0.1:3000:3000"
+      # Bind to loopback by default. Front it with a TLS reverse-proxy; only set
+      # SUBMERGE_BIND=0.0.0.0 if you deliberately expose the port directly.
+      - "${SUBMERGE_BIND:-127.0.0.1}:3000:3000"
     depends_on:
       - mihomo
       - happ-decoder
