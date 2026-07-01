@@ -1,9 +1,10 @@
-import type { Source } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
+import type { RouterOutputs } from "@/lib/trpc";
 import { reorderSourcesList } from "./reorder";
 
-const src = (id: number): Source =>
-  ({ id, kind: "sub", value: `v${id}`, label: `s${id}` }) as Source;
+type SourceItem = RouterOutputs["sources"]["list"][number];
+const src = (id: number): SourceItem =>
+  ({ id, kind: "sub", value: `v${id}`, label: `s${id}` }) as SourceItem;
 
 describe("reorderSourcesList", () => {
   const list = [src(1), src(2), src(3), src(4)];
