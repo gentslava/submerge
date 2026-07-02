@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { liveIndicator } from "@/features/live/status";
+import { warnIfNotApplied } from "@/lib/apply-toast";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import { formatInterval, formatRelative } from "@/lib/duration";
 import type { Theme } from "@/lib/theme";
@@ -75,9 +76,10 @@ export function SettingsScreen() {
 
   const settingsMutation = useMutation(
     trpc.settings.set.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         void invalidate();
         toast.success("Сохранено");
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),
@@ -85,9 +87,10 @@ export function SettingsScreen() {
 
   const setPolicyMutation = useMutation(
     trpc.channels.setPolicy.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         void qc.invalidateQueries({ queryKey: trpc.channels.get.queryKey() });
         toast.success("Сохранено");
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),

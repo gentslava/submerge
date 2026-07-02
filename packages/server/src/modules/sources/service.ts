@@ -35,7 +35,7 @@ export async function addSource(
   input: AddSourceInput,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   hwidFile: string = env.HWID_FILE,
-): Promise<{ source: Source; skipped: string[] }> {
+): Promise<{ source: Source; skipped: string[]; applied: boolean }> {
   const value = input.value.trim();
   // Reject an already-added source (same value) up front — before any decode/network
   // work — so the same subscription can't be added twice.
@@ -61,18 +61,19 @@ export async function addSource(
     })
     .returning()
     .get();
-  await applyConfig(db, configPath);
-  return { source: toSource(row), skipped: result.skipped };
+  const { applied } = await applyConfig(db, configPath);
+  return { source: toSource(row), skipped: result.skipped, applied };
 }
 
 export async function removeSource(
   db: Db,
   id: number,
   configPath: string = env.MIHOMO_CONFIG_PATH,
-): Promise<void> {
+): Promise<{ applied: boolean }> {
   // idempotent: deleting a missing id is a no-op (no throw), unlike toggle/refresh
   db.delete(sources).where(eq(sources.id, id)).run();
-  await applyConfig(db, configPath);
+  const { applied } = await applyConfig(db, configPath);
+  return { applied };
 }
 
 export async function refreshSource(
@@ -80,7 +81,7 @@ export async function refreshSource(
   id: number,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   hwidFile: string = env.HWID_FILE,
-): Promise<Source> {
+): Promise<{ source: Source; applied: boolean }> {
   const row = db.select().from(sources).where(eq(sources.id, id)).get();
   if (!row) throw new Error(`source ${id} not found`);
   const hwid = row.hwid ? getOrCreateHwid(db, hwidFile) : "";
@@ -96,15 +97,15 @@ export async function refreshSource(
     .where(eq(sources.id, id))
     .returning()
     .get();
-  await applyConfig(db, configPath);
-  return toSource(updated);
+  const { applied } = await applyConfig(db, configPath);
+  return { source: toSource(updated), applied };
 }
 
 export async function toggleSource(
   db: Db,
   id: number,
   configPath: string = env.MIHOMO_CONFIG_PATH,
-): Promise<Source> {
+): Promise<{ source: Source; applied: boolean }> {
   const row = db.select().from(sources).where(eq(sources.id, id)).get();
   if (!row) throw new Error(`source ${id} not found`);
   const updated = db
@@ -113,19 +114,20 @@ export async function toggleSource(
     .where(eq(sources.id, id))
     .returning()
     .get();
-  await applyConfig(db, configPath);
-  return toSource(updated);
+  const { applied } = await applyConfig(db, configPath);
+  return { source: toSource(updated), applied };
 }
 
 export async function reorderSources(
   db: Db,
   ids: number[],
   configPath: string = env.MIHOMO_CONFIG_PATH,
-): Promise<void> {
+): Promise<{ applied: boolean }> {
   db.transaction((tx) => {
     ids.forEach((id, index) => {
       tx.update(sources).set({ sortOrder: index }).where(eq(sources.id, id)).run();
     });
   });
-  await applyConfig(db, configPath);
+  const { applied } = await applyConfig(db, configPath);
+  return { applied };
 }

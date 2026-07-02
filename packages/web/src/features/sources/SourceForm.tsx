@@ -9,6 +9,7 @@ import type { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { warnIfNotApplied } from "@/lib/apply-toast";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { detectKindHint, KIND_LABEL } from "./detectKind";
@@ -31,6 +32,7 @@ export function SourceForm() {
         reset();
         void qc.invalidateQueries({ queryKey: trpc.sources.list.queryKey() });
         toast.success("Источник добавлен");
+        warnIfNotApplied(data.applied);
         if (data.skipped?.length)
           toast.warning(
             `Пропущено ${data.skipped.length}: неподдерживаемые протоколы (${data.skipped.join(", ")})`,

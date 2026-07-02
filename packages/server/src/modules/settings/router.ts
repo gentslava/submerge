@@ -15,17 +15,20 @@ export const settingsRouter = router({
     // with the CURRENT (old) secret, so we rotate first, then re-point the client in a
     // `finally` — that re-point ALWAYS runs even if the reload 401s, so typing a wrong
     // secret can never lock you out (re-enter the right one to recover).
+    let applied = true;
     if (input.key === "mihomoSecret") {
       try {
-        await applyConfig(db);
+        // Reload failures are soft inside applyConfig (applied:false); this catch
+        // now only guards fs errors — still non-fatal here, so a wrong secret or a
+        // broken mount can't block the client re-point below.
+        ({ applied } = await applyConfig(db));
       } catch (err) {
-        // Deliberately non-fatal (the client re-point below recovers a wrong secret),
-        // but a legitimate reload failure must leave a trace for the operator.
-        log.warn({ err }, "mihomo reload after secret rotation failed");
+        log.warn({ err }, "config write after secret rotation failed");
+        applied = false;
       } finally {
         setMihomoSecret(input.value);
       }
     }
-    return { ok: true as const };
+    return { ok: true as const, applied };
   }),
 });

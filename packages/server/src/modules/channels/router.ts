@@ -15,8 +15,8 @@ export const channelsRouter = router({
     // heldSince misfiring maxHoldHours. The decision log is preserved.
     channelController.reset();
     // The policy shapes the mihomo config (group type + tuning) — regenerate + reload.
-    await applyConfig(db);
-    return { ok: true as const };
+    const { applied } = await applyConfig(db);
+    return { ok: true as const, applied };
   }),
   recentDecisions: protectedProcedure.query(() => channelController.recent()),
 });
