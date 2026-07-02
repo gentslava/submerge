@@ -2,7 +2,7 @@ import {
   type ChannelPolicy,
   DEFAULT_POLL_INTERVAL,
   DEFAULT_SPEED_POLICY,
-  PSEUDO_NODE_NAMES,
+  PSEUDO_NODE_SET,
 } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff, type LucideIcon } from "lucide-react";
@@ -29,9 +29,6 @@ const POLL_PRESETS = [1, 2, 5, 10, 30];
 // Check interval: from the most frequent (unstable links — fastest switching) to the
 // longest (stable — don't keep pinging configs). Large values read as minutes.
 const CHECK_PRESETS = [5, 10, 30, 60, 300, 600];
-
-// mihomo built-in groups/policies — never valid "priority node" (manual pin) targets.
-const PSEUDO_NODES = new Set<string>(PSEUDO_NODE_NAMES);
 
 // Render interval <option>s (с / мин), keeping the current value present even off-preset.
 function secondsOptions(presets: number[], current: string) {
@@ -106,7 +103,7 @@ export function SettingsScreen() {
   // groups/policies aren't valid pin targets.
   const nodeNames = (nodesQuery.data?.all ?? [])
     .map((n) => n.name)
-    .filter((n) => !PSEUDO_NODES.has(n));
+    .filter((n) => !PSEUDO_NODE_SET.has(n));
   // Seed the manual pin from the currently-active node, else the first available one.
   function defaultPinnedNode(): string | undefined {
     const view = nodesQuery.data;

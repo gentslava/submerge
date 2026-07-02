@@ -1,4 +1,4 @@
-import { type NodeItem, PSEUDO_NODE_NAMES, type Source } from "@submerge/shared";
+import { type NodeItem, PSEUDO_NODE_SET, type Source } from "@submerge/shared";
 import { pluralRu } from "@/lib/plural";
 
 export type LatencyClass = "online" | "slow" | "timeout" | "idle";
@@ -10,16 +10,14 @@ export function latencyClass(delay: number | null): LatencyClass {
   return "slow";
 }
 
-const PSEUDO = new Set<string>(PSEUDO_NODE_NAMES);
-
 export function isPseudo(name: string): boolean {
-  return PSEUDO.has(name);
+  return PSEUDO_NODE_SET.has(name);
 }
 
 export function splitNodes(all: NodeItem[]): { modes: NodeItem[]; nodes: NodeItem[] } {
   const modes: NodeItem[] = [];
   const nodes: NodeItem[] = [];
-  for (const n of all) (PSEUDO.has(n.name) ? modes : nodes).push(n);
+  for (const n of all) (PSEUDO_NODE_SET.has(n.name) ? modes : nodes).push(n);
   return { modes, nodes };
 }
 

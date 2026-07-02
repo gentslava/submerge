@@ -40,6 +40,9 @@ export const ROUTING_GROUP_NAMES = ["AUTO", "PROXY", "GLOBAL"] as const;
 /** Every name that denotes a group/policy rather than a selectable exit node. */
 export const PSEUDO_NODE_NAMES = [...ROUTING_GROUP_NAMES, ...MIHOMO_BUILTIN_POLICIES] as const;
 
+/** Ready-made membership set so consumers don't each rebuild `new Set(...)`. */
+export const PSEUDO_NODE_SET: ReadonlySet<string> = new Set(PSEUDO_NODE_NAMES);
+
 /** The Default channel's policy on a fresh install (behaviour-preserving vs the old AUTO url-test). */
 export const DEFAULT_SPEED_POLICY: ChannelPolicy = {
   kind: "speed",

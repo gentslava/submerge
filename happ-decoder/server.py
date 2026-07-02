@@ -32,9 +32,9 @@ def start_mitm():
 
 def start_xvfb():
     # прямой Xvfb надёжнее xvfb-run (тот требует xauth).
-    # docker restart сохраняет /tmp: устаревший .X99-lock (его старый pid после
-    # рестарта может принадлежать живому раннему процессу) заставляет Xvfb молча
-    # упасть — и каждый decode уходит в таймаут. Дисплей наш, чистим его артефакты.
+    # docker restart preserves /tmp: a stale .X99-lock (whose recorded pid may
+    # belong to a live early-boot process after the restart) makes Xvfb abort
+    # silently — and every decode times out. The display is ours: clear its artifacts.
     for stale in ("/tmp/.X99-lock", "/tmp/.X11-unix/X99"):
         try:
             os.remove(stale)

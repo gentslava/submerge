@@ -3,16 +3,13 @@ import {
   type ChannelPolicy,
   type DecisionEntry,
   type NodeView,
-  PSEUDO_NODE_NAMES,
+  PSEUDO_NODE_SET,
 } from "@submerge/shared";
 import { policyProbe } from "./service.js";
 
-// mihomo built-in policies + routing groups — never selectable exit nodes.
-const PSEUDO = new Set<string>(PSEUDO_NODE_NAMES);
-
 // The real exit nodes a channel can pin, in view order.
 export function selectableNames(view: NodeView): string[] {
-  return view.all.map((n) => n.name).filter((n) => !PSEUDO.has(n));
+  return view.all.map((n) => n.name).filter((n) => !PSEUDO_NODE_SET.has(n));
 }
 
 // Probe one candidate `samples` times; return { ok, latency } where ok is the

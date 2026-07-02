@@ -139,6 +139,11 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
   leftward; faint baseline tick for empty slots; recent ~4 bars `accent`, older
   `chart-track`, timeouts full‑height `timeout`; hover tooltip with the ms value; left
   axis = real elapsed time (`(count−1)×pollInterval`), right = "сейчас".
+- **ConfirmDialog** (no mockup frame yet — product decision recorded here; draw a frame
+  when dialogs multiply): native `<dialog>` (`showModal` = focus trap/Esc/top layer for
+  free), width 360, `bg-surface` + `border-subtle` + `rounded-lg`; title `cardtitle`,
+  body `sub`/`text-secondary`; actions right‑aligned — `secondary` (Отмена) +
+  `destructive`; scrim `--color-scrim`; backdrop click closes.
 
 ## Enforcement
 

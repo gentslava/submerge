@@ -230,13 +230,17 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
         </div>
       </div>
 
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Удалить источник?"
-        description={`${source.label || source.value} — узлы источника пропадут из списка.`}
-        onConfirm={onRemove}
-        onClose={() => setConfirmOpen(false)}
-      />
+      {/* The DragOverlay copy is decorative (noop handlers, unreachable mid-drag) —
+          don't mount a second dead dialog for it. */}
+      {!overlay && (
+        <ConfirmDialog
+          open={confirmOpen}
+          title="Удалить источник?"
+          description={`${source.label || source.value} — узлы источника пропадут из списка.`}
+          onConfirm={onRemove}
+          onClose={() => setConfirmOpen(false)}
+        />
+      )}
     </div>
   );
 });

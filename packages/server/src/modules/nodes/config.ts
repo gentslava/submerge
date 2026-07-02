@@ -3,7 +3,7 @@ import {
   type ChannelPolicy,
   DEFAULT_SPEED_POLICY,
   type Proxy as ProxyConfig,
-  PSEUDO_NODE_NAMES,
+  PSEUDO_NODE_SET,
 } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
@@ -55,9 +55,6 @@ export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
   });
 }
 
-// A collapsed group may not shadow any built-in policy or routing group name.
-const RESERVED_GROUP_NAMES = PSEUDO_NODE_NAMES;
-
 // The mihomo tuning a `speed` policy contributes to url-test groups (AUTO + any
 // collapsed same-name subgroup). Non-speed policies make AUTO a plain `select`
 // that the server controller pins, so they contribute nothing here.
@@ -86,7 +83,8 @@ export function buildConfig(
   secret: string = env.MIHOMO_SECRET,
 ): string {
   const entries = groupProxies(proxies);
-  const usedGroupNames = new Set<string>(RESERVED_GROUP_NAMES);
+  // A collapsed group may not shadow any built-in policy or routing group name.
+  const usedGroupNames = new Set<string>(PSEUDO_NODE_SET);
   const topLevelNames: string[] = [];
   const flat: ProxyConfig[] = [];
   const subGroups: Record<string, unknown>[] = [];

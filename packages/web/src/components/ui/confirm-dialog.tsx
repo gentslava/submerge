@@ -30,6 +30,11 @@ export function ConfirmDialog({
     if (!el) return;
     if (open && !el.open) el.showModal();
     else if (!open && el.open) el.close();
+    // Unmount while open (e.g. the row disappears on a background refetch):
+    // close explicitly so the native top-layer/inert state is torn down.
+    return () => {
+      if (el.open) el.close();
+    };
   }, [open]);
 
   return (
@@ -42,7 +47,7 @@ export function ConfirmDialog({
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}
-      className="m-auto w-[360px] rounded-lg border border-border-subtle bg-surface p-0 text-text-primary shadow-lg backdrop:bg-black/50"
+      className="m-auto w-[360px] rounded-lg border border-border-subtle bg-surface p-0 text-text-primary shadow-lg backdrop:bg-scrim"
     >
       <div className="flex flex-col gap-1.5 px-5 pt-5 pb-4">
         <span className="text-cardtitle">{title}</span>
@@ -56,6 +61,11 @@ export function ConfirmDialog({
           variant="destructive"
           size="sm"
           onClick={() => {
+            // Re-entrancy guard: the state-driven close lands on the NEXT render,
+            // so a rapid double-click would fire onConfirm twice. Close the native
+            // dialog synchronously first — the second click can't reach the button.
+            if (!ref.current?.open) return;
+            ref.current.close();
             onConfirm();
             onClose();
           }}

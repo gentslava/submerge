@@ -5,7 +5,7 @@ import {
   type NodeMember,
   type NodeView,
   type Proxy as ProxyConfig,
-  PSEUDO_NODE_NAMES,
+  PSEUDO_NODE_SET,
 } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
@@ -75,8 +75,6 @@ export async function applyConfig(
   return { nodes: proxies.length, applied: true };
 }
 
-const PSEUDO_GROUPS = new Set<string>(PSEUDO_NODE_NAMES);
-
 // Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose
 // these, so we join them from the stored ProxyConfig (the source of truth) for the
 // node's second badge — "Reality" / "WS" / "TCP" — instead of the uniform "UDP" flag.
@@ -112,7 +110,7 @@ export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, Prox
   const all: NodeItem[] = group.all.map((name) => {
     const info = proxies[name];
     // A collapsed url-test group: a non-pseudo proxy that carries `all` (its members).
-    if (info?.all && !PSEUDO_GROUPS.has(name)) {
+    if (info?.all && !PSEUDO_NODE_SET.has(name)) {
       const active = info.now ? proxies[info.now] : undefined;
       const aLast = active?.history.at(-1);
       const members: NodeMember[] = info.all.map((m) => {
