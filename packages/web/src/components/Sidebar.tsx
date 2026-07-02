@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Copy, Power, RotateCw } from "lucide-react";
-import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { useLiveState } from "@/features/live/LiveProvider";
 import { liveIndicator } from "@/features/live/status";
 import { useActiveNode } from "@/features/nodes/useActiveNode";
+import { copyToClipboard } from "@/lib/clipboard";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import { useTRPC } from "@/lib/trpc";
 import { NAV_ENTRIES, type NavEntry } from "./nav";
@@ -137,10 +137,7 @@ function ProxyCard() {
 
   const status = liveIndicator(mihomo, { idle: "Проверка", ok: "Подключено", down: "Отключено" });
 
-  const copyAddress = () => {
-    void navigator.clipboard.writeText(proxy);
-    toast.success("Скопировано");
-  };
+  const copyAddress = () => void copyToClipboard(proxy);
 
   return (
     <div className="flex flex-col gap-[9px] rounded-lg border border-border-subtle bg-elevated p-[13px]">

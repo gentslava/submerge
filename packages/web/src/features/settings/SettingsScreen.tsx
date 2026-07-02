@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { liveIndicator } from "@/features/live/status";
+import { copyToClipboard } from "@/lib/clipboard";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import { formatInterval, formatRelative } from "@/lib/duration";
 import type { Theme } from "@/lib/theme";
@@ -531,16 +532,6 @@ function Row({ label, sub, children }: { label: string; sub: string; children: R
       <div className="flex w-full items-center gap-2.5 md:w-auto md:shrink-0">{children}</div>
     </div>
   );
-}
-
-// Copy text to the clipboard with a toast — shared by every copy button.
-async function copyToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success("Скопировано");
-  } catch {
-    toast.error("Не удалось скопировать");
-  }
 }
 
 // Bordered field box (mockup: bg-input, border, radius 8, h-9). Width is per-field —

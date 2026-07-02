@@ -1,4 +1,5 @@
 import type { NodeItem, Source } from "@submerge/shared";
+import { pluralRu } from "@/lib/plural";
 
 export type LatencyClass = "online" | "slow" | "timeout" | "idle";
 
@@ -82,12 +83,7 @@ export function typeBadges(node: NodeItem): string[] {
 // A group is a url-test bundle of same-named servers, so its protocol badge would
 // read "URLTEST" — the count is the honest, meaningful thing to show instead.
 export function serverCountLabel(n: number): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  let word = "серверов";
-  if (m10 === 1 && m100 !== 11) word = "сервер";
-  else if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) word = "сервера";
-  return `${n} ${word}`;
+  return `${n} ${pluralRu(n, ["сервер", "сервера", "серверов"])}`;
 }
 
 // A subscription group: the source's label + the real nodes whose name matches its

@@ -1,5 +1,6 @@
 import { RefreshCw, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { pluralRu } from "@/lib/plural";
 
 interface NodesHeaderProps {
   nodeCount: number;
@@ -23,7 +24,8 @@ export function NodesHeader({
       <div className="flex flex-col gap-[5px]">
         <h1 className="text-h1 text-text-primary">Узлы</h1>
         <p className="text-sub text-text-secondary">
-          Группа PROXY · {nodeCount} {plural(nodeCount)} · опрос каждые {pollInterval} с
+          Группа PROXY · {nodeCount} {pluralRu(nodeCount, ["узел", "узла", "узлов"])} · опрос каждые{" "}
+          {pollInterval} с
         </p>
       </div>
       <div className="flex items-center gap-2.5">
@@ -48,12 +50,4 @@ export function NodesHeader({
       </div>
     </header>
   );
-}
-
-function plural(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "узел";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "узла";
-  return "узлов";
 }
