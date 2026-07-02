@@ -45,8 +45,12 @@ RUN set -eux; \
 # provider responses — the largest attack surface in the stack. uid 998 on purpose
 # (999 is submerge's app user on the shared ./mihomo mount; the decoder only READS
 # it). /tmp/.X11-unix is pre-created root-owned+sticky so non-root Xvfb can start.
+# NB: unpacking the Happ .deb with `tar xf` into /tmp restores the archive's `./`
+# mode onto /tmp itself (755) — Xvfb/mitmproxy/RESULT writes then fail for any
+# non-root user. Restore the sticky world-writable mode.
 RUN useradd --system --uid 998 --user-group --home-dir /work decoder \
  && chown -R decoder:decoder /work \
+ && chmod 1777 /tmp \
  && mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
 
 COPY mitm_capture.py server.py /app/
