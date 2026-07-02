@@ -1,6 +1,6 @@
 # happ-decoder: официальный бинарь Happ desktop как декодер happ://crypt-ссылок.
 # Мультиарх: качает .deb под целевую архитектуру (buildx подставляет TARGETARCH).
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 ARG TARGETARCH
 # Floor version for local builds only — CI (docker.yml) resolves the latest Happ
 # release via the GitHub API and overrides this build-arg on every image build.
