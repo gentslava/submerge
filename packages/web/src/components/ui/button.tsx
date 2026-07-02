@@ -16,7 +16,7 @@ const button = cva(
         destructive: "bg-timeout-bg text-timeout hover:bg-timeout-bg/80",
       },
       size: {
-        sm: "h-8 px-[14px] text-[13px]",
+        sm: "h-8 px-[14px] text-sub",
         md: "h-10 px-[14px]",
         icon: "h-9 w-9 p-0",
       },

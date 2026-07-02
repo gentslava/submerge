@@ -110,8 +110,9 @@ under `:root` (light) / `.dark` (dark), exposed as Tailwind utilities via `@them
 ### Typography scale (role → size/weight)
 
 `h1 24/600 · section 18/600 · cardtitle 15/600 · label 14/500 · sub 13/400 ·
-meta 12/500 · caption 11/600 (ls .5) · micro 10`. Baked into `text-*` utilities in
-`@theme` (`text-h1`, `text-section`, …).
+meta 12/500 · caption 11/600 (ls .5) · fine 11/400 · micro 10`. Baked into `text-*`
+utilities in `@theme` (`text-h1`, `text-section`, …). `caption` is the 11px LABEL
+style; `fine` is its regular-weight body counterpart — never hand-write `text-[11px]`.
 
 ## Component specs (measured from the mockup)
 

@@ -80,7 +80,7 @@ function SourceMeta({ meta }: { meta: SubscriptionMeta }) {
         </div>
       )}
       {(expire != null || updateHours != null) && (
-        <div className="flex items-center gap-3 font-mono text-[11px] text-text-tertiary">
+        <div className="flex items-center gap-3 font-mono text-fine text-text-tertiary">
           {expire != null && (
             <span className="flex items-center gap-1.5">
               <Calendar className="h-3 w-3" aria-hidden="true" />
@@ -205,7 +205,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
         {source.meta ? (
           <SourceMeta meta={source.meta} />
         ) : source.kind === "vless" ? (
-          <span className="shrink-0 font-mono text-[11px] text-text-tertiary">
+          <span className="shrink-0 font-mono text-fine text-text-tertiary">
             конфиг · без срока и лимита
           </span>
         ) : null}

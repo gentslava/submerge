@@ -13,7 +13,7 @@ const variantClasses: Record<BadgeVariant, string> = {
   slow: "bg-slow-bg text-slow",
   timeout: "bg-timeout-bg text-timeout",
   accent: "bg-accent-bg text-accent-text",
-  mono: "bg-hover text-text-secondary font-mono text-[11px]",
+  mono: "bg-hover text-text-secondary font-mono text-fine",
 };
 
 interface BadgeProps {

@@ -117,6 +117,9 @@
   --text-caption: 11px;
   --text-caption--font-weight: 600;
   --text-caption--letter-spacing: 0.5px;
+  /* Plain 11px body text (annotations, sub-lines): caption is the 11px LABEL
+     style (600 + tracking); fine is its regular-weight counterpart. */
+  --text-fine: 11px;
   --text-micro: 10px;
 }
 

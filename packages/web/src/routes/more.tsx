@@ -33,7 +33,7 @@ export function MoreRoute() {
             >
               <Icon size={16} />
               <span className="flex-1">{label}</span>
-              <span className="text-[11px] font-semibold tracking-wide text-text-tertiary">
+              <span className="text-fine font-semibold tracking-wide text-text-tertiary">
                 СКОРО
               </span>
             </div>
