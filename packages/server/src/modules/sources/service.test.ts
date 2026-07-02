@@ -96,9 +96,37 @@ describe("sources service", () => {
       hwidFile(),
     );
     const toggled = await toggleSource(db, src.id, tmpConfig());
-    expect(toggled.enabled).toBe(false);
+    expect(toggled.source.enabled).toBe(false);
     await removeSource(db, src.id, tmpConfig());
     expect(await listSources(db)).toHaveLength(0);
+  });
+
+  it("persists the source and reports applied:false when the engine reload fails", async () => {
+    const db = freshDb();
+    // subscription fetch works, but the mihomo reload endpoint is down
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        String(url).includes("/configs")
+          ? new Response("engine down", { status: 503 })
+          : new Response(
+              "proxies:\n  - {name: A, type: vless, server: ex.com, port: 443, uuid: u}\n",
+              { status: 200 },
+            ),
+      ),
+    );
+    const { source: src, applied } = await addSource(
+      db,
+      { value: "https://ex.com/sub", hwid: false },
+      tmpConfig(),
+      hwidFile(),
+    );
+    expect(applied).toBe(false);
+    expect(src.proxies).toHaveLength(1);
+    expect(await listSources(db)).toHaveLength(1); // saved despite the failed reload
+    const toggled = await toggleSource(db, src.id, tmpConfig());
+    expect(toggled.applied).toBe(false);
+    expect(toggled.source.enabled).toBe(false);
   });
 
   it("reorders sources by id list", async () => {
@@ -133,8 +161,8 @@ describe("sources service", () => {
     expect(src.proxies[0]?.name).toBe("A");
     stubNet("proxies:\n  - {name: Z, type: vless, server: ex.com, port: 443, uuid: u}\n"); // re-ingest → node "Z"
     const refreshed = await refreshSource(db, src.id, tmpConfig(), hwidFile());
-    expect(refreshed.proxies[0]?.name).toBe("Z"); // snapshot was refreshed, not stale
-    expect(typeof refreshed.updatedAt).toBe("string");
+    expect(refreshed.source.proxies[0]?.name).toBe("Z"); // snapshot was refreshed, not stale
+    expect(typeof refreshed.source.updatedAt).toBe("string");
   });
 
   it("throws when refreshing a missing source", async () => {

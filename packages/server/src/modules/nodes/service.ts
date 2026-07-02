@@ -7,6 +7,7 @@ import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/m
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
+import { log } from "../../log.js";
 import { readDefaultPolicy } from "../channels/service.js";
 import { getSetting } from "../settings/service.js";
 import { buildConfig } from "./config.js";
@@ -31,6 +32,10 @@ export function collectProxies(db: Db): ProxyConfig[] {
 
 export interface ApplyResult {
   nodes: number;
+  // false = the config was persisted (DB + file) but the engine reload failed —
+  // e.g. mihomo is down. It applies on the engine's next successful reload, so
+  // callers must report "saved, engine pending", never a hard failure.
+  applied: boolean;
 }
 
 // Generate the config from current sources, write it, and reload mihomo.
@@ -53,8 +58,15 @@ export async function applyConfig(
   const tmpPath = `${configPath}.tmp`;
   writeFileSync(tmpPath, content, "utf8");
   renameSync(tmpPath, configPath);
-  await reloadConfig(targetPath);
-  return { nodes: proxies.length };
+  // The reload is the only network step — its failure must not read as "not saved":
+  // the DB row and the config file are already updated. fs errors above still throw.
+  try {
+    await reloadConfig(targetPath);
+  } catch (err) {
+    log.warn({ err }, "config written but mihomo reload failed — applies on next reload");
+    return { nodes: proxies.length, applied: false };
+  }
+  return { nodes: proxies.length, applied: true };
 }
 
 const PSEUDO_GROUPS = new Set(["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"]);

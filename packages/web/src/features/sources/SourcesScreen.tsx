@@ -21,6 +21,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { warnIfNotApplied } from "@/lib/apply-toast";
 import { pluralRu } from "@/lib/plural";
 import { useTRPC } from "@/lib/trpc";
 import { reorderSourcesList } from "./reorder";
@@ -35,8 +36,9 @@ export function SourcesScreen() {
 
   const toggleMutation = useMutation(
     trpc.sources.toggle.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         void qc.invalidateQueries({ queryKey: trpc.sources.list.queryKey() });
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),
@@ -44,9 +46,10 @@ export function SourcesScreen() {
 
   const refreshMutation = useMutation(
     trpc.sources.refresh.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         void qc.invalidateQueries({ queryKey: trpc.sources.list.queryKey() });
         toast.success("Источник обновлён");
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),
@@ -54,9 +57,10 @@ export function SourcesScreen() {
 
   const removeMutation = useMutation(
     trpc.sources.remove.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         void qc.invalidateQueries({ queryKey: trpc.sources.list.queryKey() });
         toast.success("Источник удалён");
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),
@@ -69,6 +73,7 @@ export function SourcesScreen() {
   // ordered by it). refetch on settle reconciles both screens with the server.
   const reorderMutation = useMutation(
     trpc.sources.reorder.mutationOptions({
+      onSuccess: (data) => warnIfNotApplied(data.applied),
       onError: (e) => toast.error(e.message),
       onSettled: () => void qc.invalidateQueries({ queryKey: trpc.sources.list.queryKey() }),
     }),

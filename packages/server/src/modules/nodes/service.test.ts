@@ -63,6 +63,7 @@ describe("applyConfig", () => {
     );
     const res = await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
     expect(res.nodes).toBe(1);
+    expect(res.applied).toBe(true);
     expect(reloaded).toBe(true);
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
@@ -83,6 +84,25 @@ describe("applyConfig", () => {
     await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
     // atomic write = temp file renamed into place; the dir holds only the final config
     expect(readdirSync(dir)).toEqual(["config.yaml"]);
+  });
+
+  it("still writes the config and reports applied:false when the reload fails", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response("engine down", { status: 503 })),
+    );
+    const res = await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    expect(res.applied).toBe(false);
+    expect(res.nodes).toBe(1);
+    // the file must be written regardless — it applies on the engine's next reload
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(cfg.proxies[0].name).toBe("A");
   });
 });
 
