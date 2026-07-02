@@ -27,4 +27,10 @@ describe("detectKindHint", () => {
     expect(detectKindHint("ssr://x")).toBe("sub");
     expect(detectKindHint("clash://install?url=x")).toBe("sub");
   });
+
+  it("detects wireguard / amneziawg configs", () => {
+    expect(detectKindHint("[Interface]\nPrivateKey = x\nJc=7\n[Peer]\n")).toBe("amneziawg");
+    expect(detectKindHint("[Interface]\nPrivateKey = x\n[Peer]\n")).toBe("wireguard");
+    expect(detectKindHint("vpn://AAAA")).toBe("amneziawg");
+  });
 });

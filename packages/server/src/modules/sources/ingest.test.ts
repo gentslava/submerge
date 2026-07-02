@@ -101,6 +101,15 @@ describe("ingestSource", () => {
     expect(res.proxies[0]?.name).toBe("A");
   });
 
+  it("ingests an AmneziaWG .conf as a single wireguard node", async () => {
+    const conf =
+      "[Interface]\nPrivateKey = k\nJc = 7\n[Peer]\nPublicKey = pk\nEndpoint = 1.2.3.4:443\n";
+    const r = await ingestSource(conf);
+    expect(r.kind).toBe("amneziawg");
+    expect(r.proxies).toHaveLength(1);
+    expect(r.proxies[0]?.type).toBe("wireguard");
+  });
+
   it("ingests happ:// via the decoder, deriving nodes from the decoded body", async () => {
     vi.stubGlobal(
       "fetch",

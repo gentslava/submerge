@@ -38,6 +38,8 @@ const KIND_SHORT: Partial<Record<SourceKind, string>> = {
   trojan: "Trojan",
   ss: "Shadowsocks",
   tuic: "TUIC",
+  wireguard: "WireGuard",
+  amneziawg: "AmneziaWG",
 };
 
 function KindIcon({ kind }: { kind: SourceKind }) {

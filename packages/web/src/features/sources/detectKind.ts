@@ -5,6 +5,8 @@ export type KindHint =
   | "trojan"
   | "ss"
   | "tuic"
+  | "wireguard"
+  | "amneziawg"
   | "happ"
   | "sub"
   | "unknown";
@@ -19,6 +21,7 @@ const SINGLE_LINK_HINT: Record<string, KindHint> = {
   trojan: "trojan",
   ss: "ss",
   tuic: "tuic",
+  vpn: "amneziawg", // Amnezia vpn:// blob
 };
 
 // Live preview of what a pasted value will become — a protocol for a single-node
@@ -27,6 +30,9 @@ const SINGLE_LINK_HINT: Record<string, KindHint> = {
 export function detectKindHint(value: string): KindHint {
   const v = value.trim();
   if (!v) return "unknown";
+  // A .conf (INI) has no scheme, so detect it before the scheme-based checks.
+  if (/^\s*\[Interface\]/m.test(v) && /PrivateKey\s*=/i.test(v))
+    return /^\s*(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4)\s*=/im.test(v) ? "amneziawg" : "wireguard";
   const scheme = v.match(/^([a-z][a-z0-9+.-]*):\/\//i)?.[1]?.toLowerCase();
   if (scheme && SINGLE_LINK_HINT[scheme]) return SINGLE_LINK_HINT[scheme];
   if (/^happ:\/\//i.test(v)) return "happ";
@@ -42,6 +48,8 @@ export const KIND_LABEL: Record<KindHint, string> = {
   trojan: "Trojan",
   ss: "Shadowsocks",
   tuic: "TUIC",
+  wireguard: "WireGuard",
+  amneziawg: "AmneziaWG",
   happ: "happ (зашифр.)",
   sub: "подписка / deep-link",
   unknown: "база64 / неизвестно",

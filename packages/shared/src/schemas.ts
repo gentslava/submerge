@@ -9,6 +9,8 @@ export const sourceKindSchema = z.enum([
   "trojan",
   "ss",
   "tuic",
+  "wireguard",
+  "amneziawg",
 ]);
 export type SourceKind = z.infer<typeof sourceKindSchema>;
 
@@ -75,7 +77,7 @@ export const nodeItemSchema = z.object({
   // doesn't expose them). Drive the node's second badge — "VLESS · Reality" /
   // "· WS" / "· TCP" — instead of the meaningless, uniform "· UDP" flag.
   network: z.string().optional(), // mihomo transport: tcp | ws | grpc | http | xhttp
-  security: z.enum(["reality", "tls", "none"]).optional(),
+  security: z.enum(["reality", "tls", "none", "amneziawg"]).optional(),
   // mihomo's recorded delay history (ms, oldest → newest; timeouts kept as 0 so the
   // chart can render them as instability) — drives the live latency chart.
   history: z.array(z.number()).default([]),

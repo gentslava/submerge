@@ -36,6 +36,7 @@ export function detectKind(value: string): SourceKind {
   if (!v) throw new Error("empty string");
   const scheme = schemeOf(v);
   if (scheme && SINGLE_LINK[scheme]) return SINGLE_LINK[scheme].kind; // supported single link
+  if (scheme === "vpn:") return "amneziawg"; // Amnezia vpn:// blob (decoded at ingest)
   if (/^happ:\/\/crypt/i.test(v)) return "happ"; // encrypted happ → decoder
   if (scheme && UNSUPPORTED_SINGLE.has(scheme))
     throw new Error(
@@ -43,6 +44,10 @@ export function detectKind(value: string): SourceKind {
     );
   if (extractSubUrl(v)) return "sub"; // url or client deep-link
   if (/^happ:\/\//i.test(v)) return "happ"; // happ:// without an embedded url → decoder
+  if (/^\s*\[Interface\]/m.test(v) && /(^|\n)\s*PrivateKey\s*=/i.test(v)) {
+    // WireGuard / AmneziaWG .conf (INI) — AWG when obfuscation params are present.
+    return /^\s*(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4)\s*=/im.test(v) ? "amneziawg" : "wireguard";
+  }
   try {
     const d = Buffer.from(v.replace(/\s+/g, ""), "base64").toString("utf8");
     if (d.includes("://")) return "sub"; // base64 subscription pasted directly

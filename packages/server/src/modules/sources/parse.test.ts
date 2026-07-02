@@ -43,6 +43,20 @@ describe("detectKind", () => {
   it("rejects unsupported single nodes", () => expect(() => detectKind("ssr://xxx")).toThrow());
 });
 
+describe("detectKind wireguard", () => {
+  const awg = "[Interface]\nPrivateKey = x\nJc = 7\n[Peer]\nEndpoint = h:443\n";
+  const wg = "[Interface]\nPrivateKey = x\n[Peer]\nEndpoint = h:443\n";
+  it("detects an AmneziaWG .conf (has AWG params) as amneziawg", () => {
+    expect(detectKind(awg)).toBe("amneziawg");
+  });
+  it("detects a plain WireGuard .conf as wireguard", () => {
+    expect(detectKind(wg)).toBe("wireguard");
+  });
+  it("routes a vpn:// link to amneziawg", () => {
+    expect(detectKind("vpn://AAAAsomething")).toBe("amneziawg");
+  });
+});
+
 describe("parseSingleLink", () => {
   it("dispatches vless:// to parseVless", () => {
     const p = parseSingleLink("vless://uuid@ex.com:443?type=tcp#N");
