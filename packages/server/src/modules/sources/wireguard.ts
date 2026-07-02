@@ -1,5 +1,6 @@
 // AmneziaWG / WireGuard .conf (INI) → mihomo `wireguard` proxy (+ amnezia-wg-option).
 // mihomo has no separate amneziawg type: AmneziaWG = wireguard + the obfuscation block.
+import { inflateSync } from "node:zlib";
 import type { Proxy as ProxyConfig } from "@submerge/shared";
 
 // Parse a WireGuard INI into { section(lower) → { key(lower) → rawValue } }. Comments
@@ -72,6 +73,54 @@ export function parseWireguardConf(text: string): ProxyConfig {
     p["amnezia-wg-option"] = awg;
   }
   return p as ProxyConfig;
+}
+
+// vpn:// → JSON. base64url (padded) → 4-byte big-endian length prefix (Qt qCompress)
+// → zlib inflate → JSON.
+export function decodeAmneziaVpnLink(uri: string): Record<string, unknown> {
+  const b64 = uri.trim().replace(/^vpn:\/\//i, "");
+  const buf = Buffer.from(b64 + "=".repeat((4 - (b64.length % 4)) % 4), "base64url");
+  const json = inflateSync(buf.subarray(4)).toString("utf8");
+  return JSON.parse(json) as Record<string, unknown>;
+}
+
+// Deep-search the decoded JSON for the first embedded WireGuard .conf string.
+function findEmbeddedConf(obj: unknown): string | null {
+  if (typeof obj === "string")
+    return /\[Interface\]/.test(obj) && /PrivateKey/i.test(obj) ? obj : null;
+  if (Array.isArray(obj)) {
+    for (const v of obj) {
+      const r = findEmbeddedConf(v);
+      if (r) return r;
+    }
+    return null;
+  }
+  if (obj && typeof obj === "object") {
+    for (const v of Object.values(obj)) {
+      const r = findEmbeddedConf(v);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+// Amnezia vpn:// → mihomo wireguard proxy. config_version 1 (self-hosted) embeds a
+// WireGuard .conf we reuse; config_version 2 (hosted Free/Premium) carries only an
+// api_key + gateway pointer — unsupported until the Phase B2 API spike.
+export function parseAmneziaVpnLink(uri: string): ProxyConfig {
+  const cfg = decodeAmneziaVpnLink(uri);
+  if (cfg.config_version === 2 || cfg.api_config) {
+    throw new Error(
+      "hosted Amnezia (Free/Premium) config needs the gateway API — not yet supported (planned in Phase B2)",
+    );
+  }
+  const conf = findEmbeddedConf(cfg);
+  if (!conf) throw new Error("could not find a WireGuard config inside the vpn:// blob");
+  const proxy = parseWireguardConf(conf) as Record<string, unknown>;
+  // Prefer the container's display name when the .conf had none (parser defaulted it).
+  const name = typeof cfg.name === "string" ? cfg.name.trim() : "";
+  if (name && /^(AmneziaWG|WireGuard) /.test(proxy.name as string)) proxy.name = name;
+  return proxy as ProxyConfig;
 }
 
 // "194.41.113.64:443" / "[2001:db8::1]:443" / "host.example:443" → [host, port].

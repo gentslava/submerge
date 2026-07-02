@@ -1,7 +1,7 @@
 import type { Proxy as ProxyConfig, SourceKind, SubscriptionMeta } from "@submerge/shared";
 import { decodeHapp } from "../../clients/happDecoder.js";
 import { detectKind, extractSubUrl, parseProxiesFromText, parseSingleLink } from "./parse.js";
-import { parseWireguardConf } from "./wireguard.js";
+import { parseAmneziaVpnLink, parseWireguardConf } from "./wireguard.js";
 
 export interface IngestResult {
   kind: SourceKind;
@@ -184,10 +184,9 @@ export async function ingestSource(
     return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [] };
   }
   if (kind === "wireguard" || kind === "amneziawg") {
-    if (value.trim().startsWith("vpn://")) {
-      throw new Error("vpn:// decoding is implemented in the next step"); // TEMP — replaced in Task 3
-    }
-    const proxy = parseWireguardConf(value);
+    const proxy = value.trim().startsWith("vpn://")
+      ? parseAmneziaVpnLink(value)
+      : parseWireguardConf(value);
     return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [] };
   }
   if (kind === "sub") {

@@ -1,5 +1,6 @@
+import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { parseWireguardConf } from "./wireguard.js";
+import { parseAmneziaVpnLink, parseWireguardConf } from "./wireguard.js";
 
 const AWG_CONF = `[Interface]
 PrivateKey = QPfJjCBp1htdPan2YGZp6N4H0O/5YBsO3+XtyHrY43I=
@@ -70,5 +71,48 @@ describe("parseWireguardConf", () => {
 
   it("throws on a non-wireguard blob", () => {
     expect(() => parseWireguardConf("not a conf")).toThrow();
+  });
+});
+
+function makeVpnLink(obj: unknown): string {
+  const json = Buffer.from(JSON.stringify(obj), "utf8");
+  const body = deflateSync(json);
+  const head = Buffer.alloc(4);
+  head.writeUInt32BE(json.length, 0);
+  return `vpn://${Buffer.concat([head, body]).toString("base64url")}`;
+}
+
+describe("parseAmneziaVpnLink", () => {
+  it("config_version 1 with an embedded WG .conf → wireguard proxy", () => {
+    const conf =
+      "[Interface]\nPrivateKey = k\nJc = 7\n[Peer]\nPublicKey = pk\nEndpoint = 1.2.3.4:443\n";
+    const link = makeVpnLink({
+      config_version: 1,
+      containers: [{ container: "amnezia-awg", awg: { last_config: conf } }],
+    });
+    const p = parseAmneziaVpnLink(link) as Record<string, unknown>;
+    expect(p.type).toBe("wireguard");
+    expect(p.server).toBe("1.2.3.4");
+    expect(p.port).toBe(443);
+    expect(p["amnezia-wg-option"]).toBeDefined();
+  });
+
+  it("prefers the container's display name over the .conf endpoint default", () => {
+    const conf = "[Interface]\nPrivateKey = k\n[Peer]\nPublicKey = pk\nEndpoint = 1.2.3.4:443\n";
+    const link = makeVpnLink({
+      config_version: 1,
+      name: "Berlin",
+      containers: [{ awg: { last_config: conf } }],
+    });
+    expect(parseAmneziaVpnLink(link).name).toBe("Berlin");
+  });
+
+  it("config_version 2 (hosted 'amnezia-free') is rejected with a clear message", () => {
+    const link = makeVpnLink({
+      config_version: 2,
+      api_config: { service_protocol: "awg", service_type: "amnezia-free" },
+      auth_data: { api_key: "x" },
+    });
+    expect(() => parseAmneziaVpnLink(link)).toThrow(/hosted|not yet|Free|API/i);
   });
 });
