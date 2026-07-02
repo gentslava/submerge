@@ -65,7 +65,7 @@ jobs:
       # Vulnerability scan of the pushed image — report-only for now (exit-code 0
       # never fails the job). To make it a hard gate once the baseline is clean,
       # set exit-code to "1".
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ghcr.io/gentslava/${{ matrix.image }}:${{ github.sha }}
           severity: HIGH,CRITICAL
