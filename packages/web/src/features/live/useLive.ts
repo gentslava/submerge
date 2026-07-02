@@ -7,8 +7,36 @@ import { useTRPC, useTRPCClient } from "@/lib/trpc";
 const TRAFFIC_WINDOW = 60; // last ~60 samples (~60 s at 1/s)
 const LATENCY_WINDOW = 40; // active-node latency samples (one per poll)
 
+// Per-second traffic samples arrive ~1/s — far more often than anything else.
+// Routing them through React state re-rendered every live consumer each second,
+// so they live in an external store instead: only components that actually
+// render traffic subscribe (via useSyncExternalStore), everyone else pays zero.
+export interface TrafficStore {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): readonly TrafficSample[];
+}
+
+export function createTrafficStore(): TrafficStore & { push(sample: TrafficSample): void } {
+  const buffer = new RingBuffer<TrafficSample>(TRAFFIC_WINDOW);
+  const listeners = new Set<() => void>();
+  let snapshot: readonly TrafficSample[] = [];
+  return {
+    push(sample) {
+      buffer.push(sample);
+      snapshot = [...buffer.toArray()]; // new identity per push — useSyncExternalStore contract
+      for (const l of listeners) l();
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot: () => snapshot,
+  };
+}
+
 export interface LiveState {
-  traffic: readonly TrafficSample[];
+  // Stable-identity store; render it with useSyncExternalStore(traffic.subscribe, …).
+  traffic: TrafficStore;
   mihomo: boolean | null;
   // Active node's latency series (ms; 0 = timeout), one sample appended per poll.
   // mihomo only keeps ~10 history entries, so we accumulate here for a longer chart.
@@ -21,12 +49,12 @@ export function useLive(): LiveState {
   const trpc = useTRPC();
   const client = useTRPCClient();
   const qc = useQueryClient();
-  const buffer = useRef(new RingBuffer<TrafficSample>(TRAFFIC_WINDOW));
+  const traffic = useRef(createTrafficStore());
   // Accumulated latency series keyed by the active node — reset when it changes,
   // seeded from mihomo's recent history, then extended one sample per poll.
   const latency = useRef<{ name: string | null; values: number[] }>({ name: null, values: [] });
   const [state, setState] = useState<LiveState>({
-    traffic: [],
+    traffic: traffic.current,
     mihomo: null,
     latency: [],
     totals: null,
@@ -60,8 +88,9 @@ export function useLive(): LiveState {
           }
           setState((s) => ({ ...s, latency: lat.values }));
         } else if (evt.type === "traffic") {
-          buffer.current.push({ up: evt.up, down: evt.down });
-          setState((s) => ({ ...s, traffic: [...buffer.current.toArray()] }));
+          // No setState: samples go to the external store so per-second events
+          // only re-render components that subscribed to it.
+          traffic.current.push({ up: evt.up, down: evt.down });
         } else if (evt.type === "totals") {
           setState((s) => ({ ...s, totals: { up: evt.up, down: evt.down } }));
         } else {

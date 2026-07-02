@@ -1,6 +1,7 @@
 import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
 import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
+import { log } from "../log.js";
 import { channelController } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
 import { collectProxies, proxyMeta, toNodeView } from "../modules/nodes/service.js";
@@ -40,4 +41,6 @@ export const liveHub = new LiveHub({
   },
   fetchTotals: getTotals,
   afterView: (view) => channelController.tick(view),
+  // The hub reports once per outage streak, so this can't flood the log.
+  onError: (scope, err) => log.warn({ scope, err }, "mihomo live %s failed", scope),
 });

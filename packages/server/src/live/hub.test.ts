@@ -87,6 +87,60 @@ describe("LiveHub", () => {
     expect(await got).toEqual([{ type: "health", mihomo: false }]);
   });
 
+  it("reports a poll error via onError once per outage, again after recovery", async () => {
+    const onError = vi.fn();
+    let down = true;
+    const hub = new LiveHub({
+      fetchView: vi.fn(async () => {
+        if (down) throw new Error("down");
+        return view;
+      }),
+      streamTraffic: async function* () {},
+      getInterval: () => 10,
+      onError,
+    });
+    await hub.pollOnce(); // outage starts — reported
+    await hub.pollOnce(); // still down — silent
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith("poll", expect.any(Error));
+    down = false;
+    await hub.pollOnce(); // recovered
+    down = true;
+    await hub.pollOnce(); // new outage — reported again
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
+
+  it("backs off traffic-stream retries exponentially and reports the first failure", async () => {
+    vi.useFakeTimers();
+    try {
+      const onError = vi.fn();
+      let attempts = 0;
+      const hub = new LiveHub({
+        fetchView: async () => view,
+        // biome-ignore lint/correctness/useYield: the stream must fail before yielding
+        streamTraffic: async function* () {
+          attempts += 1;
+          throw new Error("closed");
+        },
+        getInterval: () => 60_000,
+        onError,
+      });
+      hub.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toBe(1); // immediate first attempt
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(attempts).toBe(2); // retry after 1 s
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(attempts).toBe(2); // next retry needs 2 s — not yet
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(attempts).toBe(3);
+      expect(onError.mock.calls.filter(([scope]) => scope === "traffic")).toHaveLength(1);
+      hub.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("calls afterView with the fetched view each poll", async () => {
     const view: NodeView = { now: "AUTO", autoNow: "A", all: [] };
     const seen: NodeView[] = [];

@@ -88,6 +88,18 @@ export async function reloadConfig(targetPath: string): Promise<void> {
   if (!r.ok) throw new Error(`mihomo reload returned HTTP ${r.status}`);
 }
 
+// A malformed/partial frame must not kill the long-lived stream — skip it.
+function parseTrafficLine(line: string): TrafficSample | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const parsed = trafficSampleSchema.safeParse(json);
+  return parsed.success ? parsed.data : null;
+}
+
 // Stream mihomo /traffic as parsed NDJSON samples until `signal` aborts or the
 // upstream closes. Caller owns the lifecycle (re-open on error). NOTE: uses
 // fetch directly (NOT call()) because /traffic is long-lived — no 5 s timeout.
@@ -105,7 +117,10 @@ export async function* streamTraffic(signal: AbortSignal): AsyncGenerator<Traffi
     while (nl >= 0) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
-      if (line) yield trafficSampleSchema.parse(JSON.parse(line));
+      if (line) {
+        const sample = parseTrafficLine(line);
+        if (sample) yield sample;
+      }
       nl = buf.indexOf("\n");
     }
   }

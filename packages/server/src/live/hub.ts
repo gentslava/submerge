@@ -20,6 +20,10 @@ export interface HubDeps {
   // Best-effort: the hub swallows its errors so an active controller can never
   // break live polling. Used by the channel controller to pin/switch nodes.
   afterView?: (view: NodeView) => Promise<void>;
+  // Observability for the otherwise-swallowed failure paths. Called once per
+  // outage streak (first poll failure / first traffic-stream failure), not per
+  // retry — safe to wire straight to a logger without flooding it.
+  onError?: (scope: "poll" | "traffic", err: unknown) => void;
 }
 
 export class LiveHub {
@@ -31,6 +35,7 @@ export class LiveHub {
   private lastHealth = false;
   private lastActive: string | null = null;
   private lastTotals: { up: number; down: number } | null = null;
+  private pollErrorReported = false;
 
   constructor(deps: HubDeps) {
     this.deps = deps;
@@ -63,6 +68,7 @@ export class LiveHub {
         }
       }
       const view = await this.deps.fetchView();
+      this.pollErrorReported = false;
       this.lastView = view;
       // Under AUTO, the node we want to keep measuring is the one it resolves to.
       this.lastActive = view.now === "AUTO" ? view.autoNow : view.now;
@@ -85,7 +91,11 @@ export class LiveHub {
           /* /connections unavailable — keep last known totals */
         }
       }
-    } catch {
+    } catch (err) {
+      if (!this.pollErrorReported) {
+        this.pollErrorReported = true;
+        this.deps.onError?.("poll", err);
+      }
       this.setHealth(false);
     }
   }
@@ -107,15 +117,21 @@ export class LiveHub {
     // the retry sleep installs a NEW controller, and this generation must exit
     // rather than re-enter on it (avoids two concurrent pumps / duplicate events).
     const ctrl = this.trafficAbort;
+    let failures = 0;
     while (this.trafficAbort === ctrl && ctrl !== null) {
       try {
         for await (const s of this.deps.streamTraffic(ctrl.signal)) {
+          failures = 0; // data flowing again — reset the backoff
           this.emit({ type: "traffic", up: s.up, down: s.down });
         }
-      } catch {
-        // upstream closed/error → brief pause, then retry while still current
+      } catch (err) {
+        if (failures === 0) this.deps.onError?.("traffic", err);
       }
-      if (this.trafficAbort === ctrl) await new Promise((r) => setTimeout(r, 1000));
+      // Retry with capped exponential backoff (1 s → 30 s) so a persistent
+      // failure (wrong secret, engine gone) doesn't hot-loop every second.
+      failures += 1;
+      const delayMs = Math.min(1000 * 2 ** (failures - 1), 30_000);
+      if (this.trafficAbort === ctrl) await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 

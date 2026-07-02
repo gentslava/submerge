@@ -1,6 +1,7 @@
 import { setSettingInput } from "@submerge/shared";
 import { setMihomoSecret } from "../../clients/mihomo.js";
 import { db } from "../../db/client.js";
+import { log } from "../../log.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import { applyConfig } from "../nodes/service.js";
 import { getSettingsView, setSetting } from "./service.js";
@@ -17,8 +18,10 @@ export const settingsRouter = router({
     if (input.key === "mihomoSecret") {
       try {
         await applyConfig(db);
-      } catch {
-        /* engine unreachable or current secret stale — the client re-point below recovers */
+      } catch (err) {
+        // Deliberately non-fatal (the client re-point below recovers a wrong secret),
+        // but a legitimate reload failure must leave a trace for the operator.
+        log.warn({ err }, "mihomo reload after secret rotation failed");
       } finally {
         setMihomoSecret(input.value);
       }

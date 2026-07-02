@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { hash, verify } from "@node-rs/argon2";
-import { eq } from "drizzle-orm";
+import { eq, lte } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { sessions } from "../db/schema.js";
 
@@ -46,6 +46,12 @@ export function validateSession(db: Db, id: string | undefined): boolean {
 
 export function deleteSession(db: Db, id: string): void {
   db.delete(sessions).where(eq(sessions.id, id)).run();
+}
+
+// validateSession prunes an expired row only when that exact id is presented
+// again; abandoned sessions would accumulate forever. Called on boot.
+export function pruneExpiredSessions(db: Db): void {
+  db.delete(sessions).where(lte(sessions.expiresAt, Date.now())).run();
 }
 
 // In-memory sliding-window rate limit (single admin; no Redis). 5 fails / 60 s.

@@ -1,6 +1,7 @@
 import type { ChannelPolicy } from "@submerge/shared";
 import { Link } from "@tanstack/react-router";
 import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
+import { useLiveState } from "@/features/live/LiveProvider";
 import { formatInterval, formatRelative } from "@/lib/duration";
 import { cn } from "@/lib/utils";
 
@@ -81,6 +82,15 @@ export function AutoStrategyCard({
   lastDecision,
 }: AutoStrategyCardProps) {
   const params = policyParams(policy);
+  // Honest stream indicator: reflects the real SSE/mihomo health, same tri-state
+  // as the sidebar's ProxyCard — never a hard-coded green dot.
+  const { mihomo } = useLiveState();
+  const live =
+    mihomo === null
+      ? { dot: "bg-idle", label: "Проверка" }
+      : mihomo
+        ? { dot: "bg-online", label: "Live" }
+        : { dot: "bg-timeout", label: "Оффлайн" };
 
   const status = isAuto
     ? autoNow
@@ -123,8 +133,8 @@ export function AutoStrategyCard({
         </div>
         <div className="flex items-center gap-3.5">
           <span className="flex items-center gap-[7px]">
-            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-online" />
-            <span className="text-xs text-text-secondary">Live</span>
+            <span aria-hidden="true" className={cn("h-2 w-2 rounded-full", live.dot)} />
+            <span className="text-xs text-text-secondary">{live.label}</span>
           </span>
           {/* Auto-select tuning is editable in Settings → Авто-выбор узла. */}
           <Link

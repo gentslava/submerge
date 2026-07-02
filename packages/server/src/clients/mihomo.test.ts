@@ -82,6 +82,26 @@ describe("mihomo client", () => {
     await expect(getProxies()).rejects.toThrow(/mihomo/i);
   });
 
+  it("skips malformed NDJSON lines instead of killing the stream", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        const enc = new TextEncoder();
+        c.enqueue(enc.encode('{"up":1,"down":2}\nnot-json\n{"up":"oops"}\n{"up":3,"down":4}\n'));
+        c.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 200 })),
+    );
+    const samples: Array<{ up: number; down: number }> = [];
+    for await (const s of streamTraffic(new AbortController().signal)) samples.push(s);
+    expect(samples).toEqual([
+      { up: 1, down: 2 },
+      { up: 3, down: 4 },
+    ]);
+  });
+
   it("streams and parses NDJSON traffic samples", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(c) {

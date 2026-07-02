@@ -6,6 +6,7 @@ import {
   createSession,
   deleteSession,
   isRateLimited,
+  pruneExpiredSessions,
   recordLoginFailure,
   resetRateLimit,
   validateSession,
@@ -45,6 +46,20 @@ describe("auth service", () => {
       .values({ id: "old", expiresAt: Date.now() - 1000 })
       .run();
     expect(validateSession(db, "old")).toBe(false);
+  });
+
+  it("prunes all expired sessions but keeps live ones", () => {
+    const db = freshDb();
+    db.insert(sessions)
+      .values([
+        { id: "dead-1", expiresAt: Date.now() - 1000 },
+        { id: "dead-2", expiresAt: Date.now() - 5000 },
+      ])
+      .run();
+    const live = createSession(db);
+    pruneExpiredSessions(db);
+    const left = db.select().from(sessions).all();
+    expect(left.map((r) => r.id)).toEqual([live.id]);
   });
 
   it("rate-limits after too many failures", () => {
