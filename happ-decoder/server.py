@@ -31,7 +31,15 @@ def start_mitm():
 
 
 def start_xvfb():
-    # прямой Xvfb надёжнее xvfb-run (тот требует xauth)
+    # прямой Xvfb надёжнее xvfb-run (тот требует xauth).
+    # docker restart сохраняет /tmp: устаревший .X99-lock (его старый pid после
+    # рестарта может принадлежать живому раннему процессу) заставляет Xvfb молча
+    # упасть — и каждый decode уходит в таймаут. Дисплей наш, чистим его артефакты.
+    for stale in ("/tmp/.X99-lock", "/tmp/.X11-unix/X99"):
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
     subprocess.Popen(
         ["Xvfb", ":99", "-screen", "0", "1024x768x24"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

@@ -41,6 +41,18 @@ RUN set -eux; \
     cp /work/.mitmproxy/mitmproxy-ca-cert.pem /usr/local/share/ca-certificates/mitmproxy.crt; \
     update-ca-certificates
 
+# Run as a dedicated non-root user: this container MITMs and parses untrusted
+# provider responses — the largest attack surface in the stack. uid 998 on purpose
+# (999 is submerge's app user on the shared ./mihomo mount; the decoder only READS
+# it). /tmp/.X11-unix is pre-created root-owned+sticky so non-root Xvfb can start.
+# NB: unpacking the Happ .deb with `tar xf` into /tmp restores the archive's `./`
+# mode onto /tmp itself (755) — Xvfb/mitmproxy/RESULT writes then fail for any
+# non-root user. Restore the sticky world-writable mode.
+RUN useradd --system --uid 998 --user-group --home-dir /work decoder \
+ && chown -R decoder:decoder /work \
+ && chmod 1777 /tmp \
+ && mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+
 COPY mitm_capture.py server.py /app/
 # NB: do NOT set LD_LIBRARY_PATH=/happ/lib globally. Happ bundles an older libzstd (1.4.8)
 # in /happ/lib; if mitmdump inherits that path it loads it instead of the system 1.5.5 and
@@ -49,6 +61,7 @@ COPY mitm_capture.py server.py /app/
 # /happ/lib, and decode() sets LD_LIBRARY_PATH explicitly for that subprocess.
 ENV QT_QPA_PLATFORM=xcb LANG=C.UTF-8 \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt PORT=8080
+USER decoder
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8080/health || exit 1
