@@ -131,7 +131,7 @@ describe("buildConfig policy mapping", () => {
   it("maps speed.reevaluateWhileHealthy=true to AUTO lazy=false + tolerance", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(buildConfig([proxy("A")], speed())) as Record<string, any>;
-    const auto = cfg["proxy-groups"].find((g: any) => g.name === "AUTO");
+    const auto = cfg["proxy-groups"].find((g: { name: string }) => g.name === "AUTO");
     expect(auto.type).toBe("url-test");
     expect(auto.lazy).toBe(false);
     expect(auto.tolerance).toBe(50);
@@ -150,7 +150,7 @@ describe("buildConfig policy mapping", () => {
     };
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(buildConfig([proxy("A"), proxy("B")], sticky)) as Record<string, any>;
-    const auto = cfg["proxy-groups"].find((g: any) => g.name === "AUTO");
+    const auto = cfg["proxy-groups"].find((g: { name: string }) => g.name === "AUTO");
     expect(auto.type).toBe("select");
     expect(auto.proxies).toEqual(["A", "B"]);
     expect(auto.tolerance).toBeUndefined();

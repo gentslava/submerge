@@ -14,7 +14,7 @@
     "test": "pnpm -r run test"
   },
   "devDependencies": {
-    "@biomejs/biome": "latest",
-    "typescript": "latest"
+    "@biomejs/biome": "^2.5.1",
+    "typescript": "^6.0.3"
   }
 }

@@ -9,10 +9,10 @@ importers:
   .:
     devDependencies:
       '@biomejs/biome':
-        specifier: latest
+        specifier: ^2.5.1
         version: 2.5.1
       typescript:
-        specifier: latest
+        specifier: ^6.0.3
         version: 6.0.3
 
   packages/server:
@@ -24,51 +24,51 @@ importers:
         specifier: workspace:*
         version: link:../shared
       '@trpc/server':
-        specifier: latest
+        specifier: ^11.18.0
         version: 11.18.0(typescript@6.0.3)
       better-sqlite3:
-        specifier: latest
+        specifier: ^12.11.1
         version: 12.11.1
       drizzle-orm:
-        specifier: latest
+        specifier: ^0.45.2
         version: 0.45.2(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)
       js-yaml:
-        specifier: latest
+        specifier: ^5.2.0
         version: 5.2.0
       pino:
-        specifier: latest
+        specifier: ^10.3.1
         version: 10.3.1
       zod:
-        specifier: latest
+        specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
       '@types/better-sqlite3':
-        specifier: latest
+        specifier: ^7.6.13
         version: 7.6.13
       '@types/js-yaml':
-        specifier: latest
+        specifier: ^4.0.9
         version: 4.0.9
       '@types/node':
-        specifier: latest
+        specifier: ^26.0.1
         version: 26.0.1
       drizzle-kit:
-        specifier: latest
+        specifier: ^0.31.10
         version: 0.31.10
       tsx:
-        specifier: latest
+        specifier: ^4.22.4
         version: 4.22.4
       vitest:
-        specifier: latest
+        specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(jsdom@29.1.1)(vite@8.1.2(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
 
   packages/shared:
     dependencies:
       zod:
-        specifier: latest
+        specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
       vitest:
-        specifier: latest
+        specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(jsdom@29.1.1)(vite@8.1.2(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
 
   packages/web:
@@ -86,89 +86,89 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.7)
       '@hookform/resolvers':
-        specifier: latest
+        specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.80.0(react@19.2.7))
       '@submerge/shared':
         specifier: workspace:*
         version: link:../shared
       '@tanstack/react-query':
-        specifier: latest
+        specifier: ^5.101.2
         version: 5.101.2(react@19.2.7)
       '@tanstack/react-router':
-        specifier: latest
+        specifier: ^1.170.16
         version: 1.170.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@trpc/client':
-        specifier: latest
+        specifier: ^11.18.0
         version: 11.18.0(@trpc/server@11.18.0(typescript@6.0.3))(typescript@6.0.3)
       '@trpc/tanstack-react-query':
-        specifier: latest
+        specifier: ^11.18.0
         version: 11.18.0(@tanstack/react-query@5.101.2(react@19.2.7))(@trpc/client@11.18.0(@trpc/server@11.18.0(typescript@6.0.3))(typescript@6.0.3))(@trpc/server@11.18.0(typescript@6.0.3))(react@19.2.7)(typescript@6.0.3)
       class-variance-authority:
-        specifier: latest
+        specifier: ^0.7.1
         version: 0.7.1
       clsx:
-        specifier: latest
+        specifier: ^2.1.1
         version: 2.1.1
       lucide-react:
-        specifier: latest
+        specifier: ^1.22.0
         version: 1.22.0(react@19.2.7)
       react:
-        specifier: latest
+        specifier: ^19.2.7
         version: 19.2.7
       react-dom:
-        specifier: latest
+        specifier: ^19.2.7
         version: 19.2.7(react@19.2.7)
       react-hook-form:
-        specifier: latest
+        specifier: ^7.80.0
         version: 7.80.0(react@19.2.7)
       sonner:
-        specifier: latest
+        specifier: ^2.0.7
         version: 2.0.7(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       tailwind-merge:
-        specifier: latest
+        specifier: ^3.6.0
         version: 3.6.0
       uplot:
         specifier: ^1.6.32
         version: 1.6.32
       zod:
-        specifier: latest
+        specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
       '@submerge/server':
         specifier: workspace:*
         version: link:../server
       '@tailwindcss/vite':
-        specifier: latest
+        specifier: ^4.3.2
         version: 4.3.2(vite@8.1.2(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
       '@testing-library/jest-dom':
-        specifier: latest
+        specifier: ^6.9.1
         version: 6.9.1
       '@testing-library/react':
-        specifier: latest
+        specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@testing-library/user-event':
-        specifier: latest
+        specifier: ^14.6.1
         version: 14.6.1(@testing-library/dom@10.4.1)
       '@types/react':
-        specifier: latest
+        specifier: ^19.2.17
         version: 19.2.17
       '@types/react-dom':
-        specifier: latest
+        specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.17)
       '@vitejs/plugin-react':
-        specifier: latest
+        specifier: ^6.0.3
         version: 6.0.3(vite@8.1.2(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
       jsdom:
-        specifier: latest
+        specifier: ^29.1.1
         version: 29.1.1
       tailwindcss:
-        specifier: latest
+        specifier: ^4.3.2
         version: 4.3.2
       vite:
-        specifier: latest
+        specifier: ^8.1.2
         version: 8.1.2(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)
       vitest:
-        specifier: latest
+        specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(jsdom@29.1.1)(vite@8.1.2(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4))
 
 packages:

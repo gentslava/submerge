@@ -16,6 +16,7 @@ export function Chart({
 
   // uPlot is created once on mount; `makeOpts`/`data`/`height` are read at init only,
   // and subsequent data changes are pushed via the setData effect below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentionally mount-only — re-running would destroy/recreate the uPlot instance on every parent render
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;

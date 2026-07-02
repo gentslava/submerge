@@ -11,8 +11,18 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src"],
-  "scripts": { "build": "tsc -b", "test": "vitest run" },
-  "dependencies": { "zod": "latest" },
-  "devDependencies": { "vitest": "latest" }
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
+  }
 }

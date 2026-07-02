@@ -69,6 +69,7 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
             // are visible and the chart reads as "filling up" right-to-left.
             if (v === undefined) {
               return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: fixed CAP-length window — the column position IS the identity
                 <div key={slot} className="flex flex-1 items-end">
                   <div className="w-full rounded-sm bg-border-subtle" style={{ height: 3 }} />
                 </div>
@@ -82,6 +83,7 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
                 ? "bg-accent"
                 : "bg-chart-track";
             return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed CAP-length window — the column position IS the identity
               <div key={slot} className="group relative flex flex-1 items-end">
                 <div className={`w-full rounded-sm ${color}`} style={{ height }} />
                 <span className="pointer-events-none absolute -top-5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-elevated px-1.5 py-0.5 font-mono text-[10px] text-text-primary opacity-0 shadow transition-opacity group-hover:opacity-100">

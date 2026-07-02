@@ -1,0 +1,25 @@
+# Automated dependency updates. npm deps use real semver ranges (not "latest"),
+# so every bump — including majors — arrives as a reviewable PR instead of a
+# silent jump on the next lockfile regeneration.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /happ-decoder
+    schedule:
+      interval: weekly

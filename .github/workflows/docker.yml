@@ -62,3 +62,12 @@ jobs:
             ghcr.io/gentslava/${{ matrix.image }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+      # Vulnerability scan of the pushed image. Non-blocking for now (the report
+      # lands in the job log); tighten to a hard gate once the baseline is clean.
+      - uses: aquasecurity/trivy-action@0.28.0
+        continue-on-error: true
+        with:
+          image-ref: ghcr.io/gentslava/${{ matrix.image }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"

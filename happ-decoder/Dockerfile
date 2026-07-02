@@ -2,6 +2,8 @@
 # Мультиарх: качает .deb под целевую архитектуру (buildx подставляет TARGETARCH).
 FROM ubuntu:24.04
 ARG TARGETARCH
+# Floor version for local builds only — CI (docker.yml) resolves the latest Happ
+# release via the GitHub API and overrides this build-arg on every image build.
 ARG HAPP_VERSION=2.18.3
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -48,4 +50,6 @@ COPY mitm_capture.py server.py /app/
 ENV QT_QPA_PLATFORM=xcb LANG=C.UTF-8 \
     SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt PORT=8080
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/health || exit 1
 CMD ["python3", "/app/server.py"]

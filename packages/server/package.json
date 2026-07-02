@@ -16,19 +16,19 @@
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",
     "@submerge/shared": "workspace:*",
-    "@trpc/server": "latest",
-    "better-sqlite3": "latest",
-    "drizzle-orm": "latest",
-    "js-yaml": "latest",
-    "pino": "latest",
-    "zod": "latest"
+    "@trpc/server": "^11.18.0",
+    "better-sqlite3": "^12.11.1",
+    "drizzle-orm": "^0.45.2",
+    "js-yaml": "^5.2.0",
+    "pino": "^10.3.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "latest",
-    "@types/js-yaml": "latest",
-    "@types/node": "latest",
-    "drizzle-kit": "latest",
-    "tsx": "latest",
-    "vitest": "latest"
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^26.0.1",
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.22.4",
+    "vitest": "^4.1.9"
   }
 }

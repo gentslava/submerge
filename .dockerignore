@@ -3,7 +3,11 @@
 **/*.tsbuildinfo
 .git
 .github
-combine
+.env
+.env.*
+.local-run
+.claude
+.superpowers
 happ-decoder
 mihomo
 data
