@@ -55,6 +55,14 @@ describe("detectKind wireguard", () => {
   it("routes a vpn:// link to amneziawg", () => {
     expect(detectKind("vpn://AAAAsomething")).toBe("amneziawg");
   });
+  it("classifies S3/S4-only and 1.5-key configs as amneziawg", () => {
+    expect(detectKind("[Interface]\nPrivateKey = x\nS3 = 1\n[Peer]\nEndpoint = h:443\n")).toBe(
+      "amneziawg",
+    );
+    expect(
+      detectKind("[Interface]\nPrivateKey = x\nI1 = <b 0x1>\n[Peer]\nEndpoint = h:443\n"),
+    ).toBe("amneziawg");
+  });
 });
 
 describe("parseSingleLink", () => {

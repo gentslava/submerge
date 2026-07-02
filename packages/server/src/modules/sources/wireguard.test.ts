@@ -72,6 +72,36 @@ describe("parseWireguardConf", () => {
   it("throws on a non-wireguard blob", () => {
     expect(() => parseWireguardConf("not a conf")).toThrow();
   });
+
+  it("maps the full AmneziaWG 1.5 key set with correct types (i*/j* strings)", () => {
+    const conf = `[Interface]
+PrivateKey = k
+Address = 10.8.2.2/32, fd00::2/128
+S3 = 10
+S4 = 20
+Itime = 5
+I1 = <b 0xf6ab...>
+J1 = <r 20>
+[Peer]
+PublicKey = pk
+Endpoint = 1.2.3.4:443`;
+    const p = parseWireguardConf(conf) as Record<string, unknown>;
+    expect(p.ip).toBe("10.8.2.2");
+    expect(p.ipv6).toBe("fd00::2");
+    const awg = p["amnezia-wg-option"] as Record<string, unknown>;
+    expect(awg.s3).toBe(10);
+    expect(awg.itime).toBe(5);
+    expect(awg.i1).toBe("<b 0xf6ab...>"); // string, not NaN
+    expect(awg.j1).toBe("<r 20>");
+  });
+
+  it("classifies a .conf with only S3/S4 as amneziawg (detect/emit agree)", () => {
+    // guarded by detectKind, tested in parse.test.ts; here assert the parser still emits the block
+    const p = parseWireguardConf(
+      "[Interface]\nPrivateKey = k\nS3 = 1\n[Peer]\nEndpoint = h:443\n",
+    ) as Record<string, unknown>;
+    expect(p["amnezia-wg-option"]).toEqual({ s3: 1 });
+  });
 });
 
 function makeVpnLink(obj: unknown): string {

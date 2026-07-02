@@ -184,7 +184,7 @@ export async function ingestSource(
     return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [] };
   }
   if (kind === "wireguard" || kind === "amneziawg") {
-    const proxy = value.trim().startsWith("vpn://")
+    const proxy = /^vpn:\/\//i.test(value.trim())
       ? parseAmneziaVpnLink(value)
       : parseWireguardConf(value);
     return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [] };

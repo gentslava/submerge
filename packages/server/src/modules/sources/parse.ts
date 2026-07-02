@@ -46,7 +46,9 @@ export function detectKind(value: string): SourceKind {
   if (/^happ:\/\//i.test(v)) return "happ"; // happ:// without an embedded url → decoder
   if (/^\s*\[Interface\]/m.test(v) && /(^|\n)\s*PrivateKey\s*=/i.test(v)) {
     // WireGuard / AmneziaWG .conf (INI) — AWG when obfuscation params are present.
-    return /^\s*(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4)\s*=/im.test(v) ? "amneziawg" : "wireguard";
+    return /^\s*(Jc|Jmin|Jmax|S1|S2|S3|S4|H1|H2|H3|H4|Itime|I1|I2|I3|I4|I5|J1|J2|J3)\s*=/im.test(v)
+      ? "amneziawg"
+      : "wireguard";
   }
   try {
     const d = Buffer.from(v.replace(/\s+/g, ""), "base64").toString("utf8");

@@ -27,7 +27,23 @@ function iniSections(text: string): Record<string, Record<string, string>> {
   return out;
 }
 
-const AWG_KEYS = ["jc", "jmin", "jmax", "s1", "s2", "s3", "s4", "h1", "h2", "h3", "h4"] as const;
+// AmneziaWG obfuscation params mihomo accepts. Numeric vs string (i*/j* are
+// junk-packet DSL strings, not numbers — Number() would give NaN).
+const AWG_NUM_KEYS = [
+  "jc",
+  "jmin",
+  "jmax",
+  "s1",
+  "s2",
+  "s3",
+  "s4",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "itime",
+] as const;
+const AWG_STR_KEYS = ["i1", "i2", "i3", "i4", "i5", "j1", "j2", "j3"] as const;
 
 export function parseWireguardConf(text: string): ProxyConfig {
   const ini = iniSections(text);
@@ -44,7 +60,16 @@ export function parseWireguardConf(text: string): ProxyConfig {
           .filter(Boolean)
       : undefined;
   const nameComment = text.match(/^\s*#\s*_?Name\s*=\s*(.+)$/im)?.[1]?.trim();
-  const hasAwg = AWG_KEYS.some((k) => iface[k] != null);
+
+  const awg: Record<string, number | string> = {};
+  for (const k of AWG_NUM_KEYS) {
+    const n = Number(iface[k]);
+    if (iface[k] != null && iface[k] !== "" && Number.isFinite(n)) awg[k] = n;
+  }
+  for (const k of AWG_STR_KEYS) {
+    if (iface[k]) awg[k] = iface[k] as string;
+  }
+  const hasAwg = Object.keys(awg).length > 0;
 
   const p: Record<string, unknown> = {
     name: nameComment || `${hasAwg ? "AmneziaWG" : "WireGuard"} ${host}`,
@@ -55,10 +80,17 @@ export function parseWireguardConf(text: string): ProxyConfig {
     "public-key": peer.publickey,
     udp: true,
   };
-  const ip = iface.address
-    ? (iface.address.split(",")[0] as string).trim().split("/")[0]
-    : undefined;
-  if (ip) p.ip = ip;
+  // Address may be v4, v6, or dual-stack ("10.8.2.2/32, fd00::2/128"); map each.
+  if (iface.address) {
+    for (const a of iface.address
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)) {
+      const addr = (a.split("/")[0] as string).trim();
+      if (addr.includes(":")) p.ipv6 ??= addr;
+      else p.ip ??= addr;
+    }
+  }
   if (peer.presharedkey) p["pre-shared-key"] = peer.presharedkey;
   const allowed = list(peer.allowedips);
   if (allowed) p["allowed-ips"] = allowed;
@@ -67,11 +99,7 @@ export function parseWireguardConf(text: string): ProxyConfig {
   if (iface.mtu) p.mtu = Number(iface.mtu);
   if (peer.persistentkeepalive) p["persistent-keepalive"] = Number(peer.persistentkeepalive);
 
-  if (hasAwg) {
-    const awg: Record<string, number> = {};
-    for (const k of AWG_KEYS) if (iface[k] != null) awg[k] = Number(iface[k]);
-    p["amnezia-wg-option"] = awg;
-  }
+  if (hasAwg) p["amnezia-wg-option"] = awg;
   return p as ProxyConfig;
 }
 

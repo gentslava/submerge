@@ -32,7 +32,9 @@ export function detectKindHint(value: string): KindHint {
   if (!v) return "unknown";
   // A .conf (INI) has no scheme, so detect it before the scheme-based checks.
   if (/^\s*\[Interface\]/m.test(v) && /PrivateKey\s*=/i.test(v))
-    return /^\s*(Jc|Jmin|Jmax|S1|S2|H1|H2|H3|H4)\s*=/im.test(v) ? "amneziawg" : "wireguard";
+    return /^\s*(Jc|Jmin|Jmax|S1|S2|S3|S4|H1|H2|H3|H4|Itime|I1|I2|I3|I4|I5|J1|J2|J3)\s*=/im.test(v)
+      ? "amneziawg"
+      : "wireguard";
   const scheme = v.match(/^([a-z][a-z0-9+.-]*):\/\//i)?.[1]?.toLowerCase();
   if (scheme && SINGLE_LINK_HINT[scheme]) return SINGLE_LINK_HINT[scheme];
   if (/^happ:\/\//i.test(v)) return "happ";
