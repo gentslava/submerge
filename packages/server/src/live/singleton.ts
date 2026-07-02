@@ -1,4 +1,4 @@
-import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
+import { DEFAULT_POLL_INTERVAL, MIHOMO_BUILTIN_POLICIES } from "@submerge/shared";
 import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
 import { log } from "../log.js";
@@ -9,7 +9,9 @@ import { getSetting } from "../modules/settings/service.js";
 import { LiveHub } from "./hub.js";
 
 // mihomo built-in policies aren't real proxies — delay-testing them errors, so skip.
-const PSEUDO_NODES = new Set(["DIRECT", "REJECT", "REJECT-DROP", "PASS", "COMPATIBLE"]);
+// (Deliberately NOT the wider PSEUDO_NODE_NAMES: AUTO resolves to a real member
+// before we get here, and groups CAN be delay-tested.)
+const PSEUDO_NODES = new Set<string>(MIHOMO_BUILTIN_POLICIES);
 
 // Poll cadence is settings-driven: read `pollInterval` (seconds), clamp to >= 1,
 // fall back to the default. Returns milliseconds for the hub's scheduler.

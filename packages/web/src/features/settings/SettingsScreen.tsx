@@ -1,4 +1,9 @@
-import { type ChannelPolicy, DEFAULT_POLL_INTERVAL, DEFAULT_SPEED_POLICY } from "@submerge/shared";
+import {
+  type ChannelPolicy,
+  DEFAULT_POLL_INTERVAL,
+  DEFAULT_SPEED_POLICY,
+  PSEUDO_NODE_NAMES,
+} from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -24,16 +29,7 @@ const POLL_PRESETS = [1, 2, 5, 10, 30];
 const CHECK_PRESETS = [5, 10, 30, 60, 300, 600];
 
 // mihomo built-in groups/policies — never valid "priority node" (manual pin) targets.
-const PSEUDO_NODES = new Set([
-  "AUTO",
-  "PROXY",
-  "DIRECT",
-  "REJECT",
-  "REJECT-DROP",
-  "PASS",
-  "COMPATIBLE",
-  "GLOBAL",
-]);
+const PSEUDO_NODES = new Set<string>(PSEUDO_NODE_NAMES);
 
 // Render interval <option>s (с / мин), keeping the current value present even off-preset.
 function secondsOptions(presets: number[], current: string) {

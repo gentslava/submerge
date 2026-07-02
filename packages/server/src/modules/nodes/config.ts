@@ -3,6 +3,7 @@ import {
   type ChannelPolicy,
   DEFAULT_SPEED_POLICY,
   type Proxy as ProxyConfig,
+  PSEUDO_NODE_NAMES,
 } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
@@ -54,7 +55,8 @@ export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
   });
 }
 
-const RESERVED_GROUP_NAMES = ["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"];
+// A collapsed group may not shadow any built-in policy or routing group name.
+const RESERVED_GROUP_NAMES = PSEUDO_NODE_NAMES;
 
 // The mihomo tuning a `speed` policy contributes to url-test groups (AUTO + any
 // collapsed same-name subgroup). Non-speed policies make AUTO a plain `select`
