@@ -12,8 +12,9 @@ import {
   Timer,
   Trash2,
 } from "lucide-react";
-import { type CSSProperties, forwardRef, type ReactNode } from "react";
+import { type CSSProperties, forwardRef, type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Switch } from "@/components/ui/switch";
 import { formatBytes } from "@/features/nodes/nodeView";
 import { pluralRu } from "@/lib/plural";
@@ -151,9 +152,10 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
   ref,
 ) {
   const isBusy = busy === true;
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   function handleRemove() {
-    if (window.confirm("Удалить источник?")) onRemove();
+    setConfirmOpen(true);
   }
 
   return (
@@ -227,6 +229,14 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
           </IconBtn>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Удалить источник?"
+        description={`${source.label || source.value} — узлы источника пропадут из списка.`}
+        onConfirm={onRemove}
+        onClose={() => setConfirmOpen(false)}
+      />
     </div>
   );
 });
