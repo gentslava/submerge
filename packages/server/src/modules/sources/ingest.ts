@@ -9,6 +9,11 @@ export interface IngestResult {
   proxies: ProxyConfig[];
   meta: SubscriptionMeta | null;
   skipped: string[];
+  // Canonical subscription identity — the decoded (happ) or extracted (deep-link)
+  // sub URL; null for single-node kinds and inline subs. Used for duplicate
+  // detection: the raw `value` can differ for the same subscription (crypt5
+  // ciphertexts are non-deterministic, deep-links wrap the same URL).
+  subUrl: string | null;
 }
 
 // Source kinds that are a single-node link (the kind IS the protocol) — routed
@@ -135,7 +140,13 @@ export async function ingestHapp(
   link: string,
   useHwid = false,
   hwid = "",
-): Promise<{ via: string; proxies: ProxyConfig[]; info: SubInfo; skipped: string[] }> {
+): Promise<{
+  via: string;
+  proxies: ProxyConfig[];
+  info: SubInfo;
+  skipped: string[];
+  subUrl: string | null;
+}> {
   const decoded = await decodeHapp(link, useHwid);
   const parsed = decoded.body
     ? parseProxiesFromText(decoded.body)
@@ -169,7 +180,7 @@ export async function ingestHapp(
       `happ decoded (${decoded.url || "—"}) but the subscription format was not recognized`,
     );
   }
-  return { via: decoded.url || "happ", proxies, info, skipped };
+  return { via: decoded.url || "happ", proxies, info, skipped, subUrl: decoded.url || null };
 }
 
 // Dispatch on detected kind and return a normalized ingest result (no DB writes).
@@ -181,25 +192,32 @@ export async function ingestSource(
   const kind = detectKind(value);
   if (SINGLE_LINK_KINDS.has(kind)) {
     const proxy = parseSingleLink(value);
-    return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [] };
+    return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [], subUrl: null };
   }
   if (kind === "wireguard" || kind === "amneziawg") {
     const proxy = /^vpn:\/\//i.test(value.trim())
       ? parseAmneziaVpnLink(value)
       : parseWireguardConf(value);
-    return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [] };
+    return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [], subUrl: null };
   }
   if (kind === "sub") {
     const url = extractSubUrl(value);
     if (url) {
       const { proxies, info, skipped } = await fetchSubscription(url, useHwid, hwid);
-      return { kind, label: info.title || url, proxies, meta: toMeta(info), skipped };
+      return { kind, label: info.title || url, proxies, meta: toMeta(info), skipped, subUrl: url };
     }
     const { proxies, skipped } = parseProxiesFromText(value);
     if (!proxies.length) throw new Error("subscription had no nodes");
-    return { kind, label: "inline subscription", proxies, meta: null, skipped };
+    return { kind, label: "inline subscription", proxies, meta: null, skipped, subUrl: null };
   }
   // happ
-  const { via, proxies, info, skipped } = await ingestHapp(value, useHwid, hwid);
-  return { kind, label: info.title || `happ → ${via}`, proxies, meta: toMeta(info), skipped };
+  const { via, proxies, info, skipped, subUrl } = await ingestHapp(value, useHwid, hwid);
+  return {
+    kind,
+    label: info.title || `happ → ${via}`,
+    proxies,
+    meta: toMeta(info),
+    skipped,
+    subUrl,
+  };
 }

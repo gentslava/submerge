@@ -13,6 +13,11 @@ export const sources = sqliteTable("sources", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   kind: text("kind").notNull(),
   value: text("value").notNull(),
+  // Canonical subscription identity: the decoded (happ) or extracted (deep-link)
+  // sub URL; null for single-node kinds and inline subs. Needed for dedup — happ
+  // crypt5 blobs are non-deterministic, so two different `value` strings can be
+  // the same subscription.
+  subUrl: text("sub_url"),
   label: text("label").notNull(),
   // X-Hwid flag: device-bound providers require hardware ID header.
   hwid: integer("hwid", { mode: "boolean" }).notNull().default(false),

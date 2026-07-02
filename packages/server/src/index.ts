@@ -12,6 +12,7 @@ import { liveHub } from "./live/singleton.js";
 import { log } from "./log.js";
 import { ensureDefaultChannel } from "./modules/channels/service.js";
 import { readMihomoSecret } from "./modules/nodes/service.js";
+import { backfillSubUrls } from "./modules/sources/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
 import { appRouter } from "./trpc/router.js";
 
@@ -46,6 +47,9 @@ runMigrations();
 
 // Seed the Default channel on first boot (idempotent — no-op if already present).
 ensureDefaultChannel(db);
+
+// Backfill sub_url for pre-migration sub/deep-link rows so dedup covers them.
+backfillSubUrls(db);
 
 // Abandoned sessions are otherwise pruned only if their exact id is looked up
 // again — sweep the expired ones on boot so the table can't grow unbounded.

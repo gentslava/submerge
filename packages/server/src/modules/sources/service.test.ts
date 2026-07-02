@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
+import { sources } from "../../db/schema.js";
 import {
   addSource,
+  backfillSubUrls,
   listSources,
   refreshSource,
   removeSource,
@@ -170,5 +172,72 @@ describe("sources service", () => {
     await expect(refreshSource(db, 9999, tmpConfig(), hwidFile())).rejects.toThrow(
       "source 9999 not found",
     );
+  });
+
+  it("rejects a happ link that decodes to an already-added subscription", async () => {
+    const db = freshDb();
+    // Two DIFFERENT ciphertexts (crypt5 is non-deterministic) → the SAME sub URL.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (String(url).includes("/decode")) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              url: "https://provider.example/sub/abc",
+              body: "proxies:\n  - {name: A, type: vless, server: ex.com, port: 443, uuid: u}\n",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (String(url).includes("/configs") || String(url).includes("9090"))
+          return new Response(null, { status: 204 });
+        return new Response(
+          "proxies:\n  - {name: A, type: vless, server: ex.com, port: 443, uuid: u}\n",
+          { status: 200 },
+        );
+      }),
+    );
+    await addSource(db, { value: "happ://crypt5/blobONE", hwid: false }, tmpConfig(), hwidFile());
+    await expect(
+      addSource(db, { value: "happ://crypt5/blobTWO", hwid: false }, tmpConfig(), hwidFile()),
+    ).rejects.toThrow(/та же подписка/);
+    expect(await listSources(db)).toHaveLength(1);
+  });
+
+  it("rejects a deep-link wrapping an already-added subscription url", async () => {
+    const db = freshDb();
+    stubNet();
+    await addSource(db, { value: "https://ex.com/sub", hwid: false }, tmpConfig(), hwidFile());
+    await expect(
+      addSource(
+        db,
+        // client deep-link wrapping the same url — different raw string
+        { value: "clash://install-config?url=https%3A%2F%2Fex.com%2Fsub", hwid: false },
+        tmpConfig(),
+        hwidFile(),
+      ),
+    ).rejects.toThrow(/та же подписка/);
+    expect(await listSources(db)).toHaveLength(1);
+  });
+
+  it("backfills sub_url for a pre-migration sub row so dedup then catches it", async () => {
+    const db = freshDb();
+    // Simulate a row added before sub_url existed: insert directly with subUrl null.
+    db.insert(sources)
+      .values({ kind: "sub", value: "https://ex.com/sub", label: "old", subUrl: null })
+      .run();
+    backfillSubUrls(db);
+    expect(db.select().from(sources).all()[0]?.subUrl).toBe("https://ex.com/sub");
+    // …and a deep-link wrapping the same url is now rejected.
+    stubNet();
+    await expect(
+      addSource(
+        db,
+        { value: "clash://install-config?url=https%3A%2F%2Fex.com%2Fsub", hwid: false },
+        tmpConfig(),
+        hwidFile(),
+      ),
+    ).rejects.toThrow(/та же подписка/);
   });
 });
