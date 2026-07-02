@@ -103,6 +103,8 @@ describe("nodeView", () => {
     expect(transportBadge({ ...node("x"), type: "hysteria2" })).toBe("QUIC");
     expect(transportBadge({ ...node("x"), type: "Tuic" })).toBe("QUIC");
     expect(transportBadge({ ...node("x"), type: "hysteria2", network: "ws" })).toBe("WS"); // network wins
+    expect(transportBadge({ ...node("x"), type: "wireguard" })).toBe("UDP");
+    expect(transportBadge({ ...node("x"), type: "wireguard", network: "udp" })).toBe("UDP");
   });
 
   it("derives the security badge, omitting none/unknown", () => {
@@ -110,6 +112,7 @@ describe("nodeView", () => {
     expect(securityBadge(n({ security: "reality" }))).toBe("Reality");
     expect(securityBadge(n({ security: "tls" }))).toBe("TLS");
     expect(securityBadge(n({ security: "none" }))).toBeNull();
+    expect(securityBadge(n({ security: "amneziawg" }))).toBe("AmneziaWG");
     expect(securityBadge(node("x"))).toBeNull();
   });
 
@@ -125,6 +128,15 @@ describe("nodeView", () => {
       "TCP",
     ]);
     expect(typeBadges(node("x"))).toEqual(["VLESS"]); // group/unknown → protocol only
+    expect(typeBadges({ ...node("x"), type: "wireguard", security: "amneziawg" })).toEqual([
+      "WIREGUARD",
+      "UDP",
+      "AmneziaWG",
+    ]);
+    expect(typeBadges({ ...node("x"), type: "wireguard", security: "none" })).toEqual([
+      "WIREGUARD",
+      "UDP",
+    ]);
   });
 
   it("formats traffic rates per second", () => {

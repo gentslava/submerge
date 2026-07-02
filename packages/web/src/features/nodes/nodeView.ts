@@ -51,15 +51,17 @@ const QUIC_TYPES = new Set(["hysteria", "hysteria2", "tuic"]);
 // transport nor a real-node signal is known (e.g. a group).
 export function transportBadge(node: NodeItem): string | null {
   if (node.network) return node.network.toUpperCase();
+  if (node.type?.toLowerCase() === "wireguard") return "UDP"; // WireGuard / AmneziaWG are UDP
   if (node.type && QUIC_TYPES.has(node.type.toLowerCase())) return "QUIC";
   if (node.security) return "TCP";
   return null;
 }
 
-// Security badge: Reality/TLS surfaced, "none" and unknown omitted.
+// Security badge: Reality/TLS/AmneziaWG surfaced, "none" and unknown omitted.
 export function securityBadge(node: NodeItem): string | null {
   if (node.security === "reality") return "Reality";
   if (node.security === "tls") return "TLS";
+  if (node.security === "amneziawg") return "AmneziaWG";
   return null;
 }
 

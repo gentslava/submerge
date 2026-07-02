@@ -64,7 +64,7 @@ const PSEUDO_GROUPS = new Set(["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"]);
 // node's second badge — "Reality" / "WS" / "TCP" — instead of the uniform "UDP" flag.
 export interface ProxyMeta {
   network?: string;
-  security: "reality" | "tls" | "none";
+  security: "reality" | "tls" | "none" | "amneziawg";
 }
 
 // Derive a name → { network, security } lookup from stored proxy configs. First
@@ -74,7 +74,13 @@ export function proxyMeta(proxies: ProxyConfig[]): Map<string, ProxyMeta> {
   for (const p of proxies) {
     if (map.has(p.name)) continue;
     const network = typeof p.network === "string" ? p.network : undefined;
-    const security = p["reality-opts"] ? "reality" : p.tls === true ? "tls" : "none";
+    const security = p["amnezia-wg-option"]
+      ? "amneziawg"
+      : p["reality-opts"]
+        ? "reality"
+        : p.tls === true
+          ? "tls"
+          : "none";
     map.set(p.name, network !== undefined ? { network, security } : { security });
   }
   return map;

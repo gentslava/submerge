@@ -86,4 +86,11 @@ describe("proxyMeta", () => {
     expect(m.get("plain")).toEqual({ network: "tcp", security: "none" });
     expect(m.get("clash")).toEqual({ security: "none" });
   });
+
+  it("marks an AmneziaWG proxy's security as amneziawg", () => {
+    const m = proxyMeta([
+      { name: "wg", type: "wireguard", server: "s", port: 1, "amnezia-wg-option": { jc: 7 } },
+    ] as ProxyConfig[]);
+    expect(m.get("wg")).toEqual({ security: "amneziawg" });
+  });
 });
