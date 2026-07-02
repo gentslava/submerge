@@ -27,18 +27,21 @@ function pollIntervalMs(): number {
 // check interval equals the poll interval.
 let lastProbe = 0;
 
+// Exported for tests — this is the hub's probeActive dep, throttle state included.
+export async function probeActiveThrottled(name: string): Promise<void> {
+  if (PSEUDO_NODES.has(name)) return;
+  const { url, intervalSec } = policyProbe(readDefaultPolicy(db));
+  const now = Date.now();
+  if (now - lastProbe < intervalSec * 1000 - 1000) return;
+  lastProbe = now;
+  await getDelay(name, url);
+}
+
 export const liveHub = new LiveHub({
   fetchView: async () => toNodeView(await getProxies(), proxyMeta(collectProxies(db))),
   streamTraffic,
   getInterval: pollIntervalMs,
-  probeActive: async (name) => {
-    if (PSEUDO_NODES.has(name)) return;
-    const { url, intervalSec } = policyProbe(readDefaultPolicy(db));
-    const now = Date.now();
-    if (now - lastProbe < intervalSec * 1000 - 1000) return;
-    lastProbe = now;
-    await getDelay(name, url);
-  },
+  probeActive: probeActiveThrottled,
   fetchTotals: getTotals,
   afterView: (view) => channelController.tick(view),
   // The hub reports once per outage streak, so this can't flood the log.
