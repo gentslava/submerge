@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:24-bookworm AS builder
+FROM node:26-bookworm AS builder
 WORKDIR /app
 RUN corepack enable
 # native build deps for better-sqlite3
@@ -16,7 +16,7 @@ RUN pnpm -r build
 # (-> dist/index.js) and deployed as a regular dependency.
 RUN pnpm --filter @submerge/server deploy --prod --legacy /app/deploy
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 WORKDIR /app
 # uid/gid pinned to 999: the deploy docs tell Linux hosts to `chown -R 999:999 mihomo`,
 # so the id must not drift with the base image's system-id allocation.
