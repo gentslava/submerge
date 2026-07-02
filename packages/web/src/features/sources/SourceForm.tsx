@@ -1,7 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { addSourceInput } from "@submerge/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Sparkles } from "lucide-react";
+import { Plus, Sparkles, Upload } from "lucide-react";
+import { useId, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import type { z } from "zod";
@@ -9,14 +10,20 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useTRPC } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
 import { detectKindHint, KIND_LABEL } from "./detectKind";
 
 // Use z.input to get the pre-default type: hwid?: boolean | undefined
 type FormValues = z.input<typeof addSourceInput>;
 
+const MAX_CONF_BYTES = 512_000; // a WireGuard/subscription file is tiny; guard against a wrong pick
+
 export function SourceForm() {
   const trpc = useTRPC();
   const qc = useQueryClient();
+  const fileInputId = useId();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
 
   const addMutation = useMutation(
     trpc.sources.add.mutationOptions({
@@ -33,7 +40,7 @@ export function SourceForm() {
     }),
   );
 
-  const { register, handleSubmit, watch, reset, control } = useForm<FormValues>({
+  const { register, handleSubmit, watch, reset, control, setValue } = useForm<FormValues>({
     resolver: zodResolver(addSourceInput),
     defaultValues: { value: "", hwid: false },
   });
@@ -41,6 +48,18 @@ export function SourceForm() {
   const value = watch("value");
   const typed = (value ?? "").trim() !== "";
   const kindHint = detectKindHint(value ?? "");
+
+  // Read a dropped/picked config file into the text field — the parser keys on the
+  // content (e.g. [Interface] for a .conf), so ingestion is identical to a paste.
+  async function loadFile(file: File | undefined) {
+    if (!file) return;
+    if (file.size > MAX_CONF_BYTES) {
+      toast.error("Файл слишком большой для конфига источника");
+      return;
+    }
+    const text = await file.text();
+    setValue("value", text, { shouldValidate: true, shouldDirty: true });
+  }
 
   function onSubmit(data: FormValues) {
     // After zodResolver transforms, hwid defaults to false if undefined
@@ -55,16 +74,52 @@ export function SourceForm() {
       <div className="h-px w-full bg-border-subtle" />
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4 p-4">
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           {/* No inline validation: an empty value just disables Добавить (below); the
-              placeholder is the hint. Server-side failures surface via a toast. */}
-          <Textarea
-            id="source-value"
-            {...register("value")}
-            placeholder={"vless://…   ·   happ://…   ·   https://…/sub/…"}
-            aria-label="Ссылка источника"
-            className="h-[120px] resize-none p-3.5"
-          />
+              placeholder is the hint. Server-side failures surface via a toast. The
+              wrapper is a drop zone — dropping a .conf/.txt fills the field. */}
+          <div className={cn("rounded-md", dragging && "ring-2 ring-accent-border")}>
+            <Textarea
+              id="source-value"
+              {...register("value")}
+              placeholder={"vless://…   ·   happ://…   ·   https://…/sub/…   ·   AmneziaWG .conf"}
+              aria-label="Ссылка источника"
+              className="h-[120px] resize-none p-3.5"
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (!dragging) setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                void loadFile(e.dataTransfer.files?.[0]);
+              }}
+            />
+          </div>
+          {/* File affordance — a .conf is easier to attach than to copy out of a file. */}
+          <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
+            <input
+              ref={fileRef}
+              id={fileInputId}
+              type="file"
+              accept=".conf,.txt,text/plain"
+              className="sr-only"
+              onChange={(e) => {
+                void loadFile(e.target.files?.[0]);
+                e.target.value = ""; // allow re-picking the same file
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-text-secondary transition-colors hover:bg-hover hover:text-text-primary"
+            >
+              <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+              Выбрать файл
+            </button>
+            <span>или перетащите .conf сюда</span>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4">
