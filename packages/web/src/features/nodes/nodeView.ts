@@ -1,4 +1,4 @@
-import type { NodeItem, Source } from "@submerge/shared";
+import { type NodeItem, PSEUDO_NODE_NAMES, type Source } from "@submerge/shared";
 import { pluralRu } from "@/lib/plural";
 
 export type LatencyClass = "online" | "slow" | "timeout" | "idle";
@@ -10,7 +10,7 @@ export function latencyClass(delay: number | null): LatencyClass {
   return "slow";
 }
 
-const PSEUDO = new Set(["AUTO", "DIRECT", "REJECT", "GLOBAL"]);
+const PSEUDO = new Set<string>(PSEUDO_NODE_NAMES);
 
 export function isPseudo(name: string): boolean {
   return PSEUDO.has(name);

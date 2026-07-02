@@ -18,6 +18,28 @@ export const DEFAULT_AUTO_SWITCH_ON_TIMEOUT = true;
 /** Seconds between panel polls of mihomo (latency/traffic refresh + engine health). */
 export const DEFAULT_POLL_INTERVAL = 5;
 
+// ---------------------------------------------------------------------------
+// Pseudo node names — the single source of truth for "is this a real exit
+// node?" checks. Previously five hand-copied lists across server and web had
+// already drifted apart; add new mihomo built-ins HERE only.
+
+/** mihomo's built-in policies: always present in the engine, error on delay-test,
+ *  never selectable/pinnable exit nodes. */
+export const MIHOMO_BUILTIN_POLICIES = [
+  "DIRECT",
+  "REJECT",
+  "REJECT-DROP",
+  "PASS",
+  "COMPATIBLE",
+] as const;
+
+/** Routing groups: AUTO/PROXY are written by our config generator, GLOBAL is
+ *  mihomo's own selector. Groups, not exit nodes. */
+export const ROUTING_GROUP_NAMES = ["AUTO", "PROXY", "GLOBAL"] as const;
+
+/** Every name that denotes a group/policy rather than a selectable exit node. */
+export const PSEUDO_NODE_NAMES = [...ROUTING_GROUP_NAMES, ...MIHOMO_BUILTIN_POLICIES] as const;
+
 /** The Default channel's policy on a fresh install (behaviour-preserving vs the old AUTO url-test). */
 export const DEFAULT_SPEED_POLICY: ChannelPolicy = {
   kind: "speed",

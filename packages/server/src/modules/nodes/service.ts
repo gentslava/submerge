@@ -1,6 +1,12 @@
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { NodeItem, NodeMember, NodeView, Proxy as ProxyConfig } from "@submerge/shared";
+import {
+  type NodeItem,
+  type NodeMember,
+  type NodeView,
+  type Proxy as ProxyConfig,
+  PSEUDO_NODE_NAMES,
+} from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/mihomo.js";
@@ -69,7 +75,7 @@ export async function applyConfig(
   return { nodes: proxies.length, applied: true };
 }
 
-const PSEUDO_GROUPS = new Set(["AUTO", "PROXY", "DIRECT", "REJECT", "GLOBAL"]);
+const PSEUDO_GROUPS = new Set<string>(PSEUDO_NODE_NAMES);
 
 // Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose
 // these, so we join them from the stored ProxyConfig (the source of truth) for the
