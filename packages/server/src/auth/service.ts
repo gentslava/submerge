@@ -27,6 +27,9 @@ export async function verifyPassword(
 }
 
 export function createSession(db: Db): { id: string; expiresAt: number } {
+  // Opportunistic sweep: logins are rare (single admin), and boot-only pruning
+  // would let expired rows accumulate for the process's whole uptime.
+  pruneExpiredSessions(db);
   const id = randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_MS;
   db.insert(sessions).values({ id, expiresAt }).run();
@@ -49,7 +52,8 @@ export function deleteSession(db: Db, id: string): void {
 }
 
 // validateSession prunes an expired row only when that exact id is presented
-// again; abandoned sessions would accumulate forever. Called on boot.
+// again; abandoned sessions would accumulate forever. Called on boot and
+// opportunistically before each new session insert.
 export function pruneExpiredSessions(db: Db): void {
   db.delete(sessions).where(lte(sessions.expiresAt, Date.now())).run();
 }

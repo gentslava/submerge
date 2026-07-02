@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
+import { liveIndicator } from "@/features/live/status";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import { formatInterval, formatRelative } from "@/lib/duration";
 import type { Theme } from "@/lib/theme";
@@ -169,11 +170,10 @@ export function SettingsScreen() {
   const mihomoSecret = data?.mihomoSecret ?? "";
   const proxyEndpoint = data?.proxyEndpoint ?? PROXY_ENDPOINT;
   const pollInterval = data?.pollInterval ?? String(DEFAULT_POLL_INTERVAL);
-  const engine = healthQuery.isLoading
-    ? { dot: "bg-idle", label: "Проверка" }
-    : healthQuery.data?.connected
-      ? { dot: "bg-online", label: "Подключено" }
-      : { dot: "bg-timeout", label: "Отключено" };
+  const engine = liveIndicator(
+    healthQuery.isLoading ? null : (healthQuery.data?.connected ?? false),
+    { idle: "Проверка", ok: "Подключено", down: "Отключено" },
+  );
 
   return (
     <div className="flex flex-col gap-[26px] px-4 pt-5 pb-10 md:px-8 md:pt-[26px]">

@@ -35,6 +35,8 @@ export class LiveHub {
   private lastHealth = false;
   private lastActive: string | null = null;
   private lastTotals: { up: number; down: number } | null = null;
+  // NOT derivable from lastHealth: that starts false, so a cold boot against a
+  // down engine would never report its first (and only logged) poll failure.
   private pollErrorReported = false;
 
   constructor(deps: HubDeps) {
@@ -117,20 +119,25 @@ export class LiveHub {
     // the retry sleep installs a NEW controller, and this generation must exit
     // rather than re-enter on it (avoids two concurrent pumps / duplicate events).
     const ctrl = this.trafficAbort;
+    // A stream must LIVE this long to count as healthy. Resetting the backoff on
+    // the first sample instead would let a flapping stream (one frame, then drop)
+    // re-arm both the error report and the 1 s retry every cycle.
+    const STABLE_STREAM_MS = 30_000;
     let failures = 0;
     while (this.trafficAbort === ctrl && ctrl !== null) {
+      const startedAt = Date.now();
       try {
         for await (const s of this.deps.streamTraffic(ctrl.signal)) {
-          failures = 0; // data flowing again — reset the backoff
           this.emit({ type: "traffic", up: s.up, down: s.down });
         }
       } catch (err) {
-        if (failures === 0) this.deps.onError?.("traffic", err);
+        // stop() aborts the in-flight stream — a clean shutdown, not a failure.
+        if (!ctrl.signal.aborted && failures === 0) this.deps.onError?.("traffic", err);
       }
+      failures = Date.now() - startedAt >= STABLE_STREAM_MS ? 0 : failures + 1;
       // Retry with capped exponential backoff (1 s → 30 s) so a persistent
       // failure (wrong secret, engine gone) doesn't hot-loop every second.
-      failures += 1;
-      const delayMs = Math.min(1000 * 2 ** (failures - 1), 30_000);
+      const delayMs = failures === 0 ? 1000 : Math.min(1000 * 2 ** (failures - 1), 30_000);
       if (this.trafficAbort === ctrl) await new Promise((r) => setTimeout(r, delayMs));
     }
   }

@@ -102,6 +102,27 @@ describe("mihomo client", () => {
     ]);
   });
 
+  it("throws after a run of consecutive unparseable frames (schema drift guard)", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        const enc = new TextEncoder();
+        // 30+ consecutive wrong-shape frames = schema drift, not line noise
+        for (let i = 0; i < 31; i++) c.enqueue(enc.encode('{"upload":1,"download":2}\n'));
+        c.close();
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(body, { status: 200 })),
+    );
+    const drain = async () => {
+      for await (const _ of streamTraffic(new AbortController().signal)) {
+        /* no samples expected */
+      }
+    };
+    await expect(drain()).rejects.toThrow(/unparseable/i);
+  });
+
   it("streams and parses NDJSON traffic samples", async () => {
     const body = new ReadableStream<Uint8Array>({
       start(c) {

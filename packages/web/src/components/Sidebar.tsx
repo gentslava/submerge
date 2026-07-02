@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { useLiveState } from "@/features/live/LiveProvider";
+import { liveIndicator } from "@/features/live/status";
 import { useActiveNode } from "@/features/nodes/useActiveNode";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import { useTRPC } from "@/lib/trpc";
@@ -134,12 +135,7 @@ function ProxyCard() {
   const { data } = useQuery(trpc.settings.get.queryOptions());
   const proxy = data?.proxyEndpoint ?? PROXY_ENDPOINT;
 
-  const status =
-    mihomo === null
-      ? { dot: "bg-idle", label: "Проверка" }
-      : mihomo
-        ? { dot: "bg-online", label: "Подключено" }
-        : { dot: "bg-timeout", label: "Отключено" };
+  const status = liveIndicator(mihomo, { idle: "Проверка", ok: "Подключено", down: "Отключено" });
 
   const copyAddress = () => {
     void navigator.clipboard.writeText(proxy);

@@ -141,6 +141,64 @@ describe("LiveHub", () => {
     }
   });
 
+  it("does not report a traffic error on graceful stop()", async () => {
+    vi.useFakeTimers();
+    try {
+      const onError = vi.fn();
+      const hub = new LiveHub({
+        fetchView: async () => view,
+        streamTraffic: async function* (signal) {
+          yield { up: 1, down: 1 };
+          await new Promise((_, reject) => {
+            signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+          });
+        },
+        getInterval: () => 60_000,
+        onError,
+      });
+      hub.start();
+      await vi.advanceTimersByTimeAsync(0);
+      hub.stop();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onError.mock.calls.filter(([scope]) => scope === "traffic")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps escalating backoff when a flapping stream yields a sample before each drop", async () => {
+    vi.useFakeTimers();
+    try {
+      const onError = vi.fn();
+      let attempts = 0;
+      const hub = new LiveHub({
+        fetchView: async () => view,
+        // Flapping stream: one sample, then an immediate error — short-lived, so
+        // the backoff must still escalate and onError must fire only once.
+        streamTraffic: async function* () {
+          attempts += 1;
+          yield { up: 1, down: 1 };
+          throw new Error("dropped");
+        },
+        getInterval: () => 60_000,
+        onError,
+      });
+      hub.start();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(attempts).toBe(1);
+      await vi.advanceTimersByTimeAsync(1000); // retry #1 after 1 s
+      expect(attempts).toBe(2);
+      await vi.advanceTimersByTimeAsync(1000); // needs 2 s now — not yet
+      expect(attempts).toBe(2);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(attempts).toBe(3);
+      expect(onError.mock.calls.filter(([scope]) => scope === "traffic")).toHaveLength(1);
+      hub.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("calls afterView with the fetched view each poll", async () => {
     const view: NodeView = { now: "AUTO", autoNow: "A", all: [] };
     const seen: NodeView[] = [];

@@ -2,6 +2,7 @@ import type { ChannelPolicy } from "@submerge/shared";
 import { Link } from "@tanstack/react-router";
 import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useLiveState } from "@/features/live/LiveProvider";
+import { liveIndicator } from "@/features/live/status";
 import { formatInterval, formatRelative } from "@/lib/duration";
 import { cn } from "@/lib/utils";
 
@@ -85,12 +86,7 @@ export function AutoStrategyCard({
   // Honest stream indicator: reflects the real SSE/mihomo health, same tri-state
   // as the sidebar's ProxyCard — never a hard-coded green dot.
   const { mihomo } = useLiveState();
-  const live =
-    mihomo === null
-      ? { dot: "bg-idle", label: "Проверка" }
-      : mihomo
-        ? { dot: "bg-online", label: "Live" }
-        : { dot: "bg-timeout", label: "Оффлайн" };
+  const live = liveIndicator(mihomo, { idle: "Проверка", ok: "Live", down: "Оффлайн" });
 
   const status = isAuto
     ? autoNow

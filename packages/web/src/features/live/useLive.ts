@@ -49,16 +49,18 @@ export function useLive(): LiveState {
   const trpc = useTRPC();
   const client = useTRPCClient();
   const qc = useQueryClient();
-  const traffic = useRef(createTrafficStore());
+  // Lazy initializer: useRef(createTrafficStore()) would build (and discard) a
+  // whole store on every render; useState's initializer runs exactly once.
+  const [traffic] = useState(createTrafficStore);
   // Accumulated latency series keyed by the active node — reset when it changes,
   // seeded from mihomo's recent history, then extended one sample per poll.
   const latency = useRef<{ name: string | null; values: number[] }>({ name: null, values: [] });
-  const [state, setState] = useState<LiveState>({
-    traffic: traffic.current,
+  const [state, setState] = useState<LiveState>(() => ({
+    traffic,
     mihomo: null,
     latency: [],
     totals: null,
-  });
+  }));
 
   useEffect(() => {
     // Over httpSubscriptionLink the server's tracked() yields arrive typed as
@@ -90,7 +92,7 @@ export function useLive(): LiveState {
         } else if (evt.type === "traffic") {
           // No setState: samples go to the external store so per-second events
           // only re-render components that subscribed to it.
-          traffic.current.push({ up: evt.up, down: evt.down });
+          traffic.push({ up: evt.up, down: evt.down });
         } else if (evt.type === "totals") {
           setState((s) => ({ ...s, totals: { up: evt.up, down: evt.down } }));
         } else {
@@ -102,7 +104,7 @@ export function useLive(): LiveState {
       },
     });
     return () => sub.unsubscribe();
-  }, [client, qc, trpc]);
+  }, [client, qc, trpc, traffic]);
 
   return state;
 }

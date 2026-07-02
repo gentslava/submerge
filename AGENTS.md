@@ -25,7 +25,7 @@ Node **24 LTS**, strict TypeScript, pnpm workspaces, Biome, Vitest/Playwright.
 - **web**: Vite · React 19 · shadcn/ui · Tailwind v4 · TanStack Query/Router · uPlot · lucide-react · sonner.
 - **shared**: domain Zod schemas + inferred types (single contract).
 
-All dependencies are latest major at install time, pinned via `pnpm-lock.yaml`. **No legacy at the start.**
+Dependencies use caret ranges at the latest major (e.g. `^19.2.7`), resolved exactly via `pnpm-lock.yaml`; Dependabot PRs keep them current, including majors. **No legacy at the start.**
 
 ## Structure (target, v2)
 
@@ -101,7 +101,7 @@ Every change moves through these stages. Gates marked **⛔** are mandatory and 
 
 ## Do not
 
-- Don't pin outdated versions "for compatibility" — use latest.
+- Don't pin outdated versions "for compatibility" — stay on the latest major (caret ranges + Dependabot bumps; never a `"latest"` range, which lets lockfile regeneration jump majors silently).
 - Don't commit secrets/runtime: `mihomo/config.yaml` (nodes), `*/sources.json`, `hwid.txt`, `.env`, `data/*.db` — all in `.gitignore`.
 - Don't overengineer (see ADR-0004).
 

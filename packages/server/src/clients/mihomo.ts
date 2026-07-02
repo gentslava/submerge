@@ -88,7 +88,12 @@ export async function reloadConfig(targetPath: string): Promise<void> {
   if (!r.ok) throw new Error(`mihomo reload returned HTTP ${r.status}`);
 }
 
-// A malformed/partial frame must not kill the long-lived stream — skip it.
+// A malformed/partial frame must not kill the long-lived stream — skip it. But a
+// long RUN of unparseable frames means the schema drifted (e.g. a mihomo update
+// renamed fields): the stream would otherwise stay open yielding nothing forever,
+// invisible to the hub's error path — so surface that loudly.
+const MAX_UNPARSEABLE_RUN = 30;
+
 function parseTrafficLine(line: string): TrafficSample | null {
   let json: unknown;
   try {
@@ -111,6 +116,7 @@ export async function* streamTraffic(signal: AbortSignal): AsyncGenerator<Traffi
   if (!r.ok || !r.body) throw new Error(`mihomo /traffic returned HTTP ${r.status}`);
   const stream = r.body.pipeThrough(new TextDecoderStream());
   let buf = "";
+  let badRun = 0;
   for await (const chunk of stream) {
     buf += chunk;
     let nl = buf.indexOf("\n");
@@ -119,7 +125,14 @@ export async function* streamTraffic(signal: AbortSignal): AsyncGenerator<Traffi
       buf = buf.slice(nl + 1);
       if (line) {
         const sample = parseTrafficLine(line);
-        if (sample) yield sample;
+        if (sample) {
+          badRun = 0;
+          yield sample;
+        } else if (++badRun >= MAX_UNPARSEABLE_RUN) {
+          throw new Error(
+            `mihomo /traffic: ${badRun} consecutive unparseable frames — schema drift?`,
+          );
+        }
       }
       nl = buf.indexOf("\n");
     }
