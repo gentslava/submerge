@@ -1,4 +1,5 @@
 import type { AddSourceInput, Source } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
@@ -57,7 +58,9 @@ export async function addSource(
   // Reject an already-added source (same value) up front — before any decode/network
   // work — so the same subscription can't be added twice.
   const existing = db.select().from(sources).where(eq(sources.value, value)).get();
-  if (existing) throw new Error("Источник уже добавлен");
+  // CONFLICT (not a generic error): the client clears the input on this code —
+  // the source already exists, so there's nothing to fix and retry.
+  if (existing) throw new TRPCError({ code: "CONFLICT", message: "Источник уже добавлен" });
   const hwid = input.hwid ? getOrCreateHwid(db, hwidFile) : "";
   const result = await ingestSource(value, input.hwid, hwid);
   // Second dedup gate, post-ingest: the raw value can differ for the SAME
@@ -65,7 +68,11 @@ export async function addSource(
   // the same URL) — compare by the resolved sub URL.
   if (result.subUrl) {
     const same = db.select().from(sources).where(eq(sources.subUrl, result.subUrl)).get();
-    if (same) throw new Error(`Источник уже добавлен — та же подписка, что «${same.label}»`);
+    if (same)
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: `Источник уже добавлен — та же подписка, что «${same.label}»`,
+      });
   }
   const maxRow = db
     .select({ max: sql<number>`coalesce(max(${sources.sortOrder}), -1)` })

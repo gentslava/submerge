@@ -38,7 +38,12 @@ export function SourceForm() {
             `Пропущено ${data.skipped.length}: неподдерживаемые протоколы (${data.skipped.join(", ")})`,
           );
       },
-      onError: (e) => toast.error(e.message),
+      onError: (e) => {
+        toast.error(e.message);
+        // CONFLICT = the source already exists: nothing to fix and resubmit, so
+        // clear the field. Other errors (parse/network) keep the text for a retry.
+        if (e.data?.code === "CONFLICT") reset();
+      },
     }),
   );
 
