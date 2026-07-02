@@ -118,7 +118,9 @@ export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, Prox
         const mLast = mInfo?.history.at(-1);
         return {
           name: m,
-          delay: mLast && mLast.delay > 0 ? mLast.delay : null,
+          // A recorded measurement wins, INCLUDING a timeout (0) — the UI renders 0
+          // as "таймаут", distinct from null ("— ms" = never measured / after reload).
+          delay: mLast ? mLast.delay : null,
           history: (mInfo?.history ?? []).map((h) => h.delay),
           active: m === info.now,
         };
@@ -126,7 +128,7 @@ export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, Prox
       return {
         name,
         type: info.type,
-        delay: aLast && aLast.delay > 0 ? aLast.delay : null,
+        delay: aLast ? aLast.delay : null,
         history: (active?.history ?? []).map((h) => h.delay),
         members,
       };
@@ -138,7 +140,9 @@ export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, Prox
     const item: NodeItem = {
       name,
       type: info?.type ?? "unknown",
-      delay: last && last.delay > 0 ? last.delay : null,
+      // A recorded measurement wins, INCLUDING a timeout (0) → UI shows "таймаут";
+      // null ("— ms") means genuinely unmeasured (empty history / after a reload).
+      delay: last ? last.delay : null,
       history,
     };
     if (info?.udp !== undefined) item.udp = info.udp;

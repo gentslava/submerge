@@ -25,9 +25,10 @@ describe("toNodeView", () => {
     expect(view.now).toBe("NL-1");
     expect(view.autoNow).toBe("NL-1");
     expect(view.all).toEqual([
-      // timeouts (0) are KEPT in history (stability signal); last value drives delay
+      // timeouts (0) are KEPT in history (stability signal); last value drives delay —
+      // a trailing timeout surfaces as 0 ("таймаут"), not null ("— ms" = unmeasured)
       { name: "NL-1", type: "Vless", delay: 42, history: [0, 42] },
-      { name: "DE-2", type: "Vless", delay: null, history: [0] },
+      { name: "DE-2", type: "Vless", delay: 0, history: [0] },
     ]);
   });
 
@@ -54,7 +55,7 @@ describe("toNodeView", () => {
       {
         name: "DE-2",
         type: "Vless",
-        delay: null,
+        delay: 0,
         history: [0],
         network: "tcp",
         security: "reality",

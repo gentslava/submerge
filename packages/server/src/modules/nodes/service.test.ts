@@ -113,9 +113,13 @@ describe("listNodes", () => {
       vi.fn(() =>
         json({
           proxies: {
-            PROXY: { name: "PROXY", type: "Selector", now: "A", all: ["A", "B"], history: [] },
+            PROXY: { name: "PROXY", type: "Selector", now: "A", all: ["A", "B", "C"], history: [] },
             A: { name: "A", type: "vless", udp: true, history: [{ time: "t", delay: 50 }] },
             B: { name: "B", type: "vless", history: [] },
+            // Last measurement was a timeout (mihomo records delay 0) — surfaced as 0
+            // ("таймаут"), NOT null ("— ms"), so a dead node reads differently from an
+            // unmeasured one.
+            C: { name: "C", type: "vless", history: [{ time: "t", delay: 0 }] },
           },
         }),
       ),
@@ -125,6 +129,7 @@ describe("listNodes", () => {
     expect(view.all).toEqual([
       { name: "A", type: "vless", delay: 50, udp: true, history: [50] },
       { name: "B", type: "vless", delay: null, history: [] },
+      { name: "C", type: "vless", delay: 0, history: [0] },
     ]);
   });
 
