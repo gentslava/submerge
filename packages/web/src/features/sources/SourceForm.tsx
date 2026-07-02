@@ -98,7 +98,7 @@ export function SourceForm() {
             />
           </div>
           {/* File affordance — a .conf is easier to attach than to copy out of a file. */}
-          <div className="flex items-center gap-2 text-[11px] text-text-tertiary">
+          <div className="flex items-center gap-2 text-fine text-text-tertiary">
             <input
               ref={fileRef}
               id={fileInputId}
@@ -152,7 +152,7 @@ export function SourceForm() {
             />
             <label htmlFor="hwid-switch" className="flex cursor-pointer flex-col gap-[3px]">
               <span className="text-sub font-medium text-text-primary">Передавать HWID</span>
-              <span className="max-w-[320px] text-[11px] text-text-tertiary">
+              <span className="max-w-[320px] text-fine text-text-tertiary">
                 Привязка к устройству — сервер выдаёт узлы только для текущего HWID
               </span>
             </label>

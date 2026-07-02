@@ -3,7 +3,7 @@ import { Menu } from "lucide-react";
 import { NAV_LINKS } from "./nav";
 
 const linkClass =
-  "flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-text-secondary [&.active]:text-accent-text";
+  "flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-micro text-text-secondary [&.active]:text-accent-text";
 
 export function BottomNav() {
   return (

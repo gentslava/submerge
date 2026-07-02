@@ -45,13 +45,13 @@ export function ActiveNodeCard({
             {isAuto ? "АКТИВНЫЙ УЗЕЛ · ВЫБРАН АВТОМАТИЧЕСКИ" : "АКТИВНЫЙ УЗЕЛ"}
           </span>
           {active != null && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-[11px] font-semibold text-accent-text">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-fine font-semibold text-accent-text">
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-accent-text" />
               Активен
             </span>
           )}
           {isAuto && (
-            <span className="inline-flex items-center gap-[5px] rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-[11px] font-semibold tracking-[0.3px] text-accent-text">
+            <span className="inline-flex items-center gap-[5px] rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-fine font-semibold tracking-[0.3px] text-accent-text">
               <Sparkles className="h-3 w-3" aria-hidden="true" />
               АВТО
             </span>
@@ -67,7 +67,7 @@ export function ActiveNodeCard({
             {badges.map((b) => (
               <span
                 key={b}
-                className="rounded-full bg-hover px-2 py-0.5 font-mono text-[11px] text-text-secondary"
+                className="rounded-full bg-hover px-2 py-0.5 font-mono text-fine text-text-secondary"
               >
                 {b}
               </span>
@@ -92,7 +92,7 @@ export function ActiveNodeCard({
                 {dValue != null ? `${dValue} ms` : "—"}
               </span>
             </span>
-            <span className="text-[11px] text-text-tertiary">задержка · сейчас</span>
+            <span className="text-fine text-text-tertiary">задержка · сейчас</span>
           </div>
 
           {/* Cumulative received / sent since mihomo started (from /connections). */}
@@ -101,7 +101,7 @@ export function ActiveNodeCard({
               <ArrowDown className="h-4 w-4" aria-hidden="true" />
               {totals ? formatBytes(totals.down) : "—"}
             </span>
-            <span className="text-[11px] text-text-tertiary">принято</span>
+            <span className="text-fine text-text-tertiary">принято</span>
           </div>
 
           <div className="flex flex-col gap-1">
@@ -109,7 +109,7 @@ export function ActiveNodeCard({
               <ArrowUp className="h-4 w-4" aria-hidden="true" />
               {totals ? formatBytes(totals.up) : "—"}
             </span>
-            <span className="text-[11px] text-text-tertiary">отдано</span>
+            <span className="text-fine text-text-tertiary">отдано</span>
           </div>
         </div>
       </div>

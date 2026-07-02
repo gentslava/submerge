@@ -37,7 +37,7 @@ export function NodeGroup({ group, now, pingingNames, onSelect, onPing }: NodeGr
           <Layers className="h-[15px] w-[15px] shrink-0 text-text-secondary" aria-hidden="true" />
         )}
         <span className="truncate text-sub font-semibold text-text-primary">{group.label}</span>
-        <span className="rounded-full bg-hover px-2 py-0.5 text-[11px] text-text-tertiary">
+        <span className="rounded-full bg-hover px-2 py-0.5 text-fine text-text-tertiary">
           {group.nodes.length}
         </span>
       </button>

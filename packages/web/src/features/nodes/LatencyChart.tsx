@@ -46,7 +46,7 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
         <span className="text-meta text-text-secondary">
           Задержка · {durationLabel(windowSeconds)}
         </span>
-        <span className="font-mono text-[11px] text-text-tertiary">
+        <span className="font-mono text-fine text-text-tertiary">
           {peak > 0 ? `пик ${peak} ms` : "нет данных"}
         </span>
       </div>
@@ -86,7 +86,7 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
               // biome-ignore lint/suspicious/noArrayIndexKey: fixed CAP-length window — the column position IS the identity
               <div key={slot} className="group relative flex flex-1 items-end">
                 <div className={`w-full rounded-sm ${color}`} style={{ height }} />
-                <span className="pointer-events-none absolute -top-5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-elevated px-1.5 py-0.5 font-mono text-[10px] text-text-primary opacity-0 shadow transition-opacity group-hover:opacity-100">
+                <span className="pointer-events-none absolute -top-5 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-elevated px-1.5 py-0.5 font-mono text-micro text-text-primary opacity-0 shadow transition-opacity group-hover:opacity-100">
                   {timeout ? "таймаут" : `${v} ms`}
                 </span>
               </div>

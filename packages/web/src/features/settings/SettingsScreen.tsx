@@ -252,7 +252,7 @@ export function SettingsScreen() {
                       const v = e.target.value.trim();
                       if (v.length > 0) updateSticky({ testUrl: v });
                     }}
-                    className="w-full font-mono text-[13px] md:w-[360px]"
+                    className="w-full font-mono text-sub md:w-[360px]"
                   />
                 </Row>
                 <Row label="Интервал проверки, с" sub="Как часто переизмерять задержку">
@@ -365,7 +365,7 @@ export function SettingsScreen() {
                       const v = e.target.value.trim();
                       if (v.length > 0) updateSpeed({ testUrl: v });
                     }}
-                    className="w-full font-mono text-[13px] md:w-[360px]"
+                    className="w-full font-mono text-sub md:w-[360px]"
                   />
                 </Row>
                 <Row label="Интервал проверки" sub="Как часто переизмерять задержку">
@@ -460,7 +460,7 @@ export function SettingsScreen() {
                   aria-label="Адрес прокси"
                   defaultValue={proxyEndpoint}
                   onBlur={(e) => persistText("proxyEndpoint", e.target.value)}
-                  className="w-full font-mono text-[13px] md:w-[260px]"
+                  className="w-full font-mono text-sub md:w-[260px]"
                 />
                 <IconButton
                   onClick={() => copyToClipboard(proxyEndpoint)}
@@ -595,10 +595,7 @@ function ReadonlyCopyField({
 }) {
   return (
     <FieldBox className={widthClass}>
-      <span
-        title={value}
-        className="min-w-0 flex-1 truncate font-mono text-[13px] text-text-primary"
-      >
+      <span title={value} className="min-w-0 flex-1 truncate font-mono text-sub text-text-primary">
         {value}
       </span>
       <IconButton onClick={() => copyToClipboard(value)} label={copyLabel} icon={Copy} />
@@ -623,7 +620,7 @@ function SecretField({ value, onSave }: { value: string; onSave(v: string): void
           const v = e.target.value.trim();
           if (v && v !== value) onSave(v);
         }}
-        className="min-w-0 flex-1 bg-transparent font-mono text-[13px] text-text-primary outline-none placeholder:text-text-tertiary"
+        className="min-w-0 flex-1 bg-transparent font-mono text-sub text-text-primary outline-none placeholder:text-text-tertiary"
       />
       <IconButton
         onClick={() => setReveal((r) => !r)}

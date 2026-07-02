@@ -159,7 +159,7 @@ function ProxyCard() {
           <Copy size={13} />
         </button>
       </div>
-      <span className="font-mono text-[11px] text-text-tertiary">
+      <span className="font-mono text-fine text-text-tertiary">
         Активный узел · {activeNode ?? "—"}
       </span>
     </div>

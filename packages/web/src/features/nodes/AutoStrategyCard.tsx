@@ -135,7 +135,7 @@ export function AutoStrategyCard({
           {/* Auto-select tuning is editable in Settings → Авто-выбор узла. */}
           <Link
             to="/settings"
-            className="flex h-8 items-center gap-[7px] rounded-md border border-border-default bg-elevated px-3 text-[13px] text-text-primary transition-colors hover:bg-hover [&_svg]:text-text-secondary"
+            className="flex h-8 items-center gap-[7px] rounded-md border border-border-default bg-elevated px-3 text-sub text-text-primary transition-colors hover:bg-hover [&_svg]:text-text-secondary"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
             Настроить
