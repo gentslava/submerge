@@ -4,7 +4,7 @@ Instructions for AI agents working on this project. Read by Claude Code, Cursor,
 
 ## What this project is
 
-**submerge** — a self-hosted web app for managing VPN subscriptions (client role). It ingests node sources (subscription URLs, `vless://`, `happ://`, client deep-links), parses nodes, generates a config for the **mihomo** (Clash) engine and controls it over the REST API, shows nodes with real-time latency/traffic, lets you pick the active node, and exposes a local SOCKS/HTTP proxy.
+**submerge** — a self-hosted web app for managing VPN subscriptions (client role). It ingests node sources (subscription URLs, single-node links, `happ://`, WireGuard/AmneziaWG configs, client deep-links), parses nodes, generates a config for the **mihomo** (Clash) engine and controls it over the REST API, shows nodes with real-time latency/traffic, keeps the best node active via channel policies (see Domain facts), and exposes a local SOCKS/HTTP proxy.
 
 Audience: **self-hosted product**, single-admin (optional password), deployed via docker compose.
 
@@ -31,7 +31,7 @@ All dependencies are latest major at install time, pinned via `pnpm-lock.yaml`. 
 
 ```
 packages/shared/   # Zod schemas + types — the front↔back contract
-packages/server/   # tRPC, Drizzle, SSE, clients/ (mihomo, happ-decoder), modules/ (sources,nodes,settings,auth)
+packages/server/   # tRPC, Drizzle, clients/ (mihomo, happ-decoder), modules/ (sources,nodes,channels,settings), live/ (SSE hub), auth/
 packages/web/      # React SPA
 docs/{specs,plans,adr,architecture.md}
 ```
@@ -44,7 +44,7 @@ A server module = thin `router.ts` (validation + call) + `service.ts` (logic + D
 pnpm install                            # install
 pnpm -F @submerge/server dev            # dev server
 pnpm test                               # all tests (vitest)
-pnpm typecheck                          # tsc -b --noEmit
+pnpm typecheck                          # tsc -b (server/shared) + tsc --noEmit (web)
 pnpm lint                               # biome ci .
 pnpm format                             # biome format --write .
 pnpm -F @submerge/server db:generate    # generate migration from schema
@@ -107,15 +107,16 @@ Every change moves through these stages. Gates marked **⛔** are mandatory and 
 
 ## Domain facts (don't re-discover)
 
-- **happ://crypt** is decoded by the official Happ binary (Qt) in the `happ-decoder` sidecar (Xvfb + mitmproxy intercepts the decoded sub-URL). Static reverse decoders (LeeeeT) go stale due to key rotation — see ADR-0001.
+- **happ://crypt5** links are decoded by the official Happ binary (Qt) in the `happ-decoder` sidecar (Xvfb + mitmproxy intercepts the decoded sub-URL). Static reverse decoders (LeeeeT) go stale due to key rotation — see ADR-0001.
 - **X-Hwid** is a per-source flag (off by default): device-bound providers return a stub without it. For https subscriptions the server sends it; for happ the mitmproxy injects it. See ADR-0002.
-- Subscription formats: clash-yaml, base64-vless, v2ray/sing-box JSON. Client deep-links (incy/clash/sing-box/…) wrap a URL, extracted by `extractSubUrl`.
+- **Source kinds** (`sourceKindSchema`, 10): `sub` (clash-yaml / base64 / v2ray & sing-box JSON subscriptions), `happ`, single-node links `vless` / `vmess` / `trojan` / `ss` / `hysteria2` / `tuic`, and `wireguard` / `amneziawg` (`.conf` files + Amnezia `vpn://`). Client deep-links (incy/clash/sing-box/…) wrap a URL, extracted by `extractSubUrl`. Type auto-detected by `detectKind`.
+- **Channel routing**: the active node is managed by a `ChannelController` (`modules/channels/`) per channel with a policy — `speed` (latency race with tolerance), `sticky` (hold node while healthy), `manual` (priority node) — and a decision log surfaced in Settings. Spec: [docs/specs/2026-07-01-channel-routing-design.md](docs/specs/2026-07-01-channel-routing-design.md).
 - mihomo is the tunneling engine (Go), controlled via the Clash REST API.
 
 ## Documentation map
 
-- `docs/specs/` — specifications (what we build).
-- `docs/plans/` — phased implementation plans (how we build, bite-sized tasks).
+- `docs/specs/` — specifications (what we build); status index in its `README.md`.
+- `docs/plans/` — phased implementation plans (how we build, bite-sized tasks); status index in its `README.md` — keep it updated when a plan ships.
 - `docs/adr/` — accepted architecture decisions and why.
 - `docs/architecture.md` — v2 architecture overview.
 - `docs/design-system.md` — the Indigo Console design contract (tokens, component specs, frame map, visual gates).

@@ -1,6 +1,6 @@
 # Protocol parsers — Phase A (non-vless URI/JSON mappers)
 
-**Status:** draft (spec) · **Date:** 2026-07-02 · **Scope:** `packages/server` ingest layer
+**Status:** implemented (Phase A) · **Date:** 2026-07-02 · **Scope:** `packages/server` ingest layer
 
 ## Problem
 

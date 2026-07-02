@@ -1,6 +1,6 @@
 # AmneziaWG / WireGuard ingest — Phase B (design)
 
-**Status:** draft (spec) · **Date:** 2026-07-02 · **Scope:** `packages/server` ingest + badge
+**Status:** implemented (Phase B1; hosted `vpn://` v2 = later B2 spike) · **Date:** 2026-07-02 · **Scope:** `packages/server` ingest + badge
 
 ## Problem
 

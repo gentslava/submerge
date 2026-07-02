@@ -18,16 +18,17 @@ Overview for agents and developers. Full design: [docs/specs/2026-06-29-submerge
 
 ## Layers and boundaries
 
-- **shared** — the single contract: domain Zod schemas (Source, Proxy, Settings) and inferred types. Imported by both server and web.
-- **server** — control plane. Feature modules (`sources`, `nodes`, `settings`, `auth`): `router.ts` (validation + dispatch) + `service.ts` (logic + Drizzle). External services go through `clients/` only (mihomo, happ-decoder) with timeouts and Zod-validated responses. tRPC exports types to web without codegen.
+- **shared** — the single contract: domain Zod schemas (Source, Proxy, Settings, Channel/ChannelPolicy, NodeView, LiveEvent, auth) and inferred types. Imported by both server and web.
+- **server** — control plane. Feature modules (`sources`, `nodes`, `channels`, `settings`): `router.ts` (validation + dispatch) + `service.ts` (logic + Drizzle). `live/` holds the SSE hub, `auth/` the session auth (top-level, not a module). External services go through `clients/` only (mihomo, happ-decoder) with timeouts and Zod-validated responses. tRPC exports types to web without codegen.
 - **web** — React SPA. tRPC client + TanStack Query (server state), uPlot (live metrics), shadcn/ui.
 - **happ-decoder** (Python) and **mihomo** (Go) — external processes, reused from PoC unchanged.
 
 ## Data flows
 
 - **Management** (add source, select node): web → tRPC mutation → server module → (parse / fetchSubscription / ingestHapp) → generate config.yaml → reload mihomo.
-- **Real-time** (nodes/pings/traffic): server SSE hub polls mihomo → fan-out via tRPC subscription (SSE) → web patches TanStack Query cache with targeted node updates; high-frequency metrics go to uPlot directly, bypassing the cache (throttled).
-- **Persistence**: sources/settings/HWID/sessions — in SQLite (Drizzle). Nodes are not stored (live status from mihomo); per-source node snapshot in `sources.proxies`.
+- **Node selection** (channel routing): a `ChannelController` per channel applies its policy — `speed` (latency race with switch tolerance), `sticky` (hold the node while healthy), `manual` (priority node) — on each probe tick, switches the mihomo selector when the policy says so, and records a decision log shown in Settings. Spec: [specs/2026-07-01-channel-routing-design.md](specs/2026-07-01-channel-routing-design.md).
+- **Real-time** (nodes/pings/traffic): server SSE hub polls mihomo → fan-out via tRPC subscription (SSE) → web patches TanStack Query cache with targeted node updates.
+- **Persistence**: sources/settings/channels/HWID/sessions — in SQLite (Drizzle). Nodes are not stored (live status from mihomo); per-source node snapshot in `sources.proxies`.
 
 ## Key decisions
 
