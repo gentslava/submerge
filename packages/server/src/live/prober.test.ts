@@ -69,3 +69,58 @@ describe("Prober staleness", () => {
     expect(probed).not.toContain("b"); // pruned from names/rotation — never probed
   });
 });
+
+describe("Prober batching", () => {
+  it("sweeps ceil(total × pulse / interval) per tick and rotates round-robin", async () => {
+    // 12 nodes, pulse 5 s, N=30 s → batch = ceil(12×5/30) = 2 per tick
+    const { prober, probe } = makeProber({ intervalSec: 30 });
+    const names = Array.from({ length: 12 }, (_, i) => `n${i}`);
+    prober.observe(resp(names));
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(2);
+    const first = probe.mock.calls.map((c) => c[0]);
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(4);
+    const second = probe.mock.calls.slice(2).map((c) => c[0]);
+    // rotation: the second tick probes DIFFERENT nodes
+    expect(second.some((n) => first.includes(n))).toBe(false);
+  });
+
+  it("caps a burst at the concurrency limit", async () => {
+    // 90 nodes, N=5 s → raw batch 90, capped at 10
+    const { prober, probe } = makeProber({ intervalSec: 5 });
+    prober.observe(resp(Array.from({ length: 90 }, (_, i) => `n${i}`)));
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(10);
+  });
+
+  it("never re-attempts a failing node within the interval", async () => {
+    let nowMs = T0;
+    const probe = vi.fn(async () => {
+      throw new Error("unreachable");
+    });
+    const prober = new Prober({
+      probe,
+      getProbeConfig: () => ({ url: "u", intervalSec: 60 }),
+      pulseMs: 5000,
+      now: () => nowMs,
+    });
+    prober.observe(resp(["dead"]));
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(1);
+    nowMs += 5000; // next pulse — still within N
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(1); // guarded by lastAttempt
+    nowMs += 60_000; // interval elapsed
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("probes at least one node even when the batch formula rounds to <1", async () => {
+    // 1 node, pulse 5 s, N=300 s → ceil(1×5/300) < 1 → floor to 1
+    const { prober, probe } = makeProber({ intervalSec: 300 });
+    prober.observe(resp(["only"]));
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+});
