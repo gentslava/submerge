@@ -41,8 +41,10 @@ describe("Prober staleness", () => {
         stale: new Date(T0 - 120_000).toISOString(), // 2 min ago — older than N=60 s
       }),
     );
-    await prober.tick(); // batch = ceil(3×5000/60000) = 1 → one stale node
-    await prober.tick(); // rotation reaches the second stale node
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(1); // batch = max(1, ceil(3×5000/60000)) = 1
+    await prober.tick();
+    expect(probe).toHaveBeenCalledTimes(2); // rotation reaches the second stale node
     const probed = probe.mock.calls.map((c) => c[0]).sort();
     expect(probed).toEqual(["never", "stale"]); // fresh is never probed
     expect(probe).toHaveBeenCalledWith("stale", "https://t/check");
@@ -55,11 +57,15 @@ describe("Prober staleness", () => {
     expect(probe).not.toHaveBeenCalled();
   });
 
-  it("drops vanished nodes on the next observe", async () => {
-    const { prober, probe } = makeProber();
-    prober.observe(resp(["a", "b"]));
-    prober.observe(resp(["a"])); // b vanished (reload/rename)
+  it("drops vanished nodes from rotation and state on the next observe", async () => {
+    const { prober, probe } = makeProber({ intervalSec: 10 }); // batch = ceil(3×5/10) = 2
+    prober.observe(resp(["a", "b", "c"])); // all stale (never measured)
+    prober.observe(resp(["a", "c"])); // b vanished (reload/rename)
     await prober.tick();
-    expect(probe.mock.calls.map((c) => c[0])).toEqual(["a"]);
+    await prober.tick();
+    const probed = probe.mock.calls.map((c) => c[0]);
+    expect(probed).toContain("a");
+    expect(probed).toContain("c");
+    expect(probed).not.toContain("b"); // pruned from names/rotation — never probed
   });
 });
