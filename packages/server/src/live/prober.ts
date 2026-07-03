@@ -59,7 +59,7 @@ export class Prober {
     };
     const batch = Math.min(
       this.deps.concurrency ?? 10,
-      Math.max(2, Math.ceil((this.names.length * this.deps.pulseMs) / staleMs)),
+      Math.max(1, Math.ceil((this.names.length * this.deps.pulseMs) / staleMs)),
     );
     const picked: string[] = [];
     let lastOffset = -1;

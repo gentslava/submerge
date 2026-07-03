@@ -33,7 +33,7 @@ function makeProber(over: { intervalSec?: number; nowMs?: () => number } = {}) {
 }
 
 describe("Prober staleness", () => {
-  it("probes only nodes without a fresh measurement", async () => {
+  it("probes only nodes without a fresh measurement, sweeping across ticks", async () => {
     const { prober, probe } = makeProber();
     prober.observe(
       resp(["fresh", "stale", "never"], {
@@ -41,9 +41,10 @@ describe("Prober staleness", () => {
         stale: new Date(T0 - 120_000).toISOString(), // 2 min ago — older than N=60 s
       }),
     );
-    await prober.tick();
+    await prober.tick(); // batch = ceil(3×5000/60000) = 1 → one stale node
+    await prober.tick(); // rotation reaches the second stale node
     const probed = probe.mock.calls.map((c) => c[0]).sort();
-    expect(probed).toEqual(["never", "stale"]);
+    expect(probed).toEqual(["never", "stale"]); // fresh is never probed
     expect(probe).toHaveBeenCalledWith("stale", "https://t/check");
   });
 
