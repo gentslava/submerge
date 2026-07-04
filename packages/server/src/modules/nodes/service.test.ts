@@ -163,6 +163,28 @@ describe("applyConfig", () => {
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${ch.id}`);
     expect(cfg.rules).toContain("MATCH,AUTO");
   });
+
+  it("expands a channel's preset ids into DOMAIN-SUFFIX rules for every preset domain", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const ch = createChannel(db, {
+      name: "Media",
+      policy: speedPolicy,
+      matcher: { presets: ["youtube"], domains: [] },
+    });
+
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    const cfg = readGeneratedConfig(configPath);
+    expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${ch.id}`);
+    expect(cfg.rules).toContain(`DOMAIN-SUFFIX,googlevideo.com,ch-${ch.id}`);
+  });
 });
 
 describe("listNodes", () => {

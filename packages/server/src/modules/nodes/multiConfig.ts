@@ -11,7 +11,7 @@ export interface ChannelConfigInput {
   groupName: string; // "AUTO" for the default channel, "ch-<id>" otherwise (groupNameFor)
   isDefault: boolean;
   policy: ChannelPolicy;
-  domains: string[]; // matcher.domains (presets expand in 3b)
+  domains: string[]; // resolveMatcherDomains(matcher) — custom domains + expanded presets
   proxies: ProxyConfig[]; // resolved pool for this channel
 }
 

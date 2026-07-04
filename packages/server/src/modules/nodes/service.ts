@@ -15,6 +15,7 @@ import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
 import { log } from "../../log.js";
 import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
+import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels } from "../channels/service.js";
 import { getSetting } from "../settings/service.js";
 import type { ChannelConfigInput } from "./multiConfig.js";
@@ -72,7 +73,7 @@ export async function applyConfig(
       groupName: groupNameFor(ch),
       isDefault: ch.isDefault,
       policy: ch.policy,
-      domains: ch.matcher.domains,
+      domains: resolveMatcherDomains(ch.matcher),
       proxies: resolveChannelProxies(db, ch, allProxies),
     }));
   const content = buildMultiConfig(inputs, readMihomoSecret(db));
