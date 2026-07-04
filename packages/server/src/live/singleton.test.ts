@@ -11,7 +11,7 @@ vi.mock("../clients/mihomo.js", () => ({
   streamTraffic: vi.fn(),
 }));
 vi.mock("../modules/channels/instance.js", () => ({
-  channelController: { tick: vi.fn(async () => {}) },
+  registry: { runOnce: vi.fn(async () => {}) },
 }));
 vi.mock("../modules/channels/service.js", () => ({
   policyProbe: vi.fn(() => ({ url: "https://probe/check", intervalSec: 30 })),
@@ -28,7 +28,7 @@ async function load() {
   vi.clearAllMocks();
   const channels = await import("../modules/channels/instance.js");
   const singleton = await import("./singleton.js");
-  return { ...singleton, controllerTick: vi.mocked(channels.channelController.tick) };
+  return { ...singleton, registryRunOnce: vi.mocked(channels.registry.runOnce) };
 }
 
 describe("live singleton wiring", () => {
@@ -40,10 +40,10 @@ describe("live singleton wiring", () => {
     expect(observe.mock.calls[0]?.[0]).toHaveProperty("proxies.PROXY");
   });
 
-  it("afterView runs the controller first, then a prober tick", async () => {
-    const { liveHub, prober, controllerTick } = await load();
+  it("afterView runs the controllers first, then a prober tick", async () => {
+    const { liveHub, prober, registryRunOnce } = await load();
     const order: string[] = [];
-    controllerTick.mockImplementation(async () => {
+    registryRunOnce.mockImplementation(async () => {
       order.push("controller");
     });
     const tick = vi.spyOn(prober, "tick").mockImplementation(async () => {

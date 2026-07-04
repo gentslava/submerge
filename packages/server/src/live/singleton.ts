@@ -2,7 +2,7 @@ import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
 import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
 import { log } from "../log.js";
-import { channelController } from "../modules/channels/instance.js";
+import { registry } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
 import { collectProxies, proxyMeta, toNodeView } from "../modules/nodes/service.js";
 import { LiveHub } from "./hub.js";
@@ -32,9 +32,9 @@ export const liveHub = new LiveHub({
   streamTraffic,
   getInterval: () => PULSE_MS,
   fetchTotals: getTotals,
-  afterView: async (view) => {
-    await channelController.tick(view);
-    // After the controller so a policy switch this tick can't race the batch.
+  afterView: async () => {
+    await registry.runOnce();
+    // After the controllers so a policy switch this tick can't race the batch.
     await prober.tick();
   },
   // The hub reports once per outage streak, so this can't flood the log.

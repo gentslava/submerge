@@ -1,0 +1,87 @@
+import type { Channel, DecisionEntry } from "@submerge/shared";
+import type { ProxiesResponse } from "../../clients/mihomo.js";
+import { ChannelController, toGroupView } from "./controller.js";
+import { groupNameFor } from "./pool.js";
+
+export interface RegistryDeps {
+  listChannels: () => Channel[];
+  fetchProxies: () => Promise<ProxiesResponse>;
+  probe: (name: string, url: string) => Promise<number | null>;
+  select: (group: string, name: string) => Promise<void>;
+  persistReason: (channelId: string, reason: string, at: number) => void;
+  now: () => number;
+}
+
+// Mutable holder so a cached ChannelController's `readChannel` always resolves to
+// the latest row (e.g. after channels.setPolicy) without recreating the controller
+// — recreating would drop its transient state (failures/heldSince/lastCheck) and
+// break throttling/hold-window behavior across polls.
+interface ChannelBox {
+  current: Channel;
+}
+
+// Ticks one ChannelController per channel, every poll. Each channel gets its own
+// controller instance (created lazily, cached by id) so its transient state never
+// leaks across channels — the same reason ChannelController itself keeps that
+// state as private fields rather than parameters.
+export class ControllerRegistry {
+  private controllers = new Map<string, ChannelController>();
+  private boxes = new Map<string, ChannelBox>();
+
+  constructor(private deps: RegistryDeps) {}
+
+  private controllerFor(channel: Channel): ChannelController {
+    const box = this.boxes.get(channel.id);
+    if (box) box.current = channel;
+    else this.boxes.set(channel.id, { current: channel });
+
+    const existing = this.controllers.get(channel.id);
+    if (existing) return existing;
+
+    const readChannel = (): Channel => this.boxes.get(channel.id)?.current ?? channel;
+    const ctrl = new ChannelController({
+      readChannel,
+      group: groupNameFor(channel),
+      probe: this.deps.probe,
+      select: this.deps.select,
+      persistReason: (reason, at) => this.deps.persistReason(channel.id, reason, at),
+      now: this.deps.now,
+    });
+    this.controllers.set(channel.id, ctrl);
+    return ctrl;
+  }
+
+  async runOnce(): Promise<void> {
+    const chs = this.deps.listChannels();
+    const px = (await this.deps.fetchProxies()).proxies;
+    for (const ch of chs) {
+      const ctrl = this.controllerFor(ch);
+      const view = toGroupView(px, groupNameFor(ch));
+      try {
+        await ctrl.tick(view);
+      } catch {
+        // Best-effort: a throwing channel must not stop the others this poll.
+      }
+    }
+    // Drop cached controllers (and their boxes) for channels that no longer
+    // exist, so a re-created channel with the same id starts from a fresh
+    // controller rather than resurrecting stale transient state.
+    const liveIds = new Set(chs.map((ch) => ch.id));
+    for (const id of this.controllers.keys()) {
+      if (!liveIds.has(id)) {
+        this.controllers.delete(id);
+        this.boxes.delete(id);
+      }
+    }
+  }
+
+  recent(): DecisionEntry[] {
+    const all: DecisionEntry[] = [];
+    for (const ctrl of this.controllers.values()) all.push(...ctrl.recent());
+    return all.sort((a, b) => b.at - a.at);
+  }
+
+  reset(channelId: string): void {
+    this.controllers.get(channelId)?.reset();
+  }
+}
