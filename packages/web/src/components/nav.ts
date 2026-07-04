@@ -13,7 +13,7 @@ import {
 /** A nav entry that routes to a real screen (functional <Link>). */
 export interface NavLink {
   kind: "link";
-  to: "/" | "/sources" | "/settings";
+  to: "/" | "/sources" | "/routing" | "/settings";
   label: string;
   icon: LucideIcon;
 }
@@ -31,14 +31,15 @@ export interface NavPlaceholder {
 export type NavEntry = NavLink | NavPlaceholder;
 
 /**
- * The 8 sidebar nav items, in mockup order. Узлы / Источники / Настройки are
- * real routes; the rest have no screens yet and render as inert placeholders.
+ * The 8 sidebar nav items, in mockup order. Узлы / Источники / Маршрутизация /
+ * Настройки are real routes; the rest have no screens yet and render as inert
+ * placeholders.
  */
 export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/", label: "Узлы", icon: Server },
   { kind: "placeholder", label: "Трафик", icon: Activity },
   { kind: "placeholder", label: "Соединения", icon: Cable },
-  { kind: "placeholder", label: "Маршрутизация", icon: Route },
+  { kind: "link", to: "/routing", label: "Маршрутизация", icon: Route },
   { kind: "placeholder", label: "Логи", icon: SquareTerminal },
   { kind: "link", to: "/sources", label: "Источники", icon: Layers },
   { kind: "placeholder", label: "Диагностика", icon: Stethoscope },

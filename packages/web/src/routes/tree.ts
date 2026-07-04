@@ -2,6 +2,7 @@ import { createRoute, createRouter } from "@tanstack/react-router";
 import { MoreRoute } from "./more";
 import { NodesRoute } from "./nodes";
 import { rootRoute } from "./root";
+import { RoutingRoute } from "./routing";
 import { SettingsRoute } from "./settings";
 import { SourcesRoute } from "./sources";
 
@@ -20,13 +21,24 @@ const settingsRoute = createRoute({
   path: "/settings",
   component: SettingsRoute,
 });
+const routingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/routing",
+  component: RoutingRoute,
+});
 const moreRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/more",
   component: MoreRoute,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, sourcesRoute, settingsRoute, moreRoute]);
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  sourcesRoute,
+  routingRoute,
+  settingsRoute,
+  moreRoute,
+]);
 
 export const router = createRouter({ routeTree, defaultPreload: "intent" });
 
