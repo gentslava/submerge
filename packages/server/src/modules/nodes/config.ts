@@ -3,10 +3,9 @@ import {
   type ChannelPolicy,
   DEFAULT_SPEED_POLICY,
   type Proxy as ProxyConfig,
-  PSEUDO_NODE_SET,
 } from "@submerge/shared";
-import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
+import { buildMultiConfig } from "./multiConfig.js";
 
 export type TopLevelEntry =
   | { kind: "single"; proxy: ProxyConfig }
@@ -58,13 +57,13 @@ export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
 // The mihomo tuning a `speed` policy contributes to url-test groups (AUTO + any
 // collapsed same-name subgroup). Non-speed policies make AUTO a plain `select`
 // that the server controller pins, so they contribute nothing here.
-interface UrlTestTuning {
+export interface UrlTestTuning {
   url: string;
   interval: number;
   tolerance: number;
   lazy: boolean;
 }
-function urlTestTuning(policy: ChannelPolicy): UrlTestTuning {
+export function urlTestTuning(policy: ChannelPolicy): UrlTestTuning {
   const p =
     policy.kind === "speed"
       ? policy
@@ -77,84 +76,16 @@ function urlTestTuning(policy: ChannelPolicy): UrlTestTuning {
   };
 }
 
+// Thin wrapper over the multi-channel generator: a single Default channel keeps
+// the "AUTO" group and no domain rules, reproducing the original single-pool
+// config byte-for-byte (see multiConfig.ts + config.test.ts, the byte-identity gate).
 export function buildConfig(
   proxies: ProxyConfig[],
   policy: ChannelPolicy = DEFAULT_SPEED_POLICY,
   secret: string = env.MIHOMO_SECRET,
 ): string {
-  const entries = groupProxies(proxies);
-  // A collapsed group may not shadow any built-in policy or routing group name.
-  const usedGroupNames = new Set<string>(PSEUDO_NODE_SET);
-  const topLevelNames: string[] = [];
-  const flat: ProxyConfig[] = [];
-  const subGroups: Record<string, unknown>[] = [];
-  const tuning = urlTestTuning(policy);
-
-  for (const e of entries) {
-    if (e.kind === "single") {
-      topLevelNames.push(e.proxy.name);
-      flat.push(e.proxy);
-      continue;
-    }
-    let gname = e.base;
-    if (usedGroupNames.has(gname)) {
-      let n = 2;
-      while (usedGroupNames.has(`${e.base}-${n}`)) n++;
-      gname = `${e.base}-${n}`;
-    }
-    usedGroupNames.add(gname);
-    const memberNames = e.members.map((_, i) => `${gname} #${i + 1}`);
-    for (const [i, m] of e.members.entries()) {
-      flat.push({ ...m, name: memberNames[i] as string });
-    }
-    subGroups.push({
-      name: gname,
-      type: "url-test",
-      url: tuning.url,
-      interval: tuning.interval,
-      tolerance: tuning.tolerance,
-      lazy: tuning.lazy,
-      proxies: memberNames,
-    });
-    topLevelNames.push(gname);
-  }
-
-  const unique = dedupeNames(flat);
-  const members = topLevelNames.length ? topLevelNames : ["DIRECT"];
-  const autoGroup: Record<string, unknown> =
-    policy.kind === "speed"
-      ? {
-          name: "AUTO",
-          type: "url-test",
-          url: tuning.url,
-          interval: tuning.interval,
-          tolerance: tuning.tolerance,
-          lazy: tuning.lazy,
-          proxies: members,
-        }
-      : {
-          // sticky / manual: a dumb selector the server controller pins (Phase 2).
-          name: "AUTO",
-          type: "select",
-          proxies: members,
-        };
-
-  const cfg = {
-    "mixed-port": 7890,
-    "allow-lan": true,
-    "bind-address": "*",
-    mode: "rule",
-    "log-level": "info",
-    ipv6: false,
-    "external-controller": "0.0.0.0:9090",
+  return buildMultiConfig(
+    [{ id: "default", groupName: "AUTO", isDefault: true, policy, domains: [], proxies }],
     secret,
-    proxies: unique,
-    "proxy-groups": [
-      { name: "PROXY", type: "select", proxies: ["AUTO", ...topLevelNames, "DIRECT"] },
-      autoGroup,
-      ...subGroups,
-    ],
-    rules: [topLevelNames.length ? "MATCH,PROXY" : "MATCH,DIRECT"],
-  };
-  return yaml.dump(cfg, { lineWidth: -1 });
+  );
 }
