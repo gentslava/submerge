@@ -4,8 +4,8 @@ import {
   type ChannelMatcher,
   type ChannelPolicy,
 } from "@submerge/shared";
-import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { type CSSProperties, forwardRef, type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -36,34 +36,56 @@ interface ChannelCardProps {
   onUpdatePolicy: (policy: ChannelPolicy) => void;
   onRemove: () => void;
   busy?: boolean;
+  // Opens the card already expanded on first mount — used right after `channels.create`
+  // so the admin lands straight in the editor instead of a second click. Only affects
+  // the initial `useState` value, so it's safe even though the prop itself never changes.
+  initiallyExpanded?: boolean;
+  // The reorder affordance (drag-handle grip on desktop, ↑↓ arrows on mobile), built by
+  // the caller so this component stays dnd-kit-agnostic. Omitted for the Default row,
+  // which can never be reordered (see RoutingScreen/reorder.ts).
+  reorderControl?: ReactNode;
+  // Sortable transform (ref/style) + drag-in-flight styling, forwarded from the
+  // `useSortable` wrapper in RoutingScreen — mirrors `SourceRowShell`'s forwardRef.
+  className?: string;
+  style?: CSSProperties;
 }
 
 /**
  * One routing channel — collapsed summary measured against the mockup's `VICOv`
  * (regular channel) and `muQ15` (Default, pinned last); the expanded editor
- * against `ch·Messengers (edit)` (`Z7zRtE`). Expanding is a real toggle (click the
- * chevron or anywhere on the header). The drag handle stays decorative (reorder
- * wiring is a later task).
+ * against `ch·Messengers (edit)` (`Z7zRtE`); create/disabled/mobile states against
+ * `HXRTv`. Expanding is a real toggle (click the chevron or anywhere on the header).
+ * The reorder control (grip/arrows) is supplied by the caller — see `reorderControl`.
  */
-export function ChannelCard({
-  channel,
-  nodeNames,
-  onToggleEnabled,
-  onUpdateName,
-  onUpdateMatcher,
-  onUpdatePolicy,
-  onRemove,
-  busy = false,
-}: ChannelCardProps) {
-  const [expanded, setExpanded] = useState(false);
+export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(function ChannelCard(
+  {
+    channel,
+    nodeNames,
+    onToggleEnabled,
+    onUpdateName,
+    onUpdateMatcher,
+    onUpdatePolicy,
+    onRemove,
+    busy = false,
+    initiallyExpanded = false,
+    reorderControl,
+    className,
+    style,
+  },
+  ref,
+) {
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const toggleExpanded = () => setExpanded((e) => !e);
 
   return (
     <div
+      ref={ref}
+      style={style}
       className={cn(
         "overflow-hidden rounded-lg border bg-surface",
         channel.isDefault ? "border-accent-border" : "border-border-subtle",
         !channel.isDefault && !channel.enabled && "opacity-50",
+        className,
       )}
     >
       {channel.isDefault ? (
@@ -75,6 +97,7 @@ export function ChannelCard({
           busy={busy}
           expanded={expanded}
           onToggleExpanded={toggleExpanded}
+          reorderControl={reorderControl}
         />
       )}
       {expanded && (
@@ -92,42 +115,53 @@ export function ChannelCard({
       )}
     </div>
   );
-}
+});
 
 // The header toggles the editor on click. The enabled Switch is a real <button>
-// (role="switch"), and interactive content can't nest inside another <button> —
-// so the toggle wraps everything except the Switch (name/badge/summary and a
-// trailing chevron button), rather than making the whole row one big control.
+// (role="switch"), and the reorder control is a real drag-handle/arrow <button> too —
+// interactive content can't nest inside another <button>, so both sit as siblings of
+// the toggle (which now wraps only name/badge/summary), rather than one big control.
+//
+// Below `sm` (per HXRTv's mobile-390 state) the summary line wraps onto its own row —
+// `MatcherSummary` takes `w-full` there so it drops under name+badge instead of
+// squeezing/clipping inside the fixed-height header.
 function RegularRow({
   channel,
   onToggleEnabled,
   busy,
   expanded,
   onToggleExpanded,
+  reorderControl,
 }: {
   channel: Channel;
   onToggleEnabled: (enabled: boolean) => void;
   busy: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
+  reorderControl?: ReactNode;
 }) {
   const Chevron = expanded ? ChevronUp : ChevronDown;
   const toggleLabel = `${expanded ? "Свернуть" : "Развернуть"} канал «${channel.name}»`;
   return (
     <div className="flex w-full items-center gap-3 px-4 py-3.5">
+      {reorderControl}
       <button
         type="button"
         onClick={onToggleExpanded}
         aria-expanded={expanded}
         aria-label={toggleLabel}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left sm:flex-nowrap"
       >
-        <GripVertical className="h-4 w-4 shrink-0 text-text-disabled" aria-hidden="true" />
         <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
         <PolicyBadge kind={channel.policy.kind} />
         <MatcherSummary matcher={channel.matcher} />
       </button>
       <div className="flex shrink-0 items-center gap-3.5">
+        {/* Honest disabled marker — we know `enabled` for certain, unlike a live
+            "which node is it on" indicator (no recentDecisions wiring here yet). */}
+        {!channel.enabled && (
+          <span className="shrink-0 font-mono text-xs text-text-tertiary">выключен</span>
+        )}
         <Switch
           checked={channel.enabled}
           onCheckedChange={onToggleEnabled}
@@ -166,13 +200,13 @@ function DefaultRow({
         onClick={onToggleExpanded}
         aria-expanded={expanded}
         aria-label={toggleLabel}
-        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left sm:flex-nowrap"
       >
         <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
         <span className="shrink-0 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-fine font-semibold text-accent-text">
           catch-all
         </span>
-        <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
+        <div className="flex w-full min-w-0 items-center gap-2 px-1 sm:w-auto sm:flex-1">
           <span className="text-xs text-text-tertiary">Всё остальное</span>
           <span className="text-sub text-text-disabled">·</span>
           <span className="text-xs text-text-tertiary">Все узлы</span>
@@ -327,7 +361,7 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
   const hasMatcherContent = labels.length > 0 || matcher.domains.length > 0;
 
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
+    <div className="flex w-full min-w-0 items-center gap-2 px-1 sm:w-auto sm:flex-1">
       {labels.map((label) => (
         <span
           key={label}
