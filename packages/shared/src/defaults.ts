@@ -15,7 +15,9 @@ export const DEFAULT_AUTO_TOLERANCE = 50;
 /** Proactively re-test + switch when the active node times out (mihomo lazy: false). */
 export const DEFAULT_AUTO_SWITCH_ON_TIMEOUT = true;
 
-/** Seconds between panel polls of mihomo (latency/traffic refresh + engine health). */
+/** INTERNAL pulse (seconds): how often the server reads mihomo state and runs a
+ *  prober batch. Not user-configurable — the one user knob is the policy's
+ *  «Интервал проверки» (see docs/specs/2026-07-03-background-prober-design.md). */
 export const DEFAULT_POLL_INTERVAL = 5;
 
 // ---------------------------------------------------------------------------
