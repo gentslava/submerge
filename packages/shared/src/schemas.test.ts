@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   channelPolicySchema,
+  channelPoolMemberSchema,
   channelSchema,
+  channelWithPoolSchema,
+  createChannelInput,
+  deleteChannelInput,
   nodeItemSchema,
   nodeViewSchema,
   proxySchema,
+  reorderChannelsInput,
   reorderInput,
   selectNodeInput,
   setChannelPolicyInput,
+  setChannelPoolInput,
   sourceKindSchema,
+  updateChannelInput,
 } from "./schemas.js";
 
 describe("schemas", () => {
@@ -138,5 +145,124 @@ describe("channelSchema", () => {
 describe("setChannelPolicyInput", () => {
   it("requires id and a valid policy", () => {
     expect(() => setChannelPolicyInput.parse({ id: "", policy: {} })).toThrow();
+  });
+});
+
+describe("channelPoolMemberSchema", () => {
+  it("accepts a source pool member", () => {
+    const m = channelPoolMemberSchema.parse({ kind: "source", ref: "1" });
+    expect(m).toEqual({ kind: "source", ref: "1" });
+  });
+  it("accepts a node pool member", () => {
+    const m = channelPoolMemberSchema.parse({ kind: "node", ref: "n1" });
+    expect(m.kind).toBe("node");
+  });
+  it("rejects an unknown kind", () => {
+    expect(() => channelPoolMemberSchema.parse({ kind: "proxy", ref: "n1" })).toThrow();
+  });
+  it("rejects an empty ref", () => {
+    expect(() => channelPoolMemberSchema.parse({ kind: "source", ref: "" })).toThrow();
+  });
+});
+
+describe("createChannelInput", () => {
+  const policy = {
+    kind: "speed",
+    testUrl: "https://x/generate_204",
+    intervalSec: 300,
+    toleranceMs: 50,
+    reevaluateWhileHealthy: true,
+  } as const;
+
+  it("accepts a name + policy, matcher optional", () => {
+    const input = createChannelInput.parse({ name: "Streaming", policy });
+    expect(input.name).toBe("Streaming");
+    expect(input.matcher).toBeUndefined();
+  });
+  it("accepts an explicit matcher", () => {
+    const input = createChannelInput.parse({
+      name: "Streaming",
+      policy,
+      matcher: { presets: ["netflix"], domains: [] },
+    });
+    expect(input.matcher?.presets).toEqual(["netflix"]);
+  });
+  it("rejects an empty name", () => {
+    expect(() => createChannelInput.parse({ name: "", policy })).toThrow();
+  });
+});
+
+describe("updateChannelInput", () => {
+  it("accepts a partial update (name only)", () => {
+    const input = updateChannelInput.parse({ id: "c1", name: "Renamed" });
+    expect(input.enabled).toBeUndefined();
+  });
+  it("accepts id-only (all other fields optional)", () => {
+    const input = updateChannelInput.parse({ id: "c1" });
+    expect(input.id).toBe("c1");
+  });
+  it("rejects an empty name when provided", () => {
+    expect(() => updateChannelInput.parse({ id: "c1", name: "" })).toThrow();
+  });
+  it("rejects a missing id", () => {
+    expect(() => updateChannelInput.parse({ name: "Renamed" })).toThrow();
+  });
+});
+
+describe("deleteChannelInput", () => {
+  it("requires a non-empty id", () => {
+    expect(deleteChannelInput.parse({ id: "c1" }).id).toBe("c1");
+    expect(() => deleteChannelInput.parse({ id: "" })).toThrow();
+  });
+});
+
+describe("reorderChannelsInput", () => {
+  it("accepts an array of ids", () => {
+    expect(reorderChannelsInput.parse({ ids: ["c1", "c2"] }).ids).toEqual(["c1", "c2"]);
+  });
+  it("rejects an empty-string id in the array", () => {
+    expect(() => reorderChannelsInput.parse({ ids: ["c1", ""] })).toThrow();
+  });
+});
+
+describe("setChannelPoolInput", () => {
+  it("accepts an id + array of pool members", () => {
+    const input = setChannelPoolInput.parse({
+      id: "c1",
+      members: [
+        { kind: "source", ref: "1" },
+        { kind: "node", ref: "n1" },
+      ],
+    });
+    expect(input.members).toHaveLength(2);
+  });
+  it("rejects an unknown member kind", () => {
+    expect(() =>
+      setChannelPoolInput.parse({ id: "c1", members: [{ kind: "bogus", ref: "1" }] }),
+    ).toThrow();
+  });
+});
+
+describe("channelWithPoolSchema", () => {
+  it("extends channelSchema with a pool array", () => {
+    const c = channelWithPoolSchema.parse({
+      id: "default",
+      name: "Default",
+      priority: 0,
+      enabled: true,
+      isDefault: true,
+      policy: {
+        kind: "speed",
+        testUrl: "u",
+        intervalSec: 300,
+        toleranceMs: 50,
+        reevaluateWhileHealthy: true,
+      },
+      matcher: { presets: [], domains: [] },
+      lastReason: null,
+      lastReasonAt: null,
+      pool: [{ kind: "source", ref: "1" }],
+    });
+    expect(c.pool).toEqual([{ kind: "source", ref: "1" }]);
   });
 });

@@ -191,6 +191,50 @@ export const setChannelPolicyInput = z.object({
 });
 export type SetChannelPolicyInput = z.infer<typeof setChannelPolicyInput>;
 
+// ── Channel CRUD + pool (Phase 3a) ────────────────────────────────
+// The pool is the set of sources/nodes a channel is allowed to route through,
+// stored separately from the channel row (join table) and surfaced as an
+// ordered list of typed refs.
+export const channelPoolMemberSchema = z.object({
+  kind: z.enum(["source", "node"]),
+  ref: z.string().min(1),
+});
+export type ChannelPoolMember = z.infer<typeof channelPoolMemberSchema>;
+
+export const createChannelInput = z.object({
+  name: z.string().min(1),
+  policy: channelPolicySchema,
+  matcher: channelMatcherSchema.optional(),
+});
+export type CreateChannelInput = z.infer<typeof createChannelInput>;
+
+export const updateChannelInput = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).optional(),
+  enabled: z.boolean().optional(),
+  matcher: channelMatcherSchema.optional(),
+});
+export type UpdateChannelInput = z.infer<typeof updateChannelInput>;
+
+export const deleteChannelInput = z.object({ id: z.string().min(1) });
+export type DeleteChannelInput = z.infer<typeof deleteChannelInput>;
+
+// New priority order for all channels; the Default channel is forced last
+// server-side regardless of its position here.
+export const reorderChannelsInput = z.object({ ids: z.array(z.string().min(1)) });
+export type ReorderChannelsInput = z.infer<typeof reorderChannelsInput>;
+
+export const setChannelPoolInput = z.object({
+  id: z.string().min(1),
+  members: z.array(channelPoolMemberSchema),
+});
+export type SetChannelPoolInput = z.infer<typeof setChannelPoolInput>;
+
+export const channelWithPoolSchema = channelSchema.extend({
+  pool: z.array(channelPoolMemberSchema),
+});
+export type ChannelWithPool = z.infer<typeof channelWithPoolSchema>;
+
 // A single controller decision, surfaced in the UI ("why did it switch?").
 export const decisionEntrySchema = z.object({
   at: z.number(), // epoch ms
