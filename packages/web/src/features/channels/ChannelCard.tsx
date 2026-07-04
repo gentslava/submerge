@@ -1,12 +1,21 @@
-import { CHANNEL_PRESETS, type Channel, type ChannelMatcher } from "@submerge/shared";
-import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import {
+  CHANNEL_PRESETS,
+  type Channel,
+  type ChannelMatcher,
+  type ChannelPolicy,
+} from "@submerge/shared";
+import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
 import { DomainTags } from "./DomainTags";
+import { PolicyEditor } from "./PolicyEditor";
+import { PoolPicker } from "./PoolPicker";
 import { PresetChips } from "./PresetChips";
 
 const POLICY_LABEL: Record<Channel["policy"]["kind"], string> = {
@@ -17,9 +26,15 @@ const POLICY_LABEL: Record<Channel["policy"]["kind"], string> = {
 
 interface ChannelCardProps {
   channel: Channel;
+  // Real (pinnable) exit nodes for the policy editor's manual-pin dropdown — same
+  // pseudo-filtered derivation as the Settings screen (nodesQuery.all minus
+  // PSEUDO_NODE_SET), passed down so both screens share one implementation.
+  nodeNames: string[];
   onToggleEnabled: (enabled: boolean) => void;
   onUpdateName: (name: string) => void;
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
+  onUpdatePolicy: (policy: ChannelPolicy) => void;
+  onRemove: () => void;
   busy?: boolean;
 }
 
@@ -27,15 +42,17 @@ interface ChannelCardProps {
  * One routing channel — collapsed summary measured against the mockup's `VICOv`
  * (regular channel) and `muQ15` (Default, pinned last); the expanded editor
  * against `ch·Messengers (edit)` (`Z7zRtE`). Expanding is a real toggle (click the
- * chevron or anywhere on the header); this task's editor covers the Имя + Домены
- * rows only — Пул/Политика/Удалить land in Task 5. The drag handle stays
- * decorative (reorder wiring is a later task).
+ * chevron or anywhere on the header). The drag handle stays decorative (reorder
+ * wiring is a later task).
  */
 export function ChannelCard({
   channel,
+  nodeNames,
   onToggleEnabled,
   onUpdateName,
   onUpdateMatcher,
+  onUpdatePolicy,
+  onRemove,
   busy = false,
 }: ChannelCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -65,8 +82,11 @@ export function ChannelCard({
           <div className="h-px w-full bg-border-subtle" aria-hidden="true" />
           <ChannelEditor
             channel={channel}
+            nodeNames={nodeNames}
             onUpdateName={onUpdateName}
             onUpdateMatcher={onUpdateMatcher}
+            onUpdatePolicy={onUpdatePolicy}
+            onRemove={onRemove}
           />
         </>
       )}
@@ -173,19 +193,30 @@ function DefaultRow({
   );
 }
 
-// Expanded editor — measured against `Z7zRtE`. This task covers the Имя + Домены
-// rows; Пул/Политика/Удалить are Task 5. Default's Домены row has no meaning (it
-// matches whatever no other channel claimed) so it's a read-only caption rather
-// than live preset chips/tag input the admin could edit to no effect.
+// Expanded editor — measured against `Z7zRtE`: Имя, Домены, Пул, Политика, then
+// Удалить. Default's Домены row has no meaning (it matches whatever no other
+// channel claimed) so it's a read-only caption rather than live preset chips/tag
+// input the admin could edit to no effect. Пул and Политика stay live and
+// editable for Default too — both are honored server-side for every channel
+// (see channels/pool.ts's resolveChannelProxies and the Settings screen, which
+// already edits the Default's policy through the same setPolicy call).
 function ChannelEditor({
   channel,
+  nodeNames,
   onUpdateName,
   onUpdateMatcher,
+  onUpdatePolicy,
+  onRemove,
 }: {
   channel: Channel;
+  nodeNames: string[];
   onUpdateName: (name: string) => void;
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
+  onUpdatePolicy: (policy: ChannelPolicy) => void;
+  onRemove: () => void;
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   return (
     <div className="flex w-full flex-col">
       <EditorRow label="Имя">
@@ -220,6 +251,34 @@ function ChannelEditor({
           </>
         )}
       </div>
+      <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-label text-text-primary">Пул</span>
+          <span className="text-xs text-text-tertiary">
+            Пусто — все узлы канала берутся автоматически
+          </span>
+        </div>
+        <PoolPicker channelId={channel.id} />
+      </div>
+      {/* PolicyEditor renders its own label/sub + border-bottom per row (shared
+          with Settings) — no extra padding wrapper here, or every row would be
+          double-indented. */}
+      <PolicyEditor policy={channel.policy} nodeNames={nodeNames} onChange={onUpdatePolicy} />
+      {!channel.isDefault && (
+        <div className="flex w-full justify-end px-[18px] py-4">
+          <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Удалить канал
+          </Button>
+          <ConfirmDialog
+            open={confirmOpen}
+            title="Удалить канал?"
+            description={`«${channel.name}» — трафик по его доменам вернётся в Default.`}
+            onConfirm={onRemove}
+            onClose={() => setConfirmOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -257,10 +316,11 @@ function presetLabels(presets: string[]): string[] {
   return labels;
 }
 
-// Matcher + pool summary, combined in one row per the mockup's "mid" frame. Pool
-// membership isn't loaded per-channel yet (that's `channels.getPool`, wired in a
-// later task) — showing "Все узлы" here is the honest default rather than a
-// per-channel count we don't have.
+// Matcher + pool summary, combined in one row per the mockup's "mid" frame. The
+// collapsed row doesn't load every channel's pool just to render this summary
+// (that's an N+1 `channels.getPool` per row — the expanded editor's PoolPicker
+// fetches it lazily, only for the channel actually being edited) — showing "Все
+// узлы" here is the honest default rather than a per-channel count we don't have.
 function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
   const labels = presetLabels(matcher.presets);
   const [firstDomain, ...restDomains] = matcher.domains;

@@ -39,10 +39,18 @@ export function PolicyEditor({
   policy,
   onChange,
   nodeNames,
+  activeNode,
 }: {
   policy: ChannelPolicy;
   onChange: (next: ChannelPolicy) => void;
   nodeNames: string[];
+  // The node currently carrying this channel's traffic (already resolved past
+  // AUTO — e.g. `now === "AUTO" ? autoNow : now`), used ONLY to seed the manual
+  // policy's pin when switching into it: "priority node" should default to
+  // wherever the channel already is, not an arbitrary first entry. Optional —
+  // Routing doesn't have this per-channel context yet, so it falls back to
+  // `nodeNames[0]` same as before.
+  activeNode?: string;
 }) {
   function updateSpeed(patch: Partial<Extract<ChannelPolicy, { kind: "speed" }>>) {
     if (policy.kind !== "speed") return;
@@ -60,13 +68,16 @@ export function PolicyEditor({
   }
 
   // Switch the policy kind, carrying over shared fields where they exist and seeding
-  // the rest with sane defaults. `manual` needs a concrete node, so it seeds from the
-  // first available one (the caller-supplied `nodeNames`, without a notion of "the
-  // currently active node" — that context lives with the parent's node data, not here).
+  // the rest with sane defaults. `manual` needs a concrete node, so it seeds from
+  // wherever the channel is already routing (`activeNode`, if the caller has that
+  // context and it's still a live node) — falling back to the first available one
+  // (`nodeNames[0]`) when it isn't. This only picks the seed; it never reorders the
+  // rendered <select> options.
   function switchPolicy(kind: ChannelPolicy["kind"]) {
     if (policy.kind === kind) return;
     if (kind === "manual") {
-      const pinnedNode = nodeNames[0];
+      const pinnedNode =
+        activeNode !== undefined && nodeNames.includes(activeNode) ? activeNode : nodeNames[0];
       if (!pinnedNode) {
         toast.error("Нет доступных узлов для закрепления");
         return;

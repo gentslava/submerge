@@ -86,6 +86,12 @@ export function SettingsScreen() {
   const nodeNames = (nodesQuery.data?.all ?? [])
     .map((n) => n.name)
     .filter((n) => !PSEUDO_NODE_SET.has(n));
+  // The node the Default channel is actually routing through right now, resolved
+  // past AUTO — seeds PolicyEditor's manual pin with "wherever we already are"
+  // instead of an arbitrary first entry when switching Авто → Приоритетный узел.
+  const now = nodesQuery.data?.now ?? null;
+  const autoNow = nodesQuery.data?.autoNow ?? null;
+  const activeNode = (now === "AUTO" ? autoNow : now) ?? undefined;
 
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret ?? "";
@@ -148,6 +154,7 @@ export function SettingsScreen() {
             <PolicyEditor
               policy={policy}
               nodeNames={nodeNames}
+              {...(activeNode !== undefined ? { activeNode } : {})}
               onChange={(p) => setPolicyMutation.mutate({ id: "default", policy: p })}
             />
             <div className="flex flex-col gap-2 px-[18px] py-4">
