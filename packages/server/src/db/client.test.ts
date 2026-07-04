@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it } from "vitest";
 import { createDb } from "./client.js";
-import { channels, sources } from "./schema.js";
+import { channelPool, channels, sources } from "./schema.js";
 
 describe("db", () => {
   it("creates and reads a source in an in-memory DB", () => {
@@ -25,5 +25,11 @@ describe("db", () => {
     // Apply migrations against the in-memory db the same way runMigrations does.
     migrate(testDb, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
     expect(() => testDb.select().from(channels).all()).not.toThrow();
+  });
+
+  it("has a channel_pool table after migrations", () => {
+    const testDb = createDb(":memory:");
+    migrate(testDb, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
+    expect(() => testDb.select().from(channelPool).all()).not.toThrow();
   });
 });

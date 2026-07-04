@@ -6,7 +6,7 @@ import type {
 } from "@submerge/shared";
 import { DEFAULT_SPEED_POLICY } from "@submerge/shared";
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 
 // Source entries: subscription URLs, vless://, happ:// links, or client deep-links.
 export const sources = sqliteTable("sources", {
@@ -69,3 +69,21 @@ export const channels = sqliteTable("channels", {
   lastReason: text("last_reason"),
   lastReasonAt: integer("last_reason_at"),
 });
+
+// Pool membership: which sources/nodes a channel is allowed to route through.
+// Cascade-deletes with its channel; (channel_id, kind, ref) is unique to prevent
+// duplicate members.
+export const channelPool = sqliteTable(
+  "channel_pool",
+  {
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(), // "source" | "node"
+    ref: text("ref").notNull(),
+  },
+  (t) => [
+    unique().on(t.channelId, t.kind, t.ref),
+    index("channel_pool_channel_id_idx").on(t.channelId),
+  ],
+);
