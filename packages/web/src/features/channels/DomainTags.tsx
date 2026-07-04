@@ -1,5 +1,7 @@
+import { isValidDomain } from "@submerge/shared";
 import { X } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
+import { toast } from "sonner";
 
 interface DomainTagsProps {
   value: string[];
@@ -28,16 +30,27 @@ export function removeDomain(domains: string[], target: string): string[] {
 export function DomainTags({ value, onChange }: DomainTagsProps) {
   const [draft, setDraft] = useState("");
 
-  function commit() {
-    if (draft.trim().length === 0) return;
-    onChange(addDomain(value, draft));
+  // Validates before committing — a malformed domain (comma/space/newline) would
+  // reach mihomo's DOMAIN-SUFFIX rule and make the engine reject the ENTIRE config
+  // reload (see domainSchema in packages/shared/src/schemas.ts). `notify` is false
+  // for the blur path so a single Enter+blur sequence over the same invalid draft
+  // doesn't toast twice — Enter already warned, blur just clears silently.
+  function commit(notify: boolean) {
+    const trimmed = draft.trim();
+    if (trimmed.length === 0) return;
+    if (!isValidDomain(trimmed)) {
+      if (notify) toast.error("Некорректный домен");
+      else setDraft("");
+      return;
+    }
+    onChange(addDomain(value, trimmed));
     setDraft("");
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
-      commit();
+      commit(true);
     }
   }
 
@@ -63,7 +76,7 @@ export function DomainTags({ value, onChange }: DomainTagsProps) {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKeyDown}
-        onBlur={commit}
+        onBlur={() => commit(false)}
         placeholder="добавить домен…"
         aria-label="Добавить домен"
         className="min-w-[100px] flex-1 bg-transparent font-mono text-xs text-text-primary placeholder:text-text-tertiary outline-none"

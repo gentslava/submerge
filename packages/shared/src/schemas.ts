@@ -172,6 +172,27 @@ export const channelMatcherSchema = z.object({
 });
 export type ChannelMatcher = z.infer<typeof channelMatcherSchema>;
 
+// A routing domain for DOMAIN-SUFFIX: hostname labels ([A-Za-z0-9-], not
+// hyphen-bookended) joined by dots, max 253 chars. Deliberately strict — a
+// domain containing a comma, space, or newline produces a malformed mihomo rule
+// and makes the engine reject the ENTIRE config reload, not just that rule. So
+// bad domains are blocked here, at the write boundary. The read model
+// (channelMatcherSchema) stays permissive so a legacy/corrupt row can't wipe a
+// whole channel on load (rowToChannel falls back to an empty matcher on parse fail).
+const DOMAIN_RE = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*$/;
+export const domainSchema = z.string().trim().min(1).max(253).regex(DOMAIN_RE, "invalid domain");
+export function isValidDomain(value: string): boolean {
+  return domainSchema.safeParse(value).success;
+}
+
+// Strict INPUT matcher — used only by createChannelInput/updateChannelInput (the
+// write boundary). channelMatcherSchema (the read model, used by channelSchema)
+// intentionally stays permissive; see the comment on domainSchema above.
+export const channelMatcherInputSchema = z.object({
+  presets: z.array(z.string()).default([]),
+  domains: z.array(domainSchema).default([]),
+});
+
 export const channelSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
@@ -204,7 +225,7 @@ export type ChannelPoolMember = z.infer<typeof channelPoolMemberSchema>;
 export const createChannelInput = z.object({
   name: z.string().min(1),
   policy: channelPolicySchema,
-  matcher: channelMatcherSchema.optional(),
+  matcher: channelMatcherInputSchema.optional(),
 });
 export type CreateChannelInput = z.infer<typeof createChannelInput>;
 
@@ -212,7 +233,7 @@ export const updateChannelInput = z.object({
   id: z.string().min(1),
   name: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
-  matcher: channelMatcherSchema.optional(),
+  matcher: channelMatcherInputSchema.optional(),
 });
 export type UpdateChannelInput = z.infer<typeof updateChannelInput>;
 

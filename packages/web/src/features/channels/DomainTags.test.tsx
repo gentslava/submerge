@@ -1,6 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { addDomain, DomainTags, removeDomain } from "./DomainTags";
+
+vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
+
+afterEach(() => vi.clearAllMocks());
 
 describe("addDomain", () => {
   it("appends a trimmed domain", () => {
@@ -56,6 +61,28 @@ describe("DomainTags", () => {
     render(<DomainTags value={["t.me"]} onChange={onChange} />);
     fireEvent.blur(screen.getByLabelText("Добавить домен"));
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid domain on Enter, toasts, and keeps the draft for editing", () => {
+    const onChange = vi.fn();
+    render(<DomainTags value={[]} onChange={onChange} />);
+    const input = screen.getByLabelText("Добавить домен");
+    fireEvent.change(input, { target: { value: "bad domain" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith("Некорректный домен");
+    expect(input).toHaveValue("bad domain");
+  });
+
+  it("silently clears an invalid domain on blur without toasting", () => {
+    const onChange = vi.fn();
+    render(<DomainTags value={[]} onChange={onChange} />);
+    const input = screen.getByLabelText("Добавить домен");
+    fireEvent.change(input, { target: { value: "bad domain" } });
+    fireEvent.blur(input);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(input).toHaveValue("");
   });
 
   it("removes a domain when its × is clicked", () => {

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  channelMatcherSchema,
   channelPolicySchema,
   channelPoolMemberSchema,
   channelSchema,
   channelWithPoolSchema,
   createChannelInput,
   deleteChannelInput,
+  isValidDomain,
   nodeItemSchema,
   nodeViewSchema,
   proxySchema,
@@ -119,6 +121,43 @@ describe("channelPolicySchema", () => {
   });
 });
 
+describe("domainSchema / isValidDomain", () => {
+  it("accepts well-formed hostnames", () => {
+    for (const domain of [
+      "youtube.com",
+      "www.googlevideo.com",
+      "t.me",
+      "localhost",
+      "xn--80ak6aa92e.com",
+      "my-domain.com",
+    ]) {
+      expect(isValidDomain(domain)).toBe(true);
+    }
+  });
+
+  it("rejects a domain containing a comma, space, or newline (malformed mihomo rule)", () => {
+    expect(isValidDomain("bad,domain")).toBe(false);
+    expect(isValidDomain("bad domain")).toBe(false);
+    expect(isValidDomain("bad\ndomain")).toBe(false);
+    expect(isValidDomain(" ")).toBe(false);
+  });
+
+  it("rejects malformed hostname shapes", () => {
+    expect(isValidDomain("-lead.com")).toBe(false);
+    expect(isValidDomain("trail-.com")).toBe(false);
+    expect(isValidDomain("a..b.com")).toBe(false);
+    expect(isValidDomain("*.youtube.com")).toBe(false);
+    expect(isValidDomain("")).toBe(false);
+  });
+});
+
+describe("channelMatcherSchema (read model stays permissive)", () => {
+  it("still accepts a malformed domain — a legacy/corrupt row must not fail parsing", () => {
+    const m = channelMatcherSchema.parse({ presets: [], domains: ["bad,domain"] });
+    expect(m.domains).toEqual(["bad,domain"]);
+  });
+});
+
 describe("channelSchema", () => {
   it("parses a default channel row", () => {
     const c = channelSchema.parse({
@@ -190,6 +229,23 @@ describe("createChannelInput", () => {
   it("rejects an empty name", () => {
     expect(() => createChannelInput.parse({ name: "", policy })).toThrow();
   });
+  it("rejects a matcher with a comma in a domain (write-boundary validation)", () => {
+    expect(() =>
+      createChannelInput.parse({
+        name: "Streaming",
+        policy,
+        matcher: { presets: [], domains: ["bad,domain"] },
+      }),
+    ).toThrow();
+  });
+  it("accepts a matcher with a well-formed domain", () => {
+    const input = createChannelInput.parse({
+      name: "Streaming",
+      policy,
+      matcher: { presets: [], domains: ["youtube.com"] },
+    });
+    expect(input.matcher?.domains).toEqual(["youtube.com"]);
+  });
 });
 
 describe("updateChannelInput", () => {
@@ -206,6 +262,18 @@ describe("updateChannelInput", () => {
   });
   it("rejects a missing id", () => {
     expect(() => updateChannelInput.parse({ name: "Renamed" })).toThrow();
+  });
+  it("rejects a matcher with a space in a domain (write-boundary validation)", () => {
+    expect(() =>
+      updateChannelInput.parse({ id: "c1", matcher: { presets: [], domains: ["bad domain"] } }),
+    ).toThrow();
+  });
+  it("accepts a matcher with a well-formed domain", () => {
+    const input = updateChannelInput.parse({
+      id: "c1",
+      matcher: { presets: [], domains: ["youtube.com"] },
+    });
+    expect(input.matcher?.domains).toEqual(["youtube.com"]);
   });
 });
 
