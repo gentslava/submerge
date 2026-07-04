@@ -4,7 +4,7 @@ import { db } from "../db/client.js";
 import { log } from "../log.js";
 import { registry } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
-import { collectProxies, proxyMeta, toNodeView } from "../modules/nodes/service.js";
+import { applyConfig, collectProxies, proxyMeta, toNodeView } from "../modules/nodes/service.js";
 import { LiveHub } from "./hub.js";
 import { Prober } from "./prober.js";
 
@@ -39,4 +39,10 @@ export const liveHub = new LiveHub({
   },
   // The hub reports once per outage streak, so this can't flood the log.
   onError: (scope, err) => log.warn({ scope, err }, "mihomo live %s failed", scope),
+  // mihomo restarting under submerge (image update, crash) loses its config —
+  // the boot-time apply only covers a submerge restart, so a genuine engine
+  // reconnect also needs one. Best-effort: the hub already guards this call.
+  onReconnect: async () => {
+    await applyConfig(db);
+  },
 });

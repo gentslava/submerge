@@ -198,4 +198,64 @@ describe("LiveHub", () => {
     await hub.pollOnce();
     expect(events).toContainEqual({ type: "health", mihomo: true });
   });
+
+  it("does not call onReconnect on the initial connect", async () => {
+    const onReconnect = vi.fn();
+    const hub = new LiveHub({
+      fetchView: vi.fn(async () => view),
+      streamTraffic: async function* () {},
+      getInterval: () => 10,
+      onReconnect,
+    });
+    await hub.pollOnce(); // first-ever success — boot-apply already covers this
+    expect(onReconnect).not.toHaveBeenCalled();
+  });
+
+  it("calls onReconnect when mihomo recovers after being unreachable", async () => {
+    const onReconnect = vi.fn();
+    let down = false;
+    const hub = new LiveHub({
+      fetchView: vi.fn(async () => {
+        if (down) throw new Error("down");
+        return view;
+      }),
+      streamTraffic: async function* () {},
+      getInterval: () => 10,
+      onReconnect,
+    });
+    await hub.pollOnce(); // initial connect — no reconnect
+    down = true;
+    await hub.pollOnce(); // outage
+    down = false;
+    await hub.pollOnce(); // genuine reconnect
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("a throwing onReconnect does not break the poll (health still reported true)", async () => {
+    const events: LiveEvent[] = [];
+    let down = false;
+    const hub = new LiveHub({
+      fetchView: vi.fn(async () => {
+        if (down) throw new Error("down");
+        return view;
+      }),
+      streamTraffic: async function* () {},
+      getInterval: () => 10,
+      onReconnect: () => {
+        throw new Error("reconnect handler boom");
+      },
+    });
+    hub.emitter.on(LIVE_EVENT, (e: LiveEvent) => events.push(e));
+    await hub.pollOnce(); // initial connect
+    down = true;
+    await hub.pollOnce(); // outage
+    down = false;
+    await hub.pollOnce(); // reconnect — onReconnect throws synchronously
+    // Give the swallowed rejection's microtask a turn before asserting.
+    await Promise.resolve();
+    expect(events.filter((e) => e.type === "health")).toContainEqual({
+      type: "health",
+      mihomo: true,
+    });
+  });
 });

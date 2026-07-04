@@ -20,6 +20,10 @@ export interface HubDeps {
   // outage streak (first poll failure / first traffic-stream failure), not per
   // retry — safe to wire straight to a logger without flooding it.
   onError?: (scope: "poll" | "traffic", err: unknown) => void;
+  // Called when mihomo transitions from unreachable back to reachable — a
+  // genuine reconnect, not the first connect — so callers can re-apply config
+  // a restarted engine may have lost.
+  onReconnect?: () => void | Promise<void>;
 }
 
 export class LiveHub {
@@ -30,6 +34,10 @@ export class LiveHub {
   private lastView: NodeView | null = null;
   private lastHealth = false;
   private lastTotals: { up: number; down: number } | null = null;
+  // Whether we've EVER seen a successful poll. Distinguishes the first-ever
+  // connect (already covered by the boot-time config apply) from a genuine
+  // reconnect after an outage (which is not).
+  private everHealthy = false;
   // NOT derivable from lastHealth: that starts false, so a cold boot against a
   // down engine would never report its first (and only logged) poll failure.
   private pollErrorReported = false;
@@ -87,8 +95,19 @@ export class LiveHub {
   }
 
   private setHealth(ok: boolean): void {
+    const wasHealthy = this.lastHealth;
     this.lastHealth = ok;
     this.emit({ type: "health", mihomo: ok });
+    // A genuine reconnect: unreachable → reachable, AFTER we've been healthy at
+    // least once before. The very first connect (everHealthy still false) is
+    // excluded — the boot-time apply already handles that case.
+    if (ok && !wasHealthy && this.everHealthy) {
+      // Best-effort: a throwing/rejecting handler must not break the poll loop.
+      void Promise.resolve(this.deps.onReconnect?.()).catch((err) => {
+        this.deps.onError?.("poll", err);
+      });
+    }
+    if (ok) this.everHealthy = true;
   }
 
   private scheduleNext(): void {
