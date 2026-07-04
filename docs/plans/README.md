@@ -17,3 +17,4 @@ for their status. Mark a plan **done** here when its feature is merged to master
 | [Sticky controller — phase 2](2026-07-01-sticky-controller-phase2.md) | done |
 | [Protocol parsers — phase A](2026-07-02-protocol-parsers-phaseA.md) | done |
 | [AmneziaWG / WireGuard — phase B1](2026-07-02-amneziawg-phaseb1.md) | done |
+| [Background prober](2026-07-03-background-prober.md) | done |

@@ -1,7 +1,7 @@
 # Background node prober — design
 
 - **Date:** 2026-07-03
-- **Status:** Draft (approved for planning)
+- **Status:** Implemented
 - **Scope:** `packages/server` (live hub, new prober, settings), `packages/web` (Settings, Nodes header copy)
 - **Related:** [2026-07-01 channel routing](2026-07-01-channel-routing-design.md), ADR-0004 (anti-overengineering)
 
