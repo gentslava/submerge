@@ -53,7 +53,7 @@ const NEW_CHANNEL_SEED_POLICY: ChannelPolicy = {
  * expands into a real editor for name + domains + pool + policy + delete.
  * «Новый канал» creates a real channel (seeded policy + empty matcher) and opens
  * it expanded. Reorder is drag (desktop, grip-handle) / ↑↓ arrows (mobile, below
- * `sm`) over the non-default channels only — the Default channel is pinned last
+ * `md`) over the non-default channels only — the Default channel is pinned last
  * and rendered outside the sortable list entirely, so it can never be dragged
  * onto or reordered.
  */
@@ -300,7 +300,7 @@ interface SortableChannelCardProps {
 // Wires one non-default channel into the sortable list: `useSortable` supplies the
 // drag transform (applied to the whole card via ChannelCard's forwardRef) and the
 // activator ref/listeners for the grip handle. The grip is desktop-only (`hidden
-// sm:flex`); below `sm` it's replaced by ↑↓ arrow buttons that call the same
+// md:flex`); below `md` it's replaced by ↑↓ arrow buttons that call the same
 // reorder path directly (no drag gesture needed on touch).
 function SortableChannelCard({
   channel,
@@ -337,11 +337,11 @@ function SortableChannelCard({
             {...attributes}
             {...listeners}
             aria-label={`Перетащить «${channel.name}» для сортировки`}
-            className="hidden h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary active:cursor-grabbing sm:flex"
+            className="hidden h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary active:cursor-grabbing md:flex"
           >
             <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
-          <span className="flex shrink-0 flex-col sm:hidden">
+          <span className="flex shrink-0 flex-col md:hidden">
             <button
               type="button"
               onClick={onMoveUp}

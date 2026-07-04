@@ -83,7 +83,9 @@ export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(function
       style={style}
       className={cn(
         "overflow-hidden rounded-lg border bg-surface",
-        channel.isDefault ? "border-accent-border" : "border-border-subtle",
+        // Default always carries the accent border; a regular card gets it only
+        // while expanded/editing (mockup `Z7zRtE`) — collapsed stays border-subtle.
+        channel.isDefault || expanded ? "border-accent-border" : "border-border-subtle",
         !channel.isDefault && !channel.enabled && "opacity-50",
         className,
       )}
@@ -122,7 +124,7 @@ export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(function
 // interactive content can't nest inside another <button>, so both sit as siblings of
 // the toggle (which now wraps only name/badge/summary), rather than one big control.
 //
-// Below `sm` (per HXRTv's mobile-390 state) the summary line wraps onto its own row —
+// Below `md` (per HXRTv's mobile-390 state) the summary line wraps onto its own row —
 // `MatcherSummary` takes `w-full` there so it drops under name+badge instead of
 // squeezing/clipping inside the fixed-height header.
 function RegularRow({
@@ -150,7 +152,7 @@ function RegularRow({
         onClick={onToggleExpanded}
         aria-expanded={expanded}
         aria-label={toggleLabel}
-        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left sm:flex-nowrap"
+        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left md:flex-nowrap"
       >
         <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
         <PolicyBadge kind={channel.policy.kind} />
@@ -200,13 +202,13 @@ function DefaultRow({
         onClick={onToggleExpanded}
         aria-expanded={expanded}
         aria-label={toggleLabel}
-        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left sm:flex-nowrap"
+        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left md:flex-nowrap"
       >
         <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
         <span className="shrink-0 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-fine font-semibold text-accent-text">
           catch-all
         </span>
-        <div className="flex w-full min-w-0 items-center gap-2 px-1 sm:w-auto sm:flex-1">
+        <div className="flex w-full min-w-0 items-center gap-2 px-1 md:w-auto md:flex-1">
           <span className="text-xs text-text-tertiary">Всё остальное</span>
           <span className="text-sub text-text-disabled">·</span>
           <span className="text-xs text-text-tertiary">Все узлы</span>
@@ -361,7 +363,7 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
   const hasMatcherContent = labels.length > 0 || matcher.domains.length > 0;
 
   return (
-    <div className="flex w-full min-w-0 items-center gap-2 px-1 sm:w-auto sm:flex-1">
+    <div className="flex w-full min-w-0 items-center gap-2 px-1 md:w-auto md:flex-1">
       {labels.map((label) => (
         <span
           key={label}
