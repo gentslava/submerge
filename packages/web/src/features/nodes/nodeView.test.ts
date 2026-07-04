@@ -37,14 +37,14 @@ describe("nodeView", () => {
   it("classifies latency", () => {
     expect(latencyClass(null)).toBe("idle");
     expect(latencyClass(0)).toBe("timeout");
-    expect(latencyClass(47)).toBe("online");
-    expect(latencyClass(100)).toBe("slow");
-    expect(latencyClass(210)).toBe("slow");
+    expect(latencyClass(330)).toBe("online");
+    expect(latencyClass(500)).toBe("slow");
+    expect(latencyClass(610)).toBe("slow");
   });
   it("labels latency", () => {
     expect(latencyLabel(null)).toBe("— ms");
     expect(latencyLabel(0)).toBe("timeout");
-    expect(latencyLabel(47)).toBe("47 ms");
+    expect(latencyLabel(330)).toBe("330 ms");
   });
   it("separates pseudo modes from real nodes", () => {
     const { modes, nodes } = splitNodes([

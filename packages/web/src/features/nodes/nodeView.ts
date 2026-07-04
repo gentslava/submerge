@@ -6,7 +6,7 @@ export type LatencyClass = "online" | "slow" | "timeout" | "idle";
 export function latencyClass(delay: number | null): LatencyClass {
   if (delay === null) return "idle";
   if (delay <= 0) return "timeout";
-  if (delay < 100) return "online";
+  if (delay < 500) return "online";
   return "slow";
 }
 
