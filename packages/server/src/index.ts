@@ -11,7 +11,7 @@ import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
 import { log } from "./log.js";
 import { ensureDefaultChannel } from "./modules/channels/service.js";
-import { readMihomoSecret } from "./modules/nodes/service.js";
+import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
 import { appRouter } from "./trpc/router.js";
@@ -57,6 +57,15 @@ pruneExpiredSessions(db);
 
 // Use the panel-set mihomo secret (if any) before talking to the engine.
 setMihomoSecret(readMihomoSecret(db));
+
+// Regenerate + reload the mihomo config from the current DB state on boot. Without
+// this, a restart leaves the engine on whatever config is on disk, which can drift
+// from the DB (the UI's source of truth): channels/rules show in the panel while the
+// engine routes their domains through the global PROXY node because their rules aren't
+// in the running config. The config file is written synchronously here (so mihomo
+// reads the fresh file on its own start); the reload is best-effort and fire-and-forget
+// so a not-yet-ready engine can't block or crash boot — the live loop keeps it in sync.
+void applyConfig(db).catch((err) => log.warn({ err }, "boot config apply failed"));
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
 liveHub.start();
