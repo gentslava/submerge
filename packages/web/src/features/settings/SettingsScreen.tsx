@@ -25,7 +25,6 @@ import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 
-const POLL_PRESETS = [1, 2, 5, 10, 30];
 // Check interval: from the most frequent (unstable links — fastest switching) to the
 // longest (stable — don't keep pinging configs). Large values read as minutes.
 const CHECK_PRESETS = [5, 10, 30, 60, 300, 600];
@@ -61,7 +60,7 @@ export function SettingsScreen() {
   // Engine reachability — polled at the panel's poll cadence and on demand
   // ("Проверить"), so the status updates live without a page reload (this is a
   // direct check, independent of the SSE live stream).
-  const pollMs = (Number(data?.pollInterval) || DEFAULT_POLL_INTERVAL) * 1000;
+  const pollMs = DEFAULT_POLL_INTERVAL * 1000;
   const healthQuery = useQuery(
     trpc.nodes.health.queryOptions(undefined, { refetchInterval: pollMs }),
   );
@@ -166,7 +165,6 @@ export function SettingsScreen() {
   const hwid = data?.hwid;
   const mihomoSecret = data?.mihomoSecret ?? "";
   const proxyEndpoint = data?.proxyEndpoint ?? PROXY_ENDPOINT;
-  const pollInterval = data?.pollInterval ?? String(DEFAULT_POLL_INTERVAL);
   const engine = liveIndicator(
     healthQuery.isLoading ? null : (healthQuery.data?.connected ?? false),
     { idle: "Проверка", ok: "Подключено", down: "Отключено" },
@@ -438,17 +436,6 @@ export function SettingsScreen() {
                 value={mihomoSecret}
                 onSave={(v) => settingsMutation.mutate({ key: "mihomoSecret", value: v })}
               />
-            </Row>
-            <Row label="Интервал опроса" sub="Частота обновления задержек и трафика">
-              <Select
-                aria-label="Интервал опроса"
-                value={pollInterval}
-                onChange={(e) =>
-                  settingsMutation.mutate({ key: "pollInterval", value: e.target.value })
-                }
-              >
-                {secondsOptions(POLL_PRESETS, pollInterval)}
-              </Select>
             </Row>
             <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP — адрес для клиентов">
               <div className="flex w-full items-center gap-2.5 md:w-auto">
