@@ -2,9 +2,11 @@ import {
   type Channel,
   type ChannelPolicy,
   type DecisionEntry,
+  type NodeItem,
   type NodeView,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
+import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { policyProbe } from "./service.js";
 
 // The real exit nodes a channel can pin, in view order.
@@ -63,6 +65,9 @@ export async function pickBest(
 
 export interface ControllerDeps {
   readChannel: () => Channel;
+  // The mihomo select-group this channel pins into (e.g. "AUTO" for the default
+  // channel, "ch-<id>" for a routed channel with its own group).
+  group: string;
   probe: (name: string, url: string) => Promise<number | null>; // null = timeout/unreachable
   select: (group: string, name: string) => Promise<void>;
   persistReason: (reason: string, at: number) => void;
@@ -70,7 +75,25 @@ export interface ControllerDeps {
   ringSize?: number;
 }
 
-const AUTO_GROUP = "AUTO";
+// Normalize an arbitrary mihomo select group into a NodeView. Unlike `toNodeView`
+// (nodes/service.ts), this is intentionally minimal: the controller only reads
+// `autoNow` (the group's current selection) and `selectableNames(view)` (member
+// names + delay for pickBest) — no collapsed-group/meta/udp handling needed here.
+export function toGroupView(proxies: ProxiesResponse["proxies"], group: string): NodeView {
+  const g = proxies[group];
+  if (!g?.all) return { now: null, autoNow: null, all: [] };
+  const all: NodeItem[] = g.all.map((name) => {
+    const info = proxies[name];
+    const last = info?.history.at(-1);
+    return {
+      name,
+      type: info?.type ?? "unknown",
+      delay: last && last.delay > 0 ? last.delay : null,
+      history: (info?.history ?? []).map((h) => h.delay),
+    };
+  });
+  return { now: g.now ?? null, autoNow: g.now ?? null, all };
+}
 
 export class ChannelController {
   private failures = 0;
@@ -117,7 +140,7 @@ export class ChannelController {
     reason: string,
     at: number,
   ): Promise<void> {
-    if (to !== from) await this.deps.select(AUTO_GROUP, to);
+    if (to !== from) await this.deps.select(this.deps.group, to);
     this.heldSince = at;
     this.record({ at, channelId, from, to, reason });
   }

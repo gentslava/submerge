@@ -1,6 +1,7 @@
 import type { Channel, ChannelPolicy, NodeItem, NodeView } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
-import { ChannelController, pickBest, selectableNames } from "./controller.js";
+import type { ProxiesResponse } from "../../clients/mihomo.js";
+import { ChannelController, pickBest, selectableNames, toGroupView } from "./controller.js";
 
 const node = (name: string, delay: number | null = null): NodeItem => ({
   name,
@@ -51,6 +52,33 @@ describe("pickBest", () => {
   });
 });
 
+describe("toGroupView", () => {
+  const proxies = (): ProxiesResponse["proxies"] => ({
+    "ch-media": { name: "ch-media", type: "selector", now: "A", all: ["A", "B"], history: [] },
+    A: { name: "A", type: "vless", history: [{ time: "t1", delay: 120 }] },
+    // A timeout (delay 0) in the last measurement collapses to null delay — this
+    // helper intentionally does not preserve the timeout-vs-unmeasured distinction
+    // that toNodeView keeps for the UI; the controller only needs a truthy/absent
+    // health signal.
+    B: { name: "B", type: "vless", history: [{ time: "t1", delay: 0 }] },
+  });
+
+  it("normalizes an arbitrary group's members with now/autoNow/delay/history", () => {
+    expect(toGroupView(proxies(), "ch-media")).toEqual({
+      now: "A",
+      autoNow: "A",
+      all: [
+        { name: "A", type: "vless", delay: 120, history: [120] },
+        { name: "B", type: "vless", delay: null, history: [0] },
+      ],
+    });
+  });
+
+  it("returns an empty view for a group that doesn't exist or has no members", () => {
+    expect(toGroupView(proxies(), "ch-missing")).toEqual({ now: null, autoNow: null, all: [] });
+  });
+});
+
 const stickyPolicy = (
   over: Partial<Extract<ChannelPolicy, { kind: "sticky" }>> = {},
 ): ChannelPolicy => ({
@@ -78,20 +106,24 @@ const channel = (policy: ChannelPolicy): Channel => ({
 interface Harness {
   ctrl: ChannelController;
   selected: string[];
+  selectedGroups: string[];
   reasons: { reason: string; at: number }[];
   setClock: (t: number) => void;
   setProbe: (fn: (name: string) => number | null) => void;
 }
 
-function harness(policy: ChannelPolicy): Harness {
+function harness(policy: ChannelPolicy, group = "AUTO"): Harness {
   let clock = 0;
   let probeFn: (name: string) => number | null = () => 50;
   const selected: string[] = [];
+  const selectedGroups: string[] = [];
   const reasons: { reason: string; at: number }[] = [];
   const ctrl = new ChannelController({
     readChannel: () => channel(policy),
+    group,
     probe: async (name) => probeFn(name),
-    select: async (_group, name) => {
+    select: async (g, name) => {
+      selectedGroups.push(g);
       selected.push(name);
     },
     persistReason: (reason, at) => reasons.push({ reason, at }),
@@ -100,6 +132,7 @@ function harness(policy: ChannelPolicy): Harness {
   return {
     ctrl,
     selected,
+    selectedGroups,
     reasons,
     setClock: (t) => {
       clock = t;
@@ -117,6 +150,14 @@ describe("ChannelController sticky", () => {
     await h.ctrl.tick(view(["AUTO", "A", "B", "DIRECT"], null));
     expect(h.selected).toEqual(["B"]); // fastest
     expect(h.reasons.at(-1)?.reason).toContain("initial");
+  });
+
+  it("selects into the channel's configured group, not a hardcoded AUTO", async () => {
+    const h = harness(stickyPolicy(), "ch-media");
+    h.setProbe((n) => (n === "B" ? 20 : 90));
+    await h.ctrl.tick(view(["AUTO", "A", "B"], null));
+    expect(h.selectedGroups).toEqual(["ch-media"]);
+    expect(h.selected).toEqual(["B"]);
   });
 
   it("holds a healthy pinned node — no switch across many ticks", async () => {

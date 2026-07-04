@@ -9,6 +9,7 @@ import { DEFAULT_CHANNEL_ID, readDefaultChannel, setChannelLastReason } from "./
 // sticky failure counter advances instead of throwing (covered in nodes/service tests).
 export const channelController = new ChannelController({
   readChannel: () => readDefaultChannel(db),
+  group: "AUTO",
   probe: testDelay,
   select: selectProxy,
   persistReason: (reason, at) => setChannelLastReason(db, DEFAULT_CHANNEL_ID, reason, at),
