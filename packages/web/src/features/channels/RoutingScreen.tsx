@@ -77,7 +77,10 @@ export function RoutingScreen() {
 
   const updateMutation = useMutation(
     trpc.channels.update.mutationOptions({
-      onSuccess: invalidateChannels,
+      onSuccess: (data) => {
+        void invalidateChannels();
+        warnIfNotApplied(data.applied);
+      },
       onError: (e) => toast.error(e.message),
     }),
   );
@@ -94,9 +97,10 @@ export function RoutingScreen() {
 
   const removeMutation = useMutation(
     trpc.channels.remove.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         void invalidateChannels();
         toast.success("Канал удалён");
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),
@@ -108,9 +112,10 @@ export function RoutingScreen() {
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const createMutation = useMutation(
     trpc.channels.create.mutationOptions({
-      onSuccess: (channel) => {
+      onSuccess: (res) => {
         void invalidateChannels();
-        setJustCreatedId(channel.id);
+        setJustCreatedId(res.channel.id);
+        warnIfNotApplied(res.applied);
       },
       onError: (e) => toast.error(e.message),
     }),
@@ -129,6 +134,7 @@ export function RoutingScreen() {
   // the server always keeps it last regardless (see channels/service.ts reorderChannels).
   const reorderMutation = useMutation(
     trpc.channels.reorder.mutationOptions({
+      onSuccess: (data) => warnIfNotApplied(data.applied),
       onError: (e) => toast.error(e.message),
       onSettled: invalidateChannels,
     }),

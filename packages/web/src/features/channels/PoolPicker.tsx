@@ -13,6 +13,7 @@ import {
   latencyTextColors,
   typeBadges,
 } from "@/features/nodes/nodeView";
+import { warnIfNotApplied } from "@/lib/apply-toast";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
@@ -55,11 +56,12 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
 
   const setPoolMutation = useMutation(
     trpc.channels.setPool.mutationOptions({
-      onSuccess: () => {
+      onSuccess: (data) => {
         void qc.invalidateQueries({ queryKey: trpc.channels.list.queryKey() });
         void qc.invalidateQueries({
           queryKey: trpc.channels.getPool.queryKey({ id: channelId }),
         });
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),

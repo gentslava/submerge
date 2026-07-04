@@ -237,7 +237,12 @@ export const updateChannelInput = z.object({
 });
 export type UpdateChannelInput = z.infer<typeof updateChannelInput>;
 
-export const deleteChannelInput = z.object({ id: z.string().min(1) });
+// Shared "just an id" input, reused by deleteChannelInput and by getPool (which
+// isn't a delete — see router.ts).
+export const channelIdInput = z.object({ id: z.string().min(1) });
+export type ChannelIdInput = z.infer<typeof channelIdInput>;
+
+export const deleteChannelInput = channelIdInput;
 export type DeleteChannelInput = z.infer<typeof deleteChannelInput>;
 
 // New priority order for all channels; the Default channel is forced last

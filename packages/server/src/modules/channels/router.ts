@@ -1,4 +1,5 @@
 import {
+  channelIdInput,
   createChannelInput,
   deleteChannelInput,
   reorderChannelsInput,
@@ -28,8 +29,8 @@ export const channelsRouter = router({
   create: protectedProcedure.input(createChannelInput).mutation(async ({ input }) => {
     const ch = createChannel(db, input);
     // A new channel adds a routing group — regenerate + reload the mihomo config.
-    await applyConfig(db);
-    return ch;
+    const { applied } = await applyConfig(db);
+    return { channel: ch, applied };
   }),
   update: protectedProcedure.input(updateChannelInput).mutation(async ({ input }) => {
     updateChannel(db, input.id, input);
@@ -37,28 +38,28 @@ export const channelsRouter = router({
     // setting a non-default channel's `enabled` to false drops it from routing
     // entirely (no group, no DOMAIN-SUFFIX rules) and stops it being controlled
     // until re-enabled. The Default always stays active regardless.
-    await applyConfig(db);
-    return { ok: true as const };
+    const { applied } = await applyConfig(db);
+    return { ok: true as const, applied };
   }),
   remove: protectedProcedure.input(deleteChannelInput).mutation(async ({ input }) => {
     // Throws for the Default channel — surfaces as a tRPC error, which is correct:
     // the UI must never offer to delete the permanent catch-all.
     deleteChannel(db, input.id);
-    await applyConfig(db);
-    return { ok: true as const };
+    const { applied } = await applyConfig(db);
+    return { ok: true as const, applied };
   }),
   reorder: protectedProcedure.input(reorderChannelsInput).mutation(async ({ input }) => {
     reorderChannels(db, input.ids);
     // Match order changed — regenerate the rule set in the new priority order.
-    await applyConfig(db);
-    return { ok: true as const };
+    const { applied } = await applyConfig(db);
+    return { ok: true as const, applied };
   }),
-  getPool: protectedProcedure.input(deleteChannelInput).query(({ input }) => getPool(db, input.id)),
+  getPool: protectedProcedure.input(channelIdInput).query(({ input }) => getPool(db, input.id)),
   setPool: protectedProcedure.input(setChannelPoolInput).mutation(async ({ input }) => {
     setPool(db, input.id, input.members);
     // The pool changes which proxies the channel's group may route through.
-    await applyConfig(db);
-    return { ok: true as const };
+    const { applied } = await applyConfig(db);
+    return { ok: true as const, applied };
   }),
   setPolicy: protectedProcedure.input(setChannelPolicyInput).mutation(async ({ input }) => {
     setChannelPolicy(db, input.id, input.policy);
