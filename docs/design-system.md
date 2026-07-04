@@ -58,6 +58,9 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Узлы | `I4hmn` | `iuZcj` |
 | Источники | `gm1vM` | `cF8xX` |
 | Настройки | `w6qeY` | `L5XjCf` |
+| Маршрутизация | `P7RAD` | `fSRZN` (Main); cards `VICOv` collapsed · `Z7zRtE` expanded editor · `muQ15` Default |
+| Маршрутизация — состояния (create / disabled / mobile 390) | `HXRTv` | — |
+| Маршрутизация — светлая | `CUEoq` | — |
 | Sidebar (reusable) | `t0Wg2` | — |
 | Button (reusable) | `hRDqB` | — |
 | Badge (reusable) | `J7jxJ` | — |
