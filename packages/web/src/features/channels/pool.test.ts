@@ -1,6 +1,7 @@
-import type { ChannelPoolMember } from "@submerge/shared";
+import type { Channel, ChannelPoolMember } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
 import {
+  channelGroupNames,
   hasNodeMember,
   hasSourceMember,
   poolGroupCaption,
@@ -10,6 +11,46 @@ import {
 
 const src = (ref: string): ChannelPoolMember => ({ kind: "source", ref });
 const node = (ref: string): ChannelPoolMember => ({ kind: "node", ref });
+
+const channel = (overrides: Partial<Channel>): Channel => ({
+  id: "ch1",
+  name: "Streaming",
+  priority: -1,
+  enabled: true,
+  isDefault: false,
+  policy: { kind: "manual", pinnedNode: "X", onFailure: "hold" },
+  matcher: { presets: [], domains: [] },
+  lastReason: null,
+  lastReasonAt: null,
+  ...overrides,
+});
+
+describe("channelGroupNames", () => {
+  it("maps the Default channel to AUTO", () => {
+    expect(channelGroupNames([channel({ id: "default", isDefault: true })])).toEqual(
+      new Set(["AUTO"]),
+    );
+  });
+
+  it("maps a non-default channel to ch-<id>", () => {
+    expect(channelGroupNames([channel({ id: "ch1", isDefault: false })])).toEqual(
+      new Set(["ch-ch1"]),
+    );
+  });
+
+  it("collects one name per channel, mixing Default and regular channels", () => {
+    const names = channelGroupNames([
+      channel({ id: "default", isDefault: true }),
+      channel({ id: "ch1", isDefault: false }),
+      channel({ id: "ch2", isDefault: false }),
+    ]);
+    expect(names).toEqual(new Set(["AUTO", "ch-ch1", "ch-ch2"]));
+  });
+
+  it("returns an empty set for no channels", () => {
+    expect(channelGroupNames([])).toEqual(new Set());
+  });
+});
 
 describe("hasSourceMember / hasNodeMember", () => {
   it("finds a source ref by id, independent of node refs", () => {

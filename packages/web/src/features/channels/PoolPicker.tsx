@@ -16,6 +16,7 @@ import {
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import {
+  channelGroupNames,
   hasNodeMember,
   hasSourceMember,
   poolGroupCaption,
@@ -47,6 +48,10 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
   const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const poolQuery = useQuery(trpc.channels.getPool.queryOptions({ id: channelId }));
+  // Needed only to derive the generated channel-group names (AUTO / ch-<id>) that
+  // must be excluded below — same queryKey as RoutingScreen's channelsQuery, so
+  // this normally reads straight from cache rather than firing a second request.
+  const channelsQuery = useQuery(trpc.channels.list.queryOptions());
 
   const setPoolMutation = useMutation(
     trpc.channels.setPool.mutationOptions({
@@ -60,15 +65,23 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
     }),
   );
 
-  if (sourcesQuery.isLoading || nodesQuery.isLoading || poolQuery.isLoading) {
+  if (
+    sourcesQuery.isLoading ||
+    nodesQuery.isLoading ||
+    poolQuery.isLoading ||
+    channelsQuery.isLoading
+  ) {
     return <Skeleton className="h-[72px] w-full rounded-md" />;
   }
-  if (sourcesQuery.isError || nodesQuery.isError || poolQuery.isError) {
+  if (sourcesQuery.isError || nodesQuery.isError || poolQuery.isError || channelsQuery.isError) {
     return <p className="text-xs text-text-tertiary">Не удалось загрузить пул узлов.</p>;
   }
 
   const sources = sourcesQuery.data ?? [];
-  const nodes = (nodesQuery.data?.all ?? []).filter((n) => !PSEUDO_NODE_SET.has(n.name));
+  const excludedGroupNames = channelGroupNames(channelsQuery.data ?? []);
+  const nodes = (nodesQuery.data?.all ?? []).filter(
+    (n) => !PSEUDO_NODE_SET.has(n.name) && !excludedGroupNames.has(n.name),
+  );
   const pool = poolQuery.data ?? [];
   const groups = groupNodes(nodes, sources);
 
