@@ -1,7 +1,6 @@
 import {
   type ChannelPolicy,
   DEFAULT_AUTO_TEST_INTERVAL,
-  DEFAULT_POLL_INTERVAL,
   DEFAULT_SPEED_POLICY,
   type NodeItem,
   type Source,
@@ -27,21 +26,20 @@ export function NodesScreen() {
 
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
-  const settingsQuery = useQuery(trpc.settings.get.queryOptions());
   const channelQuery = useQuery(trpc.channels.get.queryOptions());
 
-  // Real poll cadence the server uses (settings-driven) — the active node is
-  // measured this often, so the latency chart grows at this rate.
-  const pollInterval = Math.max(
-    1,
-    Number(settingsQuery.data?.pollInterval ?? DEFAULT_POLL_INTERVAL) || DEFAULT_POLL_INTERVAL,
-  );
   // The Default channel's policy (Settings → Авто-выбор узла) — drives the strategy
-  // card's params. Distinct from the panel poll above. `manual` has no probe interval
-  // of its own, so the chart uses the engine default for its check cadence.
+  // card's params and the active-node chart's check cadence. `manual` has no probe
+  // interval of its own, so the chart uses the engine default for its check cadence.
   const policy: ChannelPolicy = channelQuery.data?.policy ?? DEFAULT_SPEED_POLICY;
   const checkIntervalSec =
     policy.kind === "manual" ? DEFAULT_AUTO_TEST_INTERVAL : Math.max(1, policy.intervalSec);
+  // Honest header copy: unlike the chart cadence above, the header must not imply a
+  // periodic check exists when the policy is `manual` (or the channel hasn't loaded
+  // yet) — omit the interval entirely instead of showing a substitute value.
+  const rawPolicy = channelQuery.data?.policy;
+  const headerCheckIntervalSec =
+    rawPolicy && "intervalSec" in rawPolicy ? rawPolicy.intervalSec : null;
 
   // Per-node "being pinged" set — drives the progressive loaders in each row.
   const [pingingNames, setPingingNames] = useState<Set<string>>(() => new Set());
@@ -122,7 +120,7 @@ export function NodesScreen() {
     <div className="flex flex-col gap-[22px] px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
       <NodesHeader
         nodeCount={realCount}
-        pollInterval={pollInterval}
+        checkIntervalSec={headerCheckIntervalSec}
         refreshing={nodesQuery.isFetching}
         pinging={pingingNames.size > 0}
         onRefresh={() => nodesQuery.refetch()}

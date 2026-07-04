@@ -1,10 +1,11 @@
 import { RefreshCw, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatInterval } from "@/lib/duration";
 import { pluralRu } from "@/lib/plural";
 
 interface NodesHeaderProps {
   nodeCount: number;
-  pollInterval: number;
+  checkIntervalSec: number | null;
   refreshing: boolean;
   pinging: boolean;
   onRefresh(): void;
@@ -13,7 +14,7 @@ interface NodesHeaderProps {
 
 export function NodesHeader({
   nodeCount,
-  pollInterval,
+  checkIntervalSec,
   refreshing,
   pinging,
   onRefresh,
@@ -24,8 +25,8 @@ export function NodesHeader({
       <div className="flex flex-col gap-[5px]">
         <h1 className="text-h1 text-text-primary">Узлы</h1>
         <p className="text-sub text-text-secondary">
-          Группа PROXY · {nodeCount} {pluralRu(nodeCount, ["узел", "узла", "узлов"])} · опрос каждые{" "}
-          {pollInterval} с
+          Группа PROXY · {nodeCount} {pluralRu(nodeCount, ["узел", "узла", "узлов"])}
+          {checkIntervalSec != null && <> · проверка каждые {formatInterval(checkIntervalSec)}</>}
         </p>
       </div>
       <div className="flex items-center gap-2.5">
