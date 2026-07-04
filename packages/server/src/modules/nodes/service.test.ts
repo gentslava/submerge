@@ -6,11 +6,15 @@ import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
+import { ensureDefaultChannel } from "../channels/service.js";
 import { applyConfig, collectProxies, listNodes, testDelay } from "./service.js";
 
 function freshDb() {
   const db = createDb(":memory:");
   migrate(db, { migrationsFolder: new URL("../../../drizzle", import.meta.url).pathname });
+  // applyConfig (Phase 3a) now iterates listChannels(db) — seed the Default channel
+  // so tests match the real app bootstrap (index.ts calls this too).
+  ensureDefaultChannel(db);
   return db;
 }
 const proxy = (name: string) => ({ name, type: "vless", server: "ex.com", port: 443, uuid: "u" });

@@ -14,9 +14,11 @@ import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
 import { log } from "../../log.js";
-import { readDefaultPolicy } from "../channels/service.js";
+import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
+import { listChannels } from "../channels/service.js";
 import { getSetting } from "../settings/service.js";
-import { buildConfig } from "./config.js";
+import type { ChannelConfigInput } from "./multiConfig.js";
+import { buildMultiConfig } from "./multiConfig.js";
 
 // The mihomo API secret — a Settings value wins over the env default (env only seeds it
 // on first run). Used BOTH as the panel's client credential AND as the `secret:` written
@@ -50,7 +52,7 @@ export async function applyConfig(
   configPath: string = env.MIHOMO_CONFIG_PATH,
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
 ): Promise<ApplyResult> {
-  const proxies = collectProxies(db);
+  const allProxies = collectProxies(db);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
   // The config's `secret:` is the editable panel secret (seeded from env on first run):
@@ -60,7 +62,15 @@ export async function applyConfig(
   // Write atomically (temp file + rename) so mihomo never reads a half-written config on
   // reload: an in-place writeFileSync truncates first, and mihomo can catch that empty
   // window — especially across a slow bind mount — and reject the reload with HTTP 400.
-  const content = buildConfig(proxies, readDefaultPolicy(db), readMihomoSecret(db));
+  const inputs: ChannelConfigInput[] = listChannels(db).map((ch) => ({
+    id: ch.id,
+    groupName: groupNameFor(ch),
+    isDefault: ch.isDefault,
+    policy: ch.policy,
+    domains: ch.matcher.domains,
+    proxies: resolveChannelProxies(db, ch, allProxies),
+  }));
+  const content = buildMultiConfig(inputs, readMihomoSecret(db));
   const tmpPath = `${configPath}.tmp`;
   writeFileSync(tmpPath, content, "utf8");
   renameSync(tmpPath, configPath);
@@ -70,9 +80,9 @@ export async function applyConfig(
     await reloadConfig(targetPath);
   } catch (err) {
     log.warn({ err }, "config written but mihomo reload failed — applies on next reload");
-    return { nodes: proxies.length, applied: false };
+    return { nodes: allProxies.length, applied: false };
   }
-  return { nodes: proxies.length, applied: true };
+  return { nodes: allProxies.length, applied: true };
 }
 
 // Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose
