@@ -32,6 +32,83 @@ function makeProber(over: { intervalSec?: number; nowMs?: () => number } = {}) {
   return { prober, probe };
 }
 
+describe("Prober last-known overlay", () => {
+  // Like resp(), but with per-node delay values.
+  function respWith(
+    entries: Record<string, { time: string; delay: number } | null>,
+  ): ProxiesResponse {
+    const names = Object.keys(entries);
+    const proxies: Record<string, unknown> = {
+      PROXY: { name: "PROXY", type: "Selector", all: ["AUTO", ...names], history: [] },
+      AUTO: { name: "AUTO", type: "URLTest", history: [] },
+    };
+    for (const n of names) {
+      proxies[n] = { name: n, type: "vless", history: entries[n] ? [entries[n]] : [] };
+    }
+    return { proxies } as ProxiesResponse;
+  }
+
+  const view = (all: Array<{ name: string; delay: number | null; history: number[] }>) => ({
+    now: null,
+    autoNow: null,
+    all: all.map((n) => ({ ...n, type: "vless" })),
+  });
+
+  it("restores last-known delays for nodes whose history was wiped by a reload", () => {
+    const { prober } = makeProber();
+    prober.observe(
+      respWith({
+        alive: { time: new Date(T0 - 10_000).toISOString(), delay: 321 },
+        dead: { time: new Date(T0 - 10_000).toISOString(), delay: 0 },
+        virgin: null, // never measured
+      }),
+    );
+    // Reload: mihomo returns the same nodes with EMPTY history.
+    prober.observe(respWith({ alive: null, dead: null, virgin: null }));
+    const filled = prober.fillLastKnown(
+      view([
+        { name: "alive", delay: null, history: [] },
+        { name: "dead", delay: null, history: [] },
+        { name: "virgin", delay: null, history: [] },
+      ]),
+    );
+    expect(filled.all.map((n) => [n.name, n.delay])).toEqual([
+      ["alive", 321], // last real measurement survives the reload
+      ["dead", 0], // an honest timeout survives too
+      ["virgin", null], // never measured stays «— ms»
+    ]);
+  });
+
+  it("never overrides a real current measurement", () => {
+    const { prober } = makeProber();
+    prober.observe(respWith({ a: { time: new Date(T0 - 60_000).toISOString(), delay: 999 } }));
+    const filled = prober.fillLastKnown(view([{ name: "a", delay: 42, history: [42] }]));
+    expect(filled.all[0]?.delay).toBe(42); // fresh engine data wins
+  });
+
+  it("keeps memory across a transient partial snapshot (mid-reload), prunes after a sustained absence", () => {
+    let nowMs = T0;
+    const probe = vi.fn(async () => ({}));
+    const prober = new Prober({
+      probe,
+      getProbeConfig: () => ({ url: "u", intervalSec: 60 }),
+      pulseMs: 5000,
+      now: () => nowMs,
+    });
+    prober.observe(respWith({ gone: { time: new Date(T0 - 1_000).toISOString(), delay: 100 } }));
+    // Mid-reload mihomo briefly returns a partial set WITHOUT `gone` — the memory
+    // must survive (this transient wipe is exactly what blanked the UI).
+    prober.observe(respWith({ other: null }));
+    let filled = prober.fillLastKnown(view([{ name: "gone", delay: null, history: [] }]));
+    expect(filled.all[0]?.delay).toBe(100);
+    // …but a SUSTAINED absence (rename/removal) does prune the memory.
+    nowMs = T0 + 11 * 60_000; // beyond the grace period
+    prober.observe(respWith({ other: null }));
+    filled = prober.fillLastKnown(view([{ name: "gone", delay: null, history: [] }]));
+    expect(filled.all[0]?.delay).toBeNull();
+  });
+});
+
 describe("Prober staleness", () => {
   it("probes only nodes without a fresh measurement, sweeping across ticks", async () => {
     const { prober, probe } = makeProber();

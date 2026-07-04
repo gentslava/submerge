@@ -25,7 +25,9 @@ export const liveHub = new LiveHub({
   fetchView: async () => {
     const raw = await getProxies();
     prober.observe(raw);
-    return toNodeView(raw, proxyMeta(collectProxies(db)));
+    // Overlay the panel's own last-known measurements: a reload wipes mihomo's
+    // history, and without this every settings change blanked the list to «— ms».
+    return prober.fillLastKnown(toNodeView(raw, proxyMeta(collectProxies(db))));
   },
   streamTraffic,
   getInterval: () => PULSE_MS,

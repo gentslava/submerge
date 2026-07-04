@@ -1,4 +1,4 @@
-import { PSEUDO_NODE_SET } from "@submerge/shared";
+import { type NodeView, PSEUDO_NODE_SET } from "@submerge/shared";
 import type { ProxiesResponse } from "../clients/mihomo.js";
 
 export interface ProberDeps {
@@ -16,32 +16,64 @@ export interface ProberDeps {
 // measurement fresher than «Интервал проверки». Only probes nodes WITHOUT a
 // fresh measurement — under the speed policy mihomo's url-test keeps most
 // nodes fresh and the prober fills the gaps (post-reload, select-policy nodes).
+// A vanished name is forgotten only after a sustained absence: a mihomo reload
+// can briefly return a partial /proxies snapshot, and pruning memory on that
+// transient blip wiped exactly the values the last-known overlay exists to keep.
+const MEMORY_GRACE_MS = 10 * 60_000;
+
 export class Prober {
   private names: string[] = []; // rotation order
   private cursor = 0;
-  private lastSeen = new Map<string, number>(); // mihomo's latest measurement
+  private lastSeen = new Map<string, number>(); // mihomo's latest measurement time
+  private lastDelay = new Map<string, number>(); // …and its value (survives reloads)
   private lastAttempt = new Map<string, number>(); // our latest probe attempt
+  private lastInView = new Map<string, number>(); // when the name last appeared in a snapshot
 
   constructor(private readonly deps: ProberDeps) {}
 
   // Digest a /proxies snapshot: refresh the node set (rotation keeps its order,
   // new names append, vanished names drop) and each node's latest-measured time.
   observe(resp: ProxiesResponse): void {
+    const now = (this.deps.now ?? Date.now)();
     const current = (resp.proxies.PROXY?.all ?? []).filter((n) => !PSEUDO_NODE_SET.has(n));
     const currentSet = new Set(current);
+    // Rotation follows the snapshot instantly (self-heals on the next observe);
+    // measurement memory is pruned lazily below, with the grace period.
     this.names = this.names.filter((n) => currentSet.has(n));
     for (const n of current) if (!this.names.includes(n)) this.names.push(n);
-    for (const k of [...this.lastSeen.keys()]) if (!currentSet.has(k)) this.lastSeen.delete(k);
-    for (const k of [...this.lastAttempt.keys()])
-      if (!currentSet.has(k)) this.lastAttempt.delete(k);
     if (this.cursor >= this.names.length) this.cursor = 0;
-    for (const n of current) {
-      const t = resp.proxies[n]?.history.at(-1)?.time;
-      if (t) {
-        const ms = Date.parse(t);
-        if (Number.isFinite(ms)) this.lastSeen.set(n, ms);
+    for (const n of current) this.lastInView.set(n, now);
+    for (const [k, seenAt] of [...this.lastInView]) {
+      if (!currentSet.has(k) && now - seenAt > MEMORY_GRACE_MS) {
+        this.lastInView.delete(k);
+        this.lastSeen.delete(k);
+        this.lastDelay.delete(k);
+        this.lastAttempt.delete(k);
       }
     }
+    for (const n of current) {
+      const last = resp.proxies[n]?.history.at(-1);
+      if (!last) continue; // empty history (e.g. right after a reload) — keep the memory
+      const ms = Date.parse(last.time);
+      if (Number.isFinite(ms)) this.lastSeen.set(n, ms);
+      this.lastDelay.set(n, last.delay);
+    }
+  }
+
+  // A mihomo reload wipes the engine's delay history, which used to blank every
+  // node to «— ms» after any settings change. The panel remembers the last real
+  // measurement itself: fill it into nodes the engine has no record for. Only
+  // truly never-measured nodes stay null; fresh engine data always wins, and the
+  // rolling sweep replaces these carried-over values within one check interval.
+  fillLastKnown(view: NodeView): NodeView {
+    return {
+      ...view,
+      all: view.all.map((n) => {
+        if (n.delay !== null || n.history.length > 0) return n;
+        const known = this.lastDelay.get(n.name);
+        return known === undefined ? n : { ...n, delay: known };
+      }),
+    };
   }
 
   // Probe the next rolling batch of stale nodes. Batch size spreads a full
