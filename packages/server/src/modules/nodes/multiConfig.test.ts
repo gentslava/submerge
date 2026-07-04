@@ -78,6 +78,8 @@ describe("buildMultiConfig — multiple channels", () => {
 
     const groups = cfg["proxy-groups"];
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const proxy = groups.find((g: any) => g.name === "PROXY");
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const auto = groups.find((g: any) => g.name === "AUTO");
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const media = groups.find((g: any) => g.name === "ch-media");
@@ -86,7 +88,17 @@ describe("buildMultiConfig — multiple channels", () => {
     expect(media.type).toBe("select");
     expect(media.proxies).toEqual(["B", "C"]);
 
+    // PROXY is the manual-override selector surfaced on the web Nodes screen —
+    // it must reflect only the Default channel's own options, never a routing
+    // group like ch-media (that's reached via the DOMAIN-SUFFIX rule below, not
+    // through PROXY, and must not appear as a selectable "node").
+    expect(proxy.proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
+    expect(proxy.proxies).not.toContain("ch-media");
+
     expect(cfg.rules).toEqual(["DOMAIN-SUFFIX,youtube.com,ch-media", "MATCH,AUTO"]);
+    // The routing group itself must still exist — only its listing inside
+    // PROXY is removed, not the group or the rule that targets it.
+    expect(media).toBeDefined();
   });
 
   it("keeps same-name collapse per channel while still sharing endpoints", () => {

@@ -193,10 +193,13 @@ export function buildMultiConfig(
   const defaultTopLevelNames = defaultBuild ? memberNames(defaultBuild) : [];
   const defaultGroupName = defaultChannel?.groupName ?? "PROXY";
 
+  // PROXY is mihomo's manual-override selector, surfaced on the web Nodes
+  // screen as the list of selectable exit nodes. Non-default channel groups
+  // (ch-<id>) are routing groups reached via their own DOMAIN-SUFFIX rules,
+  // not through PROXY — they must never be listed here as if they were nodes.
   const proxyMembers = [
     ...(defaultChannel ? [defaultChannel.groupName] : []),
     ...defaultTopLevelNames,
-    ...nonDefault.map((c) => c.groupName),
     "DIRECT",
   ];
 
