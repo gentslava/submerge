@@ -2,7 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 >
-> **Depends on:** Phases 1 & 2 (branch `feat/channel-routing`, tip `b5f14e5`+). Assumes the `channels` table, the `ChannelPolicy` union, the `ChannelController`, `buildConfig`, and `applyConfig`.
+> **Depends on:** Phases 1 & 2 — now **merged to `master`** (through `9ee9075`). Build this on a branch off current `master` (e.g. `feat/multi-routing`), NOT the stale `feat/channel-routing`. Assumes the `channels` table, the `ChannelPolicy` union, the `ChannelController`, `buildConfig`, and `applyConfig`.
+>
+> **⚠️ Reconciliation with master (background prober).** Since this plan was drafted, a *rolling background prober* landed on master (`live/prober.ts`): it retired `LiveHub.probeActive`, made `pollInterval` internal (`PULSE_MS`), and `singleton.ts`'s `afterView` now runs **`channelController.tick(view)` then `prober.tick()`**. Consequences for this plan:
+> - `LiveHub.afterView` still exists — the registry keeps using it. **Preserve the `prober.tick()` call**: the new wiring is `afterView: async (view) => { await registry.runOnce(); await prober.tick(); }` (registry replaces the single controller.tick; the prober stays).
+> - `instance.ts` on master binds the controller with `probe: testDelay` (from `nodes/service.ts`) and `select: selectProxy`. The registry reuses `testDelay`/`selectProxy`/`getProxies` — do NOT reintroduce an inline `getDelay` wrapper.
+> - `pollInterval` is internal now — ignore any stray `pollInterval`-setting references below.
+> - `toNodeView` is now `toNodeView(raw, meta?)`; the controller only needs group `.now` + member delays, so `toGroupView` stays minimal (no meta overlay).
+> - Tasks 1–6 (shared schemas, `channel_pool`, resolver, `buildMultiConfig`, `applyConfig`, controller `group`) are unaffected by the prober and stand as written. Only Tasks 7–8 (live wiring) carry the deltas above.
 
 **Goal:** Route different domains through different node pools by generalizing the single-Default-channel model to **N channels**, each with `{matcher, pool, policy}` — proven end-to-end (domain → channel group → its pool) via tests + the tRPC API. **No routing UI and no domain presets in this slice** (those are Phase 3b).
 
@@ -203,7 +210,7 @@ export class ControllerRegistry {
 
 - [ ] **Step 1: Failing tests** (`registry.test.ts`) with fake deps: two channels → each gets ticked with its own group view; a sticky channel pins into its own group (assert `select` called with `ch-<id>`); `recent()` merges decisions; removing a channel drops its controller; a throwing channel tick doesn't stop the others.
 - [ ] **Step 2:** run → FAIL.
-- [ ] **Step 3: Implement** `ControllerRegistry`. Then rewrite `instance.ts` to export a `registry` wired to the real db + mihomo client (`fetchProxies: getProxies`, `probe` via `getDelay`, `select: selectProxy`, `persistReason: setChannelLastReason(db, channelId, …)`, `now: Date.now`).
+- [ ] **Step 3: Implement** `ControllerRegistry`. Then rewrite `instance.ts` to export a `registry` wired to the real db + mihomo client (`fetchProxies: getProxies`, `probe: testDelay` (reuse the master helper — NOT an inline getDelay wrapper), `select: selectProxy`, `persistReason: setChannelLastReason(db, channelId, …)`, `now: Date.now`). The old single `channelController` export is removed; update its importers (`singleton.ts`, `channels/router.ts`) to the registry.
 - [ ] **Step 4:** `pnpm -F @submerge/server test src/modules/channels/registry.test.ts` + full suite → PASS.
 - [ ] **Step 5: Commit** `feat(server): multi-channel controller registry`.
 
@@ -214,7 +221,7 @@ export class ControllerRegistry {
 **Files:** Modify `packages/server/src/live/singleton.ts`, `packages/server/src/modules/channels/router.ts`. Test: full suite + typecheck.
 
 **Interfaces:**
-- `singleton.ts`: `afterView: () => registry.runOnce()` (the runner fetches `/proxies` itself; the view arg is unused now). Keep it best-effort (the hub already swallows afterView throws).
+- `singleton.ts`: change `afterView` from the single-controller form to `afterView: async (view) => { await registry.runOnce(); await prober.tick(); }` — the registry replaces `channelController.tick(view)`, and **`prober.tick()` MUST be preserved** (it's the rolling background prober). The runner fetches `/proxies` itself, so it ignores the `view` arg. Keep it best-effort (the hub already swallows afterView throws).
 - `router.ts` — `channelsRouter`:
   - `list: query → listChannels(db)` (with pool? add `listChannelsWithPool` or a separate `pool.get`).
   - `get(default)` retained; `create`/`update`/`delete`/`reorder` mutations (each → persist + `applyConfig(db)`).
