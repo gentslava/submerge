@@ -231,9 +231,12 @@ describe("LiveHub", () => {
     expect(onReconnect).toHaveBeenCalledTimes(1);
   });
 
-  it("a throwing onReconnect does not break the poll (health still reported true)", async () => {
+  it("a synchronously-throwing onReconnect does not corrupt health or livelock", async () => {
     const events: LiveEvent[] = [];
     let down = false;
+    const onReconnect = vi.fn(() => {
+      throw new Error("reconnect handler boom");
+    });
     const hub = new LiveHub({
       fetchView: vi.fn(async () => {
         if (down) throw new Error("down");
@@ -241,21 +244,31 @@ describe("LiveHub", () => {
       }),
       streamTraffic: async function* () {},
       getInterval: () => 10,
-      onReconnect: () => {
-        throw new Error("reconnect handler boom");
-      },
+      onReconnect,
     });
     hub.emitter.on(LIVE_EVENT, (e: LiveEvent) => events.push(e));
-    await hub.pollOnce(); // initial connect
+    await hub.pollOnce(); // initial connect — no reconnect
     down = true;
     await hub.pollOnce(); // outage
     down = false;
-    await hub.pollOnce(); // reconnect — onReconnect throws synchronously
-    // Give the swallowed rejection's microtask a turn before asserting.
+    await hub.pollOnce(); // genuine reconnect — onReconnect throws synchronously
+    // Give any swallowed rejection's microtask a turn before asserting.
     await Promise.resolve();
-    expect(events.filter((e) => e.type === "health")).toContainEqual({
-      type: "health",
-      mihomo: true,
-    });
+    await Promise.resolve();
+
+    const health = events
+      .filter((e): e is Extract<LiveEvent, { type: "health" }> => e.type === "health")
+      .map((e) => e.mihomo);
+    // Exactly one transition per poll: true (initial), false (outage), true
+    // (reconnect). A spurious trailing `false` would mean the throwing
+    // handler escaped setHealth and corrupted lastHealth back to unhealthy.
+    expect(health).toEqual([true, false, true]);
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+
+    // A later successful poll must not re-fire onReconnect — corruption would
+    // make wasHealthy read false again and re-trigger it every tick (livelock).
+    await hub.pollOnce();
+    await hub.pollOnce();
+    expect(onReconnect).toHaveBeenCalledTimes(1);
   });
 });

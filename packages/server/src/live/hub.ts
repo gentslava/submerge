@@ -103,9 +103,16 @@ export class LiveHub {
     // excluded — the boot-time apply already handles that case.
     if (ok && !wasHealthy && this.everHealthy) {
       // Best-effort: a throwing/rejecting handler must not break the poll loop.
-      void Promise.resolve(this.deps.onReconnect?.()).catch((err) => {
-        this.deps.onError?.("poll", err);
-      });
+      // The call itself is deferred inside .then() (not passed directly to
+      // Promise.resolve) so a SYNCHRONOUS throw from onReconnect is also
+      // caught here instead of escaping into this setHealth call — a sync
+      // throw escaping would corrupt lastHealth via pollOnce's outer catch
+      // and re-fire onReconnect on every subsequent successful poll.
+      void Promise.resolve()
+        .then(() => this.deps.onReconnect?.())
+        .catch((err) => {
+          this.deps.onError?.("poll", err);
+        });
     }
     if (ok) this.everHealthy = true;
   }
