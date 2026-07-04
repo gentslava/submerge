@@ -1,9 +1,13 @@
 import { CHANNEL_PRESETS, type Channel, type ChannelMatcher } from "@submerge/shared";
-import { ChevronDown, GripVertical } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
+import { DomainTags } from "./DomainTags";
+import { PresetChips } from "./PresetChips";
 
 const POLICY_LABEL: Record<Channel["policy"]["kind"], string> = {
   speed: "По задержке",
@@ -14,17 +18,29 @@ const POLICY_LABEL: Record<Channel["policy"]["kind"], string> = {
 interface ChannelCardProps {
   channel: Channel;
   onToggleEnabled: (enabled: boolean) => void;
+  onUpdateName: (name: string) => void;
+  onUpdateMatcher: (matcher: ChannelMatcher) => void;
   busy?: boolean;
 }
 
 /**
- * Collapsed summary row for one routing channel — measured against the mockup's
- * `VICOv` (regular channel) and `muQ15` (Default, pinned last). The expanded
- * editor (name/domains/pool/policy fields) lands in Tasks 4–5; the chevron here
- * is a real affordance for that future expand interaction but is inert this
- * task, and the drag handle is decorative only (reorder wiring is a later task).
+ * One routing channel — collapsed summary measured against the mockup's `VICOv`
+ * (regular channel) and `muQ15` (Default, pinned last); the expanded editor
+ * against `ch·Messengers (edit)` (`Z7zRtE`). Expanding is a real toggle (click the
+ * chevron or anywhere on the header); this task's editor covers the Имя + Домены
+ * rows only — Пул/Политика/Удалить land in Task 5. The drag handle stays
+ * decorative (reorder wiring is a later task).
  */
-export function ChannelCard({ channel, onToggleEnabled, busy = false }: ChannelCardProps) {
+export function ChannelCard({
+  channel,
+  onToggleEnabled,
+  onUpdateName,
+  onUpdateMatcher,
+  busy = false,
+}: ChannelCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = () => setExpanded((e) => !e);
+
   return (
     <div
       className={cn(
@@ -34,29 +50,63 @@ export function ChannelCard({ channel, onToggleEnabled, busy = false }: ChannelC
       )}
     >
       {channel.isDefault ? (
-        <DefaultRow channel={channel} />
+        <DefaultRow channel={channel} expanded={expanded} onToggleExpanded={toggleExpanded} />
       ) : (
-        <RegularRow channel={channel} onToggleEnabled={onToggleEnabled} busy={busy} />
+        <RegularRow
+          channel={channel}
+          onToggleEnabled={onToggleEnabled}
+          busy={busy}
+          expanded={expanded}
+          onToggleExpanded={toggleExpanded}
+        />
+      )}
+      {expanded && (
+        <>
+          <div className="h-px w-full bg-border-subtle" aria-hidden="true" />
+          <ChannelEditor
+            channel={channel}
+            onUpdateName={onUpdateName}
+            onUpdateMatcher={onUpdateMatcher}
+          />
+        </>
       )}
     </div>
   );
 }
 
+// The header toggles the editor on click. The enabled Switch is a real <button>
+// (role="switch"), and interactive content can't nest inside another <button> —
+// so the toggle wraps everything except the Switch (name/badge/summary and a
+// trailing chevron button), rather than making the whole row one big control.
 function RegularRow({
   channel,
   onToggleEnabled,
   busy,
+  expanded,
+  onToggleExpanded,
 }: {
   channel: Channel;
   onToggleEnabled: (enabled: boolean) => void;
   busy: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
 }) {
+  const Chevron = expanded ? ChevronUp : ChevronDown;
+  const toggleLabel = `${expanded ? "Свернуть" : "Развернуть"} канал «${channel.name}»`;
   return (
     <div className="flex w-full items-center gap-3 px-4 py-3.5">
-      <GripVertical className="h-4 w-4 shrink-0 text-text-disabled" aria-hidden="true" />
-      <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
-      <PolicyBadge kind={channel.policy.kind} />
-      <MatcherSummary matcher={channel.matcher} />
+      <button
+        type="button"
+        onClick={onToggleExpanded}
+        aria-expanded={expanded}
+        aria-label={toggleLabel}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        <GripVertical className="h-4 w-4 shrink-0 text-text-disabled" aria-hidden="true" />
+        <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
+        <PolicyBadge kind={channel.policy.kind} />
+        <MatcherSummary matcher={channel.matcher} />
+      </button>
       <div className="flex shrink-0 items-center gap-3.5">
         <Switch
           checked={channel.enabled}
@@ -64,7 +114,9 @@ function RegularRow({
           disabled={busy}
           aria-label={`Включить канал «${channel.name}»`}
         />
-        <ChevronDown className="h-[18px] w-[18px] text-text-tertiary" aria-hidden="true" />
+        <button type="button" onClick={onToggleExpanded} aria-label={toggleLabel}>
+          <Chevron className="h-[18px] w-[18px] text-text-tertiary" aria-hidden="true" />
+        </button>
       </div>
     </div>
   );
@@ -76,18 +128,36 @@ function RegularRow({
 // always carries unmatched traffic regardless of the stored `enabled` flag
 // (see channels router — "the Default always stays active regardless").
 // Disabling that switch here would be dishonest UI, not real behavior.
-function DefaultRow({ channel }: { channel: Channel }) {
+function DefaultRow({
+  channel,
+  expanded,
+  onToggleExpanded,
+}: {
+  channel: Channel;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+}) {
+  const Chevron = expanded ? ChevronUp : ChevronDown;
+  const toggleLabel = `${expanded ? "Свернуть" : "Развернуть"} канал «${channel.name}»`;
   return (
     <div className="flex w-full items-center gap-3 px-4 py-3.5">
-      <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
-      <span className="shrink-0 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-[11px] font-semibold text-accent-text">
-        catch-all
-      </span>
-      <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
-        <span className="text-xs text-text-tertiary">Всё остальное</span>
-        <span className="text-sub text-text-disabled">·</span>
-        <span className="text-xs text-text-tertiary">Все узлы</span>
-      </div>
+      <button
+        type="button"
+        onClick={onToggleExpanded}
+        aria-expanded={expanded}
+        aria-label={toggleLabel}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+      >
+        <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
+        <span className="shrink-0 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-fine font-semibold text-accent-text">
+          catch-all
+        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2 px-1">
+          <span className="text-xs text-text-tertiary">Всё остальное</span>
+          <span className="text-sub text-text-disabled">·</span>
+          <span className="text-xs text-text-tertiary">Все узлы</span>
+        </div>
+      </button>
       <div className="flex shrink-0 items-center gap-3.5">
         <Switch
           checked
@@ -95,8 +165,73 @@ function DefaultRow({ channel }: { channel: Channel }) {
           onCheckedChange={() => {}}
           aria-label="Канал «Default» всегда включён"
         />
-        <ChevronDown className="h-[18px] w-[18px] text-text-tertiary" aria-hidden="true" />
+        <button type="button" onClick={onToggleExpanded} aria-label={toggleLabel}>
+          <Chevron className="h-[18px] w-[18px] text-text-tertiary" aria-hidden="true" />
+        </button>
       </div>
+    </div>
+  );
+}
+
+// Expanded editor — measured against `Z7zRtE`. This task covers the Имя + Домены
+// rows; Пул/Политика/Удалить are Task 5. Default's Домены row has no meaning (it
+// matches whatever no other channel claimed) so it's a read-only caption rather
+// than live preset chips/tag input the admin could edit to no effect.
+function ChannelEditor({
+  channel,
+  onUpdateName,
+  onUpdateMatcher,
+}: {
+  channel: Channel;
+  onUpdateName: (name: string) => void;
+  onUpdateMatcher: (matcher: ChannelMatcher) => void;
+}) {
+  return (
+    <div className="flex w-full flex-col">
+      <EditorRow label="Имя">
+        <Input
+          key={channel.name}
+          aria-label="Имя канала"
+          defaultValue={channel.name}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v.length > 0 && v !== channel.name) onUpdateName(v);
+          }}
+          className="w-full font-mono text-sub md:w-[280px]"
+        />
+      </EditorRow>
+      <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-label text-text-primary">Домены</span>
+          <span className="text-xs text-text-tertiary">Какие сайты пойдут через этот канал</span>
+        </div>
+        {channel.isDefault ? (
+          <span className="text-sub text-text-tertiary">Всё остальное</span>
+        ) : (
+          <>
+            <PresetChips
+              value={channel.matcher.presets}
+              onChange={(presets) => onUpdateMatcher({ ...channel.matcher, presets })}
+            />
+            <DomainTags
+              value={channel.matcher.domains}
+              onChange={(domains) => onUpdateMatcher({ ...channel.matcher, domains })}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Label-left / control-right row — measured against the "Имя" row (`uU4PY`): the
+// label takes the flexible space (fill_container in the mockup), pushing the
+// control to the trailing edge.
+function EditorRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex w-full items-center gap-6 border-b border-border-subtle px-[18px] py-4">
+      <span className="flex-1 text-label text-text-primary">{label}</span>
+      {children}
     </div>
   );
 }

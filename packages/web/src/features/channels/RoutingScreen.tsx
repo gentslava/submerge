@@ -7,11 +7,11 @@ import { useTRPC } from "@/lib/trpc";
 import { ChannelCard } from "./ChannelCard";
 
 /**
- * «Маршрутизация» screen — measured against the mockup's `P7RAD`/`fSRZN`. This
- * task ships the header + the collapsed channel list only; the expanded editor
- * (name/domains/pool/policy fields, and the "Новый канал" create flow that
- * opens it) lands in Tasks 4–5 — until then the header button has nothing to
- * open, so it's rendered but inert, same as each card's expand chevron.
+ * «Маршрутизация» screen — measured against the mockup's `P7RAD`/`fSRZN`. Each
+ * `ChannelCard` now expands into a real editor for name + domains (Task 4); the
+ * pool/policy/delete rows and the "Новый канал" create flow that opens a fresh
+ * card land in Task 5 — until then the header button has nothing to open, so
+ * it's rendered but inert.
  */
 export function RoutingScreen() {
   const trpc = useTRPC();
@@ -61,6 +61,8 @@ export function RoutingScreen() {
               channel={channel}
               busy={updateMutation.isPending && updateMutation.variables?.id === channel.id}
               onToggleEnabled={(enabled) => updateMutation.mutate({ id: channel.id, enabled })}
+              onUpdateName={(name) => updateMutation.mutate({ id: channel.id, name })}
+              onUpdateMatcher={(matcher) => updateMutation.mutate({ id: channel.id, matcher })}
             />
           ))}
           {channels.length === 1 && (
