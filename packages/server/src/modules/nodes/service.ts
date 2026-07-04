@@ -62,14 +62,19 @@ export async function applyConfig(
   // Write atomically (temp file + rename) so mihomo never reads a half-written config on
   // reload: an in-place writeFileSync truncates first, and mihomo can catch that empty
   // window — especially across a slow bind mount — and reject the reload with HTTP 400.
-  const inputs: ChannelConfigInput[] = listChannels(db).map((ch) => ({
-    id: ch.id,
-    groupName: groupNameFor(ch),
-    isDefault: ch.isDefault,
-    policy: ch.policy,
-    domains: ch.matcher.domains,
-    proxies: resolveChannelProxies(db, ch, allProxies),
-  }));
+  // A disabled non-default channel is dropped from routing entirely — no group,
+  // no DOMAIN-SUFFIX rules — until re-enabled. The Default is the catch-all and
+  // stays active regardless of its own `enabled` flag.
+  const inputs: ChannelConfigInput[] = listChannels(db)
+    .filter((ch) => ch.isDefault || ch.enabled)
+    .map((ch) => ({
+      id: ch.id,
+      groupName: groupNameFor(ch),
+      isDefault: ch.isDefault,
+      policy: ch.policy,
+      domains: ch.matcher.domains,
+      proxies: resolveChannelProxies(db, ch, allProxies),
+    }));
   const content = buildMultiConfig(inputs, readMihomoSecret(db));
   const tmpPath = `${configPath}.tmp`;
   writeFileSync(tmpPath, content, "utf8");

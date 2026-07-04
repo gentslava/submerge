@@ -15,11 +15,16 @@ const stickyPolicy = (
   ...over,
 });
 
-const channel = (id: string, isDefault: boolean, policy: ChannelPolicy): Channel => ({
+const channel = (
+  id: string,
+  isDefault: boolean,
+  policy: ChannelPolicy,
+  enabled = true,
+): Channel => ({
   id,
   name: id,
   priority: isDefault ? 1 : 0,
-  enabled: true,
+  enabled,
   isDefault,
   policy,
   matcher: { presets: [], domains: [] },
@@ -121,6 +126,46 @@ describe("ControllerRegistry", () => {
       const cur = recent[i];
       expect(prev && cur ? prev.at >= cur.at : true).toBe(true);
     }
+  });
+
+  it("skips a disabled non-default channel — never ticked — while Default still ticks", async () => {
+    const h = harness();
+    setChannels(h, [
+      channel("ch1", false, stickyPolicy(), false), // disabled
+      channel("default", true, stickyPolicy()),
+    ]);
+    setGroup(h, "ch-ch1", ["A", "B"]);
+    setGroup(h, "AUTO", ["A", "B"]);
+
+    await h.registry.runOnce();
+
+    const ch1Selects = h.selected.filter((s) => s.group === "ch-ch1");
+    const defaultSelects = h.selected.filter((s) => s.group === "AUTO");
+    expect(ch1Selects.length).toBe(0); // disabled channel's group is never selected into
+    expect(defaultSelects.length).toBe(1); // Default runs regardless of any `enabled` flag
+  });
+
+  it("disabling a channel drops its cached controller, just like removal — re-enabling restarts fresh", async () => {
+    const h = harness();
+    setChannels(h, [channel("ch1", false, stickyPolicy())]);
+    setGroup(h, "ch-ch1", ["A", "B"]); // no pre-existing pin
+
+    await h.registry.runOnce();
+    expect(h.selected.length).toBe(1); // initial pick: B (fastest)
+
+    // Disable the channel: it drops out of the filtered live set, so the
+    // vanished-channel cleanup removes its cached controller + box exactly as
+    // it would for an outright removal.
+    setChannels(h, [channel("ch1", false, stickyPolicy(), false)]);
+    await h.registry.runOnce();
+    expect(h.selected.length).toBe(1); // no new selects while disabled — never ticked
+
+    // Re-enabling with the same id must behave like a fresh controller (proof
+    // the old one was actually dropped, not merely skipped) — a stale controller
+    // would already have adopted "B" and not re-select it.
+    setChannels(h, [channel("ch1", false, stickyPolicy())]);
+    await h.registry.runOnce();
+    expect(h.selected.length).toBe(2);
   });
 
   it("drops a removed channel's controller — a later runOnce doesn't tick it", async () => {

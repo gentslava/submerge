@@ -33,7 +33,10 @@ export const channelsRouter = router({
   }),
   update: protectedProcedure.input(updateChannelInput).mutation(async ({ input }) => {
     updateChannel(db, input.id, input);
-    // name/enabled/matcher all shape the generated config (group membership, rules).
+    // Regenerate + reload mihomo: name/matcher reshape the generated config, and
+    // setting a non-default channel's `enabled` to false drops it from routing
+    // entirely (no group, no DOMAIN-SUFFIX rules) and stops it being controlled
+    // until re-enabled. The Default always stays active regardless.
     await applyConfig(db);
     return { ok: true as const };
   }),

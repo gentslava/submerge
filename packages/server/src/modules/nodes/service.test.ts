@@ -1,12 +1,13 @@
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ChannelPolicy } from "@submerge/shared";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
-import { ensureDefaultChannel } from "../channels/service.js";
+import { createChannel, ensureDefaultChannel, updateChannel } from "../channels/service.js";
 import { applyConfig, collectProxies, listNodes, testDelay } from "./service.js";
 
 function freshDb() {
@@ -26,6 +27,17 @@ const json = (body: unknown, init: ResponseInit = {}) =>
   });
 
 afterEach(() => vi.unstubAllGlobals());
+
+// mihomo config.yaml shape used only by these tests — narrow enough to avoid
+// `any` at each call site (the rest of the doc is untyped and not asserted on).
+interface GeneratedConfig {
+  "proxy-groups": { name: string }[];
+  rules: string[];
+}
+
+function readGeneratedConfig(path: string): GeneratedConfig {
+  return yaml.load(readFileSync(path, "utf8")) as GeneratedConfig;
+}
 
 describe("collectProxies", () => {
   it("gathers enabled sources by sortOrder and skips disabled ones", () => {
@@ -107,6 +119,49 @@ describe("applyConfig", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
     expect(cfg.proxies[0].name).toBe("A");
+  });
+
+  const speedPolicy: ChannelPolicy = {
+    kind: "speed",
+    testUrl: "https://example.com/generate_204",
+    intervalSec: 60,
+    toleranceMs: 50,
+    reevaluateWhileHealthy: true,
+  };
+
+  it("drops a disabled non-default channel's group + rules from the config; re-enabling restores them", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const ch = createChannel(db, {
+      name: "Media",
+      policy: speedPolicy,
+      matcher: { presets: [], domains: ["youtube.com"] },
+    });
+    updateChannel(db, ch.id, { enabled: false });
+
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    let cfg = readGeneratedConfig(configPath);
+    let groupNames = cfg["proxy-groups"].map((g) => g.name);
+    expect(groupNames).not.toContain(`ch-${ch.id}`);
+    expect(cfg.rules).not.toContain(`DOMAIN-SUFFIX,youtube.com,ch-${ch.id}`);
+    // Only the Default catch-all remains — no non-default channel is routed.
+    expect(cfg.rules).toEqual(["MATCH,PROXY"]);
+
+    updateChannel(db, ch.id, { enabled: true });
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    cfg = readGeneratedConfig(configPath);
+    groupNames = cfg["proxy-groups"].map((g) => g.name);
+    expect(groupNames).toContain(`ch-${ch.id}`);
+    expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${ch.id}`);
+    expect(cfg.rules).toContain("MATCH,AUTO");
   });
 });
 

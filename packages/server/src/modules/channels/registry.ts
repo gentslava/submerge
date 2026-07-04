@@ -53,8 +53,12 @@ export class ControllerRegistry {
 
   async runOnce(): Promise<void> {
     const chs = this.deps.listChannels();
+    // A disabled non-default channel is excluded from control entirely — it must
+    // not be ticked/pinned. The Default always runs regardless of its own
+    // `enabled` flag (it's the permanent catch-all).
+    const active = chs.filter((ch) => ch.isDefault || ch.enabled);
     const px = (await this.deps.fetchProxies()).proxies;
-    for (const ch of chs) {
+    for (const ch of active) {
       const ctrl = this.controllerFor(ch);
       const view = toGroupView(px, groupNameFor(ch));
       try {
@@ -63,10 +67,11 @@ export class ControllerRegistry {
         // Best-effort: a throwing channel must not stop the others this poll.
       }
     }
-    // Drop cached controllers (and their boxes) for channels that no longer
-    // exist, so a re-created channel with the same id starts from a fresh
-    // controller rather than resurrecting stale transient state.
-    const liveIds = new Set(chs.map((ch) => ch.id));
+    // Drop cached controllers (and their boxes) for channels that are no longer
+    // live — removed OR disabled — so a re-created/re-enabled channel with the
+    // same id starts from a fresh controller rather than resurrecting stale
+    // transient state.
+    const liveIds = new Set(active.map((ch) => ch.id));
     for (const id of this.controllers.keys()) {
       if (!liveIds.has(id)) {
         this.controllers.delete(id);
