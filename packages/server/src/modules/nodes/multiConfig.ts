@@ -52,6 +52,40 @@ function allocateSubGroupName(
   return name;
 }
 
+// Raw proxy names that will land in the flat proxy list untouched by subgroup
+// collapsing — a channel's own "single" entry, UNLESS its endpoint was already
+// claimed by an earlier channel (then it's a shared reference that keeps
+// whichever name the earlier claim gave it, contributing no new flat entry —
+// see `claim()` below). Mirrors the real endpoint-claiming order (`channels`
+// here must already be in the same Default-first order as the main loop) so
+// this precomputation agrees with what the main loop will actually produce.
+// A collapsed group never contributes its base name to `flat` either way —
+// only its `${name} #n` member names do.
+//
+// Seeding the subgroup-name allocator with this set keeps proxy names and
+// group/subgroup names in one joint namespace: mihomo rejects a proxy sharing
+// a name with a proxy-group, so a collapsed subgroup must never claim a name
+// some channel's bare proxy will use.
+function collectSingleProxyNames(orderedChannels: ChannelConfigInput[]): Set<string> {
+  const names = new Set<string>();
+  const claimed = new Set<string>(); // endpoint keys claimed by channels processed so far
+  for (const channel of orderedChannels) {
+    const priorEndpoints = new Set(claimed); // frozen at channel start, mirrors buildMultiConfig
+    for (const entry of groupProxies(channel.proxies)) {
+      if (entry.kind === "single") {
+        const key = endpointKey(entry.proxy);
+        if (!priorEndpoints.has(key)) {
+          names.add(entry.proxy.name);
+          claimed.add(key);
+        }
+        continue;
+      }
+      for (const member of entry.members) claimed.add(endpointKey(member));
+    }
+  }
+  return names;
+}
+
 function buildRules(
   nonDefault: ChannelConfigInput[],
   noProxies: boolean,
@@ -84,9 +118,11 @@ export function buildMultiConfig(
   const flat: ProxyConfig[] = []; // global proxy definitions, pre-dedupe
   const endpointToIndex = new Map<string, number>();
   // One namespace for all group names (mihomo requires them unique). Seed with
-  // the reserved names and every channel's own group name.
+  // the reserved names, every channel's own group name, and every channel's
+  // bare proxy names — the joint-uniqueness guard (see collectSingleProxyNames).
   const usedSubGroupNames = new Set<string>(PSEUDO_NODE_SET);
   for (const c of channels) usedSubGroupNames.add(c.groupName);
+  for (const name of collectSingleProxyNames(ordered)) usedSubGroupNames.add(name);
 
   const builds = new Map<string, ChannelBuild>();
   const allSubGroups: SubGroupSpec[] = [];
@@ -122,7 +158,14 @@ export function buildMultiConfig(
     builds.set(channel.id, { channel, topLevel });
   }
 
-  const unique = dedupeNames(flat);
+  // Reverse direction of the same guard: a proxy must never be assigned a name
+  // already claimed by a proxy-group. Reserve PSEUDO + channel group names +
+  // every allocated subgroup name (now final) before deduping proxy names.
+  const reservedGroupNames = new Set<string>(PSEUDO_NODE_SET);
+  for (const c of channels) reservedGroupNames.add(c.groupName);
+  for (const spec of allSubGroups) reservedGroupNames.add(spec.name);
+
+  const unique = dedupeNames(flat, reservedGroupNames);
   const nameAt = (index: number): string => (unique[index] as ProxyConfig).name;
   const memberNames = (build: ChannelBuild): string[] =>
     build.topLevel.map((ref) => (ref.kind === "proxy" ? nameAt(ref.flatIndex) : ref.name));

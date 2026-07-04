@@ -140,4 +140,47 @@ describe("buildMultiConfig — multiple channels", () => {
     expect(cfg.proxies).toEqual([]);
     expect(cfg.rules).toEqual(["MATCH,DIRECT"]);
   });
+
+  it("keeps a collapsed subgroup name distinct from a same-name proxy contributed by another channel", () => {
+    // Default's restricted pool has two distinct endpoints sharing the name "X" —
+    // groupProxies collapses them, and the Default channel keeps the bare base
+    // name, so the subgroup is named "X" (see allocateSubGroupName).
+    const x1 = px("X", "x1.com");
+    const x2 = px("X", "x2.com");
+    // A later channel independently contributes a THIRD, distinct "X" endpoint
+    // that doesn't collapse (it's the only "X" in its own pool) — so it stays a
+    // bare proxy literally named "X". Without the joint-namespace guard this
+    // proxy and the "X" subgroup would share a name, which mihomo rejects.
+    const x3 = px("X", "x3.com");
+    const raw = buildMultiConfig([
+      channel({ proxies: [x1, x2] }),
+      channel({
+        id: "media",
+        groupName: "ch-media",
+        isDefault: false,
+        policy: sticky,
+        domains: [],
+        proxies: [x3],
+      }),
+    ]);
+    const cfg = parse(raw);
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const proxyNames: string[] = cfg.proxies.map((p: any) => p.name);
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const groupNames: string[] = cfg["proxy-groups"].map((g: any) => g.name);
+
+    // The two namespaces must be jointly unique — no name may appear in both.
+    const overlap = proxyNames.filter((n) => groupNames.includes(n));
+    expect(overlap).toEqual([]);
+
+    // Each namespace stays internally unique too (structurally valid config).
+    expect(new Set(proxyNames).size).toBe(proxyNames.length);
+    expect(new Set(groupNames).size).toBe(groupNames.length);
+
+    // The collapsed subgroup still exists (renamed out of the way of "X"),
+    // and the media channel's bare proxy still resolves to "X".
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const media = cfg["proxy-groups"].find((g: any) => g.name === "ch-media");
+    expect(media.proxies).toEqual(["X"]);
+  });
 });

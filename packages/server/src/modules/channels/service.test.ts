@@ -1,8 +1,14 @@
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_AUTO_TEST_URL, DEFAULT_SPEED_POLICY } from "@submerge/shared";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { beforeEach, describe, expect, it } from "vitest";
+import * as yaml from "js-yaml";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
+import { sources } from "../../db/schema.js";
+import { applyConfig } from "../nodes/service.js";
 import { setSetting } from "../settings/service.js";
 import { getPool, setPool } from "./pool.js";
 import {
@@ -140,5 +146,40 @@ describe("channel CRUD", () => {
     reorderChannels(db, ["default", b.id, a.id]);
     const list = listChannels(db);
     expect(list.map((c) => c.id)).toEqual([b.id, a.id, "default"]);
+  });
+});
+
+describe("updateChannel matcher persistence + config regeneration", () => {
+  const proxy = (name: string) => ({ name, type: "vless", server: "ex.com", port: 443, uuid: "u" });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("persists a new matcher and reflects it in the regenerated config's DOMAIN-SUFFIX rules", async () => {
+    const db = freshDb();
+    ensureDefaultChannel(db);
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const created = createChannel(db, { name: "Media", policy: manualPolicy });
+
+    updateChannel(db, created.id, { matcher: { presets: ["youtube"], domains: ["ex.com"] } });
+
+    // The row itself reflects the new matcher — updateChannel persisted it.
+    const updated = readChannel(db, created.id);
+    expect(updated?.matcher).toEqual({ presets: ["youtube"], domains: ["ex.com"] });
+
+    // And the regenerated config's rules — resolveMatcherDomains(matcher) fed into
+    // buildMultiConfig via applyConfig — carry both the custom domain and the
+    // preset-expanded one, addressed to this channel's own group.
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(cfg.rules).toContain(`DOMAIN-SUFFIX,ex.com,ch-${created.id}`);
+    expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${created.id}`);
   });
 });

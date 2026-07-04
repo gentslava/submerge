@@ -38,9 +38,15 @@ export function groupProxies(proxies: ProxyConfig[]): TopLevelEntry[] {
 // Ensure unique proxy names (mihomo requires it). Deterministic suffix so the
 // generated config is stable across reloads and testable (PoC used Math.random).
 // Tracks the full set of emitted names — including generated suffixes — so a
-// pre-existing "A-2" can't collide with a renamed duplicate of "A".
-export function dedupeNames(proxies: ProxyConfig[]): ProxyConfig[] {
-  const used = new Set<string>();
+// pre-existing "A-2" can't collide with a renamed duplicate of "A". `reserved`
+// seeds that set with names from another namespace (proxy-group names) so a
+// proxy can never be assigned a name mihomo already uses for a group — the two
+// namespaces must be jointly unique (see multiConfig.ts's collision guard).
+export function dedupeNames(
+  proxies: ProxyConfig[],
+  reserved: Iterable<string> = [],
+): ProxyConfig[] {
+  const used = new Set<string>(reserved);
   return proxies.map((p) => {
     if (!used.has(p.name)) {
       used.add(p.name);
