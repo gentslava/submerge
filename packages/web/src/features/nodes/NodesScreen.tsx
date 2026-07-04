@@ -32,7 +32,7 @@ export function NodesScreen() {
   // card's params and the active-node chart's check cadence. `manual` has no probe
   // interval of its own, so the chart uses the engine default for its check cadence.
   const policy: ChannelPolicy = channelQuery.data?.policy ?? DEFAULT_SPEED_POLICY;
-  const checkIntervalSec =
+  const chartCheckIntervalSec =
     policy.kind === "manual" ? DEFAULT_AUTO_TEST_INTERVAL : Math.max(1, policy.intervalSec);
   // Honest header copy: unlike the chart cadence above, the header must not imply a
   // periodic check exists when the policy is `manual` (or the channel hasn't loaded
@@ -137,7 +137,7 @@ export function NodesScreen() {
           autoNow={autoNow}
           isAuto={isAuto}
           policy={policy}
-          checkIntervalSec={checkIntervalSec}
+          checkIntervalSec={chartCheckIntervalSec}
           all={all}
           sources={sourcesQuery.data ?? []}
           totals={totals}

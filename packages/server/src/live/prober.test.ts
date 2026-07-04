@@ -58,7 +58,7 @@ describe("Prober staleness", () => {
   });
 
   it("drops vanished nodes from rotation and state on the next observe", async () => {
-    const { prober, probe } = makeProber({ intervalSec: 10 }); // batch = ceil(3×5/10) = 2
+    const { prober, probe } = makeProber({ intervalSec: 10 }); // after pruning, names=2 → batch = ceil(2×5/10) = 1
     prober.observe(resp(["a", "b", "c"])); // all stale (never measured)
     prober.observe(resp(["a", "c"])); // b vanished (reload/rename)
     await prober.tick();
