@@ -33,36 +33,6 @@ describe("LiveHub", () => {
     expect(hub.snapshot()).toContainEqual({ type: "nodeUpdate", view });
   });
 
-  it("probes the active node on the poll after it becomes active", async () => {
-    const probeActive = vi.fn(async () => {});
-    const hub = new LiveHub({
-      fetchView: vi.fn(async () => view),
-      streamTraffic: async function* () {},
-      getInterval: () => 10,
-      probeActive,
-    });
-    // First poll learns the active node (no probe yet); the second probes it.
-    await hub.pollOnce();
-    expect(probeActive).not.toHaveBeenCalled();
-    await hub.pollOnce();
-    expect(probeActive).toHaveBeenCalledWith("NL-1");
-  });
-
-  it("keeps polling when an active-node probe rejects", async () => {
-    const probeActive = vi.fn(async () => {
-      throw new Error("unreachable");
-    });
-    const hub = new LiveHub({
-      fetchView: vi.fn(async () => view),
-      streamTraffic: async function* () {},
-      getInterval: () => 10,
-      probeActive,
-    });
-    await hub.pollOnce();
-    await hub.pollOnce(); // probe rejects here — must not throw or flip health
-    expect(hub.snapshot()).toContainEqual({ type: "health", mihomo: true });
-  });
-
   it("emits and snapshots cumulative totals when fetchTotals is set", async () => {
     const hub = new LiveHub({
       fetchView: vi.fn(async () => view),

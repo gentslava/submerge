@@ -43,7 +43,6 @@ export const liveHub = new LiveHub({
   fetchView: async () => toNodeView(await getProxies(), proxyMeta(collectProxies(db))),
   streamTraffic,
   getInterval: pollIntervalMs,
-  probeActive: probeActiveThrottled,
   fetchTotals: getTotals,
   afterView: (view) => channelController.tick(view),
   // The hub reports once per outage streak, so this can't flood the log.
