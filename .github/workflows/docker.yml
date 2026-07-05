@@ -1,8 +1,11 @@
 name: docker
 
-# Build the submerge + happ-decoder images and publish them to GHCR on every push to
-# master. The compose (and Dokploy) deploy by pulling ghcr.io/gentslava/submerge:latest
-# and ghcr.io/gentslava/submerge-happ-decoder:latest.
+# Build the submerge + happ-decoder images and publish them to GHCR.
+#   push to master → :latest + :<sha>  (compose/Dokploy deploy by pulling :latest)
+#   pull_request   → :pr-<N>           (preview image, deployable for testing that PR)
+# PR builds run only for same-repo branches: fork PRs get no GHCR credentials, so their
+# build/push is skipped (an expected no-op, not a failure). Preview tags are left in place;
+# GHCR packages are public, so old :pr-<N> tags cost nothing but a longer version list.
 on:
   push:
     branches: [master]
@@ -11,15 +14,26 @@ on:
       - "docs/**"
       - "pencil/**"
       - "docker-compose.yml"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "pencil/**"
+      - "docker-compose.yml"
   workflow_dispatch:
 
-# A newer push supersedes an in-flight build of the same ref.
+# A newer push supersedes an in-flight build of the same ref (per-PR for pull requests).
 concurrency:
   group: docker-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
+    # Run for push/dispatch always; for PRs only from a same-repo branch — fork PRs
+    # can't reach GHCR credentials, so their build/push is skipped rather than failing.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,6 +57,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Tags: :latest + :<sha> on master, a single :pr-<N> preview tag on pull requests.
+      # `latest=false` disables the action's auto-latest so the tag set is exactly these.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/gentslava/${{ matrix.image }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ github.sha }},enable={{is_default_branch}}
+            type=ref,event=pr
       # Resolve the latest Happ desktop release so happ-decoder builds against it (build-arg
       # below); falls back to the Dockerfile's pinned HAPP_VERSION default if the API is down.
       - id: happ
@@ -50,24 +75,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: echo "version=$(gh api repos/Happ-proxy/happ-desktop/releases/latest --jq .tag_name)" >> "$GITHUB_OUTPUT"
-      - uses: docker/build-push-action@v7
+      - id: build
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           platforms: linux/amd64,linux/arm64
           build-args: ${{ steps.happ.outputs.version && format('HAPP_VERSION={0}', steps.happ.outputs.version) || '' }}
           push: true
-          tags: |
-            ghcr.io/gentslava/${{ matrix.image }}:latest
-            ghcr.io/gentslava/${{ matrix.image }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
       # Vulnerability scan of the pushed image — report-only for now (exit-code 0
       # never fails the job). To make it a hard gate once the baseline is clean,
-      # set exit-code to "1".
+      # set exit-code to "1". Scan by digest so it works for both master and PR tags.
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/gentslava/${{ matrix.image }}:${{ github.sha }}
+          image-ref: ghcr.io/gentslava/${{ matrix.image }}@${{ steps.build.outputs.digest }}
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "0"
