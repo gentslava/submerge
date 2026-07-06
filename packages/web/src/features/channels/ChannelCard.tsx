@@ -288,12 +288,7 @@ function ChannelEditor({
         )}
       </div>
       <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
-        <div className="flex flex-col gap-1">
-          <span className="text-label text-text-primary">Пул</span>
-          <span className="text-xs text-text-tertiary">
-            Пусто — все узлы канала берутся автоматически
-          </span>
-        </div>
+        <span className="text-label text-text-primary">Пул</span>
         <PoolPicker channelId={channel.id} />
       </div>
       {/* PolicyEditor renders its own label/sub + border-bottom per row (shared

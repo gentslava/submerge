@@ -96,39 +96,46 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
       {groups.length === 0 ? (
         <p className="text-sub text-text-tertiary">Нет узлов — добавьте источник.</p>
       ) : (
-        groups.map((g) => {
-          const match = SOURCE_KEY_RE.exec(g.key);
-          const sourceId = match?.[1] !== undefined ? Number(match[1]) : null;
-          const sourceChecked = sourceId != null && hasSourceMember(pool, sourceId);
-          const isNodeChecked = (name: string) => sourceChecked || hasNodeMember(pool, name);
-          const selected = g.nodes.filter((n) => isNodeChecked(n.name)).length;
+        <>
+          {pool.length === 0 && (
+            <p className="text-xs text-text-tertiary">
+              Пусто — все узлы канала берутся автоматически
+            </p>
+          )}
+          {groups.map((g) => {
+            const match = SOURCE_KEY_RE.exec(g.key);
+            const sourceId = match?.[1] !== undefined ? Number(match[1]) : null;
+            const sourceChecked = sourceId != null && hasSourceMember(pool, sourceId);
+            const isNodeChecked = (name: string) => sourceChecked || hasNodeMember(pool, name);
+            const selected = g.nodes.filter((n) => isNodeChecked(n.name)).length;
 
-          return (
-            <PoolGroup
-              key={g.key}
-              label={g.label}
-              hwid={g.hwid}
-              caption={poolGroupCaption(selected, g.nodes.length)}
-              nodes={g.nodes}
-              hasHeaderCheckbox={sourceId != null}
-              headerChecked={sourceChecked}
-              onToggleHeader={(checked) => {
-                if (sourceId == null) return;
-                persist(
-                  toggleSourcePool(
-                    pool,
-                    sourceId,
-                    g.nodes.map((n) => n.name),
-                    checked,
-                  ),
-                );
-              }}
-              isNodeChecked={isNodeChecked}
-              nodeDisabled={sourceChecked || setPoolMutation.isPending}
-              onToggleNode={(name, checked) => persist(toggleNodePool(pool, name, checked))}
-            />
-          );
-        })
+            return (
+              <PoolGroup
+                key={g.key}
+                label={g.label}
+                hwid={g.hwid}
+                caption={poolGroupCaption(selected, g.nodes.length)}
+                nodes={g.nodes}
+                hasHeaderCheckbox={sourceId != null}
+                headerChecked={sourceChecked}
+                onToggleHeader={(checked) => {
+                  if (sourceId == null) return;
+                  persist(
+                    toggleSourcePool(
+                      pool,
+                      sourceId,
+                      g.nodes.map((n) => n.name),
+                      checked,
+                    ),
+                  );
+                }}
+                isNodeChecked={isNodeChecked}
+                nodeDisabled={sourceChecked || setPoolMutation.isPending}
+                onToggleNode={(name, checked) => persist(toggleNodePool(pool, name, checked))}
+              />
+            );
+          })}
+        </>
       )}
     </div>
   );
