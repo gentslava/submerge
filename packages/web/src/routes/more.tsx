@@ -5,11 +5,9 @@ import { useReloadCore } from "@/features/settings/useReloadCore";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 
 const SOON: { label: string; icon: ComponentType<{ size?: number }> }[] = [
-  { label: "Соединения", icon: Waypoints },
   { label: "Трафик", icon: Activity },
   { label: "Логи", icon: ScrollText },
   { label: "Диагностика", icon: Stethoscope },
-  { label: "Маршрутизация", icon: Route },
 ];
 
 export function MoreRoute() {

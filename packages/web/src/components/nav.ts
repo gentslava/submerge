@@ -13,7 +13,7 @@ import {
 /** A nav entry that routes to a real screen (functional <Link>). */
 export interface NavLink {
   kind: "link";
-  to: "/" | "/sources" | "/routing" | "/settings";
+  to: "/" | "/sources" | "/connections" | "/routing" | "/settings";
   label: string;
   icon: LucideIcon;
 }
@@ -38,7 +38,7 @@ export type NavEntry = NavLink | NavPlaceholder;
 export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/", label: "Узлы", icon: Server },
   { kind: "placeholder", label: "Трафик", icon: Activity },
-  { kind: "placeholder", label: "Соединения", icon: Cable },
+  { kind: "link", to: "/connections", label: "Соединения", icon: Cable },
   { kind: "link", to: "/routing", label: "Маршрутизация", icon: Route },
   { kind: "placeholder", label: "Логи", icon: SquareTerminal },
   { kind: "link", to: "/sources", label: "Источники", icon: Layers },

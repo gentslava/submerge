@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatInterval, formatRelative } from "./duration";
+import { formatElapsed, formatInterval, formatRelative } from "./duration";
 
 describe("formatInterval", () => {
   it("renders sub-2-minute values in seconds", () => {
@@ -37,5 +37,23 @@ describe("formatRelative", () => {
   it("defaults `now` to the current time when omitted", () => {
     const recent = Date.now() - 10_000;
     expect(formatRelative(recent)).toBe("только что");
+  });
+});
+
+describe("formatElapsed", () => {
+  const now = new Date("2026-07-06T12:00:00.000Z").getTime();
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+
+  it("renders M:SS under an hour", () => {
+    expect(formatElapsed(ago(72_000), now)).toBe("1:12");
+    expect(formatElapsed(ago(5_000), now)).toBe("0:05");
+  });
+
+  it("renders H:MM:SS past an hour", () => {
+    expect(formatElapsed(ago(3_720_000), now)).toBe("1:02:00");
+  });
+
+  it("returns — for an unparseable timestamp", () => {
+    expect(formatElapsed("not-a-date", now)).toBe("—");
   });
 });
