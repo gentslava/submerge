@@ -24,7 +24,6 @@ export function Sidebar() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <TogglesCard />
         <ProxyCard />
         <LogoutRow />
       </div>
@@ -107,29 +106,13 @@ function NavRow({ entry }: { entry: NavEntry }) {
   );
 }
 
-function TogglesCard() {
-  const reload = useReloadCore();
-  return (
-    <div className="flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-elevated px-3 py-[11px]">
-      <button
-        type="button"
-        onClick={() => reload.mutate()}
-        disabled={reload.isPending}
-        className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border-default bg-hover text-meta text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <RotateCw size={14} className={reload.isPending ? "animate-spin" : undefined} />
-        Перезагрузить конфиг
-      </button>
-    </div>
-  );
-}
-
 function ProxyCard() {
   const { mihomo } = useLiveState();
   const activeNode = useActiveNode();
   const trpc = useTRPC();
   const { data } = useQuery(trpc.settings.get.queryOptions());
   const proxy = data?.proxyEndpoint ?? PROXY_ENDPOINT;
+  const reload = useReloadCore();
 
   const status = liveIndicator(mihomo, { idle: "Проверка", ok: "Подключено", down: "Отключено" });
 
@@ -155,6 +138,17 @@ function ProxyCard() {
       <span className="font-mono text-fine text-text-tertiary">
         Активный узел · {activeNode ?? "—"}
       </span>
+      {/* Engine action lives with the connection status — reloading the config is a
+          property of this connection block, not a standalone toggle. */}
+      <button
+        type="button"
+        onClick={() => reload.mutate()}
+        disabled={reload.isPending}
+        className="mt-0.5 flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border-default bg-hover text-meta text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RotateCw size={14} className={reload.isPending ? "animate-spin" : undefined} />
+        Перезагрузить конфиг
+      </button>
     </div>
   );
 }
