@@ -24,36 +24,49 @@
 
 ## Core architectural change
 
-**Node inventory comes from the DB (sources), live status overlays from `/proxies`.**
-Today `nodesView(db) = toNodeView(getProxies(), meta)` — `/proxies` is the base, so a
-node absent from the engine config is invisible. Flip it: the base list is
-`collectProxies(db)` (every enabled source's parsed proxies, collapsed as today);
-live `delay`/`now`/member-active overlay by name from `getProxies()`. A node not
-currently in the engine shows as **idle (no ping)** but always appears.
+**The engine config defines ALL non-excluded inventory nodes; a channel's pool only
+picks which subset that channel *races*.** Today `buildMultiConfig` writes only each
+channel's pooled proxies into `proxies:` and lists only the Default pool in `PROXY`,
+so a node in no pool drops from the engine entirely — it stops being pinged, can't be
+manually selected, and (before Phase A) vanished from the UI. That conflates two
+separate concerns: *which nodes exist / are measured* vs *which nodes a channel races*.
 
-This single change fixes the vanish bug (inventory no longer depends on config) and
-is the precondition for exclusion (excluded nodes must stay visible to be undone).
+Split them:
+- `proxies:` (definitions) **and** `PROXY.all` (the manual exit-node selector) list
+  **every non-excluded inventory node** (`collectProxies(db)` minus exclusions),
+  collapsed by the same `groupProxies`.
+- Each channel's url-test/select group (`AUTO`, `ch-<id>`) still lists only its **pool
+  subset** (empty pool = all non-excluded).
+- The background prober already probes exactly `PROXY.all` via `getDelay(name)` (which
+  tests any *defined* proxy — see `prober.observe`), so once all non-excluded nodes sit
+  in `PROXY` they are **all pinged** with no new url-test group.
 
-**Why the DB is authoritative & always in sync.** `collectProxies(db)` is the enabled
-sources' `proxies[]` — the *same* set that already generates the mihomo config, so
-`/proxies` is strictly downstream of it. It stays current by construction:
-`refreshSource` re-parses the subscription and overwrites `proxies[]` (removed nodes
-drop, new ones appear); `toggleSource`/disable filters via `enabled = true`; delete
-removes the row. So a DB-sourced inventory reflects the live node set with *less* lag
-than `/proxies` (no reload delay), never more.
+Consequences — these are exactly the user's expectations:
+- Every node shows a real latency, in or out of any pool.
+- A channel's pool never affects other channels or a node's ping — it only constrains
+  that channel's own auto-race. Manual override (picking any node on Узлы) stays valid.
+- **Byte-identity preserved:** the Default-only, empty-pool case already emits
+  `PROXY = [AUTO, …all, DIRECT]` with all nodes defined, so `config.test.ts` holds;
+  only the *subset* case changes.
+
+`mergeDbInventory` (Phase A, shipped) stays as the overlay that surfaces **excluded**
+nodes — which ARE omitted from the config — as idle, marked rows, so they remain
+visible and reversible. `collectProxies(db)` is authoritative and always in sync (it
+already generates the config; `refreshSource` overwrites `proxies[]`, disable/delete
+drop it).
 
 ## Feature: global node exclusion (deny-list)
 
 - **Store:** `excluded_nodes(name TEXT PRIMARY KEY)` — a node is excluded by its
   display name (the collapsed group name, matching the Узлы screen). Small, global,
   channel-independent.
-- **Config-gen:** excluded names are filtered out of *every* channel's resolved
-  proxies (`resolveChannelProxies` and the empty-pool "all" path both drop them), so
-  they land in no url-test/select group and mihomo never routes or races through
-  them — even if fastest.
-- **Visibility:** excluded nodes still appear in the DB-sourced inventory, rendered
-  greyed with an «исключён» badge; the toggle flips exclusion. They are **not**
-  manually selectable as the active node while excluded.
+- **Config-gen:** excluded names are dropped from the whole config — the `proxies:`
+  definitions, `PROXY.all`, and every channel group. So mihomo never defines, pings,
+  routes, or lets you manually select them; they're fully out of the engine.
+- **Visibility:** excluded nodes are surfaced by `mergeDbInventory` (they're the DB
+  nodes absent from `/proxies`), rendered greyed with an «исключён» badge (idle, no
+  ping — expected, they're out of the engine); the toggle flips exclusion, and the
+  next `applyConfig` re-adds the node. Not manually selectable while excluded.
 - **Pool interaction:** the per-channel pool stays an allow-list ("use only these");
   exclusion is the global deny-list applied on top. `empty pool = all nodes` means
   "all *non-excluded* nodes".
@@ -69,18 +82,19 @@ than `/proxies` (no reload delay), never more.
 
 ## Phasing
 
-No stopgap — the clean DB-sourced view fixes the vanish bug directly, so a temporary
-PoolPicker patch would be throwaway work. Two phases:
-
-- **Phase A — DB-sourced nodes view (fixes the vanish bug) + copy dedup.** Rebase
-  `nodesView`/`toNodeView` on `collectProxies(db)` with a `/proxies` overlay
-  (`delay`/`now`/member-active by name; absent → idle). The PoolPicker and Узлы screen
-  then list from the DB, so pooling a subset never hides other nodes. Remove the
-  duplicated empty-pool line. Blast radius: Nodes screen, collapse, active selection,
-  SSE, prober — covered by their existing tests + new overlay tests.
-- **Phase B — exclusion.** `excluded_nodes` table, `nodes.setExcluded`, config-gen
-  filter (drop excluded from every channel's proxies + the empty-pool "all"), Узлы +
-  PoolPicker UI, tests + visual gate.
+- **Phase A — shipped.** `mergeDbInventory` unions the DB inventory onto the live view
+  as idle rows (fixes the vanish bug) + empty-pool copy fixed. Deployed to prod.
+- **Phase A2 — model upgrade (config-gen).** `buildMultiConfig` defines **all**
+  non-excluded inventory nodes and lists them in `PROXY.all`; each channel group keeps
+  only its pool subset. Result: every node is defined → pinged by the prober → shows a
+  real latency, and a channel's pool no longer affects other channels or pinging.
+  `applyConfig` passes the full inventory alongside per-channel pools. Blast radius:
+  `multiConfig` (byte-identity gate — only the subset case changes), prober, Nodes
+  screen. With all non-excluded nodes live in `PROXY`, `mergeDbInventory` now only
+  appends excluded nodes.
+- **Phase B — exclusion.** `excluded_nodes` table, `nodes.setExcluded`, drop excluded
+  from `proxies:`/`PROXY`/all groups, mark them in `mergeDbInventory`, Узлы + PoolPicker
+  UI, tests + visual gate.
 
 ## Testing
 
