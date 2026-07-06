@@ -8,7 +8,7 @@ import {
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
-import type { ProxiesResponse } from "../../clients/mihomo.js";
+import type { MihomoProxy, ProxiesResponse } from "../../clients/mihomo.js";
 import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
@@ -16,7 +16,7 @@ import { excludedNodes, sources } from "../../db/schema.js";
 import { log } from "../../log.js";
 import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
-import { listChannels } from "../channels/service.js";
+import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
 import { getSetting } from "../settings/service.js";
 import { groupProxies } from "./config.js";
 import type { ChannelConfigInput } from "./multiConfig.js";
@@ -151,8 +151,32 @@ export function proxyMeta(proxies: ProxyConfig[]): Map<string, ProxyMeta> {
 }
 
 // Pure normalization: map a ProxiesResponse to the UI-facing NodeView. `meta` joins
-// transport/security from the stored configs (mihomo's /proxies omits them).
-export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, ProxyMeta>): NodeView {
+// transport/security from the stored configs (mihomo's /proxies omits them). `testUrl`
+// is the active policy's test URL: mihomo keeps a per-URL history in `extra[testUrl]`,
+// which is the series AUTO actually decides on — we report that, not the shared
+// `history` (last probe by any URL, e.g. a different channel's youtube/t.me check).
+export function toNodeView(
+  { proxies }: ProxiesResponse,
+  meta?: Map<string, ProxyMeta>,
+  testUrl?: string,
+): NodeView {
+  // The delay series to surface for a node: the per-URL history for the active
+  // policy when mihomo has one, else the shared history (fallback — a fresh node
+  // or one right after a reload has no per-URL entry yet).
+  const delaysOf = (info: MihomoProxy | undefined): number[] => {
+    const perUrl = testUrl ? info?.extra?.[testUrl]?.history : undefined;
+    // Fall back to the shared history when there's no per-URL series yet OR it's
+    // empty (fresh node / right after a reload / a cleared per-URL block) — an
+    // empty per-URL entry must not read as "— ms" while the shared history still
+    // holds a real measurement, and it keeps the tRPC and SSE paths agreeing.
+    const src = perUrl && perUrl.length > 0 ? perUrl : (info?.history ?? []);
+    return src.map((h) => h.delay);
+  };
+  // A recorded measurement wins, INCLUDING a timeout (0) → UI shows "таймаут";
+  // null ("— ms") means genuinely unmeasured (empty history / after a reload).
+  const lastDelay = (ds: number[]): number | null =>
+    ds.length ? (ds[ds.length - 1] as number) : null;
+
   const group = proxies.PROXY;
   if (!group?.all) return { now: null, autoNow: null, all: [] };
   const all: NodeItem[] = group.all.map((name) => {
@@ -160,37 +184,31 @@ export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, Prox
     // A collapsed url-test group: a non-pseudo proxy that carries `all` (its members).
     if (info?.all && !PSEUDO_NODE_SET.has(name)) {
       const active = info.now ? proxies[info.now] : undefined;
-      const aLast = active?.history.at(-1);
+      const aDelays = delaysOf(active);
       const members: NodeMember[] = info.all.map((m) => {
-        const mInfo = proxies[m];
-        const mLast = mInfo?.history.at(-1);
+        const mDelays = delaysOf(proxies[m]);
         return {
           name: m,
-          // A recorded measurement wins, INCLUDING a timeout (0) — the UI renders 0
-          // as "таймаут", distinct from null ("— ms" = never measured / after reload).
-          delay: mLast ? mLast.delay : null,
-          history: (mInfo?.history ?? []).map((h) => h.delay),
+          delay: lastDelay(mDelays),
+          history: mDelays,
           active: m === info.now,
         };
       });
       return {
         name,
         type: info.type,
-        delay: aLast ? aLast.delay : null,
-        history: (active?.history ?? []).map((h) => h.delay),
+        delay: lastDelay(aDelays),
+        history: aDelays,
         members,
       };
     }
-    const last = info?.history.at(-1);
     // Keep every measurement, including timeouts (mihomo records 0) — the chart
     // renders them as failure spikes so node stability is visible, not hidden.
-    const history = (info?.history ?? []).map((h) => h.delay);
+    const history = delaysOf(info);
     const item: NodeItem = {
       name,
       type: info?.type ?? "unknown",
-      // A recorded measurement wins, INCLUDING a timeout (0) → UI shows "таймаут";
-      // null ("— ms") means genuinely unmeasured (empty history / after a reload).
-      delay: last ? last.delay : null,
+      delay: lastDelay(history),
       history,
     };
     if (info?.udp !== undefined) item.udp = info.udp;
@@ -265,8 +283,11 @@ export function mergeDbInventory(
 export async function listNodes(db: Db): Promise<NodeView> {
   const dbProxies = collectProxies(db);
   const meta = proxyMeta(dbProxies);
+  // Report each node's latency for the URL the active (Default) policy decides on,
+  // not whatever probe last landed in mihomo's shared history.
+  const { url: testUrl } = policyProbe(readDefaultPolicy(db));
   const view = mergeDbInventory(
-    toNodeView(await getProxies(), meta),
+    toNodeView(await getProxies(), meta, testUrl),
     dbProxies,
     meta,
     getExcludedSet(db),

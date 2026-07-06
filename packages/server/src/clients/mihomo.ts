@@ -14,6 +14,13 @@ export function setMihomoSecret(secret: string): void {
 }
 
 const historyEntrySchema = z.object({ time: z.string(), delay: z.number() });
+// mihomo keeps a per-test-URL history map keyed by the exact test URL. `history`
+// (below) is the last probe by ANY URL; `extra[url].history` is the series a group
+// configured with that url actually decides on. We read the delay per test URL.
+const extraEntrySchema = z.object({
+  alive: z.boolean().optional(),
+  history: z.array(historyEntrySchema).default([]),
+});
 // mihomo returns far more fields; pin only what we read, pass the rest through.
 const mihomoProxySchema = z.looseObject({
   name: z.string(),
@@ -22,6 +29,9 @@ const mihomoProxySchema = z.looseObject({
   all: z.array(z.string()).optional(),
   udp: z.boolean().optional(),
   history: z.array(historyEntrySchema).default([]),
+  // `.nullish()` (not `.optional()`): a mihomo build that serializes an absent map
+  // as `null` rather than omitting it must not fail the whole /proxies parse.
+  extra: z.record(z.string(), extraEntrySchema).nullish(),
 });
 export type MihomoProxy = z.infer<typeof mihomoProxySchema>;
 

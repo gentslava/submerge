@@ -39,7 +39,10 @@ export const liveHub = new LiveHub({
     // Then union the full DB inventory so pooled-out nodes stay visible (they'd
     // otherwise vanish from the live view on the next poll and clobber the merged
     // nodes.list). Merge last: idle DB-only nodes have no measurement to fill.
-    const view = prober.fillLastKnown(toNodeView(raw, meta));
+    // Report latency for the URL the active (Default) policy decides on, not the
+    // last probe by any URL — same as the tRPC list path (nodes/service.listNodes).
+    const { url: testUrl } = policyProbe(readDefaultPolicy(db));
+    const view = prober.fillLastKnown(toNodeView(raw, meta, testUrl));
     return mergeDbInventory(view, dbProxies, meta, getExcludedSet(db));
   },
   streamTraffic,

@@ -1,7 +1,12 @@
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ChannelPolicy, NodeView, Proxy as ProxyConfig } from "@submerge/shared";
+import {
+  type ChannelPolicy,
+  DEFAULT_AUTO_TEST_URL,
+  type NodeView,
+  type Proxy as ProxyConfig,
+} from "@submerge/shared";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +28,7 @@ import {
   type ProxyMeta,
   setExcluded,
   testDelay,
+  toNodeView,
 } from "./service.js";
 
 const px = (name: string, server: string, extra: Partial<ProxyConfig> = {}): ProxyConfig => ({
@@ -344,6 +350,111 @@ describe("listNodes", () => {
     ]);
     // a singleton is unchanged (no members)
     expect(view.all.find((n) => n.name === "S")?.members).toBeUndefined();
+  });
+});
+
+describe("toNodeView per-URL latency (extra)", () => {
+  // mihomo keeps one shared `history` (last probe by ANY test URL) plus a per-URL
+  // `extra` map. The panel must report the delay AUTO actually decides on — the
+  // active policy's test URL — not whatever probe last landed in the shared list.
+  const resp = {
+    proxies: {
+      PROXY: { name: "PROXY", type: "Selector", now: "A", all: ["A", "B"], history: [] },
+      A: {
+        name: "A",
+        type: "vless",
+        history: [{ time: "t", delay: 999 }], // shared: a stale probe on another URL
+        extra: {
+          "https://policy.example": { alive: true, history: [{ time: "t", delay: 50 }] },
+        },
+      },
+      // No extra for B → must fall back to the shared history.
+      B: { name: "B", type: "vless", history: [{ time: "t", delay: 111 }] },
+    },
+  };
+
+  it("uses the policy URL's history for delay/history when extra has it", () => {
+    const view = toNodeView(resp, undefined, "https://policy.example");
+    expect(view.all.find((n) => n.name === "A")).toMatchObject({ delay: 50, history: [50] });
+  });
+
+  it("falls back to the shared history when extra lacks the policy URL", () => {
+    const view = toNodeView(resp, undefined, "https://policy.example");
+    expect(view.all.find((n) => n.name === "B")).toMatchObject({ delay: 111, history: [111] });
+  });
+
+  it("falls back to the shared history when the policy URL's history is present but empty", () => {
+    const r = {
+      proxies: {
+        PROXY: { name: "PROXY", type: "Selector", now: "A", all: ["A"], history: [] },
+        A: {
+          name: "A",
+          type: "vless",
+          history: [{ time: "t", delay: 111 }],
+          // present-but-empty per-URL block must NOT read as "— ms"
+          extra: { "https://policy.example": { alive: true, history: [] } },
+        },
+      },
+    };
+    const view = toNodeView(r, undefined, "https://policy.example");
+    expect(view.all.find((n) => n.name === "A")).toMatchObject({ delay: 111, history: [111] });
+  });
+
+  it("keeps the shared history when no test URL is given (unchanged behavior)", () => {
+    const view = toNodeView(resp, undefined, undefined);
+    expect(view.all.find((n) => n.name === "A")).toMatchObject({ delay: 999, history: [999] });
+  });
+
+  it("reads per-URL delays for a collapsed group's members and its active node", () => {
+    const collapsed = {
+      proxies: {
+        PROXY: { name: "PROXY", type: "Selector", now: "G", all: ["G"], history: [] },
+        G: { name: "G", type: "URLTest", now: "G #2", all: ["G #1", "G #2"], history: [] },
+        "G #1": {
+          name: "G #1",
+          type: "vless",
+          history: [{ time: "t", delay: 900 }],
+          extra: { "https://policy.example": { alive: true, history: [{ time: "t", delay: 70 }] } },
+        },
+        "G #2": {
+          name: "G #2",
+          type: "vless",
+          history: [{ time: "t", delay: 800 }],
+          extra: { "https://policy.example": { alive: true, history: [{ time: "t", delay: 30 }] } },
+        },
+      },
+    };
+    const g = toNodeView(collapsed, undefined, "https://policy.example").all.find(
+      (n) => n.name === "G",
+    );
+    expect(g?.delay).toBe(30); // active member G #2, per-URL
+    expect(g?.members).toEqual([
+      { name: "G #1", delay: 70, history: [70], active: false },
+      { name: "G #2", delay: 30, history: [30], active: true },
+    ]);
+  });
+
+  it("threads the default policy's test URL through listNodes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        json({
+          proxies: {
+            PROXY: { name: "PROXY", type: "Selector", now: "A", all: ["A"], history: [] },
+            A: {
+              name: "A",
+              type: "vless",
+              history: [{ time: "t", delay: 999 }],
+              extra: {
+                [DEFAULT_AUTO_TEST_URL]: { alive: true, history: [{ time: "t", delay: 42 }] },
+              },
+            },
+          },
+        }),
+      ),
+    );
+    const view = await listNodes(freshDb());
+    expect(view.all.find((n) => n.name === "A")).toMatchObject({ delay: 42, history: [42] });
   });
 });
 
