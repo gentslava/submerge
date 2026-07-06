@@ -33,4 +33,12 @@ describe("resolveMatcherDomains", () => {
     const result = resolveMatcherDomains(matcher({ presets: ["discord", "telegram"] }));
     expect(result).toEqual([...PRESET_DOMAINS.telegram, ...PRESET_DOMAINS.discord]);
   });
+
+  it("expands a single-service preset added by a later category (ai, messengers, ...)", () => {
+    expect(resolveMatcherDomains(matcher({ presets: ["openai"] }))).toEqual(PRESET_DOMAINS.openai);
+    expect(resolveMatcherDomains(matcher({ presets: ["whatsapp"] }))).toEqual(
+      PRESET_DOMAINS.whatsapp,
+    );
+    expect(resolveMatcherDomains(matcher({ presets: ["steam"] }))).toEqual(PRESET_DOMAINS.steam);
+  });
 });

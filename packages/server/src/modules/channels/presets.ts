@@ -2,7 +2,7 @@
 // channel's matcher (custom domains + selected presets) into the flat domain
 // list `buildMultiConfig` turns into DOMAIN-SUFFIX rules. The lists themselves
 // are server-only — the web only needs @submerge/shared's CHANNEL_PRESETS
-// (id + label) to render preset chips.
+// (id + label + category) to render grouped preset chips.
 import { CHANNEL_PRESETS, type ChannelMatcher, type PresetId } from "@submerge/shared";
 
 export const PRESET_DOMAINS: Record<PresetId, string[]> = {
@@ -31,6 +31,32 @@ export const PRESET_DOMAINS: Record<PresetId, string[]> = {
     "thepiratebay.org",
     "torrentgalaxy.to",
   ],
+  whatsapp: ["whatsapp.com", "whatsapp.net"],
+  signal: ["signal.org"],
+  viber: ["viber.com"],
+  openai: ["openai.com", "chatgpt.com", "oaistatic.com", "oaiusercontent.com"],
+  claude: ["anthropic.com", "claude.ai"],
+  gemini: ["gemini.google.com", "bard.google.com"],
+  perplexity: ["perplexity.ai"],
+  grok: ["x.ai", "grok.com"],
+  copilot: ["githubcopilot.com", "copilot.microsoft.com"],
+  midjourney: ["midjourney.com"],
+  instagram: ["instagram.com", "cdninstagram.com"],
+  x: ["x.com", "twitter.com", "twimg.com"],
+  facebook: ["facebook.com", "fbcdn.net"],
+  tiktok: ["tiktok.com", "tiktokcdn.com", "ttwstatic.com"],
+  reddit: ["reddit.com", "redditstatic.com", "redd.it"],
+  netflix: ["netflix.com", "nflxvideo.net", "nflximg.net", "nflxext.com"],
+  disneyplus: ["disneyplus.com", "disney-plus.net", "dssott.com"],
+  spotify: ["spotify.com", "scdn.co"],
+  twitch: ["twitch.tv", "ttvnw.net", "jtvnw.net"],
+  soundcloud: ["soundcloud.com", "sndcdn.com"],
+  steam: ["steampowered.com", "steamcommunity.com", "steamstatic.com", "steamcontent.com"],
+  epicgames: ["epicgames.com", "unrealengine.com"],
+  playstation: ["playstation.com", "playstation.net", "sonyentertainmentnetwork.com"],
+  xbox: ["xbox.com", "xboxlive.com"],
+  battlenet: ["battle.net", "blizzard.com"],
+  riotgames: ["riotgames.com", "leagueoflegends.com", "playvalorant.com", "riotcdn.net"],
 };
 
 // Union of a matcher's custom domains (first, in their given order) and every
