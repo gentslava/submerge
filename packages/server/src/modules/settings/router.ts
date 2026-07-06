@@ -31,4 +31,12 @@ export const settingsRouter = router({
     }
     return { ok: true as const, applied };
   }),
+  // "Перезагрузить конфиг": regenerate the config from current state and reload mihomo
+  // (PUT /configs). mihomo runs as a separate process/container, so a true process
+  // restart isn't ours to trigger — reapplying + reloading the config is the honest
+  // engine-side refresh, and it also heals any drift between the DB and the engine.
+  reload: protectedProcedure.mutation(async () => {
+    const { applied } = await applyConfig(db);
+    return { ok: true as const, applied };
+  }),
 });

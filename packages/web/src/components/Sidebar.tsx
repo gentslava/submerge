@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Copy, Power, RotateCw } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { useLiveState } from "@/features/live/LiveProvider";
 import { liveIndicator } from "@/features/live/status";
 import { useActiveNode } from "@/features/nodes/useActiveNode";
+import { useReloadCore } from "@/features/settings/useReloadCore";
 import { copyToClipboard } from "@/lib/clipboard";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 import { useTRPC } from "@/lib/trpc";
@@ -108,21 +108,17 @@ function NavRow({ entry }: { entry: NavEntry }) {
 }
 
 function TogglesCard() {
+  const reload = useReloadCore();
   return (
     <div className="flex flex-col gap-2.5 rounded-lg border border-border-subtle bg-elevated px-3 py-[11px]">
-      <div className="flex items-center justify-between">
-        <span className="text-meta text-text-secondary">LAN-доступ</span>
-        {/* TODO: wire to a server action (toggle LAN proxy bind) in a later phase. */}
-        <Switch checked disabled onCheckedChange={() => {}} aria-label="LAN-доступ" />
-      </div>
-      {/* TODO: wire to a server action (restart mihomo core) in a later phase. */}
       <button
         type="button"
-        disabled
+        onClick={() => reload.mutate()}
+        disabled={reload.isPending}
         className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border-default bg-hover text-meta text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <RotateCw size={14} />
-        Перезапустить ядро
+        <RotateCw size={14} className={reload.isPending ? "animate-spin" : undefined} />
+        Перезагрузить конфиг
       </button>
     </div>
   );

@@ -1,6 +1,7 @@
 import { Activity, Route, ScrollText, Stethoscope, Waypoints } from "lucide-react";
 import type { ComponentType } from "react";
 import { Button } from "@/components/ui/button";
+import { useReloadCore } from "@/features/settings/useReloadCore";
 import { PROXY_ENDPOINT } from "@/lib/constants";
 
 const SOON: { label: string; icon: ComponentType<{ size?: number }> }[] = [
@@ -12,6 +13,7 @@ const SOON: { label: string; icon: ComponentType<{ size?: number }> }[] = [
 ];
 
 export function MoreRoute() {
+  const reload = useReloadCore();
   return (
     <div className="mx-auto max-w-4xl p-4 md:p-8">
       <header className="mb-6">
@@ -41,16 +43,14 @@ export function MoreRoute() {
         </div>
 
         <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-sm text-text-secondary">LAN-доступ</span>
-            <span className="text-xs text-text-tertiary">
-              Прокси доступен в локальной сети; внешняя публикация настраивается отдельно
-            </span>
-          </div>
-          {/* Real restart action arrives in Phase 4–6 once mihomo control is wired. */}
           <div>
-            <Button variant="secondary" size="sm" disabled>
-              Перезапустить ядро
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={reload.isPending}
+              onClick={() => reload.mutate()}
+            >
+              Перезагрузить конфиг
             </Button>
           </div>
           <div className="rounded-md bg-elevated px-2.5 py-1.5 font-mono text-xs text-text-tertiary">
