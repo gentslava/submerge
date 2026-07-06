@@ -21,10 +21,13 @@ export function ConnectionsScreen() {
   const trpc = useTRPC();
   const qc = useQueryClient();
 
-  const { data, isPending } = useQuery(
+  const { data, isPending, isError } = useQuery(
     trpc.connections.list.queryOptions(undefined, { refetchInterval: 1500 }),
   );
   const connections = data?.connections ?? EMPTY;
+  // Only a first-load failure (no data yet) is a hard error — a transient poll
+  // error after data keeps the last-known list on screen until the next tick.
+  const showError = isError && data === undefined;
 
   // Per-connection speed: diff cumulative bytes against the previous poll (see speed.ts).
   const [rates, setRates] = useState<Map<string, Rate>>(() => new Map());
@@ -85,9 +88,11 @@ export function ConnectionsScreen() {
         <div className="flex flex-col gap-[5px]">
           <h1 className="text-2xl font-semibold text-text-primary">Соединения</h1>
           <p className="text-sm text-text-secondary">
-            {count > 0
-              ? `${count} ${pluralRu(count, ["активное", "активных", "активных"])}`
-              : "Нет активных соединений"}
+            {showError
+              ? "Движок недоступен"
+              : count > 0
+                ? `${count} ${pluralRu(count, ["активное", "активных", "активных"])}`
+                : "Нет активных соединений"}
           </p>
         </div>
         <div className="flex items-center gap-2.5">
@@ -145,6 +150,8 @@ export function ConnectionsScreen() {
           <ColumnsHeader />
           {isPending ? (
             <LoadingRows />
+          ) : showError ? (
+            <ErrorState />
           ) : filtered.length === 0 ? (
             <EmptyState hasAny={count > 0} />
           ) : (
@@ -279,6 +286,14 @@ function EmptyState({ hasAny }: { hasAny: boolean }) {
   return (
     <div className="px-4 py-12 text-center text-sm text-text-tertiary">
       {hasAny ? "Ничего не найдено" : "Нет активных соединений"}
+    </div>
+  );
+}
+
+function ErrorState() {
+  return (
+    <div className="px-4 py-12 text-center text-sm text-text-tertiary">
+      Движок недоступен — не удалось получить соединения
     </div>
   );
 }
