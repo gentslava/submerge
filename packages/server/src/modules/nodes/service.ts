@@ -9,7 +9,13 @@ import {
 } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
 import type { MihomoProxy, ProxiesResponse } from "../../clients/mihomo.js";
-import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/mihomo.js";
+import {
+  getDelay,
+  getProxies,
+  historyForUrl,
+  reloadConfig,
+  selectProxy,
+} from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { excludedNodes, sources } from "../../db/schema.js";
@@ -163,15 +169,8 @@ export function toNodeView(
   // The delay series to surface for a node: the per-URL history for the active
   // policy when mihomo has one, else the shared history (fallback — a fresh node
   // or one right after a reload has no per-URL entry yet).
-  const delaysOf = (info: MihomoProxy | undefined): number[] => {
-    const perUrl = testUrl ? info?.extra?.[testUrl]?.history : undefined;
-    // Fall back to the shared history when there's no per-URL series yet OR it's
-    // empty (fresh node / right after a reload / a cleared per-URL block) — an
-    // empty per-URL entry must not read as "— ms" while the shared history still
-    // holds a real measurement, and it keeps the tRPC and SSE paths agreeing.
-    const src = perUrl && perUrl.length > 0 ? perUrl : (info?.history ?? []);
-    return src.map((h) => h.delay);
-  };
+  const delaysOf = (info: MihomoProxy | undefined): number[] =>
+    historyForUrl(info, testUrl).map((h) => h.delay);
   // A recorded measurement wins, INCLUDING a timeout (0) → UI shows "таймаут";
   // null ("— ms") means genuinely unmeasured (empty history / after a reload).
   const lastDelay = (ds: number[]): number | null =>

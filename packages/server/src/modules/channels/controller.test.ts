@@ -77,6 +77,28 @@ describe("toGroupView", () => {
   it("returns an empty view for a group that doesn't exist or has no members", () => {
     expect(toGroupView(proxies(), "ch-missing")).toEqual({ now: null, autoNow: null, all: [] });
   });
+
+  it("reads the per-URL history for the given test URL, falling back to the shared one", () => {
+    const px: ProxiesResponse["proxies"] = {
+      "ch-x": { name: "ch-x", type: "selector", now: "A", all: ["A", "B"], history: [] },
+      A: {
+        name: "A",
+        type: "vless",
+        history: [{ time: "t", delay: 999 }], // shared: a stale probe on another URL
+        extra: { "https://u": { alive: true, history: [{ time: "t", delay: 120 }] } },
+      },
+      // No extra for B → fall back to the shared history.
+      B: { name: "B", type: "vless", history: [{ time: "t", delay: 55 }] },
+    };
+    expect(toGroupView(px, "ch-x", "https://u")).toEqual({
+      now: "A",
+      autoNow: "A",
+      all: [
+        { name: "A", type: "vless", delay: 120, history: [120] },
+        { name: "B", type: "vless", delay: 55, history: [55] },
+      ],
+    });
+  });
 });
 
 const stickyPolicy = (

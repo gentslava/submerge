@@ -2,6 +2,7 @@ import type { Channel, DecisionEntry } from "@submerge/shared";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { ChannelController, toGroupView } from "./controller.js";
 import { groupNameFor } from "./pool.js";
+import { policyProbe } from "./service.js";
 
 export interface RegistryDeps {
   listChannels: () => Channel[];
@@ -60,7 +61,9 @@ export class ControllerRegistry {
     const px = (await this.deps.fetchProxies()).proxies;
     for (const ch of active) {
       const ctrl = this.controllerFor(ch);
-      const view = toGroupView(px, groupNameFor(ch));
+      // Measure each node on the URL this channel's policy decides on, so the
+      // decision-log delta agrees with the node cards (nodes/service.toNodeView).
+      const view = toGroupView(px, groupNameFor(ch), policyProbe(ch.policy).url);
       try {
         await ctrl.tick(view);
       } catch {

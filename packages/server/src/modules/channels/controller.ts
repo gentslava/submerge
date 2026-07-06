@@ -6,7 +6,7 @@ import {
   type NodeView,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
-import type { ProxiesResponse } from "../../clients/mihomo.js";
+import { historyForUrl, type ProxiesResponse } from "../../clients/mihomo.js";
 import { policyProbe } from "./service.js";
 
 // The real exit nodes a channel can pin, in view order.
@@ -79,17 +79,24 @@ export interface ControllerDeps {
 // (nodes/service.ts), this is intentionally minimal: the controller only reads
 // `autoNow` (the group's current selection) and `selectableNames(view)` (member
 // names + delay for pickBest) — no collapsed-group/meta/udp handling needed here.
-export function toGroupView(proxies: ProxiesResponse["proxies"], group: string): NodeView {
+export function toGroupView(
+  proxies: ProxiesResponse["proxies"],
+  group: string,
+  testUrl?: string,
+): NodeView {
   const g = proxies[group];
   if (!g?.all) return { now: null, autoNow: null, all: [] };
   const all: NodeItem[] = g.all.map((name) => {
     const info = proxies[name];
-    const last = info?.history.at(-1);
+    // Read the per-URL series the group actually decides on (falls back to the
+    // shared history), so the decision-log delta matches the node cards.
+    const h = historyForUrl(info, testUrl);
+    const last = h.at(-1);
     return {
       name,
       type: info?.type ?? "unknown",
       delay: last && last.delay > 0 ? last.delay : null,
-      history: (info?.history ?? []).map((h) => h.delay),
+      history: h.map((e) => e.delay),
     };
   });
   return { now: g.now ?? null, autoNow: g.now ?? null, all };

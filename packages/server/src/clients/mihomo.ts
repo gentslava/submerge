@@ -14,6 +14,7 @@ export function setMihomoSecret(secret: string): void {
 }
 
 const historyEntrySchema = z.object({ time: z.string(), delay: z.number() });
+export type HistoryEntry = z.infer<typeof historyEntrySchema>;
 // mihomo keeps a per-test-URL history map keyed by the exact test URL. `history`
 // (below) is the last probe by ANY URL; `extra[url].history` is the series a group
 // configured with that url actually decides on. We read the delay per test URL.
@@ -37,6 +38,20 @@ export type MihomoProxy = z.infer<typeof mihomoProxySchema>;
 
 const proxiesResponseSchema = z.object({ proxies: z.record(z.string(), mihomoProxySchema) });
 export type ProxiesResponse = z.infer<typeof proxiesResponseSchema>;
+
+// The delay series to read for a node under a given test URL. mihomo keeps a
+// per-URL history in `extra[url]`; use it when present and non-empty, else the
+// shared `history` (fallback: a fresh node, right after a reload, or a cleared
+// per-URL block). Callers pass the active policy's test URL so the panel shows
+// the latency the url-test group actually decides on — not the last probe by any
+// URL (a different channel's youtube/t.me check writes into the shared history too).
+export function historyForUrl(
+  info: MihomoProxy | undefined,
+  testUrl: string | undefined,
+): HistoryEntry[] {
+  const perUrl = testUrl ? info?.extra?.[testUrl]?.history : undefined;
+  return perUrl && perUrl.length > 0 ? perUrl : (info?.history ?? []);
+}
 
 const delayResponseSchema = z.object({ delay: z.number() });
 export type DelayResponse = z.infer<typeof delayResponseSchema>;
