@@ -144,9 +144,9 @@ export function ConnectionsScreen() {
           </div>
           <Button
             variant="destructive"
-            size="sm"
             disabled={count === 0 || closeAllMut.isPending}
             onClick={() => setConfirmOpen(true)}
+            className="shrink-0 whitespace-nowrap"
           >
             <Unplug size={15} />
             Разорвать все
