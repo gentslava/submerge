@@ -1,14 +1,75 @@
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ChannelPolicy } from "@submerge/shared";
+import type { ChannelPolicy, NodeView, Proxy as ProxyConfig } from "@submerge/shared";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
 import { createChannel, ensureDefaultChannel, updateChannel } from "../channels/service.js";
-import { applyConfig, collectProxies, listNodes, testDelay } from "./service.js";
+import {
+  applyConfig,
+  collectProxies,
+  listNodes,
+  mergeDbInventory,
+  type ProxyMeta,
+  testDelay,
+} from "./service.js";
+
+const px = (name: string, server: string, extra: Partial<ProxyConfig> = {}): ProxyConfig => ({
+  name,
+  type: "vless",
+  server,
+  port: 443,
+  ...extra,
+});
+
+describe("mergeDbInventory", () => {
+  const emptyView: NodeView = { now: null, autoNow: null, all: [] };
+
+  it("appends a DB node missing from the live view as idle", () => {
+    const out = mergeDbInventory(emptyView, [px("A", "a.com")], new Map());
+    expect(out.all).toHaveLength(1);
+    expect(out.all[0]).toMatchObject({ name: "A", delay: null, history: [] });
+  });
+
+  it("leaves a node already in the live view untouched (no duplicate, keeps live delay)", () => {
+    const view: NodeView = {
+      now: "A",
+      autoNow: null,
+      all: [{ name: "A", type: "vless", delay: 120, history: [120] }],
+    };
+    const out = mergeDbInventory(view, [px("A", "a.com")], new Map());
+    expect(out.all).toHaveLength(1);
+    expect(out.all[0]?.delay).toBe(120);
+  });
+
+  it("collapses same-name DB proxies into an idle group with its members", () => {
+    const out = mergeDbInventory(emptyView, [px("NL", "a.com"), px("NL", "b.com")], new Map());
+    expect(out.all).toHaveLength(1);
+    expect(out.all[0]?.delay).toBeNull();
+    expect(out.all[0]?.members?.map((m) => m.name)).toEqual(["NL", "NL"]);
+  });
+
+  it("applies transport/security meta to an appended single", () => {
+    const meta = new Map<string, ProxyMeta>([["A", { network: "ws", security: "reality" }]]);
+    const out = mergeDbInventory(emptyView, [px("A", "a.com")], meta);
+    expect(out.all[0]).toMatchObject({ network: "ws", security: "reality" });
+  });
+
+  it("preserves now/autoNow and appends after the live nodes", () => {
+    const view: NodeView = {
+      now: "X",
+      autoNow: "Y",
+      all: [{ name: "X", type: "vless", delay: 50, history: [50] }],
+    };
+    const out = mergeDbInventory(view, [px("X", "x.com"), px("Z", "z.com")], new Map());
+    expect(out.now).toBe("X");
+    expect(out.autoNow).toBe("Y");
+    expect(out.all.map((n) => n.name)).toEqual(["X", "Z"]);
+  });
+});
 
 function freshDb() {
   const db = createDb(":memory:");

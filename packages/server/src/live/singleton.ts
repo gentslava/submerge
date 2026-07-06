@@ -4,7 +4,13 @@ import { db } from "../db/client.js";
 import { log } from "../log.js";
 import { registry } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
-import { applyConfig, collectProxies, proxyMeta, toNodeView } from "../modules/nodes/service.js";
+import {
+  applyConfig,
+  collectProxies,
+  mergeDbInventory,
+  proxyMeta,
+  toNodeView,
+} from "../modules/nodes/service.js";
 import { LiveHub } from "./hub.js";
 import { Prober } from "./prober.js";
 
@@ -25,9 +31,15 @@ export const liveHub = new LiveHub({
   fetchView: async () => {
     const raw = await getProxies();
     prober.observe(raw);
+    const dbProxies = collectProxies(db);
+    const meta = proxyMeta(dbProxies);
     // Overlay the panel's own last-known measurements: a reload wipes mihomo's
     // history, and without this every settings change blanked the list to «— ms».
-    return prober.fillLastKnown(toNodeView(raw, proxyMeta(collectProxies(db))));
+    // Then union the full DB inventory so pooled-out nodes stay visible (they'd
+    // otherwise vanish from the live view on the next poll and clobber the merged
+    // nodes.list). Merge last: idle DB-only nodes have no measurement to fill.
+    const view = prober.fillLastKnown(toNodeView(raw, meta));
+    return mergeDbInventory(view, dbProxies, meta);
   },
   streamTraffic,
   getInterval: () => PULSE_MS,

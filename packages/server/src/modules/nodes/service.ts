@@ -18,6 +18,7 @@ import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels } from "../channels/service.js";
 import { getSetting } from "../settings/service.js";
+import { groupProxies } from "./config.js";
 import type { ChannelConfigInput } from "./multiConfig.js";
 import { buildMultiConfig } from "./multiConfig.js";
 
@@ -173,10 +174,60 @@ export function toNodeView({ proxies }: ProxiesResponse, meta?: Map<string, Prox
   return { now: group.now ?? null, autoNow: proxies.AUTO?.now ?? null, all };
 }
 
+// Append DB-inventory nodes absent from the live /proxies view as idle rows. The
+// inventory (enabled sources' proxies) is the source of truth for WHICH nodes exist;
+// /proxies only reflects what's currently in the engine config, so a channel pool that
+// excludes some nodes would otherwise make them vanish from the UI — and, being gone
+// from the list, they could never be re-added (the pool-picker trap). Live nodes keep
+// their /proxies data untouched; a DB-only node shows idle (delay null) until it
+// re-enters the config. Same-name proxies are collapsed by groupProxies exactly as the
+// config generator does, so an appended group's name matches its eventual engine name.
+export function mergeDbInventory(
+  view: NodeView,
+  dbProxies: ProxyConfig[],
+  meta: Map<string, ProxyMeta>,
+): NodeView {
+  const present = new Set(view.all.map((n) => n.name));
+  const extra: NodeItem[] = [];
+  for (const entry of groupProxies(dbProxies)) {
+    const name = entry.kind === "single" ? entry.proxy.name : entry.base;
+    if (present.has(name)) continue;
+    if (entry.kind === "group") {
+      const members: NodeMember[] = entry.members.map((m) => ({
+        name: m.name,
+        delay: null,
+        history: [],
+        active: false,
+      }));
+      extra.push({
+        name,
+        type: entry.members[0]?.type ?? "unknown",
+        delay: null,
+        history: [],
+        members,
+      });
+      continue;
+    }
+    const p = entry.proxy;
+    const item: NodeItem = { name, type: p.type, delay: null, history: [] };
+    if (typeof p.udp === "boolean") item.udp = p.udp;
+    const pm = meta.get(name);
+    if (pm) {
+      if (pm.network) item.network = pm.network;
+      item.security = pm.security;
+    }
+    extra.push(item);
+  }
+  return { ...view, all: [...view.all, ...extra] };
+}
+
 // Normalize the mihomo PROXY select group into the UI-facing NodeView, joining
-// transport/security from the DB's proxy configs for the node badges.
+// transport/security from the DB's proxy configs for the node badges, then union the
+// full DB inventory so pooled-out nodes stay visible (mergeDbInventory).
 export async function listNodes(db: Db): Promise<NodeView> {
-  return toNodeView(await getProxies(), proxyMeta(collectProxies(db)));
+  const dbProxies = collectProxies(db);
+  const meta = proxyMeta(dbProxies);
+  return mergeDbInventory(toNodeView(await getProxies(), meta), dbProxies, meta);
 }
 
 export async function testDelay(name: string, url?: string): Promise<number | null> {

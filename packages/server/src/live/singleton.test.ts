@@ -21,6 +21,7 @@ vi.mock("../modules/nodes/service.js", () => ({
   collectProxies: vi.fn(() => []),
   proxyMeta: vi.fn(),
   toNodeView: vi.fn(() => ({ now: null, autoNow: null, all: [] })),
+  mergeDbInventory: vi.fn((view) => view),
 }));
 
 async function load() {

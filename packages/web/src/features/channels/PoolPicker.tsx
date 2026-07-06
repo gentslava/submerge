@@ -93,9 +93,6 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
 
   return (
     <div className="flex w-full flex-col gap-2">
-      {pool.length === 0 && (
-        <p className="text-xs text-text-tertiary">Пул пуст — сейчас используются все узлы.</p>
-      )}
       {groups.length === 0 ? (
         <p className="text-sub text-text-tertiary">Нет узлов — добавьте источник.</p>
       ) : (
