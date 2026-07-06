@@ -1,19 +1,41 @@
 import type { ConnectionItem } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Cable, Search, Unplug, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatRate } from "@/features/nodes/nodeView";
+import {
+  dotColors,
+  formatRate,
+  isPseudo,
+  type LatencyClass,
+  latencyClass,
+} from "@/features/nodes/nodeView";
 import { formatElapsed } from "@/lib/duration";
 import { pluralRu } from "@/lib/plural";
 import { useTRPC } from "@/lib/trpc";
+import { cn } from "@/lib/utils";
 import { deriveSpeeds, type Rate, toMbps } from "./speed";
 
 type Filter = "all" | "tcp" | "udp";
+// Resolve a connection's outbound node (chains[0]) to how the Узлы screen shows it:
+// the collapsed display name + live status. Falls back to the raw name with a neutral
+// dot when the node isn't in the current view (unknown → honest, not green).
+interface NodeInfo {
+  display: string;
+  lc: LatencyClass;
+}
+type NodeIndex = Map<string, { display: string; delay: number | null }>;
+function resolveNode(index: NodeIndex, name: string): NodeInfo {
+  if (!name) return { display: "—", lc: "idle" };
+  const hit = index.get(name);
+  return hit
+    ? { display: hit.display, lc: latencyClass(hit.delay) }
+    : { display: name, lc: "idle" };
+}
 const EMPTY: ConnectionItem[] = [];
 const ZERO: Rate = { up: 0, down: 0 };
 
@@ -28,6 +50,20 @@ export function ConnectionsScreen() {
   // Only a first-load failure (no data yet) is a hard error — a transient poll
   // error after data keeps the last-known list on screen until the next tick.
   const showError = isError && data === undefined;
+
+  // Node view (shared cache with the Узлы screen) → resolve each connection's node
+  // to its display name + status. Members map to their collapsed group's name so a
+  // deduped chain name ("nl-ams-01-2") shows as the clean node it belongs to.
+  const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
+  const nodeIndex = useMemo<NodeIndex>(() => {
+    const map: NodeIndex = new Map();
+    for (const n of nodesQuery.data?.all ?? []) {
+      if (isPseudo(n.name)) continue;
+      map.set(n.name, { display: n.name, delay: n.delay });
+      for (const m of n.members ?? []) map.set(m.name, { display: n.name, delay: m.delay });
+    }
+    return map;
+  }, [nodesQuery.data]);
 
   // Per-connection speed: diff cumulative bytes against the previous poll (see speed.ts).
   const [rates, setRates] = useState<Map<string, Rate>>(() => new Map());
@@ -160,6 +196,7 @@ export function ConnectionsScreen() {
                 key={c.id}
                 c={c}
                 rate={rates.get(c.id) ?? ZERO}
+                node={resolveNode(nodeIndex, c.node)}
                 onClose={() => closeMut.mutate({ id: c.id })}
               />
             ))
@@ -211,10 +248,12 @@ function ColumnsHeader() {
 function ConnectionRow({
   c,
   rate,
+  node,
   onClose,
 }: {
   c: ConnectionItem;
   rate: Rate;
+  node: NodeInfo;
   onClose: () => void;
 }) {
   const dest = c.port ? `${c.host}:${c.port}` : c.host;
@@ -237,8 +276,8 @@ function ConnectionRow({
         {c.network}
       </span>
       <div className="flex w-[150px] shrink-0 items-center gap-[7px]">
-        <span className="h-[7px] w-[7px] shrink-0 rounded-full bg-online" />
-        <span className="truncate font-mono text-sub text-text-primary">{c.node || "—"}</span>
+        <span className={cn("h-[7px] w-[7px] shrink-0 rounded-full", dotColors[node.lc])} />
+        <span className="truncate font-mono text-sub text-text-primary">{node.display}</span>
       </div>
       <span className="w-[140px] shrink-0 text-right font-mono text-sub font-medium text-text-primary">
         ↓ {toMbps(rate.down)} ↑ {toMbps(rate.up)}
