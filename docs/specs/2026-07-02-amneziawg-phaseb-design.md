@@ -159,3 +159,35 @@ Resolved: show the `AmneziaWG` variant badge → `WIREGUARD · UDP · AmneziaWG`
 3. **B1 first** (`.conf` + `vpn://` v1), **B2 (hosted v2 API) as a later spike**.
 4. **Name** — from a `#_Name =` / `# Name =` comment if present, else
    `<label> <endpoint-host>`.
+
+## Phase B2 — reverse-engineering findings (2026-07-07)
+
+Decoded a real `vpn://` config_version 2 blob: it carries **no WG params and no
+gateway URL** — only `api_config {service_type:"amnezia-free", service_protocol:"awg",
+user_country_code}` + `auth_data {api_key:"<keyId>.<secret>"}`. The gateway is hardcoded
+in the official client.
+
+From `amnezia-vpn/amnezia-client` (dev): gateway = **`http://gw.amnezia.org:80/`**,
+config request = **`POST <gateway>/v1/config`** (`subscriptionController.cpp` +
+`gatewayController.cpp` + `secureAppSettingsRepository.cpp`). **This is NOT a plain
+HTTP call** — it's a proprietary encrypted envelope:
+- Header `X-Client-Request-ID: <uuid>`, content-type `application/json`.
+- Body `{ keyPayload, apiPayload }` (both base64): the API JSON is AES-encrypted
+  (`encryptAesBlockCipher`), and the AES key material is RSA-encrypted
+  (`RSA_PKCS1_PADDING`) with the **AGW RSA public key** (a hardcoded client constant).
+- The API JSON = `{ osVersion, appVersion, appLanguage, uuid, userCountryCode,
+  serverCountryCode, serviceType, serviceProtocol, authData:{api_key}, publicKey }`,
+  where `publicKey` is a **client-generated WireGuard public key** (client keeps the
+  private key).
+- The **response is encrypted** (decrypted with the same symmetric key/iv/salt) → JSON
+  with `containers[].awg` and a `$WIREGUARD_CLIENT_PRIVATE_KEY` placeholder the client
+  substitutes with its own private key.
+
+**Implication:** B2 is materially bigger/fragiler than assumed — it means
+reimplementing Amnezia's AES+RSA gateway transport in TS (extract the AGW RSA pubkey +
+exact AES mode/iv/salt), generate a WG keypair, and decode an encrypted response.
+Key/param rotation breaks it — exactly the staleness ADR-0001 cites for static `happ://`
+decoders (solved there with the official-binary sidecar). Options: (a) reimplement the
+encrypted protocol in TS (fragile); (b) a sidecar mirroring `happ-decoder` that runs
+Amnezia's own logic (robust, more infra); (c) defer (YAGNI unless hosted Amnezia Free is
+actually needed). Recommendation: **(c) defer** — revisit as a sidecar spike if needed.
