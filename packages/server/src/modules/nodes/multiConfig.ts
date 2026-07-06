@@ -12,13 +12,26 @@ export interface ChannelConfigInput {
   isDefault: boolean;
   policy: ChannelPolicy;
   domains: string[]; // resolveMatcherDomains(matcher) — custom domains + expanded presets
-  proxies: ProxyConfig[]; // resolved pool for this channel
+  // The proxies this channel DEFINES + contributes to PROXY. The default channel is
+  // fed the full inventory here so every node is defined + pinged + manually
+  // selectable; other channels get their pool.
+  proxies: ProxyConfig[];
+  // The subset this channel's group actually RACES (empty pool = all). When omitted,
+  // the group races everything in `proxies` (back-compat / byte-identity). Lets the
+  // default define the whole inventory in `proxies` while AUTO races only the pool.
+  race?: ProxyConfig[];
 }
 
 // A channel's top-level member is either a shared proxy (referenced by its index
 // into the global proxy list, so the final post-dedupe name resolves) or a
-// channel-scoped collapsed subgroup (referenced by its unique group name).
-type TopLevelRef = { kind: "proxy"; flatIndex: number } | { kind: "subgroup"; name: string };
+// channel-scoped collapsed subgroup (referenced by its unique group name). Each
+// carries `raceName` — the ORIGINAL node name (a single's `name`, a subgroup's
+// collapsed base) — so a channel's `race` subset (resolved by name in the pool,
+// see resolveChannelProxies) matches back by the same key, not by endpoint (two
+// distinct nodes can share a server:port).
+type TopLevelRef =
+  | { kind: "proxy"; flatIndex: number; raceName: string }
+  | { kind: "subgroup"; name: string; raceName: string };
 
 interface SubGroupSpec {
   name: string;
@@ -146,13 +159,17 @@ export function buildMultiConfig(
 
     for (const entry of groupProxies(channel.proxies)) {
       if (entry.kind === "single") {
-        topLevel.push({ kind: "proxy", flatIndex: claim(entry.proxy, entry.proxy.name) });
+        topLevel.push({
+          kind: "proxy",
+          flatIndex: claim(entry.proxy, entry.proxy.name),
+          raceName: entry.proxy.name,
+        });
         continue;
       }
       const name = allocateSubGroupName(usedSubGroupNames, channel, entry.base);
       const memberFlatIndices = entry.members.map((m, i) => claim(m, `${name} #${i + 1}`));
       allSubGroups.push({ name, memberFlatIndices, tuning });
-      topLevel.push({ kind: "subgroup", name });
+      topLevel.push({ kind: "subgroup", name, raceName: entry.base });
     }
 
     builds.set(channel.id, { channel, topLevel });
@@ -167,11 +184,27 @@ export function buildMultiConfig(
 
   const unique = dedupeNames(flat, reservedGroupNames);
   const nameAt = (index: number): string => (unique[index] as ProxyConfig).name;
+  // All of a channel's top-level names — used for PROXY (the manual selector lists
+  // every node the default channel DEFINES, i.e. the whole inventory).
   const memberNames = (build: ChannelBuild): string[] =>
     build.topLevel.map((ref) => (ref.kind === "proxy" ? nameAt(ref.flatIndex) : ref.name));
 
+  // The names the channel's group RACES: its `race` subset, or all of `proxies` when
+  // `race` is absent (byte-identity). Matched back to top-level entries by original
+  // node name — the same key the pool used (resolveChannelProxies) — so two nodes on
+  // one server:port stay independently poolable. A collapsed subgroup is all-or-nothing
+  // (its members share the base name), so it races whole when any member is pooled.
+  const raceNames = (build: ChannelBuild): string[] => {
+    const race = build.channel.race;
+    if (!race) return memberNames(build);
+    const raceSet = new Set(race.map((p) => p.name));
+    return build.topLevel
+      .filter((ref) => raceSet.has(ref.raceName))
+      .map((ref) => (ref.kind === "proxy" ? nameAt(ref.flatIndex) : ref.name));
+  };
+
   const groupFor = (build: ChannelBuild): Record<string, unknown> => {
-    const names = memberNames(build);
+    const names = raceNames(build);
     const members = names.length ? names : ["DIRECT"];
     if (build.channel.policy.kind === "speed") {
       const t = urlTestTuning(build.channel.policy);

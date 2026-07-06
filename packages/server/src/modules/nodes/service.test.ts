@@ -7,7 +7,13 @@ import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
-import { createChannel, ensureDefaultChannel, updateChannel } from "../channels/service.js";
+import { setPool } from "../channels/pool.js";
+import {
+  createChannel,
+  ensureDefaultChannel,
+  readDefaultChannel,
+  updateChannel,
+} from "../channels/service.js";
 import {
   applyConfig,
   collectProxies,
@@ -124,6 +130,34 @@ describe("collectProxies", () => {
 });
 
 describe("applyConfig", () => {
+  it("defines the whole inventory in PROXY but races only the Default pool", async () => {
+    const db = freshDb();
+    const nodes = [
+      { name: "A", type: "vless", server: "a.com", port: 443, uuid: "u" },
+      { name: "B", type: "vless", server: "b.com", port: 443, uuid: "u" },
+      { name: "C", type: "vless", server: "c.com", port: 443, uuid: "u" },
+    ];
+    db.insert(sources).values({ kind: "sub", value: "s", label: "s", proxies: nodes }).run();
+    // Default pool = only A (a subset). B and C must stay defined + selectable.
+    setPool(db, readDefaultChannel(db).id, [{ kind: "node", ref: "A" }]);
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const groups = cfg["proxy-groups"] as any[];
+    const proxy = groups.find((g) => g.name === "PROXY");
+    const auto = groups.find((g) => g.name === "AUTO");
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    expect(cfg.proxies.map((p: any) => p.name)).toEqual(["A", "B", "C"]);
+    expect(proxy.proxies).toEqual(["AUTO", "A", "B", "C", "DIRECT"]);
+    expect(auto.proxies).toEqual(["A"]);
+  });
+
   it("writes the generated config and reloads mihomo", async () => {
     const db = freshDb();
     db.insert(sources)

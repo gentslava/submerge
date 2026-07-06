@@ -69,14 +69,22 @@ export async function applyConfig(
   // stays active regardless of its own `enabled` flag.
   const inputs: ChannelConfigInput[] = listChannels(db)
     .filter((ch) => ch.isDefault || ch.enabled)
-    .map((ch) => ({
-      id: ch.id,
-      groupName: groupNameFor(ch),
-      isDefault: ch.isDefault,
-      policy: ch.policy,
-      domains: resolveMatcherDomains(ch.matcher),
-      proxies: resolveChannelProxies(db, ch, allProxies),
-    }));
+    .map((ch) => {
+      const pool = resolveChannelProxies(db, ch, allProxies);
+      const base = {
+        id: ch.id,
+        groupName: groupNameFor(ch),
+        isDefault: ch.isDefault,
+        policy: ch.policy,
+        domains: resolveMatcherDomains(ch.matcher),
+      };
+      // The Default channel DEFINES the whole inventory (so every node is written to
+      // the config, pinged by the prober, and manually selectable via PROXY) while its
+      // AUTO group RACES only the pool. Other channels define + race their pool.
+      return ch.isDefault
+        ? { ...base, proxies: allProxies, race: pool }
+        : { ...base, proxies: pool };
+    });
   const content = buildMultiConfig(inputs, readMihomoSecret(db));
   const tmpPath = `${configPath}.tmp`;
   writeFileSync(tmpPath, content, "utf8");

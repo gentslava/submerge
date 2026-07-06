@@ -54,6 +54,48 @@ describe("buildMultiConfig — single Default channel (byte-identity)", () => {
   });
 });
 
+describe("buildMultiConfig — default channel with a race subset (pool)", () => {
+  it("defines + lists the whole inventory in PROXY while AUTO races only the pool", () => {
+    const A = px("A", "a.com");
+    const B = px("B", "b.com");
+    const C = px("C", "c.com");
+    // The Default DEFINES all three (the inventory) but RACES only [A, B] (the pool),
+    // so C stays defined + pinged + manually selectable but isn't in the auto race.
+    const cfg = parse(buildMultiConfig([channel({ proxies: [A, B, C], race: [A, B] })]));
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const groups = cfg["proxy-groups"] as any[];
+    const proxy = groups.find((g) => g.name === "PROXY");
+    const auto = groups.find((g) => g.name === "AUTO");
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    expect(cfg.proxies.map((p: any) => p.name)).toEqual(["A", "B", "C"]);
+    expect(proxy.proxies).toEqual(["AUTO", "A", "B", "C", "DIRECT"]);
+    expect(auto.proxies).toEqual(["A", "B"]);
+  });
+
+  it("an empty race (empty pool → all) still races everything — byte-identity", () => {
+    const A = px("A", "a.com");
+    const B = px("B", "b.com");
+    // race === proxies is the empty-pool case; AUTO must list every node.
+    const cfg = parse(buildMultiConfig([channel({ proxies: [A, B], race: [A, B] })]));
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const auto = (cfg["proxy-groups"] as any[]).find((g) => g.name === "AUTO");
+    expect(auto.proxies).toEqual(["A", "B"]);
+  });
+
+  it("races by node name, not endpoint — a same-server:port twin isn't raced", () => {
+    const A = px("A", "x.com");
+    const A2 = px("A2", "x.com"); // distinct name, SAME server:port as A
+    // Both are defined + selectable, but the pool selects only A.
+    const cfg = parse(buildMultiConfig([channel({ proxies: [A, A2], race: [A] })]));
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const groups = cfg["proxy-groups"] as any[];
+    const proxy = groups.find((g) => g.name === "PROXY");
+    const auto = groups.find((g) => g.name === "AUTO");
+    expect(proxy.proxies).toEqual(["AUTO", "A", "A2", "DIRECT"]);
+    expect(auto.proxies).toEqual(["A"]); // endpoint-keyed matching would leak A2 here
+  });
+});
+
 describe("buildMultiConfig — multiple channels", () => {
   it("shares a node across channels and routes non-default domains", () => {
     const A = px("A", "a.com");
