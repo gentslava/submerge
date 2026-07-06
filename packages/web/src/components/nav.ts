@@ -16,6 +16,9 @@ export interface NavLink {
   to: "/" | "/sources" | "/connections" | "/routing" | "/settings";
   label: string;
   icon: LucideIcon;
+  // Mobile only: `secondary` links live under "Ещё" instead of the bottom bar
+  // (keeps the bottom nav uncrowded). They still appear in the desktop sidebar.
+  secondary?: boolean;
 }
 
 /**
@@ -38,7 +41,7 @@ export type NavEntry = NavLink | NavPlaceholder;
 export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/", label: "Узлы", icon: Server },
   { kind: "placeholder", label: "Трафик", icon: Activity },
-  { kind: "link", to: "/connections", label: "Соединения", icon: Cable },
+  { kind: "link", to: "/connections", label: "Соединения", icon: Cable, secondary: true },
   { kind: "link", to: "/routing", label: "Маршрутизация", icon: Route },
   { kind: "placeholder", label: "Логи", icon: SquareTerminal },
   { kind: "link", to: "/sources", label: "Источники", icon: Layers },
@@ -46,5 +49,11 @@ export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/settings", label: "Настройки", icon: Settings },
 ];
 
-/** Routes that have real screens — used by the mobile BottomNav. */
+/** Routes that have real screens. */
 export const NAV_LINKS: NavLink[] = NAV_ENTRIES.filter((e): e is NavLink => e.kind === "link");
+
+/** Primary links shown in the mobile bottom bar (everything except `secondary`). */
+export const NAV_PRIMARY_LINKS: NavLink[] = NAV_LINKS.filter((l) => !l.secondary);
+
+/** Secondary links surfaced on the mobile "Ещё" screen instead of the bottom bar. */
+export const NAV_SECONDARY_LINKS: NavLink[] = NAV_LINKS.filter((l) => l.secondary);

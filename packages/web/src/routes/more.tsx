@@ -1,5 +1,7 @@
-import { Activity, Route, ScrollText, Stethoscope, Waypoints } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Activity, ScrollText, Stethoscope } from "lucide-react";
 import type { ComponentType } from "react";
+import { NAV_SECONDARY_LINKS } from "@/components/nav";
 import { Button } from "@/components/ui/button";
 import { useReloadCore } from "@/features/settings/useReloadCore";
 import { PROXY_ENDPOINT } from "@/lib/constants";
@@ -20,6 +22,20 @@ export function MoreRoute() {
       </header>
 
       <div className="flex flex-col gap-4">
+        {NAV_SECONDARY_LINKS.length > 0 && (
+          <div className="flex flex-col rounded-xl border border-border-subtle bg-surface">
+            {NAV_SECONDARY_LINKS.map(({ to, label, icon: Icon }) => (
+              <Link
+                key={to}
+                to={to}
+                className="flex items-center gap-2.5 border-b border-border-subtle px-4 py-3 text-sm text-text-primary transition-colors last:border-0 hover:bg-hover"
+              >
+                <Icon size={16} className="text-text-secondary" />
+                <span className="flex-1">{label}</span>
+              </Link>
+            ))}
+          </div>
+        )}
         <div className="flex flex-col rounded-xl border border-border-subtle bg-surface">
           {SOON.map(({ label, icon: Icon }) => (
             // biome-ignore lint/a11y/useSemanticElements: inert "coming soon" entry — a real <a> would imply a navigable destination
