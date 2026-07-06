@@ -39,6 +39,32 @@ export interface TrafficTotals {
   down: number;
 }
 
+// The connections array from /connections. mihomo returns many more fields per
+// connection and per metadata block; pin only what the screen reads and let
+// `looseObject` pass the rest. `upload`/`download` are cumulative byte counters;
+// `chains[0]` is the actual outbound node; `metadata.process` is usually empty for
+// LAN traffic proxied over SOCKS (no local process to resolve).
+const connectionMetadataSchema = z.looseObject({
+  network: z.string().default(""),
+  host: z.string().default(""),
+  destinationIP: z.string().default(""),
+  destinationPort: z.string().default(""),
+  sourceIP: z.string().default(""),
+  process: z.string().default(""),
+});
+const connectionSchema = z.looseObject({
+  id: z.string(),
+  metadata: connectionMetadataSchema,
+  upload: z.number().default(0),
+  download: z.number().default(0),
+  start: z.string().default(""),
+  chains: z.array(z.string()).default([]),
+});
+export type MihomoConnection = z.infer<typeof connectionSchema>;
+const connectionsResponseSchema = z.object({
+  connections: z.array(connectionSchema).default([]),
+});
+
 function call(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${env.MIHOMO_API}${path}`, {
     ...init,
@@ -68,6 +94,28 @@ export async function getTotals(): Promise<TrafficTotals> {
   if (!r.ok) throw new Error(`mihomo /connections returned HTTP ${r.status}`);
   const { downloadTotal, uploadTotal } = connectionsTotalsSchema.parse(await r.json());
   return { up: uploadTotal, down: downloadTotal };
+}
+
+// Snapshot of active connections. Reuses the /connections endpoint (getTotals reads
+// the same payload's counters); callers derive per-connection speed from consecutive
+// snapshots.
+export async function getConnections(): Promise<MihomoConnection[]> {
+  const r = await call("/connections");
+  if (!r.ok) throw new Error(`mihomo /connections returned HTTP ${r.status}`);
+  return connectionsResponseSchema.parse(await r.json()).connections;
+}
+
+export async function closeConnection(id: string): Promise<void> {
+  const r = await call(`/connections/${encodeURIComponent(id)}`, { method: "DELETE" });
+  // 404 = the connection already closed on its own; treat as success (idempotent kill).
+  if (!r.ok && r.status !== 404) {
+    throw new Error(`mihomo close connection ${id} returned HTTP ${r.status}`);
+  }
+}
+
+export async function closeAllConnections(): Promise<void> {
+  const r = await call("/connections", { method: "DELETE" });
+  if (!r.ok) throw new Error(`mihomo close all connections returned HTTP ${r.status}`);
 }
 
 export async function selectProxy(group: string, name: string): Promise<void> {

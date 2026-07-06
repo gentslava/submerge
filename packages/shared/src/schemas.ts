@@ -121,6 +121,30 @@ export const liveEventSchema = z.discriminatedUnion("type", [
 ]);
 export type LiveEvent = z.infer<typeof liveEventSchema>;
 
+// Connections — a live row from mihomo /connections. `up`/`down` are CUMULATIVE
+// bytes (the client derives per-connection speed by diffing consecutive polls).
+export const connectionItemSchema = z.object({
+  id: z.string(),
+  source: z.string(), // process name if mihomo resolved it, else the client's source IP
+  host: z.string(),
+  destIp: z.string(),
+  port: z.string(),
+  network: z.enum(["tcp", "udp"]),
+  node: z.string(), // the outbound proxy node (chains[0]); "" when unknown
+  up: z.number(),
+  down: z.number(),
+  start: z.string(), // ISO timestamp — the client formats elapsed time
+});
+export type ConnectionItem = z.infer<typeof connectionItemSchema>;
+
+export const connectionsViewSchema = z.object({
+  connections: z.array(connectionItemSchema),
+});
+export type ConnectionsView = z.infer<typeof connectionsViewSchema>;
+
+export const closeConnectionInput = z.object({ id: z.string().min(1) });
+export type CloseConnectionInput = z.infer<typeof closeConnectionInput>;
+
 // Auth (Phase 5) — single-admin optional password.
 export const loginInput = z.object({ password: z.string().min(1) });
 export type LoginInput = z.infer<typeof loginInput>;

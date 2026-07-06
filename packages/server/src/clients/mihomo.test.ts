@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  closeAllConnections,
+  closeConnection,
+  getConnections,
   getDelay,
   getProxies,
   getTotals,
@@ -46,6 +49,60 @@ describe("mihomo client", () => {
       return json({ downloadTotal: 8400, uploadTotal: 1200, connections: [{ id: "x" }] });
     });
     expect(await getTotals()).toEqual({ up: 1200, down: 8400 });
+  });
+
+  it("parses the /connections array (defaults for missing fields)", async () => {
+    mockFetch((url) => {
+      expect(url).toContain("/connections");
+      return json({
+        downloadTotal: 10,
+        uploadTotal: 5,
+        connections: [
+          {
+            id: "c1",
+            metadata: { network: "tcp", host: "youtube.com", sourceIP: "192.168.1.9" },
+            upload: 100,
+            download: 200,
+            start: "2026-07-06T20:00:00Z",
+            chains: ["nl-ams-01", "AUTO"],
+          },
+        ],
+      });
+    });
+    const conns = await getConnections();
+    expect(conns).toHaveLength(1);
+    expect(conns[0]?.id).toBe("c1");
+    expect(conns[0]?.chains[0]).toBe("nl-ams-01");
+    expect(conns[0]?.metadata.process).toBe(""); // defaulted
+  });
+
+  it("closes a connection via DELETE and tolerates a 404", async () => {
+    let method = "";
+    let path = "";
+    mockFetch((url, init) => {
+      method = init?.method ?? "";
+      path = url;
+      return new Response(null, { status: 204 });
+    });
+    await closeConnection("c1");
+    expect(method).toBe("DELETE");
+    expect(path).toContain("/connections/c1");
+
+    mockFetch(() => new Response(null, { status: 404 }));
+    await expect(closeConnection("gone")).resolves.toBeUndefined();
+  });
+
+  it("closes all connections via DELETE /connections", async () => {
+    let method = "";
+    let path = "";
+    mockFetch((url, init) => {
+      method = init?.method ?? "";
+      path = url;
+      return new Response(null, { status: 204 });
+    });
+    await closeAllConnections();
+    expect(method).toBe("DELETE");
+    expect(path).toMatch(/\/connections$/);
   });
 
   it("throws on an error status", async () => {
