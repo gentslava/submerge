@@ -1,7 +1,7 @@
 # Channel-based routing & active node selection — design
 
 - **Date:** 2026-07-01
-- **Status:** Implemented (Phases 1–2: channel abstraction + sticky controller shipped; multi-channel routing — in progress)
+- **Status:** Implemented (Phases 1–2: channel abstraction + sticky controller; Phases 3a/3b: multi-channel routing mechanics + Routing UI + domain presets)
 - **Supersedes:** the current single-`AUTO`-group model in `packages/server/src/modules/nodes/config.ts`
 - **Related:** [2026-07-01-node-collapse plan](../plans/2026-07-01-node-collapse.md), `docs/architecture.md`, ADR-0004 (anti-overengineering)
 

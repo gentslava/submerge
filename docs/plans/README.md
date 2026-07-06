@@ -18,3 +18,5 @@ for their status. Mark a plan **done** here when its feature is merged to master
 | [Protocol parsers — phase A](2026-07-02-protocol-parsers-phaseA.md) | done |
 | [AmneziaWG / WireGuard — phase B1](2026-07-02-amneziawg-phaseb1.md) | done |
 | [Background prober](2026-07-03-background-prober.md) | done |
+| [Multi-channel routing — phase 3a (mechanics)](2026-07-01-multi-routing-phase3a.md) | done |
+| [Routing UI + domain presets — phase 3b](2026-07-05-routing-ui-phase3b.md) | done |
