@@ -83,6 +83,9 @@ export const nodeItemSchema = z.object({
   history: z.array(z.number()).default([]),
   // Present only for a collapsed group node: its member servers.
   members: z.array(nodeMemberSchema).optional(),
+  // Global deny-list flag: true = dropped from the engine config (never routed/pinged),
+  // shown greyed + «исключён» in the UI. Absent/false = a normal node.
+  excluded: z.boolean().optional(),
 });
 export type NodeItem = z.infer<typeof nodeItemSchema>;
 
@@ -107,6 +110,8 @@ export const delayInput = z.object({ name: z.string().min(1) });
 export type DelayInput = z.infer<typeof delayInput>;
 export const setSettingInput = z.object({ key: z.string().min(1), value: z.string() });
 export type SetSettingInput = z.infer<typeof setSettingInput>;
+export const setExcludedInput = z.object({ name: z.string().min(1), excluded: z.boolean() });
+export type SetExcludedInput = z.infer<typeof setExcludedInput>;
 
 // Live (SSE) — high-frequency traffic samples + the fan-out event union.
 export const trafficSampleSchema = z.object({ up: z.number(), down: z.number() });

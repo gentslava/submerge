@@ -19,6 +19,7 @@ vi.mock("../modules/channels/service.js", () => ({
 }));
 vi.mock("../modules/nodes/service.js", () => ({
   collectProxies: vi.fn(() => []),
+  getExcludedSet: vi.fn(() => new Set()),
   proxyMeta: vi.fn(),
   toNodeView: vi.fn(() => ({ now: null, autoNow: null, all: [] })),
   mergeDbInventory: vi.fn((view) => view),

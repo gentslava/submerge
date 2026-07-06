@@ -7,6 +7,7 @@ import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
 import {
   applyConfig,
   collectProxies,
+  getExcludedSet,
   mergeDbInventory,
   proxyMeta,
   toNodeView,
@@ -39,7 +40,7 @@ export const liveHub = new LiveHub({
     // otherwise vanish from the live view on the next poll and clobber the merged
     // nodes.list). Merge last: idle DB-only nodes have no measurement to fill.
     const view = prober.fillLastKnown(toNodeView(raw, meta));
-    return mergeDbInventory(view, dbProxies, meta);
+    return mergeDbInventory(view, dbProxies, meta, getExcludedSet(db));
   },
   streamTraffic,
   getInterval: () => PULSE_MS,

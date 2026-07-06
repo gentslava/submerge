@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useLiveState } from "@/features/live/LiveProvider";
+import { warnIfNotApplied } from "@/lib/apply-toast";
 import { useTRPC } from "@/lib/trpc";
 import { ActiveNodeCard } from "./ActiveNodeCard";
 import { AutoStrategyCard } from "./AutoStrategyCard";
@@ -49,6 +50,16 @@ export function NodesScreen() {
       onSuccess: () => {
         void qc.invalidateQueries({ queryKey: trpc.nodes.list.queryKey() });
         toast.success("Узел выбран");
+      },
+      onError: (e) => toast.error(e.message),
+    }),
+  );
+
+  const setExcluded = useMutation(
+    trpc.nodes.setExcluded.mutationOptions({
+      onSuccess: (data) => {
+        void qc.invalidateQueries({ queryKey: trpc.nodes.list.queryKey() });
+        warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
     }),
@@ -146,6 +157,7 @@ export function NodesScreen() {
           selectPending={select.isPending}
           onSelect={(name) => select.mutate({ group: "PROXY", name })}
           onPing={pingOne}
+          onToggleExcluded={(name, excluded) => setExcluded.mutate({ name, excluded })}
           onAuto={onAuto}
           onManual={onManual}
           lastDecision={{
@@ -172,6 +184,7 @@ function Body({
   selectPending,
   onSelect,
   onPing,
+  onToggleExcluded,
   onAuto,
   onManual,
   lastDecision,
@@ -189,6 +202,7 @@ function Body({
   selectPending: boolean;
   onSelect: (name: string) => void;
   onPing: (name: string) => void;
+  onToggleExcluded: (name: string, excluded: boolean) => void;
   onAuto: () => void;
   onManual: () => void;
   lastDecision: { reason: string; at: number | null };
@@ -230,6 +244,7 @@ function Body({
         pingingNames={pingingNames}
         onSelect={onSelect}
         onPing={onPing}
+        onToggleExcluded={onToggleExcluded}
       />
     </>
   );

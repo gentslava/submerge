@@ -1,7 +1,7 @@
 # Node exclusion + pool inventory fix — design
 
 - **Date:** 2026-07-06
-- **Status:** Draft (awaiting approval)
+- **Status:** Implemented (Phases A, A2, B)
 - **Scope:** `packages/server` (config-gen, channels, nodes view, schema) + `packages/web` (Узлы, PoolPicker)
 - **Related:** [channel-routing design](2026-07-01-channel-routing-design.md), `modules/nodes/multiConfig.ts`, `modules/channels/pool.ts`
 
@@ -115,3 +115,16 @@ drop it).
    what pools already use; go with name unless dedup collisions bite).
 2. Excluded node **fully omitted** from config vs defined-but-ungrouped — lean omitted
    (simplest; visibility comes from the DB-sourced view, not the engine).
+
+## Known follow-ups (from Phase B review)
+
+- **Manual-pin reconciliation.** Excluding a node that is a `manual` channel's
+  `pinnedNode` leaves a dangling pin: with `onFailure: "hold"` the controller keeps
+  trying to select the now-absent node (mihomo rejects, the throw is swallowed) and the
+  channel silently stops adapting. Pre-existing shape (source removal already orphans a
+  pin); exclusion adds an easy path. Fix later: on exclude, detect + repoint/clear a
+  matching `pinnedNode` (or log a decision). `fallback` degrades gracefully.
+- **Reload-pending flag window.** The `excluded` flag is set on DB-only (appended)
+  nodes; if `applyConfig`'s reload fails (`applied:false`), the running engine still
+  returns the node in `/proxies`, so it stays present + unmarked until the next
+  successful reload. `warnIfNotApplied` surfaces the failure, so accepted as-is.

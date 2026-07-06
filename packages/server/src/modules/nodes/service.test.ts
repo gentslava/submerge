@@ -17,9 +17,11 @@ import {
 import {
   applyConfig,
   collectProxies,
+  getExcludedSet,
   listNodes,
   mergeDbInventory,
   type ProxyMeta,
+  setExcluded,
   testDelay,
 } from "./service.js";
 
@@ -366,5 +368,46 @@ describe("testDelay", () => {
       vi.fn(() => new Response("err", { status: 503 })),
     );
     expect(await testDelay("A")).toBeNull();
+  });
+});
+
+describe("node exclusion", () => {
+  it("setExcluded round-trips through getExcludedSet (idempotent add/remove)", () => {
+    const db = freshDb();
+    setExcluded(db, "Bad", true);
+    setExcluded(db, "Bad", true); // idempotent (onConflictDoNothing)
+    expect([...getExcludedSet(db)]).toEqual(["Bad"]);
+    setExcluded(db, "Bad", false);
+    expect(getExcludedSet(db).size).toBe(0);
+  });
+
+  it("applyConfig drops an excluded node from proxies:, PROXY, and the race", async () => {
+    const db = freshDb();
+    const nodes = [
+      { name: "A", type: "vless", server: "a.com", port: 443, uuid: "u" },
+      { name: "B", type: "vless", server: "b.com", port: 443, uuid: "u" },
+    ];
+    db.insert(sources).values({ kind: "sub", value: "s", label: "s", proxies: nodes }).run();
+    setExcluded(db, "B", true);
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const groups = cfg["proxy-groups"] as any[];
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    expect(cfg.proxies.map((p: any) => p.name)).toEqual(["A"]);
+    expect(groups.find((g) => g.name === "PROXY").proxies).toEqual(["AUTO", "A", "DIRECT"]);
+    expect(groups.find((g) => g.name === "AUTO").proxies).toEqual(["A"]);
+  });
+
+  it("mergeDbInventory marks an excluded DB node", () => {
+    const emptyView: NodeView = { now: null, autoNow: null, all: [] };
+    const out = mergeDbInventory(emptyView, [px("A", "a.com")], new Map(), new Set(["A"]));
+    expect(out.all[0]?.excluded).toBe(true);
   });
 });

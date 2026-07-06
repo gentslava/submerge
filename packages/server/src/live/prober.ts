@@ -69,7 +69,9 @@ export class Prober {
     return {
       ...view,
       all: view.all.map((n) => {
-        if (n.delay !== null || n.history.length > 0) return n;
+        // Excluded nodes are out of the engine — never paint a stale last-known delay
+        // onto them (they must read idle «— ms», matching the `excluded` flag).
+        if (n.excluded || n.delay !== null || n.history.length > 0) return n;
         const known = this.lastDelay.get(n.name);
         return known === undefined ? n : { ...n, delay: known };
       }),

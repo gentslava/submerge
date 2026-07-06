@@ -1,5 +1,5 @@
 import type { NodeItem } from "@submerge/shared";
-import { Check, ChevronDown, Loader2, Zap } from "lucide-react";
+import { Ban, Check, ChevronDown, Loader2, Undo2, Zap } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -18,12 +18,21 @@ interface NodeRowProps {
   pinging?: boolean;
   onSelect(): void;
   onPing(): void;
+  onToggleExcluded(excluded: boolean): void;
 }
 
-export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: NodeRowProps) {
+export function NodeRow({
+  item,
+  isActive,
+  pinging = false,
+  onSelect,
+  onPing,
+  onToggleExcluded,
+}: NodeRowProps) {
   const lClass = latencyClass(item.delay);
   const members = item.members ?? [];
   const isGroup = members.length > 0;
+  const isExcluded = item.excluded ?? false;
   const [expanded, setExpanded] = useState(false);
   // Sub-line: a collapsed group shows its server count ("5 серверов"); a plain
   // node shows its protocol badges (VLESS · TCP · Reality / · WS · TLS).
@@ -37,6 +46,11 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
       <div className="flex min-w-0 flex-col gap-[3px]">
         <span className="flex min-w-0 items-center gap-1.5">
           <span className="truncate text-sm font-semibold text-text-primary">{item.name}</span>
+          {isExcluded && (
+            <span className="shrink-0 rounded-full bg-hover px-[7px] py-0.5 text-[9px] font-semibold uppercase tracking-[0.4px] text-text-tertiary">
+              исключён
+            </span>
+          )}
           {isGroup && (
             <ChevronDown
               aria-hidden="true"
@@ -58,6 +72,7 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
         className={cn(
           "flex items-center gap-2 border-b border-border-subtle px-4 py-[13px] last:border-b-0 md:gap-4",
           isActive && "bg-accent-bg",
+          isExcluded && "opacity-60",
         )}
       >
         {/* Node cell (fills). For a group the whole cell is a toggle button so
@@ -93,11 +108,33 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
           <button
             type="button"
             onClick={onPing}
-            disabled={pinging}
+            disabled={pinging || isExcluded}
             aria-label={`Пинговать ${item.name}`}
             className="flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-hover hover:text-text-primary disabled:pointer-events-none disabled:opacity-50"
           >
             <Zap className="h-[18px] w-[18px]" aria-hidden="true" />
+          </button>
+        </div>
+
+        {/* Exclude toggle — deny-list a node (dropped from the engine) or restore it */}
+        <div className="flex w-10 shrink-0 justify-center">
+          <button
+            type="button"
+            onClick={() => onToggleExcluded(!isExcluded)}
+            aria-label={isExcluded ? `Вернуть ${item.name}` : `Исключить ${item.name}`}
+            title={isExcluded ? "Вернуть в работу" : "Исключить из подключений"}
+            className={cn(
+              "flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-hover",
+              isExcluded
+                ? "text-text-secondary hover:text-text-primary"
+                : "text-text-tertiary hover:text-timeout",
+            )}
+          >
+            {isExcluded ? (
+              <Undo2 className="h-[18px] w-[18px]" aria-hidden="true" />
+            ) : (
+              <Ban className="h-[18px] w-[18px]" aria-hidden="true" />
+            )}
           </button>
         </div>
 
@@ -119,6 +156,7 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
               variant="secondary"
               size="sm"
               className="w-[92px] md:w-[112px]"
+              disabled={isExcluded}
               onClick={onSelect}
             >
               Выбрать
@@ -148,6 +186,7 @@ export function NodeRow({ item, isActive, pinging = false, onSelect, onPing }: N
               </span>
             </div>
             <span aria-hidden="true" className="w-12 shrink-0" />
+            <span aria-hidden="true" className="w-10 shrink-0" />
             {/* Match the parent row's action column so member delay values line up:
                 ~92px (the mobile button width) then the desktop w-[120px]. */}
             <span aria-hidden="true" className="w-[92px] shrink-0 md:w-[120px]" />

@@ -11,9 +11,17 @@ interface NodeGroupProps {
   pingingNames: Set<string>;
   onSelect(name: string): void;
   onPing(name: string): void;
+  onToggleExcluded(name: string, excluded: boolean): void;
 }
 
-export function NodeGroup({ group, now, pingingNames, onSelect, onPing }: NodeGroupProps) {
+export function NodeGroup({
+  group,
+  now,
+  pingingNames,
+  onSelect,
+  onPing,
+  onToggleExcluded,
+}: NodeGroupProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -50,6 +58,7 @@ export function NodeGroup({ group, now, pingingNames, onSelect, onPing }: NodeGr
             pinging={pingingNames.has(n.name)}
             onSelect={() => onSelect(n.name)}
             onPing={() => onPing(n.name)}
+            onToggleExcluded={(excluded) => onToggleExcluded(n.name, excluded)}
           />
         ))}
     </>

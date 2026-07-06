@@ -10,9 +10,18 @@ interface NodeListProps {
   pingingNames: Set<string>;
   onSelect(name: string): void;
   onPing(name: string): void;
+  onToggleExcluded(name: string, excluded: boolean): void;
 }
 
-export function NodeList({ now, all, sources, pingingNames, onSelect, onPing }: NodeListProps) {
+export function NodeList({
+  now,
+  all,
+  sources,
+  pingingNames,
+  onSelect,
+  onPing,
+  onToggleExcluded,
+}: NodeListProps) {
   // Pseudo modes (AUTO/DIRECT/…) are not list rows — strategy lives in the control
   // above; the list shows only real subscription nodes, grouped by source.
   const { nodes } = splitNodes(all);
@@ -25,6 +34,7 @@ export function NodeList({ now, all, sources, pingingNames, onSelect, onPing }: 
         <span className="flex-1 text-caption text-text-tertiary">УЗЕЛ</span>
         <span className="w-24 text-right text-caption text-text-tertiary">ПИНГ</span>
         <span aria-hidden="true" className="w-12" />
+        <span aria-hidden="true" className="w-10" />
         <span aria-hidden="true" className="w-[120px]" />
       </div>
 
@@ -45,6 +55,7 @@ export function NodeList({ now, all, sources, pingingNames, onSelect, onPing }: 
             pingingNames={pingingNames}
             onSelect={onSelect}
             onPing={onPing}
+            onToggleExcluded={onToggleExcluded}
           />
         ))
       )}

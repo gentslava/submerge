@@ -107,14 +107,17 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
             const sourceId = match?.[1] !== undefined ? Number(match[1]) : null;
             const sourceChecked = sourceId != null && hasSourceMember(pool, sourceId);
             const isNodeChecked = (name: string) => sourceChecked || hasNodeMember(pool, name);
-            const selected = g.nodes.filter((n) => isNodeChecked(n.name)).length;
+            // Excluded nodes are never pooled — keep them out of the N/M tally and the
+            // source-level "all" toggle so the caption matches the visible checkboxes.
+            const poolable = g.nodes.filter((n) => !n.excluded);
+            const selected = poolable.filter((n) => isNodeChecked(n.name)).length;
 
             return (
               <PoolGroup
                 key={g.key}
                 label={g.label}
                 hwid={g.hwid}
-                caption={poolGroupCaption(selected, g.nodes.length)}
+                caption={poolGroupCaption(selected, poolable.length)}
                 nodes={g.nodes}
                 hasHeaderCheckbox={sourceId != null}
                 headerChecked={sourceChecked}
@@ -124,7 +127,7 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
                     toggleSourcePool(
                       pool,
                       sourceId,
-                      g.nodes.map((n) => n.name),
+                      poolable.map((n) => n.name),
                       checked,
                     ),
                   );
@@ -205,16 +208,22 @@ function PoolGroup({
           const checked = isNodeChecked(n.name);
           const lClass = latencyClass(n.delay);
           const sub = typeBadges(n).join(" · ");
+          const excluded = n.excluded ?? false;
           return (
             <div
               key={n.name}
-              className="flex items-center gap-2.5 border-t border-border-subtle py-2 pr-3 pl-10"
+              className={cn(
+                "flex items-center gap-2.5 border-t border-border-subtle py-2 pr-3 pl-10",
+                excluded && "opacity-50",
+              )}
             >
               <Checkbox
-                checked={checked}
-                disabled={nodeDisabled}
+                checked={checked && !excluded}
+                disabled={nodeDisabled || excluded}
                 onCheckedChange={(v) => onToggleNode(n.name, v)}
-                aria-label={`Включить узел «${n.name}» в пул`}
+                aria-label={
+                  excluded ? `Узел «${n.name}» исключён` : `Включить узел «${n.name}» в пул`
+                }
               />
               <span
                 aria-hidden="true"

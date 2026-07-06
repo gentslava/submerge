@@ -36,6 +36,13 @@
       "when": 1783181515518,
       "tag": "0004_mixed_blade",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783356704372,
+      "tag": "0005_broad_enchantress",
+      "breakpoints": true
     }
   ]
 }

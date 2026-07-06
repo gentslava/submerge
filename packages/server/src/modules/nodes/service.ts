@@ -12,7 +12,7 @@ import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { getDelay, getProxies, reloadConfig, selectProxy } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
-import { sources } from "../../db/schema.js";
+import { excludedNodes, sources } from "../../db/schema.js";
 import { log } from "../../log.js";
 import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
@@ -40,6 +40,22 @@ export function collectProxies(db: Db): ProxyConfig[] {
   return rows.flatMap((r) => r.proxies);
 }
 
+// The global deny-list of excluded node names (see excluded_nodes).
+export function getExcludedSet(db: Db): Set<string> {
+  return new Set(
+    db
+      .select()
+      .from(excludedNodes)
+      .all()
+      .map((r) => r.name),
+  );
+}
+
+export function setExcluded(db: Db, name: string, excluded: boolean): void {
+  if (excluded) db.insert(excludedNodes).values({ name }).onConflictDoNothing().run();
+  else db.delete(excludedNodes).where(eq(excludedNodes.name, name)).run();
+}
+
 export interface ApplyResult {
   nodes: number;
   // false = the config was persisted (DB + file) but the engine reload failed —
@@ -55,6 +71,12 @@ export async function applyConfig(
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
 ): Promise<ApplyResult> {
   const allProxies = collectProxies(db);
+  // Global deny-list: excluded names are dropped from the whole config — never
+  // defined, pinged, routed, or in PROXY. `keep` filters both the inventory and each
+  // channel's resolved pool (a source-ref pool can otherwise re-introduce them).
+  const excluded = getExcludedSet(db);
+  const keep = (ps: ProxyConfig[]): ProxyConfig[] => ps.filter((p) => !excluded.has(p.name));
+  const inventory = keep(allProxies);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
   // The config's `secret:` is the editable panel secret (seeded from env on first run):
@@ -70,7 +92,7 @@ export async function applyConfig(
   const inputs: ChannelConfigInput[] = listChannels(db)
     .filter((ch) => ch.isDefault || ch.enabled)
     .map((ch) => {
-      const pool = resolveChannelProxies(db, ch, allProxies);
+      const pool = keep(resolveChannelProxies(db, ch, allProxies));
       const base = {
         id: ch.id,
         groupName: groupNameFor(ch),
@@ -78,11 +100,12 @@ export async function applyConfig(
         policy: ch.policy,
         domains: resolveMatcherDomains(ch.matcher),
       };
-      // The Default channel DEFINES the whole inventory (so every node is written to
-      // the config, pinged by the prober, and manually selectable via PROXY) while its
-      // AUTO group RACES only the pool. Other channels define + race their pool.
+      // The Default channel DEFINES the whole (non-excluded) inventory — every node is
+      // written to the config, pinged by the prober, and manually selectable via PROXY
+      // — while its AUTO group RACES only the pool. Other channels define + race their
+      // pool. Excluded nodes are already filtered out of both `inventory` and `pool`.
       return ch.isDefault
-        ? { ...base, proxies: allProxies, race: pool }
+        ? { ...base, proxies: inventory, race: pool }
         : { ...base, proxies: pool };
     });
   const content = buildMultiConfig(inputs, readMihomoSecret(db));
@@ -95,9 +118,9 @@ export async function applyConfig(
     await reloadConfig(targetPath);
   } catch (err) {
     log.warn({ err }, "config written but mihomo reload failed — applies on next reload");
-    return { nodes: allProxies.length, applied: false };
+    return { nodes: inventory.length, applied: false };
   }
-  return { nodes: allProxies.length, applied: true };
+  return { nodes: inventory.length, applied: true };
 }
 
 // Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose
@@ -194,12 +217,16 @@ export function mergeDbInventory(
   view: NodeView,
   dbProxies: ProxyConfig[],
   meta: Map<string, ProxyMeta>,
+  excluded: Set<string> = new Set(),
 ): NodeView {
   const present = new Set(view.all.map((n) => n.name));
   const extra: NodeItem[] = [];
   for (const entry of groupProxies(dbProxies)) {
     const name = entry.kind === "single" ? entry.proxy.name : entry.base;
     if (present.has(name)) continue;
+    // Excluded nodes are dropped from the config, so they're always DB-only here —
+    // mark them so the UI can grey them + offer to re-include.
+    const isExcluded = excluded.has(name);
     if (entry.kind === "group") {
       const members: NodeMember[] = entry.members.map((m) => ({
         name: m.name,
@@ -207,13 +234,15 @@ export function mergeDbInventory(
         history: [],
         active: false,
       }));
-      extra.push({
+      const item: NodeItem = {
         name,
         type: entry.members[0]?.type ?? "unknown",
         delay: null,
         history: [],
         members,
-      });
+      };
+      if (isExcluded) item.excluded = true;
+      extra.push(item);
       continue;
     }
     const p = entry.proxy;
@@ -224,6 +253,7 @@ export function mergeDbInventory(
       if (pm.network) item.network = pm.network;
       item.security = pm.security;
     }
+    if (isExcluded) item.excluded = true;
     extra.push(item);
   }
   return { ...view, all: [...view.all, ...extra] };
@@ -235,7 +265,13 @@ export function mergeDbInventory(
 export async function listNodes(db: Db): Promise<NodeView> {
   const dbProxies = collectProxies(db);
   const meta = proxyMeta(dbProxies);
-  return mergeDbInventory(toNodeView(await getProxies(), meta), dbProxies, meta);
+  const view = mergeDbInventory(
+    toNodeView(await getProxies(), meta),
+    dbProxies,
+    meta,
+    getExcludedSet(db),
+  );
+  return view;
 }
 
 export async function testDelay(name: string, url?: string): Promise<number | null> {

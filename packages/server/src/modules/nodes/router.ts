@@ -1,9 +1,16 @@
-import { delayInput, selectNodeInput } from "@submerge/shared";
+import { delayInput, selectNodeInput, setExcludedInput } from "@submerge/shared";
 import { db } from "../../db/client.js";
 import { prober } from "../../live/singleton.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import { policyProbe, readDefaultPolicy } from "../channels/service.js";
-import { checkHealth, listNodes, selectNode, testDelay } from "./service.js";
+import {
+  applyConfig,
+  checkHealth,
+  listNodes,
+  selectNode,
+  setExcluded,
+  testDelay,
+} from "./service.js";
 
 export const nodesRouter = router({
   // Overlay the panel's last-known delays here too — the initial query must match
@@ -18,4 +25,11 @@ export const nodesRouter = router({
   select: protectedProcedure
     .input(selectNodeInput)
     .mutation(({ input }) => selectNode(input.group, input.name)),
+  // Global deny-list toggle: exclude/include a node, then regenerate + reload the
+  // config (an excluded node is dropped from the engine; including re-adds it).
+  setExcluded: protectedProcedure.input(setExcludedInput).mutation(async ({ input }) => {
+    setExcluded(db, input.name, input.excluded);
+    const { applied } = await applyConfig(db);
+    return { ok: true as const, applied };
+  }),
 });

@@ -49,6 +49,13 @@ export const sessions = sqliteTable("sessions", {
   expiresAt: integer("expires_at").notNull(),
 });
 
+// Globally excluded nodes (deny-list): a node name here is dropped from the whole
+// generated config — never defined, pinged, routed, or manually selected — while
+// staying visible (idle, marked «исключён») in the UI so it can be re-included.
+export const excludedNodes = sqliteTable("excluded_nodes", {
+  name: text("name").primaryKey(),
+});
+
 // Routing channels: each binds a matcher + pool + policy. Phase 1 seeds exactly one
 // non-deletable Default channel (is_default = true). policy/matcher are JSON blobs
 // validated by the shared Zod schemas at the service boundary.

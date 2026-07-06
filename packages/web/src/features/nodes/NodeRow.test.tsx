@@ -7,6 +7,7 @@ const base = {
   isActive: false,
   onSelect: vi.fn(),
   onPing: vi.fn(),
+  onToggleExcluded: vi.fn(),
 };
 
 describe("NodeRow", () => {
