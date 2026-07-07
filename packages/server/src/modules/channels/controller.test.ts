@@ -129,6 +129,7 @@ interface Harness {
   ctrl: ChannelController;
   selected: string[];
   selectedGroups: string[];
+  clearedGroups: string[];
   reasons: { reason: string; at: number }[];
   setClock: (t: number) => void;
   setProbe: (fn: (name: string) => number | null) => void;
@@ -139,6 +140,7 @@ function harness(policy: ChannelPolicy, group = "AUTO"): Harness {
   let probeFn: (name: string) => number | null = () => 50;
   const selected: string[] = [];
   const selectedGroups: string[] = [];
+  const clearedGroups: string[] = [];
   const reasons: { reason: string; at: number }[] = [];
   const ctrl = new ChannelController({
     readChannel: () => channel(policy),
@@ -148,6 +150,9 @@ function harness(policy: ChannelPolicy, group = "AUTO"): Harness {
       selectedGroups.push(g);
       selected.push(name);
     },
+    clearFixed: async (g) => {
+      clearedGroups.push(g);
+    },
     persistReason: (reason, at) => reasons.push({ reason, at }),
     now: () => clock,
   });
@@ -155,6 +160,7 @@ function harness(policy: ChannelPolicy, group = "AUTO"): Harness {
     ctrl,
     selected,
     selectedGroups,
+    clearedGroups,
     reasons,
     setClock: (t) => {
       clock = t;
@@ -224,6 +230,12 @@ describe("ChannelController sticky", () => {
     expect(h.selected.at(-1)).toBe("B");
   });
 
+  it("never clears a fixed pin — sticky manages its own selection", async () => {
+    const h = harness(stickyPolicy());
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"), "A");
+    expect(h.clearedGroups).toEqual([]); // clearing is speed-only
+  });
+
   it("re-picks after maxHoldHours even while healthy", async () => {
     const h = harness(stickyPolicy({ maxHoldHours: 1 }));
     h.setProbe((n) => (n === "B" ? 10 : 90)); // B fastest
@@ -258,6 +270,53 @@ describe("ChannelController speed (passive)", () => {
     expect(h.reasons.at(-1)?.reason).toContain("40");
     expect(h.selected.length).toBe(0); // speed is passive: never calls select
   });
+
+  it("clears a leftover fixed pin so the url-test group resumes racing", async () => {
+    const h = harness(speedPolicy());
+    const v: NodeView = { now: "AUTO", autoNow: "A", all: [node("A", 180), node("B", 40)] };
+    // The group is fixed to A (a pin left over from a prior manual/sticky session).
+    await h.ctrl.tick(v, "A");
+    expect(h.clearedGroups).toEqual(["AUTO"]);
+    expect(h.reasons.at(-1)?.reason).toContain("unpinned A");
+    expect(h.selected.length).toBe(0); // never selects — only unpins
+  });
+
+  it("does not record a passive delta on the same tick it clears a pin", async () => {
+    const h = harness(speedPolicy());
+    // autoNow is B but the group is still fixed to A: clearing takes priority, and
+    // the move is recorded next tick (once the race actually resumes), not now.
+    await h.ctrl.tick({ now: "AUTO", autoNow: "B", all: [node("A", 180), node("B", 40)] }, "A");
+    expect(h.clearedGroups).toEqual(["AUTO"]);
+    expect(h.reasons.at(-1)?.reason).toContain("unpinned A");
+    expect(h.reasons.at(-1)?.reason).not.toContain("→");
+  });
+
+  it("clears the channel's configured group, not a hardcoded AUTO", async () => {
+    const h = harness(speedPolicy(), "ch-media");
+    await h.ctrl.tick({ now: "AUTO", autoNow: "A", all: [node("A", 40)] }, "A");
+    expect(h.clearedGroups).toEqual(["ch-media"]);
+  });
+
+  it("does not re-clear or re-log a pin that persists across ticks (store-selected cache)", async () => {
+    const h = harness(speedPolicy());
+    const v: NodeView = { now: "AUTO", autoNow: "A", all: [node("A", 180), node("B", 40)] };
+    // mihomo keeps reporting the same fixed pin on every poll (a stubborn cache).
+    await h.ctrl.tick(v, "A");
+    await h.ctrl.tick(v, "A");
+    await h.ctrl.tick(v, "A");
+    expect(h.clearedGroups).toEqual(["AUTO"]); // cleared exactly once
+    expect(h.reasons.filter((r) => r.reason.includes("unpinned")).length).toBe(1);
+  });
+
+  it("handles a genuinely new pin after the group has raced freely again", async () => {
+    const h = harness(speedPolicy());
+    const nodes = [node("A", 180), node("B", 40)];
+    await h.ctrl.tick({ now: "AUTO", autoNow: "A", all: nodes }, "A"); // clear A
+    await h.ctrl.tick({ now: "AUTO", autoNow: "B", all: nodes }, null); // racing freely
+    await h.ctrl.tick({ now: "AUTO", autoNow: "B", all: nodes }, "B"); // new pin B
+    expect(h.clearedGroups).toEqual(["AUTO", "AUTO"]);
+    expect(h.reasons.filter((r) => r.reason.includes("unpinned")).length).toBe(2);
+  });
 });
 
 describe("ChannelController manual", () => {
@@ -281,6 +340,14 @@ describe("ChannelController manual", () => {
     await h.ctrl.tick(view(["AUTO", "A", "B"], "A"));
     expect(h.selected.at(-1)).toBe("B");
     expect(h.reasons.at(-1)?.reason).toContain("fell back");
+  });
+
+  it("never clears a fixed pin — a manual channel's own selection is intentional", async () => {
+    const h = harness(manualPolicy("hold"));
+    // Even though the group reports a fixed pin, manual must not touch it: the pin
+    // IS the policy's intent. Clearing only ever happens under the speed policy.
+    await h.ctrl.tick(view(["AUTO", "A", "B"], "A"), "A");
+    expect(h.clearedGroups).toEqual([]);
   });
 });
 

@@ -37,6 +37,7 @@ interface Harness {
   channelsList: Channel[];
   proxies: ProxiesResponse["proxies"];
   selected: { group: string; name: string }[];
+  cleared: string[];
   reasons: { channelId: string; reason: string; at: number }[];
   clock: { t: number };
 }
@@ -44,6 +45,7 @@ interface Harness {
 function harness(): Harness {
   const clock = { t: 0 };
   const selected: { group: string; name: string }[] = [];
+  const cleared: string[] = [];
   const reasons: { channelId: string; reason: string; at: number }[] = [];
   const channelsList: Channel[] = [];
   const proxies: ProxiesResponse["proxies"] = {};
@@ -58,13 +60,16 @@ function harness(): Harness {
     select: async (group, name) => {
       selected.push({ group, name });
     },
+    clearFixed: async (group) => {
+      cleared.push(group);
+    },
     persistReason: (channelId, reason, at) => {
       reasons.push({ channelId, reason, at });
     },
     now: () => clock.t,
   });
 
-  return { registry, channelsList, proxies, selected, reasons, clock };
+  return { registry, channelsList, proxies, selected, cleared, reasons, clock };
 }
 
 function setChannels(h: Harness, chs: Channel[]): void {
@@ -204,6 +209,9 @@ describe("ControllerRegistry", () => {
       select: async (group, name) => {
         h.selected.push({ group, name });
       },
+      clearFixed: async (group) => {
+        h.cleared.push(group);
+      },
       persistReason: (channelId, reason, at) => {
         if (channelId === "bad") throw new Error("boom");
         h.reasons.push({ channelId, reason, at });
@@ -217,6 +225,27 @@ describe("ControllerRegistry", () => {
     const goodSelects = h.selected.filter((s) => s.group === "ch-good");
     expect(goodSelects.length).toBe(1);
     expect(goodSelects[0]?.name).toBe("B");
+  });
+
+  it("clears a speed channel's leftover fixed pin on the group mihomo reports it on", async () => {
+    const h = harness();
+    const speedPolicy: ChannelPolicy = {
+      kind: "speed",
+      testUrl: "https://probe",
+      intervalSec: 30,
+      toleranceMs: 50,
+      reevaluateWhileHealthy: true,
+    };
+    setChannels(h, [channel("default", true, speedPolicy)]);
+    setGroup(h, "AUTO", ["A", "B"], "A");
+    // mihomo reports AUTO fixed to A (a leftover pin from a prior manual session).
+    (h.proxies.AUTO as { fixed?: string }).fixed = "A";
+
+    await h.registry.runOnce();
+
+    expect(h.cleared).toEqual(["AUTO"]);
+    expect(h.selected.length).toBe(0); // speed never selects — it only unpins
+    expect(h.reasons.at(-1)?.reason).toContain("unpinned A");
   });
 
   it("reset(id) delegates to the cached controller's reset when present", async () => {

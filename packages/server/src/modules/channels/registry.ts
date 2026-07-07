@@ -9,6 +9,7 @@ export interface RegistryDeps {
   fetchProxies: () => Promise<ProxiesResponse>;
   probe: (name: string, url: string) => Promise<number | null>;
   select: (group: string, name: string) => Promise<void>;
+  clearFixed: (group: string) => Promise<void>;
   persistReason: (channelId: string, reason: string, at: number) => void;
   now: () => number;
 }
@@ -45,6 +46,7 @@ export class ControllerRegistry {
       group: groupNameFor(channel),
       probe: this.deps.probe,
       select: this.deps.select,
+      clearFixed: this.deps.clearFixed,
       persistReason: (reason, at) => this.deps.persistReason(channel.id, reason, at),
       now: this.deps.now,
     });
@@ -61,11 +63,15 @@ export class ControllerRegistry {
     const px = (await this.deps.fetchProxies()).proxies;
     for (const ch of active) {
       const ctrl = this.controllerFor(ch);
+      const group = groupNameFor(ch);
       // Measure each node on the URL this channel's policy decides on, so the
       // decision-log delta agrees with the node cards (nodes/service.toNodeView).
-      const view = toGroupView(px, groupNameFor(ch), policyProbe(ch.policy).url);
+      const view = toGroupView(px, group, policyProbe(ch.policy).url);
+      // The group's leftover manual pin (mihomo's `fixed`), if any — the speed
+      // controller clears it so an accidental pin can't freeze the latency race.
+      const fixed = px[group]?.fixed ?? null;
       try {
-        await ctrl.tick(view);
+        await ctrl.tick(view, fixed);
       } catch {
         // Best-effort: a throwing channel must not stop the others this poll.
       }

@@ -1,4 +1,4 @@
-import { getProxies, selectProxy } from "../../clients/mihomo.js";
+import { clearFixedSelection, getProxies, selectProxy } from "../../clients/mihomo.js";
 import { db } from "../../db/client.js";
 import { testDelay } from "../nodes/service.js";
 import { ControllerRegistry } from "./registry.js";
@@ -13,6 +13,7 @@ export const registry = new ControllerRegistry({
   fetchProxies: getProxies,
   probe: testDelay,
   select: selectProxy,
+  clearFixed: clearFixedSelection,
   persistReason: (id, reason, at) => setChannelLastReason(db, id, reason, at),
   now: () => Date.now(),
 });

@@ -29,6 +29,11 @@ const mihomoProxySchema = z.looseObject({
   now: z.string().optional(),
   all: z.array(z.string()).optional(),
   udp: z.boolean().optional(),
+  // The manually-pinned member of a url-test/fallback group. mihomo "fixes" a
+  // url-test group when a node is selected on it via the API and then stops
+  // racing by latency until the pin is cleared (DELETE /proxies/{group}) or the
+  // pinned node dies — see clearFixedSelection. Absent for select/leaf proxies.
+  fixed: z.string().optional(),
   history: z.array(historyEntrySchema).default([]),
   // `.nullish()` (not `.optional()`): a mihomo build that serializes an absent map
   // as `null` rather than omitting it must not fail the whole /proxies parse.
@@ -150,6 +155,18 @@ export async function selectProxy(group: string, name: string): Promise<void> {
     body: JSON.stringify({ name }),
   });
   if (!r.ok) throw new Error(`mihomo select ${group}→${name} returned HTTP ${r.status}`);
+}
+
+// Clear a url-test/fallback group's manually-pinned ("fixed") member so mihomo
+// resumes automatic latency-based selection. A manual select on a url-test group
+// locks it to that node; DELETE /proxies/{group} is the documented way to unlock
+// it (the endpoint is a no-op / not applicable to plain `select` groups). 404 is
+// treated as success — the group has nothing pinned to clear.
+export async function clearFixedSelection(group: string): Promise<void> {
+  const r = await call(`/proxies/${encodeURIComponent(group)}`, { method: "DELETE" });
+  if (!r.ok && r.status !== 404) {
+    throw new Error(`mihomo clear fixed selection for ${group} returned HTTP ${r.status}`);
+  }
 }
 
 export async function reloadConfig(targetPath: string): Promise<void> {
