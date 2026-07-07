@@ -274,6 +274,100 @@ describe("buildMultiConfig — multiple channels", () => {
     expect(cfg.rules).toEqual(["MATCH,DIRECT"]);
   });
 
+  it("emits DOMAIN-KEYWORD rules for a channel's keywords", () => {
+    const A = px("A", "a.com");
+    const B = px("B", "b.com");
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [A] }),
+        channel({
+          id: "ads",
+          groupName: "ch-ads",
+          isDefault: false,
+          policy: sticky,
+          keywords: ["doubleclick", "adservice"],
+          proxies: [B],
+        }),
+      ]),
+    );
+    expect(cfg.rules).toEqual([
+      "DOMAIN-KEYWORD,doubleclick,ch-ads",
+      "DOMAIN-KEYWORD,adservice,ch-ads",
+      "MATCH,AUTO",
+    ]);
+  });
+
+  it("emits a rule-providers entry + a RULE-SET rule for an external provider", () => {
+    const A = px("A", "a.com");
+    const B = px("B", "b.com");
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [A] }),
+        channel({
+          id: "ads",
+          groupName: "ch-ads",
+          isDefault: false,
+          policy: sticky,
+          ruleProviders: [
+            { url: "https://example.com/ads.yaml", behavior: "classical", format: "yaml" },
+          ],
+          proxies: [B],
+        }),
+      ]),
+    );
+    const providers = cfg["rule-providers"] as Record<string, Record<string, unknown>>;
+    const names = Object.keys(providers);
+    expect(names).toHaveLength(1);
+    const name = names[0] as string;
+    expect(name.startsWith("rp-")).toBe(true);
+    expect(providers[name]).toMatchObject({
+      type: "http",
+      url: "https://example.com/ads.yaml",
+      behavior: "classical",
+      format: "yaml",
+      proxy: "DIRECT",
+    });
+    expect(providers[name]?.path).toBe(`./providers/${name}.yaml`);
+    expect(cfg.rules).toEqual([`RULE-SET,${name},ch-ads`, "MATCH,AUTO"]);
+  });
+
+  it("dedupes an identical provider across channels into one def with two RULE-SET rules", () => {
+    const A = px("A", "a.com");
+    const B = px("B", "b.com");
+    const ref = { url: "https://example.com/list.mrs", behavior: "domain", format: "mrs" } as const;
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [A] }),
+        channel({
+          id: "c1",
+          groupName: "ch-c1",
+          isDefault: false,
+          policy: sticky,
+          ruleProviders: [ref],
+          proxies: [B],
+        }),
+        channel({
+          id: "c2",
+          groupName: "ch-c2",
+          isDefault: false,
+          policy: sticky,
+          ruleProviders: [ref],
+          proxies: [B],
+        }),
+      ]),
+    );
+    const providers = cfg["rule-providers"] as Record<string, unknown>;
+    expect(Object.keys(providers)).toHaveLength(1);
+    const name = Object.keys(providers)[0] as string;
+    // One shared def, but each channel gets its own RULE-SET line to its own group.
+    expect(cfg.rules).toEqual([`RULE-SET,${name},ch-c1`, `RULE-SET,${name},ch-c2`, "MATCH,AUTO"]);
+  });
+
+  it("omits the rule-providers key entirely when no channel has a provider", () => {
+    const cfg = parse(buildMultiConfig([channel({ proxies: [px("A")] })]));
+    expect(cfg["rule-providers"]).toBeUndefined();
+  });
+
   it("keeps a collapsed subgroup name distinct from a same-name proxy contributed by another channel", () => {
     // Default's restricted pool has two distinct endpoints sharing the name "X" —
     // groupProxies collapses them, and the Default channel keeps the bare base

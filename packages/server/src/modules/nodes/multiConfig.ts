@@ -1,7 +1,13 @@
 // Generate a multi-channel mihomo config.yaml. The single-default case delegates
 // here from buildConfig (config.ts) and MUST reproduce the legacy output
 // byte-for-byte — the default channel owns the canonical, unprefixed names.
-import { type ChannelPolicy, type Proxy as ProxyConfig, PSEUDO_NODE_SET } from "@submerge/shared";
+import { createHash } from "node:crypto";
+import {
+  type ChannelPolicy,
+  type Proxy as ProxyConfig,
+  PSEUDO_NODE_SET,
+  type RuleProviderRef,
+} from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
 import { dedupeNames, groupProxies, type UrlTestTuning, urlTestTuning } from "./config.js";
@@ -12,6 +18,11 @@ export interface ChannelConfigInput {
   isDefault: boolean;
   policy: ChannelPolicy;
   domains: string[]; // resolveMatcherDomains(matcher) — custom domains + expanded presets
+  // Phase 4a matcher extras (default []): DOMAIN-KEYWORD tokens + external
+  // rule-provider refs. Only meaningful on non-default channels — the Default
+  // channel is the catch-all and emits no per-domain rules.
+  keywords?: string[];
+  ruleProviders?: RuleProviderRef[];
   // The proxies this channel DEFINES + contributes to PROXY. The default channel is
   // fed the full inventory here so every node is defined + pinged + manually
   // selectable; other channels get their pool.
@@ -99,6 +110,47 @@ function collectSingleProxyNames(orderedChannels: ChannelConfigInput[]): Set<str
   return names;
 }
 
+// File extension mihomo expects for a rule-provider's local cache, by format.
+const PROVIDER_EXT: Record<RuleProviderRef["format"], string> = {
+  yaml: "yaml",
+  text: "list",
+  mrs: "mrs",
+};
+
+// A rule-provider's stable internal name, derived from its identity
+// (url + behavior + format). Two channels referencing the same list collapse to
+// one definition and one name. The `rp-` prefix + hex digest keeps it out of the
+// (separate) proxy/proxy-group namespace by construction.
+function ruleProviderName(ref: RuleProviderRef): string {
+  const key = `${ref.url}|${ref.behavior}|${ref.format}`;
+  return `rp-${createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
+}
+
+// Collect every distinct rule-provider referenced by the non-default channels
+// into the top-level `rule-providers:` map. mihomo (not submerge) fetches each
+// list — `proxy: DIRECT` so the fetch never loops through the tunnel it configures
+// — and caches it under the mihomo Home Dir (`./providers/...`, gitignored).
+function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const channel of nonDefault) {
+    for (const ref of channel.ruleProviders ?? []) {
+      const name = ruleProviderName(ref);
+      if (out[name]) continue; // identical (url,behavior,format) → one def
+      out[name] = {
+        type: "http",
+        url: ref.url,
+        behavior: ref.behavior,
+        format: ref.format,
+        interval: 86400, // daily auto-update
+        proxy: "DIRECT",
+        path: `./providers/${name}.${PROVIDER_EXT[ref.format]}`,
+        "size-limit": 0,
+      };
+    }
+  }
+  return out;
+}
+
 function buildRules(
   nonDefault: ChannelConfigInput[],
   noProxies: boolean,
@@ -107,9 +159,18 @@ function buildRules(
   // With no exit nodes anywhere there is nothing to route — everything is DIRECT.
   if (noProxies) return ["MATCH,DIRECT"];
   const rules: string[] = [];
+  // Per channel, in priority order: keyword, domain-suffix, then rule-set — all
+  // point at the channel's own group, so intra-channel order is irrelevant;
+  // cross-channel precedence is the channel order (= priority).
   for (const channel of nonDefault) {
+    for (const keyword of channel.keywords ?? []) {
+      rules.push(`DOMAIN-KEYWORD,${keyword},${channel.groupName}`);
+    }
     for (const domain of channel.domains) {
       rules.push(`DOMAIN-SUFFIX,${domain},${channel.groupName}`);
+    }
+    for (const ref of channel.ruleProviders ?? []) {
+      rules.push(`RULE-SET,${ruleProviderName(ref)},${channel.groupName}`);
     }
   }
   // Default-only stays on the legacy PROXY catch-all (so config.test.ts holds);
@@ -250,6 +311,12 @@ export function buildMultiConfig(
     proxies: spec.memberFlatIndices.map(nameAt),
   }));
 
+  // With no exit nodes the config is all-DIRECT (buildRules short-circuits and
+  // emits no RULE-SET lines), so defined providers would be dead weight — skip them.
+  const noProxies = unique.length === 0;
+  const ruleProviders = noProxies ? {} : buildRuleProviders(nonDefault);
+  const hasProviders = Object.keys(ruleProviders).length > 0;
+
   const cfg = {
     "mixed-port": 7890,
     "allow-lan": true,
@@ -260,12 +327,16 @@ export function buildMultiConfig(
     "external-controller": "0.0.0.0:9090",
     secret,
     proxies: unique,
+    // Only present when a channel actually references an external list — a
+    // provider-free config (incl. the single-default byte-identity case) stays
+    // free of this key.
+    ...(hasProviders ? { "rule-providers": ruleProviders } : {}),
     "proxy-groups": [
       { name: "PROXY", type: "select", proxies: proxyMembers },
       ...channelGroups,
       ...subGroupObjects,
     ],
-    rules: buildRules(nonDefault, unique.length === 0, defaultGroupName),
+    rules: buildRules(nonDefault, noProxies, defaultGroupName),
   };
   return yaml.dump(cfg, { lineWidth: -1 });
 }
