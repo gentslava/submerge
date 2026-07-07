@@ -71,3 +71,9 @@ export const OPTIMAL_EWMA_HALF_LIFE_SEC = 300;
 /** Success-rate floor in the effective-latency denominator, so a fully-dead node
  *  (ewmaSuccess → 0) can't divide-by-zero and simply sorts last. */
 export const OPTIMAL_SUCCESS_EPSILON = 0.05;
+/** Missed probes of the ACTIVE node before the optimal policy fails over to the best
+ *  reachable node. 1 = flee on the FIRST timeout: never hold a node that just went
+ *  unreachable while a live alternative exists, then let the EWMA ranking pick the
+ *  long-run leader among the healthy nodes. Guards the slow-abandonment trap (a dead
+ *  node's EWMA effective latency crawls up over minutes at a long half-life). */
+export const OPTIMAL_ACTIVE_FAILURE_THRESHOLD = 1;

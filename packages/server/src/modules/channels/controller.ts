@@ -4,6 +4,7 @@ import {
   type DecisionEntry,
   type NodeItem,
   type NodeView,
+  OPTIMAL_ACTIVE_FAILURE_THRESHOLD,
   OPTIMAL_EWMA_HALF_LIFE_SEC,
   OPTIMAL_SUCCESS_EPSILON,
   PSEUDO_NODE_SET,
@@ -126,6 +127,10 @@ export class ChannelController {
   // "effective latency" score in tickOptimal. Cleared by reset() on a policy change.
   private optimalLatency = new Map<string, number>();
   private optimalSuccess = new Map<string, number>();
+  // Consecutive missed probes of the optimal policy's ACTIVE node, for the liveness
+  // failover (flee a node that just went unreachable rather than waiting for its slow
+  // EWMA effective latency to climb). Reset to 0 whenever the active node answers.
+  private optimalActiveMisses = 0;
   private log: DecisionEntry[] = [];
 
   constructor(private deps: ControllerDeps) {}
@@ -147,6 +152,7 @@ export class ChannelController {
     this.lastClearedFixed = null;
     this.optimalLatency.clear();
     this.optimalSuccess.clear();
+    this.optimalActiveMisses = 0;
   }
 
   protected record(entry: DecisionEntry): void {
@@ -259,8 +265,35 @@ export class ChannelController {
     if (!active || !candidates.includes(active)) {
       const suffix = Number.isFinite(effOf(best)) ? ` (${num(effOf(best))} ms eff)` : "";
       await this.apply(channelId, active, best, `initial pick: ${best}${suffix}`, at);
+      this.optimalActiveMisses = 0;
       return;
     }
+
+    // Liveness failover: the active node's own effective latency climbs only slowly
+    // once it dies (a dead node keeps its last good latency, its success EWMA decays
+    // by a tiny α at a long half-life), so it would otherwise hold traffic on a dead
+    // node for minutes. Instead, count the active node's consecutive missed probes and
+    // flee to the best REACHABLE node the moment the threshold is hit (1 = on the first
+    // timeout) — then the normal EWMA ranking below resumes picking the long-run leader.
+    this.optimalActiveMisses = delayOf(active) != null ? 0 : this.optimalActiveMisses + 1;
+    if (this.optimalActiveMisses >= OPTIMAL_ACTIVE_FAILURE_THRESHOLD) {
+      const reachable = candidates.filter((n) => n !== active && delayOf(n) != null);
+      if (reachable.length > 0) {
+        let target = reachable[0] as string;
+        for (const n of reachable) if (effOf(n) < effOf(target)) target = n;
+        await this.apply(
+          channelId,
+          active,
+          target,
+          `optimal: ${active} down → ${target} (${num(effOf(target))} ms eff)`,
+          at,
+        );
+        this.optimalActiveMisses = 0;
+        return;
+      }
+      // Nothing reachable to flee to — hold and keep retrying next tick.
+    }
+
     const activeEff = effOf(active);
     const bestEff = effOf(best);
     // Infinity − Infinity = NaN and NaN > tol is false, so an all-unmeasured tick

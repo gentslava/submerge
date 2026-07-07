@@ -92,11 +92,24 @@ Each tick:
 3. Compute `effLatency` for each candidate; `best = argmin`.
 4. `active = view.autoNow`.
    - No valid active (null / not a candidate) → `select(best)`, record `initial: best`.
-   - Else switch to `best` **only if** `effLatency(active) − effLatency(best) > toleranceMs`
-     (reuse the familiar tolerance as the switch margin, now on the *smoothed* number, so
-     it actually suppresses flapping instead of chasing noise). Otherwise hold.
+   - **Liveness failover (fast path):** count the active node's consecutive missed probes;
+     the moment it reaches `OPTIMAL_ACTIVE_FAILURE_THRESHOLD` (**1** — flee on the first
+     timeout) and any *reachable* candidate exists, switch to the best reachable node
+     immediately and record `optimal: A down → B`. This is essential because a dead node
+     keeps its last good latency while its success EWMA decays only by a tiny α (long
+     half-life vs a short interval), so its effective latency would take *minutes* to
+     climb past a live alternative — far too long to hold traffic on a dead exit. If
+     nothing is reachable this tick, hold and retry next tick.
+   - Else (active alive) switch to `best` **only if**
+     `effLatency(active) − effLatency(best) > toleranceMs` (the familiar tolerance as the
+     switch margin, on the *smoothed* number, so it suppresses flapping instead of chasing
+     noise). Otherwise hold.
 5. Record the decision with both effective latencies:
    `optimal: A → B (312 vs 418 ms eff)`.
+
+The two-tier logic is deliberate: **liveness is handled instantly** (flee a timed-out node),
+while **speed ranking is smoothed** (a healthy node is only displaced by a durably-better
+one). This is the "flee fast, then watch for the leader" behaviour.
 
 Because the comparison is on smoothed effective latency with a margin, momentary spikes on
 the active node don't trigger a move, and a genuinely better node wins only once its

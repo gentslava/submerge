@@ -358,19 +358,20 @@ describe("ChannelController optimal", () => {
     expect(h.reasons.at(-1)?.reason).toContain("A → B");
   });
 
-  it("penalizes a flaky node: a solid slower node out-competes a fast-but-dropping one", async () => {
-    // intervalSec=300 → EWMA α=0.5 (fast, deterministic convergence). B always up at
-    // 120 ms; A fast (40 ms) but then keeps missing, so its success EWMA decays and its
-    // effective latency (40 / success) climbs above B's.
+  it("penalizes a flaky challenger: a fast-but-dropping node does not displace a solid active one", async () => {
+    // intervalSec=300 → EWMA α=0.5 (deterministic). A is active and solid (100 ms,
+    // always up → no liveness failover). B is a challenger that starts by dropping
+    // probes, so by the time it finally answers fast (60 ms) its success EWMA is only
+    // 0.5 → effLatency(B) = 60/0.5 = 120 > A's 100, and B does NOT steal traffic despite
+    // being raw-faster. (The flaky-node penalty is on the *challenger*; a failing ACTIVE
+    // node is handled by the liveness failover instead.)
     const h = harness(optimalPolicy({ intervalSec: 300, toleranceMs: 10 }));
-    await h.ctrl.tick(vw(null, { A: 40, B: 120 })); // t=0: initial pick A (eff 40 < 120)
-    expect(h.selected.at(-1)).toBe("A");
+    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0
     h.setClock(300_000);
-    await h.ctrl.tick(vw("A", { A: null, B: 120 })); // A miss → success 0.5, eff 80 < 120
-    expect(h.selected.at(-1)).toBe("A"); // still A
+    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0
     h.setClock(600_000);
-    await h.ctrl.tick(vw("A", { A: null, B: 120 })); // A miss → success 0.25, eff 160 > 120
-    expect(h.selected.at(-1)).toBe("B"); // now B out-competes flaky A
+    await h.ctrl.tick(vw("A", { A: 100, B: 60 })); // B fast now but success only 0.5 → eff 120 > 100
+    expect(h.selected.length).toBe(0); // A held: flaky B's derated score never beat it
   });
 
   it("reset() clears the EWMA window so a stale penalty doesn't carry over", async () => {
@@ -405,6 +406,40 @@ describe("ChannelController optimal", () => {
     await h.ctrl.tick(vw("Z", { A: 100, B: 40 }));
     expect(h.selected.at(-1)).toBe("B");
     expect(h.reasons.at(-1)?.reason).toContain("initial");
+  });
+
+  it("flees a dead active node on the FIRST timeout (liveness failover), bypassing EWMA", async () => {
+    // A is active and its stale latency keeps its effective latency lowest for many
+    // ticks after it dies (tiny α at intervalSec=10 vs 300 s half-life). Without a
+    // liveness failover it would hold the dead node for minutes; instead the moment A
+    // times out we flee to the best *reachable* node (B) — even though A's effLatency
+    // is still numerically lowest — then EWMA resumes picking the long-run leader.
+    const h = harness(optimalPolicy({ intervalSec: 10, toleranceMs: 50 }));
+    await h.ctrl.tick(vw("A", { A: 100, B: 120 })); // A active + healthy, B worse → hold
+    expect(h.selected.length).toBe(0);
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: null, B: 120 })); // A times out once → flee immediately
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("down");
+  });
+
+  it("holds when the active node times out but nothing else is reachable either", async () => {
+    const h = harness(optimalPolicy({ intervalSec: 10, toleranceMs: 50 }));
+    await h.ctrl.tick(vw("A", { A: 100, B: 120 }));
+    h.setClock(10_000);
+    // A down AND B down → no reachable target → keep the current pin, retry next tick.
+    await h.ctrl.tick(vw("A", { A: null, B: null }));
+    expect(h.selected.length).toBe(0);
+  });
+
+  it("does not failover while the active node keeps answering", async () => {
+    const h = harness(optimalPolicy({ intervalSec: 10, toleranceMs: 50 }));
+    await h.ctrl.tick(vw("A", { A: 100, B: 120 }));
+    for (let i = 1; i <= 5; i++) {
+      h.setClock(i * 10_000);
+      await h.ctrl.tick(vw("A", { A: 100, B: 120 })); // A alive & best → never switches
+    }
+    expect(h.selected.length).toBe(0);
   });
 });
 
