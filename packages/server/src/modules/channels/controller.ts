@@ -70,6 +70,9 @@ export interface ControllerDeps {
   group: string;
   probe: (name: string, url: string) => Promise<number | null>; // null = timeout/unreachable
   select: (group: string, name: string) => Promise<void>;
+  // Clear the group's manually-pinned ("fixed") member so a url-test group resumes
+  // racing (DELETE /proxies/{group}). Only the speed policy needs this — see tickSpeed.
+  clearFixed: (group: string) => Promise<void>;
   persistReason: (reason: string, at: number) => void;
   now: () => number;
   ringSize?: number;
@@ -109,6 +112,13 @@ export class ChannelController {
   // even when the injected clock also starts at 0 (as in tests).
   private lastCheck = Number.NEGATIVE_INFINITY;
   private lastSpeedNow: string | null = null;
+  // The fixed pin the speed policy has already unpinned + logged, so a pin that
+  // stubbornly persists (e.g. mihomo's store-selected cache re-reporting `fixed`
+  // after a successful DELETE) doesn't re-clear + re-log every poll. Reset to null
+  // once the group is racing freely again (or on reset()), so a genuinely new pin
+  // later is still handled. Cleared only AFTER a successful clearFixed, so a
+  // thrown DELETE (swallowed by the registry) is retried on the next tick.
+  private lastClearedFixed: string | null = null;
   private log: DecisionEntry[] = [];
 
   constructor(private deps: ControllerDeps) {}
@@ -127,6 +137,7 @@ export class ChannelController {
     this.heldSince = null;
     this.lastCheck = Number.NEGATIVE_INFINITY;
     this.lastSpeedNow = null;
+    this.lastClearedFixed = null;
   }
 
   protected record(entry: DecisionEntry): void {
@@ -152,11 +163,15 @@ export class ChannelController {
     this.record({ at, channelId, from, to, reason });
   }
 
-  async tick(view: NodeView): Promise<void> {
+  // `fixed` is the group's manually-pinned member reported by mihomo (the
+  // /proxies `fixed` field), or null when the group is racing freely. It only
+  // matters to the speed policy — an accidental pin left over from a previous
+  // manual/sticky session would otherwise silently freeze the latency race.
+  async tick(view: NodeView, fixed: string | null = null): Promise<void> {
     const channel = this.deps.readChannel();
     const policy = channel.policy;
     if (policy.kind === "speed") {
-      this.tickSpeed(view, channel.id); // Task 4
+      await this.tickSpeed(view, channel.id, fixed); // Task 4
       return;
     }
     // Active policies (sticky/manual) health-check on the channel's own cadence,
@@ -220,7 +235,34 @@ export class ChannelController {
   }
 
   // Passive: mihomo's url-test owns the switch; we only record WHY it moved.
-  private tickSpeed(view: NodeView, channelId: string): void {
+  // The one active step: a speed channel must never stay pinned. Selecting a node
+  // on a url-test group (as the manual/sticky policies do via select()) "fixes" it
+  // in mihomo — it stops racing by latency until the pin is cleared or dies. So if
+  // this group carries a leftover fixed pin (e.g. the channel was on `manual` and
+  // then switched to `speed`), clear it here so the latency race resumes. Only
+  // records once the clear actually succeeds (the registry swallows a throw), so a
+  // transient mihomo error just retries next tick instead of spamming the log.
+  private async tickSpeed(view: NodeView, channelId: string, fixed: string | null): Promise<void> {
+    if (fixed) {
+      // De-dupe: only clear + log the FIRST time we see a given pin. A throw from
+      // clearFixed (swallowed upstream) leaves lastClearedFixed untouched → retried
+      // next tick; a persistent pin that survives a successful DELETE is not re-logged.
+      if (fixed !== this.lastClearedFixed) {
+        await this.deps.clearFixed(this.deps.group);
+        this.lastClearedFixed = fixed;
+        this.record({
+          at: this.deps.now(),
+          channelId,
+          from: fixed,
+          to: fixed,
+          reason: `unpinned ${fixed}; resuming latency race`,
+        });
+      }
+      // Still pinned this tick → no meaningful latency-race delta to record below.
+      return;
+    }
+    // Racing freely again: allow a future new pin to be handled.
+    this.lastClearedFixed = null;
     const active = view.autoNow;
     if (this.lastSpeedNow && active && active !== this.lastSpeedNow) {
       const to = view.all.find((n) => n.name === active);
