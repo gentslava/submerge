@@ -13,3 +13,4 @@ quick map. Update both when a spec ships.
 | [2026-07-03 background node prober](2026-07-03-background-prober-design.md) | implemented |
 | [2026-07-06 connections screen](2026-07-06-connections-design.md) | implemented |
 | [2026-07-06 node exclusion + pool inventory fix](2026-07-06-node-exclusion-design.md) | implemented (A/A2/B) |
+| [2026-07-07 «Оптимальный» policy (historical-winner selection)](2026-07-07-optimal-policy-design.md) | draft |
