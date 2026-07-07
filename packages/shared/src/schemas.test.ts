@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  channelMatcherInputSchema,
   channelMatcherSchema,
   channelPolicySchema,
   channelPoolMemberSchema,
@@ -13,6 +14,7 @@ import {
   proxySchema,
   reorderChannelsInput,
   reorderInput,
+  ruleProviderRefSchema,
   selectNodeInput,
   setChannelPolicyInput,
   setChannelPoolInput,
@@ -174,6 +176,84 @@ describe("channelMatcherSchema (read model stays permissive)", () => {
   it("still accepts a malformed domain — a legacy/corrupt row must not fail parsing", () => {
     const m = channelMatcherSchema.parse({ presets: [], domains: ["bad,domain"] });
     expect(m.domains).toEqual(["bad,domain"]);
+  });
+  it("defaults the Phase-4a fields (keywords, ruleProviders) to empty on a legacy row", () => {
+    const m = channelMatcherSchema.parse({ presets: [], domains: [] });
+    expect(m.keywords).toEqual([]);
+    expect(m.ruleProviders).toEqual([]);
+  });
+});
+
+describe("ruleProviderRefSchema", () => {
+  it("accepts an https classical yaml provider (format defaults to yaml)", () => {
+    const r = ruleProviderRefSchema.parse({
+      url: "https://example.com/reject.yaml",
+      behavior: "classical",
+    });
+    expect(r.format).toBe("yaml");
+    expect(r.behavior).toBe("classical");
+  });
+  it("accepts an mrs provider with domain behavior", () => {
+    const r = ruleProviderRefSchema.parse({
+      url: "https://example.com/x.mrs",
+      behavior: "domain",
+      format: "mrs",
+    });
+    expect(r.format).toBe("mrs");
+  });
+  it("rejects mrs + classical (mihomo forbids it)", () => {
+    expect(() =>
+      ruleProviderRefSchema.parse({
+        url: "https://example.com/x",
+        behavior: "classical",
+        format: "mrs",
+      }),
+    ).toThrow();
+  });
+  it("rejects a non-http(s) url", () => {
+    expect(() =>
+      ruleProviderRefSchema.parse({ url: "ftp://example.com/x.yaml", behavior: "domain" }),
+    ).toThrow();
+  });
+  it("rejects an unknown behavior", () => {
+    expect(() =>
+      ruleProviderRefSchema.parse({ url: "https://example.com/x", behavior: "bogus" }),
+    ).toThrow();
+  });
+});
+
+describe("channelMatcherInputSchema (Phase-4a: keywords + ruleProviders)", () => {
+  it("accepts keywords and rule-provider refs", () => {
+    const m = channelMatcherInputSchema.parse({
+      presets: [],
+      domains: [],
+      keywords: ["google", "double-click"],
+      ruleProviders: [{ url: "https://example.com/ads.yaml", behavior: "classical" }],
+    });
+    expect(m.keywords).toEqual(["google", "double-click"]);
+    expect(m.ruleProviders).toHaveLength(1);
+  });
+  it("defaults keywords and ruleProviders to []", () => {
+    const m = channelMatcherInputSchema.parse({ presets: [], domains: [] });
+    expect(m.keywords).toEqual([]);
+    expect(m.ruleProviders).toEqual([]);
+  });
+  it("rejects a keyword with whitespace or a comma (malformed mihomo rule)", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], keywords: ["bad kw"] }),
+    ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], keywords: ["bad,kw"] }),
+    ).toThrow();
+  });
+  it("rejects a rule-provider with a bad url at the write boundary", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({
+        presets: [],
+        domains: [],
+        ruleProviders: [{ url: "not-a-url", behavior: "domain" }],
+      }),
+    ).toThrow();
   });
 });
 

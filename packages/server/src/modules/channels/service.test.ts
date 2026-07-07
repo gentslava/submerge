@@ -101,7 +101,7 @@ describe("channel CRUD", () => {
     expect(a.id).toBe("ch1");
     expect(b.id).toBe("ch2");
     expect(a.isDefault).toBe(false);
-    expect(a.matcher).toEqual({ presets: [], domains: [] });
+    expect(a.matcher).toEqual({ presets: [], domains: [], keywords: [], ruleProviders: [] });
     const defaultPriority = readDefaultChannel(db).priority;
     expect(a.priority).toBeLessThan(defaultPriority);
     expect(b.priority).toBeLessThan(defaultPriority);
@@ -166,7 +166,12 @@ describe("updateChannel matcher persistence + config regeneration", () => {
 
     // The row itself reflects the new matcher — updateChannel persisted it.
     const updated = readChannel(db, created.id);
-    expect(updated?.matcher).toEqual({ presets: ["youtube"], domains: ["ex.com"] });
+    expect(updated?.matcher).toEqual({
+      presets: ["youtube"],
+      domains: ["ex.com"],
+      keywords: [],
+      ruleProviders: [],
+    });
 
     // And the regenerated config's rules — resolveMatcherDomains(matcher) fed into
     // buildMultiConfig via applyConfig — carry both the custom domain and the

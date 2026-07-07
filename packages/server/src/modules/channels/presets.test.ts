@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PRESET_DOMAINS, resolveMatcherDomains } from "./presets.js";
 
 function matcher(overrides: Partial<ChannelMatcher>): ChannelMatcher {
-  return { presets: [], domains: [], ...overrides };
+  return { presets: [], domains: [], keywords: [], ruleProviders: [], ...overrides };
 }
 
 describe("resolveMatcherDomains", () => {

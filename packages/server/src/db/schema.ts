@@ -4,7 +4,7 @@ import type {
   Proxy as ProxyConfig,
   SubscriptionMeta,
 } from "@submerge/shared";
-import { DEFAULT_SPEED_POLICY } from "@submerge/shared";
+import { DEFAULT_SPEED_POLICY, emptyChannelMatcher } from "@submerge/shared";
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 
@@ -72,7 +72,7 @@ export const channels = sqliteTable("channels", {
   matcher: text("matcher", { mode: "json" })
     .$type<ChannelMatcher>()
     .notNull()
-    .$defaultFn(() => ({ presets: [], domains: [] })),
+    .$defaultFn(emptyChannelMatcher),
   lastReason: text("last_reason"),
   lastReasonAt: integer("last_reason_at"),
 });

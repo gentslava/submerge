@@ -207,9 +207,35 @@ export const channelPolicySchema = z.discriminatedUnion("kind", [
 ]);
 export type ChannelPolicy = z.infer<typeof channelPolicySchema>;
 
+// A reference to an external mihomo rule-provider (Phase 4a). mihomo (not submerge)
+// fetches the list; we only emit the `rule-providers:` entry + a `RULE-SET` rule.
+// The list is identified by its URL — config generation derives a stable,
+// collision-safe internal name from (url, behavior, format), so no user-facing
+// name field is needed. `mrs` is a binary format mihomo supports only for
+// domain/ipcidr behaviors — never `classical` — rejected here at parse time.
+export const ruleProviderRefSchema = z
+  .object({
+    url: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((v) => /^https?:\/\//i.test(v), "must be an http(s) URL"),
+    behavior: z.enum(["domain", "ipcidr", "classical"]),
+    format: z.enum(["yaml", "text", "mrs"]).default("yaml"),
+  })
+  .refine((r) => !(r.format === "mrs" && r.behavior === "classical"), {
+    message: "mrs format supports only domain/ipcidr behavior",
+    path: ["format"],
+  });
+export type RuleProviderRef = z.infer<typeof ruleProviderRefSchema>;
+
 export const channelMatcherSchema = z.object({
   presets: z.array(z.string()).default([]),
   domains: z.array(z.string()).default([]),
+  // Phase 4a — DOMAIN-KEYWORD tokens + external rule-providers. Additive with
+  // empty defaults so legacy/Default rows parse unchanged.
+  keywords: z.array(z.string()).default([]),
+  ruleProviders: z.array(ruleProviderRefSchema).default([]),
 });
 export type ChannelMatcher = z.infer<typeof channelMatcherSchema>;
 
@@ -226,12 +252,24 @@ export function isValidDomain(value: string): boolean {
   return domainSchema.safeParse(value).success;
 }
 
+// A DOMAIN-KEYWORD token (Phase 4a): a substring matched against the request
+// host. Same write-boundary rationale as domainSchema — a comma/space/newline
+// would produce a malformed mihomo rule and reject the whole config reload, so
+// we forbid them here. Dots and hyphens are allowed (e.g. "double-click", "ad.").
+const KEYWORD_RE = /^[A-Za-z0-9.-]+$/;
+export const keywordSchema = z.string().trim().min(1).max(63).regex(KEYWORD_RE, "invalid keyword");
+export function isValidKeyword(value: string): boolean {
+  return keywordSchema.safeParse(value).success;
+}
+
 // Strict INPUT matcher — used only by createChannelInput/updateChannelInput (the
 // write boundary). channelMatcherSchema (the read model, used by channelSchema)
 // intentionally stays permissive; see the comment on domainSchema above.
 export const channelMatcherInputSchema = z.object({
   presets: z.array(z.string()).default([]),
   domains: z.array(domainSchema).default([]),
+  keywords: z.array(keywordSchema).default([]),
+  ruleProviders: z.array(ruleProviderRefSchema).default([]),
 });
 
 export const channelSchema = z.object({
