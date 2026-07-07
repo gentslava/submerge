@@ -15,6 +15,7 @@ const TABS = [
 
 const POLICY_LABEL: Record<ChannelPolicy["kind"], string> = {
   speed: "По задержке",
+  optimal: "Оптимальный",
   sticky: "Стабильный IP",
   manual: "Приоритетный узел",
 };
@@ -51,6 +52,10 @@ function policyParams(policy: ChannelPolicy): Param[] {
       { caption: "ДОПУСК", value: `${policy.toleranceMs} ms` },
       { caption: "ПЕРЕОЦЕНКА", value: policy.reevaluateWhileHealthy ? "всегда" : "пока жив" },
     ];
+  }
+  if (policy.kind === "optimal") {
+    // Windowed score, so the one extra knob is the switch margin — mirror speed's «ДОПУСК».
+    return [...common, { caption: "ДОПУСК", value: `${policy.toleranceMs} ms` }];
   }
   return [
     ...common,

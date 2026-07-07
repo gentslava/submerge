@@ -319,6 +319,95 @@ describe("ChannelController speed (passive)", () => {
   });
 });
 
+describe("ChannelController optimal", () => {
+  const optimalPolicy = (
+    over: Partial<Extract<ChannelPolicy, { kind: "optimal" }>> = {},
+  ): ChannelPolicy => ({
+    kind: "optimal",
+    testUrl: "https://probe",
+    intervalSec: 60,
+    toleranceMs: 50,
+    ...over,
+  });
+
+  // Build a group view from an autoNow + a name→delay map (null = miss/timeout).
+  const vw = (autoNow: string | null, delays: Record<string, number | null>): NodeView => ({
+    now: "AUTO",
+    autoNow,
+    all: Object.entries(delays).map(([name, d]) => node(name, d)),
+  });
+
+  it("initially picks the lowest effective-latency node", async () => {
+    const h = harness(optimalPolicy());
+    await h.ctrl.tick(vw(null, { A: 200, B: 40 }));
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("initial");
+  });
+
+  it("holds the active node while a challenger's lead stays within tolerance", async () => {
+    const h = harness(optimalPolicy({ toleranceMs: 50 }));
+    // A active, B faster by 20 ms — under the 50 ms margin → no switch.
+    await h.ctrl.tick(vw("A", { A: 100, B: 80 }));
+    expect(h.selected.length).toBe(0);
+  });
+
+  it("switches once a challenger beats the active node by more than tolerance", async () => {
+    const h = harness(optimalPolicy({ toleranceMs: 50 }));
+    await h.ctrl.tick(vw("A", { A: 200, B: 100 })); // 100 ms lead > 50 ms margin
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("A → B");
+  });
+
+  it("penalizes a flaky node: a solid slower node out-competes a fast-but-dropping one", async () => {
+    // intervalSec=300 → EWMA α=0.5 (fast, deterministic convergence). B always up at
+    // 120 ms; A fast (40 ms) but then keeps missing, so its success EWMA decays and its
+    // effective latency (40 / success) climbs above B's.
+    const h = harness(optimalPolicy({ intervalSec: 300, toleranceMs: 10 }));
+    await h.ctrl.tick(vw(null, { A: 40, B: 120 })); // t=0: initial pick A (eff 40 < 120)
+    expect(h.selected.at(-1)).toBe("A");
+    h.setClock(300_000);
+    await h.ctrl.tick(vw("A", { A: null, B: 120 })); // A miss → success 0.5, eff 80 < 120
+    expect(h.selected.at(-1)).toBe("A"); // still A
+    h.setClock(600_000);
+    await h.ctrl.tick(vw("A", { A: null, B: 120 })); // A miss → success 0.25, eff 160 > 120
+    expect(h.selected.at(-1)).toBe("B"); // now B out-competes flaky A
+  });
+
+  it("reset() clears the EWMA window so a stale penalty doesn't carry over", async () => {
+    const h = harness(optimalPolicy({ intervalSec: 300, toleranceMs: 50 }));
+    await h.ctrl.tick(vw(null, { A: 100, B: 100 })); // pick A (tie → first)
+    h.setClock(300_000);
+    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0.5
+    h.setClock(600_000);
+    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0.25 (eff 400)
+    const beforeReset = h.selected.length;
+
+    h.ctrl.reset(); // wipes per-node EWMA
+
+    h.setClock(900_000);
+    // Fresh window: B healthy at 40 ms (eff 40) beats A 100 by 60 > 50 → switch.
+    // Without reset, B's decayed success would keep its effective latency above A's.
+    await h.ctrl.tick(vw("A", { A: 100, B: 40 }));
+    expect(h.selected.length).toBe(beforeReset + 1);
+    expect(h.selected.at(-1)).toBe("B");
+  });
+
+  it("holds the active node when no candidate has a measurement yet (no NaN-driven switch)", async () => {
+    const h = harness(optimalPolicy());
+    // Both unmeasured → eff +∞; active B valid → activeEff − bestEff is NaN, never > tol.
+    await h.ctrl.tick(vw("B", { A: null, B: null }));
+    expect(h.selected.length).toBe(0);
+  });
+
+  it("re-picks when the active node is no longer among the candidates", async () => {
+    const h = harness(optimalPolicy());
+    // Active "Z" isn't in the view → treated as no valid pin → initial pick of the best.
+    await h.ctrl.tick(vw("Z", { A: 100, B: 40 }));
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("initial");
+  });
+});
+
 describe("ChannelController manual", () => {
   const manualPolicy = (onFailure: "hold" | "fallback"): ChannelPolicy => ({
     kind: "manual",

@@ -54,6 +54,26 @@ describe("buildMultiConfig — single Default channel (byte-identity)", () => {
   });
 });
 
+describe("buildMultiConfig — optimal policy", () => {
+  it("emits the group as type select (controller-driven), not url-test", () => {
+    const optimal: ChannelPolicy = {
+      kind: "optimal",
+      testUrl: "https://x/generate_204",
+      intervalSec: 60,
+      toleranceMs: 50,
+    };
+    const cfg = parse(
+      buildMultiConfig([channel({ proxies: [px("A"), px("B")], policy: optimal })]),
+    );
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const groups = cfg["proxy-groups"] as any[];
+    const auto = groups.find((g) => g.name === "AUTO");
+    // The controller owns the pick for optimal, so AUTO must be a plain selector.
+    expect(auto.type).toBe("select");
+    expect(auto.proxies).toEqual(["A", "B"]);
+  });
+});
+
 describe("buildMultiConfig — default channel with a race subset (pool)", () => {
   it("defines + lists the whole inventory in PROXY while AUTO races only the pool", () => {
     const A = px("A", "a.com");

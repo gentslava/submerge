@@ -102,6 +102,17 @@ Because the comparison is on smoothed effective latency with a margin, momentary
 the active node don't trigger a move, and a genuinely better node wins only once its
 *windowed* advantage exceeds the margin — no url-test flapping.
 
+**Freshness (why passive reading is safe).** `tickOptimal` reads latencies from the group
+view rather than probing — the background prober already keeps every node measured. The
+prober probes `PROXY.all`, and the Default channel DEFINES the whole (non-excluded)
+inventory into `PROXY` (the "define+ping all nodes" model), so *every* candidate of *every*
+channel is kept fresh regardless of pools — no `+∞` "never measured → pick the first node"
+degradation on routed channels. **v1 limitation:** the prober measures on the *Default*
+policy's test URL, so a routed `optimal` channel configured with a *distinct* test URL is
+scored on the freshest available series (the shared history, i.e. the Default URL) until
+that URL is exercised — the same per-URL/shared-history fallback the node view already uses
+(`toNodeView`). Acceptable for v1; a per-channel prober URL is out of scope.
+
 `reset()` (called on `channels.setPolicy`) clears the per-node EWMA maps too, so switching
 policy starts the window fresh.
 
