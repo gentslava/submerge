@@ -205,6 +205,56 @@ describe("applyConfig", () => {
     expect(readdirSync(dir)).toEqual(["config.yaml"]);
   });
 
+  it("skips the write+reload when the generated config is byte-identical to what's on disk", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    const fetchMock = vi.fn(() => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    // First apply writes + reloads.
+    const first = await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    expect(first.applied).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Nothing changed → the second apply must NOT reload (mihomo keeps its delay history).
+    const second = await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    expect(second.applied).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reloads when the config actually changes between applies", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    const fetchMock = vi.fn(() => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A genuine change (new node) → different config bytes → must reload again.
+    db.insert(sources)
+      .values({ kind: "sub", value: "b", label: "b", proxies: [proxy("B")] })
+      .run();
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reloads an unchanged config when force is set (engine reconnect recovery)", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    const fetchMock = vi.fn(() => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    // A restarted mihomo lost our config even though the DB didn't change → force reload.
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml", { force: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("still writes the config and reports applied:false when the reload fails", async () => {
     const db = freshDb();
     db.insert(sources)

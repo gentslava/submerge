@@ -35,8 +35,12 @@ export const settingsRouter = router({
   // (PUT /configs). mihomo runs as a separate process/container, so a true process
   // restart isn't ours to trigger — reapplying + reloading the config is the honest
   // engine-side refresh, and it also heals any drift between the DB and the engine.
+  // `force` is essential here: this button's whole job is to push a reload even when
+  // the config is byte-identical to disk (that's exactly the drift-recovery case, e.g.
+  // after a previous reload failed and left the engine stale) — without it the button
+  // would silently no-op whenever nothing changed.
   reload: protectedProcedure.mutation(async () => {
-    const { applied } = await applyConfig(db);
+    const { applied } = await applyConfig(db, undefined, undefined, { force: true });
     return { ok: true as const, applied };
   }),
 });

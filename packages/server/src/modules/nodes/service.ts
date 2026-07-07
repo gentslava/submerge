@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   type NodeItem,
@@ -70,11 +70,31 @@ export interface ApplyResult {
   applied: boolean;
 }
 
+// Read the config currently on disk, or null if it doesn't exist / can't be read.
+// Used to skip a needless reload when the freshly generated config is byte-identical.
+function readExistingConfig(configPath: string): string | null {
+  try {
+    return readFileSync(configPath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 // Generate the config from current sources, write it, and reload mihomo.
+//
+// `force` bypasses the "skip reload when unchanged" guard: a mihomo reload is
+// DESTRUCTIVE (the engine rebuilds every proxy/group and loses its in-memory delay
+// history — blanking the latency charts), so when the generated config is byte-identical
+// to what's already on disk we skip the write + reload entirely and let mihomo keep its
+// history. Config generation is deterministic (the byte-identity gate in config.test.ts),
+// so identical inputs → identical bytes → a safe skip. `force` is for engine-reconnect
+// recovery (onReconnect): a restarted mihomo may have lost our config even though the DB
+// didn't change, so we must push it regardless of the on-disk match.
 export async function applyConfig(
   db: Db,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
+  opts: { force?: boolean } = {},
 ): Promise<ApplyResult> {
   const allProxies = collectProxies(db);
   // Global deny-list: excluded names are dropped from the whole config — never
@@ -115,6 +135,13 @@ export async function applyConfig(
         : { ...base, proxies: pool };
     });
   const content = buildMultiConfig(inputs, readMihomoSecret(db));
+  // Unchanged config → skip the write + the destructive reload so mihomo keeps its
+  // delay history (the charts don't blank on every no-op apply — rename, re-saved
+  // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and
+  // still reload. `force` (reconnect recovery) always pushes.
+  if (!opts.force && readExistingConfig(configPath) === content) {
+    return { nodes: inventory.length, applied: true };
+  }
   const tmpPath = `${configPath}.tmp`;
   writeFileSync(tmpPath, content, "utf8");
   renameSync(tmpPath, configPath);
