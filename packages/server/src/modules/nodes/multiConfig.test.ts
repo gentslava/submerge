@@ -72,6 +72,65 @@ describe("buildMultiConfig — optimal policy", () => {
     expect(auto.type).toBe("select");
     expect(auto.proxies).toEqual(["A", "B"]);
   });
+
+  it("collapsed url-test subgroups inherit the policy's interval + url (not the 300s default)", () => {
+    const optimal: ChannelPolicy = {
+      kind: "optimal",
+      testUrl: "https://probe.example/gen_204",
+      intervalSec: 10,
+      toleranceMs: 50,
+    };
+    // Two same-named endpoints collapse into a url-test subgroup "A".
+    const A1 = px("A", "a1.com");
+    const A2 = px("A", "a2.com");
+    const cfg = parse(buildMultiConfig([channel({ proxies: [A1, A2], policy: optimal })]));
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const groups = cfg["proxy-groups"] as any[];
+    const sub = groups.find((g) => g.name === "A");
+    expect(sub.type).toBe("url-test");
+    // The bug: non-speed policies used to pin subgroups to the 300 s default url/interval,
+    // so members were measured far too rarely for the optimal ranking to be meaningful.
+    expect(sub.interval).toBe(10);
+    expect(sub.url).toBe("https://probe.example/gen_204");
+    // optimal carries its own tolerance and always re-tests (lazy=false).
+    expect(sub.tolerance).toBe(50);
+    expect(sub.lazy).toBe(false);
+  });
+});
+
+describe("buildMultiConfig — url-test subgroup tuning per policy kind", () => {
+  const A1 = px("A", "a1.com");
+  const A2 = px("A", "a2.com");
+  const subOf = (policy: ChannelPolicy) => {
+    const cfg = parse(buildMultiConfig([channel({ proxies: [A1, A2], policy })]));
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    return (cfg["proxy-groups"] as any[]).find((g) => g.name === "A");
+  };
+
+  it("sticky: subgroup inherits url+interval but gets the DEFAULT tolerance (no toleranceMs field)", () => {
+    const sub = subOf({
+      kind: "sticky",
+      testUrl: "https://sticky.example/gen",
+      intervalSec: 15,
+      failureThreshold: 3,
+      maxHoldHours: null,
+      initialCriterion: "fastest",
+    });
+    expect(sub.type).toBe("url-test");
+    expect(sub.url).toBe("https://sticky.example/gen");
+    expect(sub.interval).toBe(15);
+    expect(sub.tolerance).toBe(50); // sticky has no toleranceMs → default
+    expect(sub.lazy).toBe(false);
+  });
+
+  it("manual: subgroup gets ALL built-in defaults (no probe fields on the policy)", () => {
+    const sub = subOf({ kind: "manual", pinnedNode: "A", onFailure: "hold" });
+    expect(sub.type).toBe("url-test");
+    expect(sub.url).toBe("https://www.gstatic.com/generate_204");
+    expect(sub.interval).toBe(300);
+    expect(sub.tolerance).toBe(50);
+    expect(sub.lazy).toBe(false);
+  });
 });
 
 describe("buildMultiConfig — default channel with a race subset (pool)", () => {

@@ -1,6 +1,9 @@
 // Generate the mihomo config.yaml from a set of proxies (ported from generate.js).
 import {
   type ChannelPolicy,
+  DEFAULT_AUTO_TEST_INTERVAL,
+  DEFAULT_AUTO_TEST_URL,
+  DEFAULT_AUTO_TOLERANCE,
   DEFAULT_SPEED_POLICY,
   type Proxy as ProxyConfig,
 } from "@submerge/shared";
@@ -70,16 +73,20 @@ export interface UrlTestTuning {
   lazy: boolean;
 }
 export function urlTestTuning(policy: ChannelPolicy): UrlTestTuning {
-  const p =
-    policy.kind === "speed"
-      ? policy
-      : (DEFAULT_SPEED_POLICY as Extract<ChannelPolicy, { kind: "speed" }>);
-  return {
-    url: p.testUrl,
-    interval: p.intervalSec,
-    tolerance: p.toleranceMs,
-    lazy: !p.reevaluateWhileHealthy,
-  };
+  // Use each policy's OWN probe settings when it has them (speed/optimal: url +
+  // interval + tolerance; sticky: url + interval). Only `manual` — which has no probe
+  // knobs — falls back to the built-in defaults. Previously every non-`speed` policy
+  // fell back to DEFAULT_SPEED_POLICY, pinning collapsed url-test subgroups to the 300 s
+  // default even when the channel asked for e.g. 10 s — so under `optimal`/`sticky` the
+  // subgroup members were measured far too rarely for the controller's ranking / the
+  // panel's charts. The single-default `speed` case is byte-identical to before.
+  const url = "testUrl" in policy ? policy.testUrl : DEFAULT_AUTO_TEST_URL;
+  const interval = "intervalSec" in policy ? policy.intervalSec : DEFAULT_AUTO_TEST_INTERVAL;
+  const tolerance = "toleranceMs" in policy ? policy.toleranceMs : DEFAULT_AUTO_TOLERANCE;
+  // Only `speed` exposes the lazy knob; every other policy re-tests each interval
+  // (lazy = false) so members stay freshly measured for ranking + the charts.
+  const lazy = policy.kind === "speed" ? !policy.reevaluateWhileHealthy : false;
+  return { url, interval, tolerance, lazy };
 }
 
 // Thin wrapper over the multi-channel generator: a single Default channel keeps
