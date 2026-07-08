@@ -1,4 +1,4 @@
-import type { Channel, ChannelPolicy } from "@submerge/shared";
+import { type Channel, type ChannelPolicy, emptyChannelMatcher } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { ControllerRegistry } from "./registry.js";
@@ -27,7 +27,7 @@ const channel = (
   enabled,
   isDefault,
   policy,
-  matcher: { presets: [], domains: [] },
+  matcher: emptyChannelMatcher(),
   lastReason: null,
   lastReasonAt: null,
 });

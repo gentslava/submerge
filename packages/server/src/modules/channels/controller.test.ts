@@ -1,4 +1,10 @@
-import type { Channel, ChannelPolicy, NodeItem, NodeView } from "@submerge/shared";
+import {
+  type Channel,
+  type ChannelPolicy,
+  emptyChannelMatcher,
+  type NodeItem,
+  type NodeView,
+} from "@submerge/shared";
 import { describe, expect, it } from "vitest";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { ChannelController, pickBest, selectableNames, toGroupView } from "./controller.js";
@@ -120,7 +126,7 @@ const channel = (policy: ChannelPolicy): Channel => ({
   enabled: true,
   isDefault: true,
   policy,
-  matcher: { presets: [], domains: [] },
+  matcher: emptyChannelMatcher(),
   lastReason: null,
   lastReasonAt: null,
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emptyChannelMatcher } from "./defaults.js";
 import {
   channelMatcherInputSchema,
   channelMatcherSchema,
@@ -335,7 +336,7 @@ describe("channelSchema", () => {
         toleranceMs: 50,
         reevaluateWhileHealthy: true,
       },
-      matcher: { presets: [], domains: [] },
+      matcher: emptyChannelMatcher(),
       lastReason: null,
       lastReasonAt: null,
     });
@@ -488,7 +489,7 @@ describe("channelWithPoolSchema", () => {
         toleranceMs: 50,
         reevaluateWhileHealthy: true,
       },
-      matcher: { presets: [], domains: [] },
+      matcher: emptyChannelMatcher(),
       lastReason: null,
       lastReasonAt: null,
       pool: [{ kind: "source", ref: "1" }],
