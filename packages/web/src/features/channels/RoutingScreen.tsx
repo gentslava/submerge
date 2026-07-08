@@ -125,7 +125,6 @@ export function RoutingScreen() {
     createMutation.mutate({
       name: "Новый канал",
       policy: NEW_CHANNEL_SEED_POLICY,
-      matcher: { presets: [], domains: [] },
     });
   }
 

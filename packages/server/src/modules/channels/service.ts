@@ -6,6 +6,7 @@ import {
   DEFAULT_AUTO_TEST_INTERVAL,
   DEFAULT_AUTO_TEST_URL,
   DEFAULT_SPEED_POLICY,
+  emptyChannelMatcher,
   type UpdateChannelInput,
 } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
@@ -50,7 +51,7 @@ export function ensureDefaultChannel(db: Db): void {
       enabled: true,
       isDefault: true,
       policy: seedPolicyFromLegacy(db),
-      matcher: { presets: [], domains: [] },
+      matcher: emptyChannelMatcher(),
     })
     .run();
 }
@@ -67,7 +68,7 @@ function rowToChannel(row: typeof channels.$inferSelect): Channel {
     enabled: row.enabled,
     isDefault: row.isDefault,
     policy: DEFAULT_SPEED_POLICY,
-    matcher: { presets: [], domains: [] },
+    matcher: emptyChannelMatcher(),
     lastReason: row.lastReason ?? null,
     lastReasonAt: row.lastReasonAt ?? null,
   };
@@ -85,7 +86,7 @@ export function readDefaultChannel(db: Db): Channel {
       enabled: true,
       isDefault: true,
       policy: DEFAULT_SPEED_POLICY,
-      matcher: { presets: [], domains: [] },
+      matcher: emptyChannelMatcher(),
       lastReason: null,
       lastReasonAt: null,
     };
@@ -162,7 +163,7 @@ export function createChannel(db: Db, input: CreateChannelInput): Channel {
       enabled: true,
       isDefault: false,
       policy: input.policy,
-      matcher: input.matcher ?? { presets: [], domains: [] },
+      matcher: input.matcher ?? emptyChannelMatcher(),
     })
     .run();
   // Just-inserted row is always readable back — non-null assertion is safe here.

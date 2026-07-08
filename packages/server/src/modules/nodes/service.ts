@@ -125,6 +125,10 @@ export async function applyConfig(
         isDefault: ch.isDefault,
         policy: ch.policy,
         domains: resolveMatcherDomains(ch.matcher),
+        keywords: ch.matcher.keywords,
+        ruleProviders: ch.matcher.ruleProviders,
+        geosite: ch.matcher.geosite,
+        geoip: ch.matcher.geoip,
       };
       // The Default channel DEFINES the whole (non-excluded) inventory — every node is
       // written to the config, pinged by the prober, and manually selectable via PROXY

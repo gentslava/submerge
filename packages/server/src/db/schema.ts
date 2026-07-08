@@ -4,9 +4,9 @@ import type {
   Proxy as ProxyConfig,
   SubscriptionMeta,
 } from "@submerge/shared";
-import { DEFAULT_SPEED_POLICY } from "@submerge/shared";
+import { DEFAULT_SPEED_POLICY, emptyChannelMatcher } from "@submerge/shared";
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
 
 // Source entries: subscription URLs, vless://, happ:// links, or client deep-links.
 export const sources = sqliteTable("sources", {
@@ -72,7 +72,7 @@ export const channels = sqliteTable("channels", {
   matcher: text("matcher", { mode: "json" })
     .$type<ChannelMatcher>()
     .notNull()
-    .$defaultFn(() => ({ presets: [], domains: [] })),
+    .$defaultFn(emptyChannelMatcher),
   lastReason: text("last_reason"),
   lastReasonAt: integer("last_reason_at"),
 });
@@ -94,3 +94,13 @@ export const channelPool = sqliteTable(
     index("channel_pool_channel_id_idx").on(t.channelId),
   ],
 );
+
+// Cached on-demand throughput per node (Phase 4c). Keyed by the node's display
+// name; `mbps` is the last measured download speed, `tested_at` its epoch-ms
+// timestamp. Feeds the `highest-bandwidth` sticky criterion + the UI's cached
+// value. Best-effort cache — a node dropped from the config just goes stale.
+export const nodeBandwidth = sqliteTable("node_bandwidth", {
+  nodeName: text("node_name").primaryKey(),
+  mbps: real("mbps").notNull(),
+  testedAt: integer("tested_at").notNull(),
+});

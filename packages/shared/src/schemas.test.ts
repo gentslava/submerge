@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  channelMatcherInputSchema,
   channelMatcherSchema,
   channelPolicySchema,
   channelPoolMemberSchema,
@@ -13,6 +14,8 @@ import {
   proxySchema,
   reorderChannelsInput,
   reorderInput,
+  ruleProviderFormat,
+  ruleProviderRefSchema,
   selectNodeInput,
   setChannelPolicyInput,
   setChannelPoolInput,
@@ -174,6 +177,144 @@ describe("channelMatcherSchema (read model stays permissive)", () => {
   it("still accepts a malformed domain — a legacy/corrupt row must not fail parsing", () => {
     const m = channelMatcherSchema.parse({ presets: [], domains: ["bad,domain"] });
     expect(m.domains).toEqual(["bad,domain"]);
+  });
+  it("defaults the Phase-4a fields (keywords, ruleProviders) to empty on a legacy row", () => {
+    const m = channelMatcherSchema.parse({ presets: [], domains: [] });
+    expect(m.keywords).toEqual([]);
+    expect(m.ruleProviders).toEqual([]);
+  });
+});
+
+describe("ruleProviderFormat (derived from the URL extension)", () => {
+  it("maps extensions to mihomo formats, defaulting to yaml", () => {
+    expect(ruleProviderFormat("https://x/a.yaml")).toBe("yaml");
+    expect(ruleProviderFormat("https://x/a.yml")).toBe("yaml");
+    expect(ruleProviderFormat("https://x/a.list")).toBe("text");
+    expect(ruleProviderFormat("https://x/a.txt")).toBe("text");
+    expect(ruleProviderFormat("https://x/a.mrs")).toBe("mrs");
+    expect(ruleProviderFormat("https://x/get?list=ads")).toBe("yaml"); // no clear ext → default
+  });
+  it("ignores query/hash when reading the extension", () => {
+    expect(ruleProviderFormat("https://x/a.mrs?v=2")).toBe("mrs");
+    expect(ruleProviderFormat("https://x/a.list#frag")).toBe("text");
+  });
+});
+
+describe("ruleProviderRefSchema (format is derived from the URL, not chosen)", () => {
+  it("accepts an https classical provider (no format field)", () => {
+    const r = ruleProviderRefSchema.parse({
+      url: "https://example.com/reject.yaml",
+      behavior: "classical",
+    });
+    expect(r.behavior).toBe("classical");
+    expect("format" in r).toBe(false);
+  });
+  it("accepts an .mrs url with domain behavior", () => {
+    const r = ruleProviderRefSchema.parse({ url: "https://example.com/x.mrs", behavior: "domain" });
+    expect(r.behavior).toBe("domain");
+  });
+  it("rejects an .mrs url with classical behavior (mihomo forbids mrs+classical)", () => {
+    expect(() =>
+      ruleProviderRefSchema.parse({ url: "https://example.com/x.mrs", behavior: "classical" }),
+    ).toThrow();
+  });
+  it("rejects a non-http(s) url", () => {
+    expect(() =>
+      ruleProviderRefSchema.parse({ url: "ftp://example.com/x.yaml", behavior: "domain" }),
+    ).toThrow();
+  });
+  it("rejects an unknown behavior", () => {
+    expect(() =>
+      ruleProviderRefSchema.parse({ url: "https://example.com/x", behavior: "bogus" }),
+    ).toThrow();
+  });
+});
+
+describe("geo matcher fields (Phase 4b)", () => {
+  it("accepts geosite categories (incl. geolocation-!cn / tag@attr) and geoip codes", () => {
+    const m = channelMatcherInputSchema.parse({
+      presets: [],
+      domains: [],
+      geosite: ["youtube", "category-ads-all", "geolocation-!cn", "youtube@ads"],
+      geoip: ["RU", "CN", "PRIVATE", "LAN"],
+    });
+    expect(m.geosite).toEqual(["youtube", "category-ads-all", "geolocation-!cn", "youtube@ads"]);
+    expect(m.geoip).toEqual(["RU", "CN", "PRIVATE", "LAN"]);
+  });
+  it("rejects a non-code geoip token like TELEGRAM", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geoip: ["TELEGRAM"] }),
+    ).toThrow();
+  });
+  it("defaults geosite/geoip to []", () => {
+    const m = channelMatcherInputSchema.parse({ presets: [], domains: [] });
+    expect(m.geosite).toEqual([]);
+    expect(m.geoip).toEqual([]);
+  });
+  it("rejects an upper-case geosite category or a lower-case / malformed geoip code", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geosite: ["YouTube"] }),
+    ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geoip: ["ru"] }),
+    ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geoip: ["R1"] }),
+    ).toThrow();
+  });
+  it("read model defaults geo fields on a legacy row", () => {
+    const m = channelMatcherSchema.parse({ presets: [], domains: [] });
+    expect(m.geosite).toEqual([]);
+    expect(m.geoip).toEqual([]);
+  });
+});
+
+describe("stickyPolicySchema highest-bandwidth (Phase 4c)", () => {
+  it("accepts the highest-bandwidth criterion", () => {
+    const p = channelPolicySchema.parse({
+      kind: "sticky",
+      testUrl: "https://x/generate_204",
+      intervalSec: 60,
+      failureThreshold: 3,
+      maxHoldHours: null,
+      initialCriterion: "highest-bandwidth",
+    });
+    expect(p.kind === "sticky" && p.initialCriterion).toBe("highest-bandwidth");
+  });
+});
+
+describe("channelMatcherInputSchema (Phase-4a: keywords + ruleProviders)", () => {
+  it("accepts keywords and rule-provider refs", () => {
+    const m = channelMatcherInputSchema.parse({
+      presets: [],
+      domains: [],
+      keywords: ["google", "double-click"],
+      ruleProviders: [{ url: "https://example.com/ads.yaml", behavior: "classical" }],
+    });
+    expect(m.keywords).toEqual(["google", "double-click"]);
+    expect(m.ruleProviders).toHaveLength(1);
+  });
+  it("defaults keywords and ruleProviders to []", () => {
+    const m = channelMatcherInputSchema.parse({ presets: [], domains: [] });
+    expect(m.keywords).toEqual([]);
+    expect(m.ruleProviders).toEqual([]);
+  });
+  it("rejects a keyword with whitespace or a comma (malformed mihomo rule)", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], keywords: ["bad kw"] }),
+    ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], keywords: ["bad,kw"] }),
+    ).toThrow();
+  });
+  it("rejects a rule-provider with a bad url at the write boundary", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({
+        presets: [],
+        domains: [],
+        ruleProviders: [{ url: "not-a-url", behavior: "domain" }],
+      }),
+    ).toThrow();
   });
 });
 

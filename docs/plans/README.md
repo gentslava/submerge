@@ -21,3 +21,4 @@ for their status. Mark a plan **done** here when its feature is merged to master
 | [Multi-channel routing — phase 3a (mechanics)](2026-07-01-multi-routing-phase3a.md) | done |
 | [Routing UI + domain presets — phase 3b](2026-07-05-routing-ui-phase3b.md) | done |
 | [Preset expansion — domains, services, categories](2026-07-08-preset-expansion.md) | done |
+| [Routing Phase 4 — rule-providers · keyword/geo · speed test](2026-07-07-routing-phase4.md) | proposed |

@@ -179,7 +179,9 @@ export const stickyPolicySchema = z.object({
   intervalSec: z.number().int().min(1),
   failureThreshold: z.number().int().min(1), // consecutive fails before switching
   maxHoldHours: z.number().int().min(1).nullable(), // null = hold indefinitely
-  initialCriterion: z.enum(["fastest", "lowest-loss"]), // highest-bandwidth: phase 4
+  // How the "best" node is (re)picked. highest-bandwidth (Phase 4c) ranks by the
+  // cached on-demand/passive throughput, falling back to fastest for uncached nodes.
+  initialCriterion: z.enum(["fastest", "lowest-loss", "highest-bandwidth"]),
 });
 
 export const manualPolicySchema = z.object({
@@ -207,9 +209,52 @@ export const channelPolicySchema = z.discriminatedUnion("kind", [
 ]);
 export type ChannelPolicy = z.infer<typeof channelPolicySchema>;
 
+// The mihomo rule-provider file `format`, derived from the URL extension rather
+// than chosen by the admin — the format is a mechanical property of the file the
+// URL points to (mihomo doesn't sniff it; it trusts the declared value, default
+// yaml). `.list`/`.txt` → text, `.mrs` → mrs, everything else → yaml. Query/hash
+// are stripped first.
+export type RuleProviderFormat = "yaml" | "text" | "mrs";
+export function ruleProviderFormat(url: string): RuleProviderFormat {
+  const path = (url.split(/[?#]/)[0] ?? url).toLowerCase();
+  if (path.endsWith(".mrs")) return "mrs";
+  if (path.endsWith(".list") || path.endsWith(".txt")) return "text";
+  return "yaml";
+}
+
+// A reference to an external mihomo rule-provider (Phase 4a). mihomo (not submerge)
+// fetches the list; we only emit the `rule-providers:` entry + a `RULE-SET` rule.
+// The list is identified by its URL; `format` is derived (see ruleProviderFormat),
+// and config generation derives a stable, collision-safe internal name from
+// (url, behavior). `mrs` is a binary format mihomo supports only for
+// domain/ipcidr behaviors — never `classical` — so an `.mrs` URL with classical
+// behavior is rejected here at parse time.
+export const ruleProviderRefSchema = z
+  .object({
+    url: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((v) => /^https?:\/\//i.test(v), "must be an http(s) URL"),
+    behavior: z.enum(["domain", "ipcidr", "classical"]),
+  })
+  .refine((r) => !(ruleProviderFormat(r.url) === "mrs" && r.behavior === "classical"), {
+    message: "an .mrs list supports only domain/ipcidr behavior",
+    path: ["behavior"],
+  });
+export type RuleProviderRef = z.infer<typeof ruleProviderRefSchema>;
+
 export const channelMatcherSchema = z.object({
   presets: z.array(z.string()).default([]),
   domains: z.array(z.string()).default([]),
+  // Phase 4a — DOMAIN-KEYWORD tokens + external rule-providers. Additive with
+  // empty defaults so legacy/Default rows parse unchanged.
+  keywords: z.array(z.string()).default([]),
+  ruleProviders: z.array(ruleProviderRefSchema).default([]),
+  // Phase 4b — geo matchers: GEOSITE categories + GEOIP country codes. Permissive
+  // in the read model (like domains/keywords); the write boundary is strict.
+  geosite: z.array(z.string()).default([]),
+  geoip: z.array(z.string()).default([]),
 });
 export type ChannelMatcher = z.infer<typeof channelMatcherSchema>;
 
@@ -226,12 +271,51 @@ export function isValidDomain(value: string): boolean {
   return domainSchema.safeParse(value).success;
 }
 
+// A DOMAIN-KEYWORD token (Phase 4a): a substring matched against the request
+// host. Same write-boundary rationale as domainSchema — a comma/space/newline
+// would produce a malformed mihomo rule and reject the whole config reload, so
+// we forbid them here. Dots and hyphens are allowed (e.g. "double-click", "ad.").
+const KEYWORD_RE = /^[A-Za-z0-9.-]+$/;
+export const keywordSchema = z.string().trim().min(1).max(63).regex(KEYWORD_RE, "invalid keyword");
+export function isValidKeyword(value: string): boolean {
+  return keywordSchema.safeParse(value).success;
+}
+
+// Phase 4b geo matchers. A GEOSITE category is a lowercase token as published in
+// MetaCubeX's geosite.dat (e.g. `youtube`, `telegram`, `category-ads-all`). A GEOIP
+// code is an ISO-3166 alpha-2 country upper-cased (e.g. `RU`, `CN`), plus mihomo's
+// special sets `LAN`/`PRIVATE`. Strict at the write boundary (a bad token would
+// break the whole mihomo rule set), same as domains/keywords.
+// Allow `!` and `@`: `geolocation-!cn` ("everything except CN") and `tag@attr`
+// are common, config-safe geosite tags. Still block whitespace/comma/newline that
+// would break the whole rule reload.
+const GEOSITE_RE = /^[a-z0-9!@_-]+$/;
+// ISO-3166 alpha-2 country codes, plus mihomo's special sets LAN / PRIVATE.
+const GEOIP_RE = /^([A-Z]{2}|LAN|PRIVATE)$/;
+export const geoCategorySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(63)
+  .regex(GEOSITE_RE, "invalid geosite category");
+export const geoCountrySchema = z.string().trim().regex(GEOIP_RE, "invalid geoip code");
+export function isValidGeoCategory(value: string): boolean {
+  return geoCategorySchema.safeParse(value).success;
+}
+export function isValidGeoCountry(value: string): boolean {
+  return geoCountrySchema.safeParse(value).success;
+}
+
 // Strict INPUT matcher — used only by createChannelInput/updateChannelInput (the
 // write boundary). channelMatcherSchema (the read model, used by channelSchema)
 // intentionally stays permissive; see the comment on domainSchema above.
 export const channelMatcherInputSchema = z.object({
   presets: z.array(z.string()).default([]),
   domains: z.array(domainSchema).default([]),
+  keywords: z.array(keywordSchema).default([]),
+  ruleProviders: z.array(ruleProviderRefSchema).default([]),
+  geosite: z.array(geoCategorySchema).default([]),
+  geoip: z.array(geoCountrySchema).default([]),
 });
 
 export const channelSchema = z.object({

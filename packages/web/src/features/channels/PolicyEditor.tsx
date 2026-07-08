@@ -77,7 +77,7 @@ export function PolicyEditor({
     reevaluateWhileHealthy: true,
     failureThreshold: 3,
     maxHoldHours: null as number | null,
-    initialCriterion: "fastest" as "fastest" | "lowest-loss",
+    initialCriterion: "fastest" as "fastest" | "lowest-loss" | "highest-bandwidth",
     onFailure: "fallback" as "fallback" | "hold",
   });
   if ("testUrl" in policy) draft.current.testUrl = policy.testUrl;
@@ -243,10 +243,15 @@ export function PolicyEditor({
             <Segmented
               aria-label="Критерий выбора"
               value={policy.initialCriterion}
-              onChange={(v) => updateSticky({ initialCriterion: v as "fastest" | "lowest-loss" })}
+              onChange={(v) =>
+                updateSticky({
+                  initialCriterion: v as "fastest" | "lowest-loss" | "highest-bandwidth",
+                })
+              }
               options={[
                 { value: "fastest", label: "По скорости" },
                 { value: "lowest-loss", label: "По стабильности" },
+                { value: "highest-bandwidth", label: "По ширине канала" },
               ]}
             />
           </Row>

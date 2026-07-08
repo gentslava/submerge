@@ -43,6 +43,13 @@
       "when": 1783356704372,
       "tag": "0005_broad_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783491839126,
+      "tag": "0006_purple_brood",
+      "breakpoints": true
     }
   ]
 }

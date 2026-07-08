@@ -2,7 +2,7 @@
 // settings fallbacks) and the web (UI fallbacks shown until settings load). Keeping them
 // here is the contract: front and back can't silently drift to different defaults.
 
-import type { ChannelPolicy } from "./schemas.js";
+import type { ChannelMatcher, ChannelPolicy } from "./schemas.js";
 
 /** AUTO group policy when nothing is set (mihomo group type). */
 export const DEFAULT_AUTO_STRATEGY = "url-test" as const;
@@ -44,6 +44,14 @@ export const PSEUDO_NODE_NAMES = [...ROUTING_GROUP_NAMES, ...MIHOMO_BUILTIN_POLI
 
 /** Ready-made membership set so consumers don't each rebuild `new Set(...)`. */
 export const PSEUDO_NODE_SET: ReadonlySet<string> = new Set(PSEUDO_NODE_NAMES);
+
+/** An empty channel matcher — the single source for "matches nothing extra" so
+ *  literals don't drift as the matcher schema grows (Phase 4a added keywords +
+ *  ruleProviders). Returned as a fresh object each call: the arrays are mutable
+ *  and callers must not share references. */
+export function emptyChannelMatcher(): ChannelMatcher {
+  return { presets: [], domains: [], keywords: [], ruleProviders: [], geosite: [], geoip: [] };
+}
 
 /** The Default channel's policy on a fresh install (behaviour-preserving vs the old AUTO url-test). */
 export const DEFAULT_SPEED_POLICY: ChannelPolicy = {

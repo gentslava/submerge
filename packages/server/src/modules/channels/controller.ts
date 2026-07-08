@@ -73,6 +73,10 @@ export interface ControllerDeps {
   group: string;
   probe: (name: string, url: string) => Promise<number | null>; // null = timeout/unreachable
   select: (group: string, name: string) => Promise<void>;
+  // Cached throughput (Mbps) for the `highest-bandwidth` sticky criterion, or null
+  // for a node with no on-demand/passive measurement yet. Optional — absent in tests
+  // and for policies that never rank by bandwidth.
+  bandwidthOf?: (name: string) => number | null;
   // Clear the group's manually-pinned ("fixed") member so a url-test group resumes
   // racing (DELETE /proxies/{group}). Only the speed policy needs this — see tickSpeed.
   clearFixed: (group: string) => Promise<void>;
@@ -153,6 +157,37 @@ export class ChannelController {
     this.optimalLatency.clear();
     this.optimalSuccess.clear();
     this.optimalActiveMisses = 0;
+  }
+
+  // Pick the best node for a sticky (re)pick. `highest-bandwidth` ranks by the
+  // cached throughput and falls back to `fastest` when NO candidate has a cached
+  // value (never invents a number); the other criteria delegate to latency-based
+  // pickBest. Kept here (not in pickBest) so the pure pickBest stays latency-only.
+  //
+  // Partial-cache semantics (intended): among candidates WITH a cached value, the
+  // highest Mbps wins; a candidate with no cached value is only chosen when NO
+  // candidate is cached at all (then → fastest). This is inert today — the cache is
+  // empty until the on-demand speed-test slice lands, so it always degrades to
+  // fastest. TODO(speed-test): once measurements exist, honour `testedAt` (ignore
+  // stale entries as uncached) so a single old measurement can't pin a slow node
+  // over faster, freshly-added-but-unmeasured ones.
+  private async pickByCriterion(
+    names: string[],
+    url: string,
+    criterion: "fastest" | "lowest-loss" | "highest-bandwidth",
+  ): Promise<string | null> {
+    if (names.length === 0) return null;
+    if (criterion === "highest-bandwidth") {
+      const scored = names
+        .map((n) => ({ n, bw: this.deps.bandwidthOf?.(n) ?? null }))
+        .filter((x): x is { n: string; bw: number } => x.bw != null);
+      if (scored.length > 0) {
+        scored.sort((a, b) => b.bw - a.bw);
+        return (scored[0] as { n: string; bw: number }).n;
+      }
+      return pickBest(names, url, "fastest", this.deps.probe);
+    }
+    return pickBest(names, url, criterion, this.deps.probe);
   }
 
   protected record(entry: DecisionEntry): void {
@@ -322,7 +357,7 @@ export class ChannelController {
 
     // No valid pin yet → choose the best node and pin it.
     if (!active || !candidates.includes(active)) {
-      const best = await pickBest(candidates, url, policy.initialCriterion, this.deps.probe);
+      const best = await this.pickByCriterion(candidates, url, policy.initialCriterion);
       if (best) await this.apply(channelId, active, best, `initial pick: ${best}`, at);
       this.failures = 0;
       return;
@@ -333,7 +368,7 @@ export class ChannelController {
 
     // Forced refresh after max-hold, even while healthy.
     if (policy.maxHoldHours != null && at - this.heldSince >= policy.maxHoldHours * 3_600_000) {
-      const best = await pickBest(candidates, url, policy.initialCriterion, this.deps.probe);
+      const best = await this.pickByCriterion(candidates, url, policy.initialCriterion);
       if (best && best !== active) {
         await this.apply(channelId, active, best, `max-hold ${policy.maxHoldHours}h reached`, at);
         this.failures = 0;
@@ -349,8 +384,7 @@ export class ChannelController {
 
     if (this.failures >= policy.failureThreshold) {
       const others = candidates.filter((c) => c !== active);
-      const best =
-        (await pickBest(others, url, policy.initialCriterion, this.deps.probe)) ?? active;
+      const best = (await this.pickByCriterion(others, url, policy.initialCriterion)) ?? active;
       await this.apply(channelId, active, best, `${active} failed ×${this.failures}`, at);
       this.failures = 0;
     }

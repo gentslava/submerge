@@ -1,4 +1,4 @@
-import type { Channel, ChannelPoolMember } from "@submerge/shared";
+import { type Channel, type ChannelPoolMember, emptyChannelMatcher } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
 import {
   channelGroupNames,
@@ -19,7 +19,7 @@ const channel = (overrides: Partial<Channel>): Channel => ({
   enabled: true,
   isDefault: false,
   policy: { kind: "manual", pinnedNode: "X", onFailure: "hold" },
-  matcher: { presets: [], domains: [] },
+  matcher: emptyChannelMatcher(),
   lastReason: null,
   lastReasonAt: null,
   ...overrides,

@@ -56,11 +56,18 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Screen / component | Frame | Main child |
 | --- | --- | --- |
 | Узлы | `I4hmn` | `iuZcj` |
+| Узлы — состояния (empty / loading) | `bY6uv` | — |
+| Детали узла — drawer | `IgEPe` | `Un6TO` (Panel) |
 | Источники | `gm1vM` | `cF8xX` |
 | Настройки | `w6qeY` | `L5XjCf` |
-| Маршрутизация | `P7RAD` | `fSRZN` (Main); cards `VICOv` collapsed · `Z7zRtE` expanded editor · `muQ15` Default |
-| Маршрутизация — состояния (create / disabled / mobile 390) | `HXRTv` | — |
-| Маршрутизация — светлая | `CUEoq` | — |
+| Соединения | `g5hb4` | `DxayN` |
+| Маршрутизация · Populated (dark) | `lYrng` | `R47Ya`; matcher editor holds Домены + **Ключевые слова** + **Списки правил** (Phase 4a) |
+| Маршрутизация · Состояния (create / disabled / mobile 390) | `HXRTv` | — |
+| Маршрутизация · Populated — светлая | `CUEoq` | `eHlsq` |
+| Трафик | `YED5Y` | `ZH6Id` |
+| Логи | `ZdPsU` | `MKvCg` |
+| Диагностика | `QoRoZ` | `AqDqR` |
+| Раздел в разработке (placeholder) | `fFpGe` | `gsI9Q` |
 | Sidebar (reusable) | `t0Wg2` | — |
 | Button (reusable) | `hRDqB` | — |
 | Badge (reusable) | `J7jxJ` | — |
