@@ -1,5 +1,6 @@
 # node_modules
 node_modules/
+.pnpm-store/
 npm-debug.log*
 
 # TypeScript build output
