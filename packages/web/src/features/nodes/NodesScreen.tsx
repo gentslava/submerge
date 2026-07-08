@@ -19,6 +19,7 @@ import { AutoStrategyCard } from "./AutoStrategyCard";
 import { NodeList } from "./NodeList";
 import { NodesHeader } from "./NodesHeader";
 import { isPseudo } from "./nodeView";
+import { SpeedTestProvider } from "./SpeedTestContext";
 
 export function NodesScreen() {
   const trpc = useTRPC();
@@ -143,28 +144,30 @@ export function NodesScreen() {
       ) : nodesQuery.isError ? (
         <ErrorState onRetry={() => nodesQuery.refetch()} />
       ) : (
-        <Body
-          now={now}
-          autoNow={autoNow}
-          isAuto={isAuto}
-          policy={policy}
-          checkIntervalSec={chartCheckIntervalSec}
-          all={all}
-          sources={sourcesQuery.data ?? []}
-          totals={totals}
-          latency={latency}
-          pingingNames={pingingNames}
-          selectPending={select.isPending}
-          onSelect={(name) => select.mutate({ group: "PROXY", name })}
-          onPing={pingOne}
-          onToggleExcluded={(name, excluded) => setExcluded.mutate({ name, excluded })}
-          onAuto={onAuto}
-          onManual={onManual}
-          lastDecision={{
-            reason: channelQuery.data?.lastReason ?? "",
-            at: channelQuery.data?.lastReasonAt ?? null,
-          }}
-        />
+        <SpeedTestProvider>
+          <Body
+            now={now}
+            autoNow={autoNow}
+            isAuto={isAuto}
+            policy={policy}
+            checkIntervalSec={chartCheckIntervalSec}
+            all={all}
+            sources={sourcesQuery.data ?? []}
+            totals={totals}
+            latency={latency}
+            pingingNames={pingingNames}
+            selectPending={select.isPending}
+            onSelect={(name) => select.mutate({ group: "PROXY", name })}
+            onPing={pingOne}
+            onToggleExcluded={(name, excluded) => setExcluded.mutate({ name, excluded })}
+            onAuto={onAuto}
+            onManual={onManual}
+            lastDecision={{
+              reason: channelQuery.data?.lastReason ?? "",
+              at: channelQuery.data?.lastReasonAt ?? null,
+            }}
+          />
+        </SpeedTestProvider>
       )}
     </div>
   );
