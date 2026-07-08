@@ -59,6 +59,8 @@ export const liveHub = new LiveHub({
   // the boot-time apply only covers a submerge restart, so a genuine engine
   // reconnect also needs one. Best-effort: the hub already guards this call.
   onReconnect: async () => {
-    await applyConfig(db);
+    // A reconnected/restarted mihomo may have lost our config even though the DB
+    // didn't change, so force the reload past the "skip when unchanged" guard.
+    await applyConfig(db, undefined, undefined, { force: true });
   },
 });
