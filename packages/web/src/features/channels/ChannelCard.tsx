@@ -146,8 +146,10 @@ function RegularRow({
   const Chevron = expanded ? ChevronUp : ChevronDown;
   const toggleLabel = `${expanded ? "Свернуть" : "Развернуть"} канал «${channel.name}»`;
   return (
-    <div className="flex w-full items-center gap-3 px-4 py-3.5">
-      {reorderControl}
+    <div className="relative flex w-full items-center gap-3 px-4 py-3.5">
+      {reorderControl && (
+        <span className="relative z-10 flex shrink-0 items-center">{reorderControl}</span>
+      )}
       <button
         type="button"
         onClick={onToggleExpanded}
@@ -155,11 +157,15 @@ function RegularRow({
         aria-label={toggleLabel}
         className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left md:flex-nowrap"
       >
+        {/* Stretched hit target — covers the whole header (padding + gaps
+            included) so a click anywhere but the reorder/switch/chevron toggles
+            the card. Positioned against the `relative` header, not the button box. */}
+        <span className="absolute inset-0" aria-hidden="true" />
         <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
         <PolicyBadge kind={channel.policy.kind} />
         <MatcherSummary matcher={channel.matcher} />
       </button>
-      <div className="flex shrink-0 items-center gap-3.5">
+      <div className="relative z-10 flex shrink-0 items-center gap-3.5">
         {/* Honest disabled marker — we know `enabled` for certain, unlike a live
             "which node is it on" indicator (no recentDecisions wiring here yet). */}
         {!channel.enabled && (
@@ -197,7 +203,7 @@ function DefaultRow({
   const Chevron = expanded ? ChevronUp : ChevronDown;
   const toggleLabel = `${expanded ? "Свернуть" : "Развернуть"} канал «${channel.name}»`;
   return (
-    <div className="flex w-full items-center gap-3 px-4 py-3.5">
+    <div className="relative flex w-full items-center gap-3 px-4 py-3.5">
       <button
         type="button"
         onClick={onToggleExpanded}
@@ -205,6 +211,8 @@ function DefaultRow({
         aria-label={toggleLabel}
         className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left md:flex-nowrap"
       >
+        {/* Stretched hit target — see RegularRow. */}
+        <span className="absolute inset-0" aria-hidden="true" />
         <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
         <span className="shrink-0 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-fine font-semibold text-accent-text">
           catch-all
@@ -215,7 +223,7 @@ function DefaultRow({
           <span className="text-xs text-text-tertiary">Все узлы</span>
         </div>
       </button>
-      <div className="flex shrink-0 items-center gap-3.5">
+      <div className="relative z-10 flex shrink-0 items-center gap-3.5">
         <Switch
           checked
           disabled
