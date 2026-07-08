@@ -4,16 +4,25 @@ import { Prober } from "./prober.js";
 
 // PROXY.all lists AUTO (pseudo, must be ignored) + the real node names.
 // `times[name]` = ISO timestamp of the node's latest measurement (absent = never).
-function resp(names: string[], times: Record<string, string> = {}): ProxiesResponse {
+// The measurement is recorded under the prober's URL (`extra[PROBE_URL]`) — freshness is
+// tracked per-URL, so that's where a "fresh" reading must live.
+const PROBE_URL = "https://t/check";
+function resp(
+  names: string[],
+  times: Record<string, string> = {},
+  url = PROBE_URL,
+): ProxiesResponse {
   const proxies: Record<string, unknown> = {
     PROXY: { name: "PROXY", type: "Selector", all: ["AUTO", ...names], history: [] },
     AUTO: { name: "AUTO", type: "URLTest", history: [] },
   };
   for (const n of names) {
+    const entry = times[n] ? [{ time: times[n], delay: 50 }] : [];
     proxies[n] = {
       name: n,
       type: "vless",
-      history: times[n] ? [{ time: times[n], delay: 50 }] : [],
+      history: entry,
+      ...(times[n] ? { extra: { [url]: { history: entry } } } : {}),
     };
   }
   return { proxies } as ProxiesResponse;
@@ -33,9 +42,10 @@ function makeProber(over: { intervalSec?: number; nowMs?: () => number } = {}) {
 }
 
 describe("Prober last-known overlay", () => {
-  // Like resp(), but with per-node delay values.
+  // Like resp(), but with per-node delay values, recorded under the prober's URL.
   function respWith(
     entries: Record<string, { time: string; delay: number } | null>,
+    url = PROBE_URL,
   ): ProxiesResponse {
     const names = Object.keys(entries);
     const proxies: Record<string, unknown> = {
@@ -43,7 +53,13 @@ describe("Prober last-known overlay", () => {
       AUTO: { name: "AUTO", type: "URLTest", history: [] },
     };
     for (const n of names) {
-      proxies[n] = { name: n, type: "vless", history: entries[n] ? [entries[n]] : [] };
+      const e = entries[n];
+      proxies[n] = {
+        name: n,
+        type: "vless",
+        history: e ? [e] : [],
+        ...(e ? { extra: { [url]: { history: [e] } } } : {}),
+      };
     }
     return { proxies } as ProxiesResponse;
   }
@@ -79,6 +95,28 @@ describe("Prober last-known overlay", () => {
     ]);
   });
 
+  it("does not remember a delay measured only on ANOTHER url (per-url overlay)", () => {
+    const { prober } = makeProber();
+    // Node measured on a different url only → no entry under the prober's url.
+    prober.observe({
+      proxies: {
+        PROXY: { name: "PROXY", type: "Selector", all: ["AUTO", "x"], history: [] },
+        AUTO: { name: "AUTO", type: "URLTest", history: [] },
+        x: {
+          name: "x",
+          type: "vless",
+          history: [{ time: new Date(T0 - 5_000).toISOString(), delay: 111 }],
+          extra: {
+            "https://other/check": { history: [{ time: new Date(T0).toISOString(), delay: 111 }] },
+          },
+        },
+      },
+    } as unknown as ProxiesResponse);
+    // Reload wipes everything; the overlay must NOT paint the foreign-url 111 ms.
+    const filled = prober.fillLastKnown(view([{ name: "x", delay: null, history: [] }]));
+    expect(filled.all[0]?.delay).toBeNull();
+  });
+
   it("never overrides a real current measurement", () => {
     const { prober } = makeProber();
     prober.observe(respWith({ a: { time: new Date(T0 - 60_000).toISOString(), delay: 999 } }));
@@ -95,7 +133,9 @@ describe("Prober last-known overlay", () => {
       pulseMs: 5000,
       now: () => nowMs,
     });
-    prober.observe(respWith({ gone: { time: new Date(T0 - 1_000).toISOString(), delay: 100 } }));
+    prober.observe(
+      respWith({ gone: { time: new Date(T0 - 1_000).toISOString(), delay: 100 } }, "u"),
+    );
     // Mid-reload mihomo briefly returns a partial set WITHOUT `gone` — the memory
     // must survive (this transient wipe is exactly what blanked the UI).
     prober.observe(respWith({ other: null }));
@@ -125,6 +165,28 @@ describe("Prober staleness", () => {
     const probed = probe.mock.calls.map((c) => c[0]).sort();
     expect(probed).toEqual(["never", "stale"]); // fresh is never probed
     expect(probe).toHaveBeenCalledWith("stale", "https://t/check");
+  });
+
+  it("probes a node fresh on ANOTHER url but never measured on the prober's url", async () => {
+    // Regression: a node kept fresh by a different channel's url-test (t.me / shared
+    // history) used to count as fresh here, so the active policy's URL never got a
+    // measurement. Freshness is now per-URL: this node must still be probed.
+    const { prober, probe } = makeProber({ intervalSec: 60 });
+    const fresh = new Date(T0 - 1_000).toISOString();
+    prober.observe({
+      proxies: {
+        PROXY: { name: "PROXY", type: "Selector", all: ["AUTO", "x"], history: [] },
+        AUTO: { name: "AUTO", type: "URLTest", history: [] },
+        x: {
+          name: "x",
+          type: "vless",
+          history: [{ time: fresh, delay: 50 }], // shared history is fresh…
+          extra: { "https://other/check": { history: [{ time: fresh, delay: 50 }] } }, // …on a DIFFERENT url
+        },
+      },
+    } as unknown as ProxiesResponse);
+    await prober.tick();
+    expect(probe).toHaveBeenCalledWith("x", PROBE_URL);
   });
 
   it("ignores pseudo names and probes nothing when everything is fresh", async () => {
@@ -163,12 +225,12 @@ describe("Prober batching", () => {
     expect(second.some((n) => first.includes(n))).toBe(false);
   });
 
-  it("caps a burst at the concurrency limit", async () => {
-    // 90 nodes, N=5 s → raw batch 90, capped at 10
+  it("caps a burst at the concurrency ceiling", async () => {
+    // 90 nodes, N=5 s → raw batch 90, capped at the 48 ceiling
     const { prober, probe } = makeProber({ intervalSec: 5 });
     prober.observe(resp(Array.from({ length: 90 }, (_, i) => `n${i}`)));
     await prober.tick();
-    expect(probe).toHaveBeenCalledTimes(10);
+    expect(probe).toHaveBeenCalledTimes(48);
   });
 
   it("never re-attempts a failing node within the interval", async () => {

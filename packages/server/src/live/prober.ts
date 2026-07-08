@@ -8,7 +8,7 @@ export interface ProberDeps {
   // The single user knob: «Интервал проверки» (+ its test URL) from the policy.
   getProbeConfig: () => { url: string; intervalSec: number };
   pulseMs: number; // internal pulse length (how often tick() runs)
-  concurrency?: number; // hard cap per tick (default 10)
+  concurrency?: number; // hard cap on parallel probes per tick (default 48)
   now?: () => number;
 }
 
@@ -24,8 +24,10 @@ const MEMORY_GRACE_MS = 10 * 60_000;
 export class Prober {
   private names: string[] = []; // rotation order
   private cursor = 0;
-  private lastSeen = new Map<string, number>(); // mihomo's latest measurement time
-  private lastDelay = new Map<string, number>(); // …and its value (survives reloads)
+  private lastSeen = new Map<string, number>(); // latest measurement time ON THE PROBER'S URL
+  private lastDelay = new Map<string, number>(); // …and its value (survives reloads). Per-URL:
+  // a node measured only on ANOTHER channel's URL isn't remembered here, so after a reload it
+  // reads «— ms» until re-probed on the active URL (intended — don't paint a foreign-URL latency).
   private lastAttempt = new Map<string, number>(); // our latest probe attempt
   private lastInView = new Map<string, number>(); // when the name last appeared in a snapshot
 
@@ -35,6 +37,12 @@ export class Prober {
   // new names append, vanished names drop) and each node's latest-measured time.
   observe(resp: ProxiesResponse): void {
     const now = (this.deps.now ?? Date.now)();
+    // Freshness is tracked PER the URL the prober measures on. A node kept fresh by
+    // ANOTHER channel's url-test (a different URL) — or by mihomo's shared last-probe —
+    // must NOT count as fresh here, otherwise the prober skips it and the active policy's
+    // URL never gets a measurement (so optimal/sticky can't judge that node). Read the
+    // per-URL series directly (no fallback to the shared history, unlike historyForUrl).
+    const { url } = this.deps.getProbeConfig();
     const current = (resp.proxies.PROXY?.all ?? []).filter((n) => !PSEUDO_NODE_SET.has(n));
     const currentSet = new Set(current);
     // Rotation follows the snapshot instantly (self-heals on the next observe);
@@ -52,10 +60,11 @@ export class Prober {
       }
     }
     for (const n of current) {
-      const last = resp.proxies[n]?.history.at(-1);
-      if (!last) continue; // empty history (e.g. right after a reload) — keep the memory
+      const last = resp.proxies[n]?.extra?.[url]?.history.at(-1);
+      if (!last) continue; // no measurement on OUR url yet (fresh/reloaded) — keep memory
       const ms = Date.parse(last.time);
-      if (Number.isFinite(ms)) this.lastSeen.set(n, ms);
+      if (!Number.isFinite(ms)) continue; // unparseable timestamp — don't record either field
+      this.lastSeen.set(n, ms);
       this.lastDelay.set(n, last.delay);
     }
   }
@@ -91,8 +100,14 @@ export class Prober {
       const tried = this.lastAttempt.get(n) ?? Number.NEGATIVE_INFINITY;
       return Math.max(seen, tried) <= now - staleMs;
     };
+    // Dynamic term = nodes-per-pulse needed to sweep the whole fleet within staleMs;
+    // capped by a safety ceiling so a very large fleet can't burst hundreds of parallel
+    // probes at mihomo. The default ceiling (48) is high enough that typical fleets
+    // (dozens–~100 nodes) are fully covered every interval — the old cap of 10 throttled
+    // even ~40 nodes to a ~2× slower sweep. Huge fleets degrade gracefully (sweep slower
+    // than the interval) rather than flooding the engine.
     const batch = Math.min(
-      this.deps.concurrency ?? 10,
+      this.deps.concurrency ?? 48,
       Math.max(1, Math.ceil((this.names.length * this.deps.pulseMs) / staleMs)),
     );
     const picked: string[] = [];
