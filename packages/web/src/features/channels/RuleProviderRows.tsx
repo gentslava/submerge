@@ -111,14 +111,17 @@ export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
                   )
                 }
                 aria-label={`Тип списка правил ${index + 1}`}
+                title="Что содержит файл по ссылке"
                 className="w-[150px]"
               >
-                {/* mrs supports only domain/ipcidr — disable classical for an .mrs URL. */}
+                {/* Human labels — the raw mihomo behavior values (classical/domain/
+                    ipcidr) mean nothing to a user. mrs supports only domain/ipcidr,
+                    so «Набор правил» is disabled for an .mrs URL. */}
                 <option value="classical" disabled={mrs}>
-                  classical
+                  Набор правил
                 </option>
-                <option value="domain">domain</option>
-                <option value="ipcidr">ipcidr</option>
+                <option value="domain">Домены</option>
+                <option value="ipcidr">IP-подсети</option>
               </Select>
               <button
                 type="button"
@@ -145,6 +148,13 @@ export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
         <Plus className="h-4 w-4" aria-hidden="true" />
         Добавить список
       </button>
+      {rows.length > 0 && (
+        <p className="text-xs text-text-tertiary">
+          Тип — что внутри файла по ссылке: «Набор правил» подходит для большинства списков;
+          «Домены» или «IP-подсети» — если список состоит только из них (и обязателен для
+          .mrs-файлов). Формат файла определяется по ссылке автоматически.
+        </p>
+      )}
     </div>
   );
 }
