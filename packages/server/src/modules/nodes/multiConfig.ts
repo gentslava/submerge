@@ -4,11 +4,13 @@
 import { createHash } from "node:crypto";
 import {
   type ChannelPolicy,
+  PROBE_GROUP,
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
   type RuleProviderFormat,
   type RuleProviderRef,
   ruleProviderFormat,
+  SPEED_TEST_HOST,
 } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
@@ -178,6 +180,12 @@ function geoTopLevel(nonDefault: ChannelConfigInput[]): Record<string, unknown> 
   };
 }
 
+// The single rule that routes the speed-test host through the hidden PROBE group,
+// placed above all channel rules. None when there are no nodes to test.
+function probeRules(noProxies: boolean): string[] {
+  return noProxies ? [] : [`DOMAIN,${SPEED_TEST_HOST},${PROBE_GROUP}`];
+}
+
 function buildRules(
   nonDefault: ChannelConfigInput[],
   noProxies: boolean,
@@ -335,6 +343,17 @@ export function buildMultiConfig(
   if (defaultBuild) channelGroups.push(groupFor(defaultBuild));
   for (const c of nonDefault) channelGroups.push(groupFor(builds.get(c.id) as ChannelBuild));
 
+  // Hidden speed-test group (Phase 4c): all inventory + REJECT, defaulting to REJECT
+  // (first member). The test host is thus unreachable during normal use — NOT routed
+  // direct (which would leak the real IP for that host) — and the server flips PROBE
+  // to a node only for the duration of a measurement, restoring REJECT after. Present
+  // only when there are nodes to test. (defaultTopLevelNames = the Default channel's
+  // top-level names; the UI only offers the test on singleton nodes, which are in it.)
+  const probeGroup: Record<string, unknown>[] =
+    unique.length === 0
+      ? []
+      : [{ name: PROBE_GROUP, type: "select", proxies: ["REJECT", ...defaultTopLevelNames] }];
+
   const subGroupObjects = allSubGroups.map((spec) => ({
     name: spec.name,
     type: "url-test",
@@ -372,8 +391,9 @@ export function buildMultiConfig(
       { name: "PROXY", type: "select", proxies: proxyMembers },
       ...channelGroups,
       ...subGroupObjects,
+      ...probeGroup,
     ],
-    rules: buildRules(nonDefault, noProxies, defaultGroupName),
+    rules: probeRules(noProxies).concat(buildRules(nonDefault, noProxies, defaultGroupName)),
   };
   return yaml.dump(cfg, { lineWidth: -1 });
 }

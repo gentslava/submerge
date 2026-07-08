@@ -4,6 +4,7 @@ import { db } from "../db/client.js";
 import { log } from "../log.js";
 import { registry } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
+import { recordPassiveBandwidth } from "../modules/nodes/passiveBandwidth.js";
 import {
   applyConfig,
   collectProxies,
@@ -52,6 +53,8 @@ export const liveHub = new LiveHub({
     await registry.runOnce();
     // After the controllers so a policy switch this tick can't race the batch.
     await prober.tick();
+    // Passive per-node throughput sampling (Phase 4c b) — best-effort, own errors.
+    await recordPassiveBandwidth(db, Date.now());
   },
   // The hub reports once per outage streak, so this can't flood the log.
   onError: (scope, err) => log.warn({ scope, err }, "mihomo live %s failed", scope),

@@ -1,5 +1,12 @@
 // Isolated mihomo (Clash) REST API client. Every response is Zod-parsed.
-import { type TrafficSample, trafficSampleSchema } from "@submerge/shared";
+import {
+  SPEED_TEST_MAX_BYTES,
+  SPEED_TEST_TIMEOUT_MS,
+  SPEED_TEST_URL,
+  type TrafficSample,
+  trafficSampleSchema,
+} from "@submerge/shared";
+import { ProxyAgent, request } from "undici";
 import { z } from "zod";
 import { env } from "../config/env.js";
 
@@ -167,6 +174,50 @@ export async function clearFixedSelection(group: string): Promise<void> {
   if (!r.ok && r.status !== 404) {
     throw new Error(`mihomo clear fixed selection for ${group} returned HTTP ${r.status}`);
   }
+}
+
+export interface DownloadResult {
+  mbps: number; // download throughput
+  bytes: number; // bytes actually read (capped)
+  ms: number; // elapsed
+}
+
+// Download a fixed-size payload THROUGH mihomo's mixed proxy port and measure
+// throughput. Which node carries it is decided by the caller pinning the PROBE
+// group (selectProxy) + the config's PROBE rule — this function only drives the
+// transfer. Byte-capped and timeout-bounded so a fast link can't run away and a
+// stall can't hang. NOTE: real quota burn — callers gate this behind a warning.
+export async function measureDownload(url: string = SPEED_TEST_URL): Promise<DownloadResult> {
+  const agent = new ProxyAgent(env.MIHOMO_PROXY);
+  const start = performance.now();
+  let bytes = 0;
+  try {
+    const { statusCode, body } = await request(url, {
+      dispatcher: agent,
+      signal: AbortSignal.timeout(SPEED_TEST_TIMEOUT_MS),
+      headers: { "user-agent": "submerge-speedtest" },
+    });
+    if (statusCode >= 400) throw new Error(`speed test returned HTTP ${statusCode}`);
+    try {
+      for await (const chunk of body) {
+        bytes += chunk.length;
+        if (bytes >= SPEED_TEST_MAX_BYTES) break;
+      }
+    } catch (err) {
+      // Timeout is the EXPECTED end for a slow link: the payload is bigger than a
+      // <10 Mbps node can pull in the window, so the read aborts. As long as we got
+      // some bytes, that's a real (low) throughput — report it instead of failing.
+      // A zero-byte failure (connect refused/reset) is a genuine error → rethrow.
+      if (bytes === 0) throw err;
+    }
+  } finally {
+    // destroy (not close): on an early byte-cap break the body is still streaming,
+    // and close() would wait on the un-drained request. destroy tears it down now.
+    await agent.destroy();
+  }
+  const ms = performance.now() - start;
+  const mbps = ms > 0 ? (bytes * 8) / 1e6 / (ms / 1000) : 0;
+  return { mbps, bytes, ms };
 }
 
 export async function reloadConfig(targetPath: string): Promise<void> {

@@ -15,7 +15,7 @@ export const registry = new ControllerRegistry({
   probe: testDelay,
   select: selectProxy,
   clearFixed: clearFixedSelection,
-  bandwidthOf: (name) => getNodeBandwidth(db, name),
+  bandwidthOf: (name) => getNodeBandwidth(db, name, Date.now()),
   persistReason: (id, reason, at) => setChannelLastReason(db, id, reason, at),
   now: () => Date.now(),
 });

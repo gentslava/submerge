@@ -164,13 +164,11 @@ export class ChannelController {
   // value (never invents a number); the other criteria delegate to latency-based
   // pickBest. Kept here (not in pickBest) so the pure pickBest stays latency-only.
   //
-  // Partial-cache semantics (intended): among candidates WITH a cached value, the
-  // highest Mbps wins; a candidate with no cached value is only chosen when NO
-  // candidate is cached at all (then → fastest). This is inert today — the cache is
-  // empty until the on-demand speed-test slice lands, so it always degrades to
-  // fastest. TODO(speed-test): once measurements exist, honour `testedAt` (ignore
-  // stale entries as uncached) so a single old measurement can't pin a slow node
-  // over faster, freshly-added-but-unmeasured ones.
+  // Partial-cache semantics: among candidates WITH a FRESH cached value (deps.
+  // bandwidthOf already drops readings older than BANDWIDTH_MAX_AGE_MS), the highest
+  // Mbps wins; a candidate without a fresh value is only chosen when NO candidate is
+  // cached (then → fastest). So a stale peak can't pin a slow node forever, and
+  // freshly-added-but-unmeasured nodes fall back to latency rather than being hidden.
   private async pickByCriterion(
     names: string[],
     url: string,

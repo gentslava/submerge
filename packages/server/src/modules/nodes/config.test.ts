@@ -79,7 +79,7 @@ describe("buildConfig", () => {
     expect(groups[0].proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
     expect(groups[1].name).toBe("AUTO");
     expect(groups[1].proxies).toEqual(["A", "B"]);
-    expect(cfg.rules).toEqual(["MATCH,PROXY"]);
+    expect(cfg.rules).toEqual(["DOMAIN,speed.cloudflare.com,PROBE", "MATCH,PROXY"]);
   });
   it("falls back to DIRECT when there are no proxies", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped

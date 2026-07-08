@@ -1,5 +1,5 @@
 import type { NodeItem } from "@submerge/shared";
-import { Ban, Check, ChevronDown, Loader2, Undo2, Zap } from "lucide-react";
+import { Ban, Check, ChevronDown, Gauge, Loader2, Undo2, Zap } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import {
   serverCountLabel,
   typeBadges,
 } from "./nodeView";
+import { useSpeedTest } from "./SpeedTestContext";
 
 interface NodeRowProps {
   item: NodeItem;
@@ -34,9 +35,17 @@ export function NodeRow({
   const isGroup = members.length > 0;
   const isExcluded = item.excluded ?? false;
   const [expanded, setExpanded] = useState(false);
+  const speedTest = useSpeedTest();
+  // Cached throughput (Phase 4c) — only for singleton nodes (a group is a url-test
+  // of members, not a single testable exit).
+  const mbps = !isGroup ? (speedTest?.mbpsOf(item.name) ?? null) : null;
+  const testing = speedTest?.testing.has(item.name) ?? false;
+  const canSpeedTest = !isGroup && speedTest !== null;
   // Sub-line: a collapsed group shows its server count ("5 серверов"); a plain
-  // node shows its protocol badges (VLESS · TCP · Reality / · WS · TLS).
-  const sub = isGroup ? serverCountLabel(members.length) : typeBadges(item).join(" · ");
+  // node shows its protocol badges (VLESS · TCP · Reality / · WS · TLS), plus the
+  // cached download speed once measured.
+  const badges = isGroup ? serverCountLabel(members.length) : typeBadges(item).join(" · ");
+  const sub = mbps != null ? `${badges} · ${mbps.toFixed(0)} Мбит/с` : badges;
 
   // Dot + name (+ trailing chevron for groups) + sub. The dot stays the first
   // element in both the group and singleton layouts so status dots line up.
@@ -116,6 +125,28 @@ export function NodeRow({
           </button>
         </div>
 
+        {/* Speed-test button (singleton nodes only) — measures throughput on demand
+            behind a traffic-cost confirmation. A fixed-width cell keeps every row's
+            columns aligned; groups render an empty spacer of the same width. */}
+        <div className="flex w-12 shrink-0 justify-center">
+          {canSpeedTest && (
+            <button
+              type="button"
+              onClick={() => speedTest?.request(item.name)}
+              disabled={testing || isExcluded}
+              aria-label={`Тест скорости ${item.name}`}
+              title="Тест скорости (расходует трафик)"
+              className="flex h-10 w-10 items-center justify-center rounded-md text-text-secondary transition-colors hover:bg-hover hover:text-text-primary disabled:pointer-events-none disabled:opacity-50"
+            >
+              {testing ? (
+                <Loader2 className="h-[18px] w-[18px] animate-spin" aria-hidden="true" />
+              ) : (
+                <Gauge className="h-[18px] w-[18px]" aria-hidden="true" />
+              )}
+            </button>
+          )}
+        </div>
+
         {/* Exclude toggle — deny-list a node (dropped from the engine) or restore it */}
         <div className="flex w-10 shrink-0 justify-center">
           <button
@@ -185,6 +216,9 @@ export function NodeRow({
                 {latencyLabel(m.delay)}
               </span>
             </div>
+            {/* Mirror the parent's ping / speed-test / exclude cells so member
+                delay values line up. */}
+            <span aria-hidden="true" className="w-12 shrink-0" />
             <span aria-hidden="true" className="w-12 shrink-0" />
             <span aria-hidden="true" className="w-10 shrink-0" />
             {/* Match the parent row's action column so member delay values line up:
