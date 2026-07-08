@@ -26,6 +26,15 @@ type PresetCategory = (typeof PRESET_CATEGORIES)[number];
 
 export const CHANNEL_PRESETS = [
   { id: "youtube", label: "YouTube", category: "Видео" },
+  { id: "lampa", label: "Lampa", category: "Видео" },
+  { id: "tmdb", label: "TMDB", category: "Видео" },
+  { id: "dailymotion", label: "Dailymotion", category: "Видео" },
+  { id: "rumble", label: "Rumble", category: "Видео" },
+  { id: "bilibili", label: "Bilibili", category: "Видео" },
+  { id: "odysee", label: "Odysee", category: "Видео" },
+  { id: "nebula", label: "Nebula", category: "Видео" },
+  { id: "ted", label: "TED", category: "Видео" },
+  { id: "niconico", label: "Niconico", category: "Видео" },
   { id: "telegram", label: "Telegram", category: "Мессенджеры" },
   { id: "whatsapp", label: "WhatsApp", category: "Мессенджеры" },
   { id: "signal", label: "Signal", category: "Мессенджеры" },
@@ -114,6 +123,7 @@ export const CHANNEL_PRESETS = [
   { id: "paypal", label: "PayPal", category: "Финансы" },
   { id: "wise", label: "Wise", category: "Финансы" },
   { id: "torrent", label: "Torrent", category: "P2P" },
+  { id: "soulseek", label: "Soulseek", category: "P2P" },
 ] as const satisfies readonly { id: string; label: string; category: PresetCategory }[];
 
 export type PresetId = (typeof CHANNEL_PRESETS)[number]["id"];

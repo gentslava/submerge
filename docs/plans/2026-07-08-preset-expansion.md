@@ -22,6 +22,8 @@ This is pure curated-data growth: add entries to `CHANNEL_PRESETS` (+ categories
 4. **New category «Продуктивность»** — Microsoft 365, Google Drive, Notion, Figma, Dropbox, Zoom, Atlassian.
 5. **New category «Финансы»** — Binance, Coinbase, Bybit, Kraken, TradingView, PayPal, Wise.
 6. **Expand Соцсети / Стриминг / Гейминг / Мессенджеры** — LinkedIn, Pinterest, Snapchat, Bluesky, Threads, Tumblr · Apple Music, Max, Prime Video, Crunchyroll, Vimeo, Deezer, Tidal · Nintendo, EA, Ubisoft, GOG, Roblox, Rockstar · Slack, LINE, WeChat, Element, Threema.
+7. **Expand Видео** — Lampa (+ CUB), TMDB (metadata for Lampa/media apps), Dailymotion, Rumble, Bilibili, Odysee, Nebula, TED, Niconico.
+8. **Expand P2P** — enrich the Torrent tracker pack (nyaa.si, yts.mx, eztv.re) and add Soulseek (P2P music). ⚠️ Tracker domains rotate under bans — this list will go stale; long-term candidate for an ipcidr/rule-provider (phase 4a), same as service IP coverage.
 
 ## Verify
 
