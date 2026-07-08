@@ -10,6 +10,7 @@ export interface RegistryDeps {
   probe: (name: string, url: string) => Promise<number | null>;
   select: (group: string, name: string) => Promise<void>;
   clearFixed: (group: string) => Promise<void>;
+  bandwidthOf?: (name: string) => number | null;
   persistReason: (channelId: string, reason: string, at: number) => void;
   now: () => number;
 }
@@ -47,6 +48,7 @@ export class ControllerRegistry {
       probe: this.deps.probe,
       select: this.deps.select,
       clearFixed: this.deps.clearFixed,
+      ...(this.deps.bandwidthOf ? { bandwidthOf: this.deps.bandwidthOf } : {}),
       persistReason: (reason, at) => this.deps.persistReason(channel.id, reason, at),
       now: this.deps.now,
     });

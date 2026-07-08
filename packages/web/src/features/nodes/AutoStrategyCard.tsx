@@ -19,9 +19,10 @@ const POLICY_LABEL: Record<ChannelPolicy["kind"], string> = {
   sticky: "Стабильный IP",
   manual: "Приоритетный узел",
 };
-const CRITERION_LABEL: Record<"fastest" | "lowest-loss", string> = {
+const CRITERION_LABEL: Record<"fastest" | "lowest-loss" | "highest-bandwidth", string> = {
   fastest: "По скорости",
   "lowest-loss": "По стабильности",
+  "highest-bandwidth": "По ширине канала",
 };
 const ON_FAILURE_LABEL: Record<"fallback" | "hold", string> = {
   fallback: "Запасной узел",

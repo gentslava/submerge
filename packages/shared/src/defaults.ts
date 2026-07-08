@@ -50,7 +50,7 @@ export const PSEUDO_NODE_SET: ReadonlySet<string> = new Set(PSEUDO_NODE_NAMES);
  *  ruleProviders). Returned as a fresh object each call: the arrays are mutable
  *  and callers must not share references. */
 export function emptyChannelMatcher(): ChannelMatcher {
-  return { presets: [], domains: [], keywords: [], ruleProviders: [] };
+  return { presets: [], domains: [], keywords: [], ruleProviders: [], geosite: [], geoip: [] };
 }
 
 /** The Default channel's policy on a fresh install (behaviour-preserving vs the old AUTO url-test). */

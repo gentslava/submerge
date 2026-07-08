@@ -230,6 +230,59 @@ describe("ruleProviderRefSchema (format is derived from the URL, not chosen)", (
   });
 });
 
+describe("geo matcher fields (Phase 4b)", () => {
+  it("accepts geosite categories (incl. geolocation-!cn / tag@attr) and geoip codes", () => {
+    const m = channelMatcherInputSchema.parse({
+      presets: [],
+      domains: [],
+      geosite: ["youtube", "category-ads-all", "geolocation-!cn", "youtube@ads"],
+      geoip: ["RU", "CN", "PRIVATE", "LAN"],
+    });
+    expect(m.geosite).toEqual(["youtube", "category-ads-all", "geolocation-!cn", "youtube@ads"]);
+    expect(m.geoip).toEqual(["RU", "CN", "PRIVATE", "LAN"]);
+  });
+  it("rejects a non-code geoip token like TELEGRAM", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geoip: ["TELEGRAM"] }),
+    ).toThrow();
+  });
+  it("defaults geosite/geoip to []", () => {
+    const m = channelMatcherInputSchema.parse({ presets: [], domains: [] });
+    expect(m.geosite).toEqual([]);
+    expect(m.geoip).toEqual([]);
+  });
+  it("rejects an upper-case geosite category or a lower-case / malformed geoip code", () => {
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geosite: ["YouTube"] }),
+    ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geoip: ["ru"] }),
+    ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({ presets: [], domains: [], geoip: ["R1"] }),
+    ).toThrow();
+  });
+  it("read model defaults geo fields on a legacy row", () => {
+    const m = channelMatcherSchema.parse({ presets: [], domains: [] });
+    expect(m.geosite).toEqual([]);
+    expect(m.geoip).toEqual([]);
+  });
+});
+
+describe("stickyPolicySchema highest-bandwidth (Phase 4c)", () => {
+  it("accepts the highest-bandwidth criterion", () => {
+    const p = channelPolicySchema.parse({
+      kind: "sticky",
+      testUrl: "https://x/generate_204",
+      intervalSec: 60,
+      failureThreshold: 3,
+      maxHoldHours: null,
+      initialCriterion: "highest-bandwidth",
+    });
+    expect(p.kind === "sticky" && p.initialCriterion).toBe("highest-bandwidth");
+  });
+});
+
 describe("channelMatcherInputSchema (Phase-4a: keywords + ruleProviders)", () => {
   it("accepts keywords and rule-provider refs", () => {
     const m = channelMatcherInputSchema.parse({

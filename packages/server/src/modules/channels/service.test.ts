@@ -101,7 +101,14 @@ describe("channel CRUD", () => {
     expect(a.id).toBe("ch1");
     expect(b.id).toBe("ch2");
     expect(a.isDefault).toBe(false);
-    expect(a.matcher).toEqual({ presets: [], domains: [], keywords: [], ruleProviders: [] });
+    expect(a.matcher).toEqual({
+      presets: [],
+      domains: [],
+      keywords: [],
+      ruleProviders: [],
+      geosite: [],
+      geoip: [],
+    });
     const defaultPriority = readDefaultChannel(db).priority;
     expect(a.priority).toBeLessThan(defaultPriority);
     expect(b.priority).toBeLessThan(defaultPriority);
@@ -171,6 +178,8 @@ describe("updateChannel matcher persistence + config regeneration", () => {
       domains: ["ex.com"],
       keywords: [],
       ruleProviders: [],
+      geosite: [],
+      geoip: [],
     });
 
     // And the regenerated config's rules — resolveMatcherDomains(matcher) fed into

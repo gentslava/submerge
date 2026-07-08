@@ -25,6 +25,9 @@ export interface ChannelConfigInput {
   // channel is the catch-all and emits no per-domain rules.
   keywords?: string[];
   ruleProviders?: RuleProviderRef[];
+  // Phase 4b geo matchers (default []): GEOSITE categories + GEOIP country codes.
+  geosite?: string[];
+  geoip?: string[];
   // The proxies this channel DEFINES + contributes to PROXY. The default channel is
   // fed the full inventory here so every node is defined + pinged + manually
   // selectable; other channels get their pool.
@@ -155,6 +158,26 @@ function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, un
   return out;
 }
 
+// The top-level geodata block, emitted only when some channel actually uses a
+// GEOSITE/GEOIP rule — a geo-free config stays free of the (multi-MB) geo DB
+// download. mihomo (the container) fetches geoip.dat/geosite.dat from these URLs
+// on first geo use; needs egress + a writable Home Dir (see deploy notes).
+function geoTopLevel(nonDefault: ChannelConfigInput[]): Record<string, unknown> | null {
+  const used = nonDefault.some((c) => (c.geosite?.length ?? 0) > 0 || (c.geoip?.length ?? 0) > 0);
+  if (!used) return null;
+  const base = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release";
+  // geodata-mode makes mihomo use the .dat GEOIP data, so no mmdb URL is needed.
+  return {
+    "geodata-mode": true,
+    "geo-auto-update": true,
+    "geo-update-interval": 168, // hours (weekly)
+    "geox-url": {
+      geoip: `${base}/geoip.dat`,
+      geosite: `${base}/geosite.dat`,
+    },
+  };
+}
+
 function buildRules(
   nonDefault: ChannelConfigInput[],
   noProxies: boolean,
@@ -175,6 +198,13 @@ function buildRules(
     }
     for (const ref of channel.ruleProviders ?? []) {
       rules.push(`RULE-SET,${ruleProviderName(ref)},${channel.groupName}`);
+    }
+    for (const category of channel.geosite ?? []) {
+      rules.push(`GEOSITE,${category},${channel.groupName}`);
+    }
+    for (const code of channel.geoip ?? []) {
+      // no-resolve: match on the connection's destination IP without a DNS lookup.
+      rules.push(`GEOIP,${code},${channel.groupName},no-resolve`);
     }
   }
   // Default-only stays on the legacy PROXY catch-all (so config.test.ts holds);
@@ -320,6 +350,7 @@ export function buildMultiConfig(
   const noProxies = unique.length === 0;
   const ruleProviders = noProxies ? {} : buildRuleProviders(nonDefault);
   const hasProviders = Object.keys(ruleProviders).length > 0;
+  const geo = noProxies ? null : geoTopLevel(nonDefault);
 
   const cfg = {
     "mixed-port": 7890,
@@ -330,6 +361,8 @@ export function buildMultiConfig(
     ipv6: false,
     "external-controller": "0.0.0.0:9090",
     secret,
+    // Geodata keys (only present when a channel uses a GEOSITE/GEOIP rule).
+    ...(geo ?? {}),
     proxies: unique,
     // Only present when a channel actually references an external list — a
     // provider-free config (incl. the single-default byte-identity case) stays

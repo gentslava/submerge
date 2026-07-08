@@ -366,6 +366,36 @@ describe("buildMultiConfig — multiple channels", () => {
     expect(cfg["rule-providers"]).toBeUndefined();
   });
 
+  it("emits GEOSITE/GEOIP rules and turns on geodata when a channel uses geo", () => {
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [px("A")] }),
+        channel({
+          id: "geo",
+          groupName: "ch-geo",
+          isDefault: false,
+          policy: sticky,
+          geosite: ["youtube"],
+          geoip: ["RU"],
+          proxies: [px("B", "b.com")],
+        }),
+      ]),
+    );
+    expect(cfg.rules).toEqual([
+      "GEOSITE,youtube,ch-geo",
+      "GEOIP,RU,ch-geo,no-resolve",
+      "MATCH,AUTO",
+    ]);
+    expect(cfg["geodata-mode"]).toBe(true);
+    expect(cfg["geox-url"].geosite).toContain("geosite.dat");
+  });
+
+  it("keeps a geo-free config free of any geodata keys", () => {
+    const cfg = parse(buildMultiConfig([channel({ proxies: [px("A")] })]));
+    expect(cfg["geodata-mode"]).toBeUndefined();
+    expect(cfg["geox-url"]).toBeUndefined();
+  });
+
   it("keeps a collapsed subgroup name distinct from a same-name proxy contributed by another channel", () => {
     // Default's restricted pool has two distinct endpoints sharing the name "X" —
     // groupProxies collapses them, and the Default channel keeps the bare base

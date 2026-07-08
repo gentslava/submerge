@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
 import { DomainTags } from "./DomainTags";
+import { GeoIpTags, GeoSiteTags } from "./GeoTags";
 import { KeywordTags } from "./KeywordTags";
 import { PolicyEditor } from "./PolicyEditor";
 import { PoolPicker } from "./PoolPicker";
@@ -322,6 +323,22 @@ function ChannelEditor({
             <RuleProviderRows
               value={channel.matcher.ruleProviders}
               onChange={(ruleProviders) => onUpdateMatcher({ ...channel.matcher, ruleProviders })}
+            />
+          </div>
+          <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-label text-text-primary">Гео</span>
+              <span className="text-xs text-text-tertiary">
+                Категории сайтов (GEOSITE) и страны по IP (GEOIP)
+              </span>
+            </div>
+            <GeoSiteTags
+              value={channel.matcher.geosite}
+              onChange={(geosite) => onUpdateMatcher({ ...channel.matcher, geosite })}
+            />
+            <GeoIpTags
+              value={channel.matcher.geoip}
+              onChange={(geoip) => onUpdateMatcher({ ...channel.matcher, geoip })}
             />
           </div>
         </>

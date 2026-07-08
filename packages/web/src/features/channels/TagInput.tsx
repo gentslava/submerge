@@ -25,6 +25,9 @@ interface TagInputProps {
   placeholder: string;
   addLabel: string; // aria-label for the draft input
   removeLabel: (tag: string) => string; // aria-label for a chip's × button
+  // Optional normalization applied to a candidate before validate + add (e.g.
+  // upper-casing GEOIP country codes).
+  transform?: (candidate: string) => string;
 }
 
 /**
@@ -42,20 +45,21 @@ export function TagInput({
   placeholder,
   addLabel,
   removeLabel,
+  transform,
 }: TagInputProps) {
   const [draft, setDraft] = useState("");
 
   // `notify` is false on the blur path so a single Enter+blur over the same invalid
   // draft doesn't toast twice — Enter already warned, blur just clears silently.
   function commit(notify: boolean) {
-    const trimmed = draft.trim();
-    if (trimmed.length === 0) return;
-    if (!validate(trimmed)) {
+    const candidate = (transform ? transform(draft) : draft).trim();
+    if (candidate.length === 0) return;
+    if (!validate(candidate)) {
       if (notify) toast.error(invalidMessage);
       else setDraft("");
       return;
     }
-    onChange(addTag(value, trimmed));
+    onChange(addTag(value, candidate));
     setDraft("");
   }
 

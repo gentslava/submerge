@@ -1,5 +1,6 @@
 import { clearFixedSelection, getProxies, selectProxy } from "../../clients/mihomo.js";
 import { db } from "../../db/client.js";
+import { getNodeBandwidth } from "../nodes/bandwidth.js";
 import { testDelay } from "../nodes/service.js";
 import { ControllerRegistry } from "./registry.js";
 import { listChannels, setChannelLastReason } from "./service.js";
@@ -14,6 +15,7 @@ export const registry = new ControllerRegistry({
   probe: testDelay,
   select: selectProxy,
   clearFixed: clearFixedSelection,
+  bandwidthOf: (name) => getNodeBandwidth(db, name),
   persistReason: (id, reason, at) => setChannelLastReason(db, id, reason, at),
   now: () => Date.now(),
 });
