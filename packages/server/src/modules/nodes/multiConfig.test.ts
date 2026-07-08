@@ -38,6 +38,9 @@ const channel = (over: Partial<ChannelConfigInput>): ChannelConfigInput => ({
 // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
 const parse = (raw: string): Record<string, any> => yaml.load(raw) as Record<string, any>;
 
+// The hidden speed-test rule prepended to every non-empty config (Phase 4c).
+const PROBE_RULE = "DOMAIN,speed.cloudflare.com,PROBE";
+
 describe("buildMultiConfig — single Default channel (byte-identity)", () => {
   it("reproduces buildConfig output exactly for the default-only case", () => {
     const proxies = [px("A"), px("B")];
@@ -50,7 +53,7 @@ describe("buildMultiConfig — single Default channel (byte-identity)", () => {
     const groups = cfg["proxy-groups"];
     expect(groups[0]).toMatchObject({ name: "PROXY", proxies: ["AUTO", "A", "B", "DIRECT"] });
     expect(groups[1]).toMatchObject({ name: "AUTO", type: "url-test", proxies: ["A", "B"] });
-    expect(cfg.rules).toEqual(["MATCH,PROXY"]);
+    expect(cfg.rules).toEqual([PROBE_RULE, "MATCH,PROXY"]);
   });
 });
 
@@ -216,7 +219,7 @@ describe("buildMultiConfig — multiple channels", () => {
     expect(proxy.proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
     expect(proxy.proxies).not.toContain("ch-media");
 
-    expect(cfg.rules).toEqual(["DOMAIN-SUFFIX,youtube.com,ch-media", "MATCH,AUTO"]);
+    expect(cfg.rules).toEqual([PROBE_RULE, "DOMAIN-SUFFIX,youtube.com,ch-media", "MATCH,AUTO"]);
     // The routing group itself must still exist — only its listing inside
     // PROXY is removed, not the group or the rule that targets it.
     expect(media).toBeDefined();
@@ -291,6 +294,7 @@ describe("buildMultiConfig — multiple channels", () => {
       ]),
     );
     expect(cfg.rules).toEqual([
+      PROBE_RULE,
       "DOMAIN-KEYWORD,doubleclick,ch-ads",
       "DOMAIN-KEYWORD,adservice,ch-ads",
       "MATCH,AUTO",
@@ -326,7 +330,7 @@ describe("buildMultiConfig — multiple channels", () => {
       proxy: "DIRECT",
     });
     expect(providers[name]?.path).toBe(`./providers/${name}.yaml`);
-    expect(cfg.rules).toEqual([`RULE-SET,${name},ch-ads`, "MATCH,AUTO"]);
+    expect(cfg.rules).toEqual([PROBE_RULE, `RULE-SET,${name},ch-ads`, "MATCH,AUTO"]);
   });
 
   it("dedupes an identical provider across channels into one def with two RULE-SET rules", () => {
@@ -358,7 +362,12 @@ describe("buildMultiConfig — multiple channels", () => {
     expect(Object.keys(providers)).toHaveLength(1);
     const name = Object.keys(providers)[0] as string;
     // One shared def, but each channel gets its own RULE-SET line to its own group.
-    expect(cfg.rules).toEqual([`RULE-SET,${name},ch-c1`, `RULE-SET,${name},ch-c2`, "MATCH,AUTO"]);
+    expect(cfg.rules).toEqual([
+      PROBE_RULE,
+      `RULE-SET,${name},ch-c1`,
+      `RULE-SET,${name},ch-c2`,
+      "MATCH,AUTO",
+    ]);
   });
 
   it("omits the rule-providers key entirely when no channel has a provider", () => {
@@ -382,6 +391,7 @@ describe("buildMultiConfig — multiple channels", () => {
       ]),
     );
     expect(cfg.rules).toEqual([
+      PROBE_RULE,
       "GEOSITE,youtube,ch-geo",
       "GEOIP,RU,ch-geo,no-resolve",
       "MATCH,AUTO",

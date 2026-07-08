@@ -4,6 +4,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   DB_PATH: z.string().default("./data/submerge.db"),
   MIHOMO_API: z.url().default("http://mihomo:9090"),
+  // mihomo's mixed (HTTP/SOCKS) proxy port, as the SERVER reaches it — used only by
+  // the on-demand speed test to download a payload through a chosen node. Inside
+  // compose the server talks to the mihomo service directly (not the host mapping).
+  MIHOMO_PROXY: z.url().default("http://mihomo:7890"),
   MIHOMO_SECRET: z.string().default(""),
   HAPP_DECODER_URL: z.url().default("http://happ-decoder:8080"),
   // Local SOCKS/HTTP proxy address shown in the UI (editable in Settings). Default is the

@@ -305,8 +305,9 @@ describe("applyConfig", () => {
     let groupNames = cfg["proxy-groups"].map((g) => g.name);
     expect(groupNames).not.toContain(`ch-${ch.id}`);
     expect(cfg.rules).not.toContain(`DOMAIN-SUFFIX,youtube.com,ch-${ch.id}`);
-    // Only the Default catch-all remains — no non-default channel is routed.
-    expect(cfg.rules).toEqual(["MATCH,PROXY"]);
+    // Only the Default catch-all remains — no non-default channel is routed
+    // (the hidden speed-test rule is always first when there are nodes).
+    expect(cfg.rules).toEqual(["DOMAIN,speed.cloudflare.com,PROBE", "MATCH,PROXY"]);
 
     updateChannel(db, ch.id, { enabled: true });
     await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");

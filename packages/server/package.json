@@ -21,6 +21,7 @@
     "drizzle-orm": "^0.45.2",
     "js-yaml": "^5.2.0",
     "pino": "^10.3.1",
+    "undici": "^8.7.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

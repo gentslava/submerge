@@ -1,3 +1,4 @@
+import { BANDWIDTH_MAX_AGE_MS } from "@submerge/shared";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { nodeBandwidth } from "../../db/schema.js";
@@ -13,10 +14,14 @@ export function setNodeBandwidth(db: Db, nodeName: string, mbps: number, testedA
     .run();
 }
 
-// Cached Mbps for one node, or null when it has never been measured.
-export function getNodeBandwidth(db: Db, nodeName: string): number | null {
+// Cached Mbps for one node, or null when never measured. When `now` is given, a
+// reading older than BANDWIDTH_MAX_AGE_MS is treated as absent — so a stale peak
+// stops biasing selection (and the passive path resets it from fresh samples).
+export function getNodeBandwidth(db: Db, nodeName: string, now?: number): number | null {
   const row = db.select().from(nodeBandwidth).where(eq(nodeBandwidth.nodeName, nodeName)).get();
-  return row?.mbps ?? null;
+  if (!row) return null;
+  if (now !== undefined && now - row.testedAt > BANDWIDTH_MAX_AGE_MS) return null;
+  return row.mbps;
 }
 
 // All cached measurements — surfaced to the UI (value + age per node).

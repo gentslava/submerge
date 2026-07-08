@@ -3,6 +3,7 @@ import { db } from "../../db/client.js";
 import { prober } from "../../live/singleton.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import { policyProbe, readDefaultPolicy } from "../channels/service.js";
+import { listNodeBandwidth } from "./bandwidth.js";
 import {
   applyConfig,
   checkHealth,
@@ -11,6 +12,7 @@ import {
   setExcluded,
   testDelay,
 } from "./service.js";
+import { speedTestNode } from "./speedtest.js";
 
 export const nodesRouter = router({
   // Overlay the panel's last-known delays here too — the initial query must match
@@ -32,4 +34,11 @@ export const nodesRouter = router({
     const { applied } = await applyConfig(db);
     return { ok: true as const, applied };
   }),
+  // Cached on-demand throughput per node (name → { mbps, testedAt }).
+  bandwidth: protectedProcedure.query(() => listNodeBandwidth(db)),
+  // On-demand throughput test for one node — real quota burn, gated behind a UI
+  // warning. Serialized server-side; caches + returns the result.
+  speedTest: protectedProcedure
+    .input(delayInput)
+    .mutation(({ input }) => speedTestNode(db, input.name)),
 });

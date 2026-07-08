@@ -36,8 +36,31 @@ export const MIHOMO_BUILTIN_POLICIES = [
 ] as const;
 
 /** Routing groups: AUTO/PROXY are written by our config generator, GLOBAL is
- *  mihomo's own selector. Groups, not exit nodes. */
-export const ROUTING_GROUP_NAMES = ["AUTO", "PROXY", "GLOBAL"] as const;
+ *  mihomo's own selector, PROBE is the hidden speed-test group. Groups, not exit nodes. */
+export const ROUTING_GROUP_NAMES = ["AUTO", "PROXY", "GLOBAL", "PROBE"] as const;
+
+// ---------------------------------------------------------------------------
+// On-demand speed test (Phase 4c). A hidden `PROBE` select group (default DIRECT,
+// so normal traffic to the test host is unaffected) lets the server route a
+// fixed-size download through one chosen node: set PROBE → node, GET the payload
+// through mihomo's proxy port, measure bytes/sec, restore PROBE → DIRECT. A single
+// rule (`DOMAIN,<host>,PROBE`) sends only the test host through the group.
+
+/** The hidden speed-test proxy-group name. */
+export const PROBE_GROUP = "PROBE";
+/** Host of the speed-test payload — the one host routed through PROBE. */
+export const SPEED_TEST_HOST = "speed.cloudflare.com";
+/** Fixed-size download URL for the throughput probe (Cloudflare's public endpoint). */
+export const SPEED_TEST_URL = "https://speed.cloudflare.com/__down?bytes=25000000";
+/** Byte cap for a single probe (~25 MB) — stop reading once reached. */
+export const SPEED_TEST_MAX_BYTES = 25_000_000;
+/** Hard timeout for a single probe. On timeout we still report throughput from the
+ *  bytes read so far, so a slow (<10 Mbps) node yields a real number, not an error. */
+export const SPEED_TEST_TIMEOUT_MS = 20_000;
+/** How long a cached bandwidth reading counts toward the `highest-bandwidth`
+ *  criterion. Older readings are treated as absent (→ fall back to fastest), so a
+ *  stale peak can't pin a node forever. Passive samples also reset the peak past this. */
+export const BANDWIDTH_MAX_AGE_MS = 6 * 60 * 60 * 1000; // 6 h
 
 /** Every name that denotes a group/policy rather than a selectable exit node. */
 export const PSEUDO_NODE_NAMES = [...ROUTING_GROUP_NAMES, ...MIHOMO_BUILTIN_POLICIES] as const;
