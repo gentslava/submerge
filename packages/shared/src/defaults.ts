@@ -113,10 +113,10 @@ export const OPTIMAL_SWITCH_MARGIN_PCT = 0.1;
  *  1 = flee on the FIRST timeout (never hold a dead node while a live alternative exists). */
 export const OPTIMAL_ACTIVE_FAILURE_THRESHOLD = 1;
 /** «Slow but alive» escape: the active node counts as slow this tick when its RAW current
- *  latency exceeds the best reachable node's effective latency by more than this fraction.
- *  Catches an acute spike/degradation the smoothed EWMA would absorb too slowly — a stable
- *  node that "got lucky once" shouldn't hold priority once it's clearly worse right now. */
-export const OPTIMAL_SLOW_FACTOR = 0.5;
+ *  latency exceeds the best reachable node's RAW latency by more than this fraction (raw-to-
+ *  raw, not smoothed — a node with a good EWMA history but a bad current ping must still
+ *  count as slow). Catches a moderate gap the proactive margin can miss when activeEff lags. */
+export const OPTIMAL_SLOW_FACTOR = 0.35;
 /** Consecutive «slow» ticks before the slow-but-alive escape fires — a short streak so a
  *  single-sample blip doesn't cause a switch (the current node isn't dead, just spiking). */
 export const OPTIMAL_SLOW_TICKS = 2;

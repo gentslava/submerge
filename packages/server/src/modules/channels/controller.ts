@@ -314,13 +314,22 @@ export class ChannelController {
     // momentarily down even if its history looks great. `target` is the best reachable
     // node other than the active one (by effective latency), or null when none answer.
     let target: string | null = null;
+    let targetRaw: number | null = null;
     for (const n of candidates) {
-      if (n === active || delayOf(n) == null) continue;
-      if (target === null || effOf(n) < effOf(target)) target = n;
+      const raw = delayOf(n);
+      if (n === active || raw == null) continue;
+      if (target === null || effOf(n) < effOf(target)) {
+        target = n;
+        targetRaw = raw;
+      }
     }
     const targetEff = target === null ? Number.POSITIVE_INFINITY : effOf(target);
     const activeEff = effOf(active);
     const activeRaw = delayOf(active); // null = the active node timed out this tick
+    // The proactive margin must see acute degradation too: a node with a good EWMA history
+    // but a bad current ping would otherwise keep a low activeEff and block a switch even
+    // when every other node is clearly faster right now (e.g. 358 ms raw vs 259 ms best).
+    const activeScore = activeRaw != null ? Math.max(activeEff, activeRaw) : activeEff;
 
     // (1) Liveness failover — a dead active node is abandoned immediately (threshold 1);
     // its smoothed eff would climb too slowly to move it otherwise.
@@ -339,12 +348,11 @@ export class ChannelController {
     }
 
     // (2) Slow-but-alive escape — the active node is up but its RAW current latency is far
-    // worse than the best reachable node (a spike/degradation the smoothed eff would absorb
-    // too slowly). React after a short streak so a single blip doesn't flap.
+    // worse than the best reachable node's RAW latency (a gap the smoothed eff can hide when
+    // the active node still has a good history). React after a short streak so a single blip
+    // doesn't flap.
     const slow =
-      activeRaw != null &&
-      Number.isFinite(targetEff) &&
-      activeRaw > targetEff * (1 + OPTIMAL_SLOW_FACTOR);
+      activeRaw != null && targetRaw != null && activeRaw > targetRaw * (1 + OPTIMAL_SLOW_FACTOR);
     this.optimalSlowTicks = slow ? this.optimalSlowTicks + 1 : 0;
     if (this.optimalSlowTicks >= OPTIMAL_SLOW_TICKS && target) {
       await this.apply(
@@ -359,13 +367,14 @@ export class ChannelController {
     }
 
     // (3) Proactive switch — best reachable beats the active node by a RELATIVE margin on
-    // the smoothed score (a % of the active's eff, so it scales with the fleet's speed).
-    if (target && targetEff <= activeEff * (1 - OPTIMAL_SWITCH_MARGIN_PCT)) {
+    // the active score (max of smoothed eff and current raw), so it scales with fleet speed
+    // and still reacts when EWMA lags behind a spike.
+    if (target && targetEff <= activeScore * (1 - OPTIMAL_SWITCH_MARGIN_PCT)) {
       await this.apply(
         channelId,
         active,
         target,
-        `optimal: ${active} → ${target} (${num(targetEff)} vs ${num(activeEff)} ms eff)`,
+        `optimal: ${active} → ${target} (${num(targetEff)} vs ${num(activeScore)} ms eff)`,
         at,
       );
       // Parity with the other exit paths — a big spike can satisfy both `slow` (0→1) and

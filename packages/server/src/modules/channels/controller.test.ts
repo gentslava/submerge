@@ -387,29 +387,56 @@ describe("ChannelController optimal", () => {
   });
 
   it("slow-but-alive escape: leaves an active node that stays much slower than the best (no death)", async () => {
-    // A and B start equal (200) → no proactive switch. Then A's RAW latency sits at 320
-    // (60 % worse than B) while alive — the smoothed eff barely crosses the 10 % margin, so
-    // the slow escape (raw > best × 1.5 for 2 ticks) is what moves it.
+    // A and B start equal (200). A jumps to 320 (60 % worse) — proactive catches it on the
+    // first tick via max(eff, raw); no need to wait for the 2-tick slow streak.
     const h = harness(optimalPolicy());
     await h.ctrl.tick(vw("A", { A: 200, B: 200 }));
     h.setClock(10_000);
-    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 1
-    expect(h.selected.length).toBe(0);
+    await h.ctrl.tick(vw("A", { A: 320, B: 200 }));
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("A → B");
+  });
+
+  it("slow-but-alive escape: moderate gap uses the 2-tick streak when challenger eff is inflated", async () => {
+    // B is raw-fast but was flaky → high eff, so proactive (eff-based margin) holds while
+    // the raw-to-raw slow escape (275 > 200 × 1.35) fires after 2 ticks.
+    const h = harness(optimalPolicy());
+    await h.ctrl.tick(vw("A", { A: 200, B: null })); // B flaky → eff inflated later
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: 200, B: 200 }));
     h.setClock(20_000);
-    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 2 → switch
+    await h.ctrl.tick(vw("A", { A: 275, B: 200 })); // slow tick 1
+    expect(h.selected.length).toBe(0);
+    h.setClock(30_000);
+    await h.ctrl.tick(vw("A", { A: 275, B: 200 })); // slow tick 2 → switch
     expect(h.selected.at(-1)).toBe("B");
     expect(h.reasons.at(-1)?.reason).toContain("slow");
   });
 
   it("flees a huge spike immediately (proactive path, no 2-tick wait)", async () => {
-    // A active + best; then one enormous spike (2878 vs B 300) lifts A's smoothed eff past
-    // the 10 % margin on the SAME tick → proactive switch fires at once (not the slow path).
+    // A active + best; then one enormous spike (2878 vs B 300) lifts A's score past the 10 %
+    // margin on the SAME tick → proactive switch fires at once (not the slow path).
     const h = harness(optimalPolicy());
     await h.ctrl.tick(vw("A", { A: 300, B: 320 })); // A best → hold
     expect(h.selected.length).toBe(0);
     h.setClock(10_000);
     await h.ctrl.tick(vw("A", { A: 2878, B: 300 }));
     expect(h.selected.at(-1)).toBe("B");
+  });
+
+  it("switches when EWMA lags behind a moderate spike (good history, bad current ping)", async () => {
+    // Fleet-speed gap from prod: A held at ~280 ms eff, then spikes to 358 ms raw while B
+    // answers ~259 ms. activeEff is still low (good history) so the old margin never fired;
+    // max(eff, raw) must see the spike and move on the first tick.
+    const h = harness(optimalPolicy());
+    for (let i = 0; i < 12; i++) {
+      if (i > 0) h.setClock(i * 10_000);
+      await h.ctrl.tick(vw("A", { A: 280, B: 265 }));
+    }
+    h.setClock(120_000);
+    await h.ctrl.tick(vw("A", { A: 358, B: 259 }));
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("A → B");
   });
 
   it("does not flap back the instant the abandoned node recovers", async () => {
@@ -428,13 +455,15 @@ describe("ChannelController optimal", () => {
 
   it("slow-but-alive debounces: a single slow tick between healthy ticks never switches", async () => {
     const h = harness(optimalPolicy());
-    await h.ctrl.tick(vw("A", { A: 200, B: 200 }));
+    await h.ctrl.tick(vw("A", { A: 200, B: null }));
     h.setClock(10_000);
-    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 1
+    await h.ctrl.tick(vw("A", { A: 200, B: 200 })); // B recovers but eff stays inflated
     h.setClock(20_000);
-    await h.ctrl.tick(vw("A", { A: 200, B: 200 })); // healthy → resets the streak
+    await h.ctrl.tick(vw("A", { A: 275, B: 200 })); // slow tick 1
     h.setClock(30_000);
-    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 1 again (not 2)
+    await h.ctrl.tick(vw("A", { A: 200, B: 200 })); // healthy → resets the streak
+    h.setClock(40_000);
+    await h.ctrl.tick(vw("A", { A: 275, B: 200 })); // slow tick 1 again (not 2)
     expect(h.selected.length).toBe(0);
   });
 

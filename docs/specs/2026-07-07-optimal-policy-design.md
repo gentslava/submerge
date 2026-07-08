@@ -103,16 +103,15 @@ Each tick:
      keeps its last good latency while its success EWMA decays slowly, so its eff would take
      minutes to climb past a live node — far too long to hold a dead exit.
    - **(2) Slow-but-alive escape** — the active node is *up* but its **raw current** latency
-     is far worse than `target` (`activeRaw > targetEff × (1 + OPTIMAL_SLOW_FACTOR)`,
-     `SLOW_FACTOR = 0.5`) for `OPTIMAL_SLOW_TICKS = 2` consecutive ticks → switch:
-     `optimal: A slow (2878 ms) → B`. This catches an acute spike/degradation the *smoothed*
-     eff would absorb too slowly — "a node that got lucky once shouldn't keep priority once
-     it's clearly worse right now". The 2-tick streak avoids reacting to a single blip.
+     is far worse than `target`'s **raw** latency (`activeRaw > targetRaw × (1 + OPTIMAL_SLOW_FACTOR)`,
+     `SLOW_FACTOR = 0.35`) for `OPTIMAL_SLOW_TICKS = 2` consecutive ticks → switch:
+     `optimal: A slow (358 ms) → B`. Raw-to-raw (not smoothed) so a node with a good EWMA
+     history but a bad current ping still counts as slow. The 2-tick streak avoids a single blip.
    - **(3) Proactive switch** — `target` beats the active node by a **relative** margin on the
-     smoothed score: `targetEff ≤ activeEff × (1 − OPTIMAL_SWITCH_MARGIN_PCT)`,
-     `MARGIN_PCT = 0.10`. Relative (a % of the current node's eff), not a fixed ms, so a fast
-     fleet (~300 ms) switches on ~30 ms while a slow one (~1 s) needs ~100 ms — a fixed 50 ms
-     either flapped the slow fleet or froze the fast one. Records `optimal: A → B (…eff)`.
+     active score `max(activeEff, activeRaw)`: `targetEff ≤ activeScore × (1 − OPTIMAL_SWITCH_MARGIN_PCT)`,
+     `MARGIN_PCT = 0.10`. Using the worse of smoothed eff and current raw prevents a good
+     history from masking an acute spike (the prod case: 358 ms raw vs 259 ms best while
+     activeEff was still ~280). Records `optimal: A → B (…eff)`.
 
 The layering is deliberate — **liveness first, then acute slowness, then steady speed** —
 so the policy is *proactive* (moves toward a durably- or acutely-better node) without the
@@ -124,6 +123,12 @@ almost never crossed by a steady difference, and the 300 s (=30-sample) window a
 huge spikes — so in practice the *only* switch that fired was the death failover. The
 sample-based window (responsive), the relative margin (crosses in a fast fleet), and the
 slow-but-alive escape (catches spikes) together restore the intended proactivity.
+
+**v2.1 fix (2026-07-08):** live prod still held a spiking node (358 ms raw, 259 ms best)
+because `activeEff` lagged behind a good EWMA history — the proactive margin compared only
+the smoothed score, and the slow escape compared raw against `targetEff × 1.5` (388 ms
+threshold for a 259 ms best). Fix: proactive uses `max(eff, raw)` for the active side;
+slow escape compares raw-to-raw with `SLOW_FACTOR = 0.35` (~35 % worse).
 
 **Freshness (why passive reading is safe).** `tickOptimal` reads latencies from the group
 view rather than probing — the background prober already keeps every node measured. The
