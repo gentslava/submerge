@@ -207,12 +207,26 @@ export const channelPolicySchema = z.discriminatedUnion("kind", [
 ]);
 export type ChannelPolicy = z.infer<typeof channelPolicySchema>;
 
+// The mihomo rule-provider file `format`, derived from the URL extension rather
+// than chosen by the admin — the format is a mechanical property of the file the
+// URL points to (mihomo doesn't sniff it; it trusts the declared value, default
+// yaml). `.list`/`.txt` → text, `.mrs` → mrs, everything else → yaml. Query/hash
+// are stripped first.
+export type RuleProviderFormat = "yaml" | "text" | "mrs";
+export function ruleProviderFormat(url: string): RuleProviderFormat {
+  const path = (url.split(/[?#]/)[0] ?? url).toLowerCase();
+  if (path.endsWith(".mrs")) return "mrs";
+  if (path.endsWith(".list") || path.endsWith(".txt")) return "text";
+  return "yaml";
+}
+
 // A reference to an external mihomo rule-provider (Phase 4a). mihomo (not submerge)
 // fetches the list; we only emit the `rule-providers:` entry + a `RULE-SET` rule.
-// The list is identified by its URL — config generation derives a stable,
-// collision-safe internal name from (url, behavior, format), so no user-facing
-// name field is needed. `mrs` is a binary format mihomo supports only for
-// domain/ipcidr behaviors — never `classical` — rejected here at parse time.
+// The list is identified by its URL; `format` is derived (see ruleProviderFormat),
+// and config generation derives a stable, collision-safe internal name from
+// (url, behavior). `mrs` is a binary format mihomo supports only for
+// domain/ipcidr behaviors — never `classical` — so an `.mrs` URL with classical
+// behavior is rejected here at parse time.
 export const ruleProviderRefSchema = z
   .object({
     url: z
@@ -221,11 +235,10 @@ export const ruleProviderRefSchema = z
       .min(1)
       .refine((v) => /^https?:\/\//i.test(v), "must be an http(s) URL"),
     behavior: z.enum(["domain", "ipcidr", "classical"]),
-    format: z.enum(["yaml", "text", "mrs"]).default("yaml"),
   })
-  .refine((r) => !(r.format === "mrs" && r.behavior === "classical"), {
-    message: "mrs format supports only domain/ipcidr behavior",
-    path: ["format"],
+  .refine((r) => !(ruleProviderFormat(r.url) === "mrs" && r.behavior === "classical"), {
+    message: "an .mrs list supports only domain/ipcidr behavior",
+    path: ["behavior"],
   });
 export type RuleProviderRef = z.infer<typeof ruleProviderRefSchema>;
 

@@ -6,7 +6,9 @@ import {
   type ChannelPolicy,
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
+  type RuleProviderFormat,
   type RuleProviderRef,
+  ruleProviderFormat,
 } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
@@ -111,39 +113,41 @@ function collectSingleProxyNames(orderedChannels: ChannelConfigInput[]): Set<str
 }
 
 // File extension mihomo expects for a rule-provider's local cache, by format.
-const PROVIDER_EXT: Record<RuleProviderRef["format"], string> = {
+const PROVIDER_EXT: Record<RuleProviderFormat, string> = {
   yaml: "yaml",
   text: "list",
   mrs: "mrs",
 };
 
-// A rule-provider's stable internal name, derived from its identity
-// (url + behavior + format). Two channels referencing the same list collapse to
-// one definition and one name. The `rp-` prefix + hex digest keeps it out of the
-// (separate) proxy/proxy-group namespace by construction.
+// A rule-provider's stable internal name, derived from its identity (url +
+// behavior; the format is a function of the url). Two channels referencing the
+// same list collapse to one definition and one name. The `rp-` prefix + hex
+// digest keeps it out of the (separate) proxy/proxy-group namespace by construction.
 function ruleProviderName(ref: RuleProviderRef): string {
-  const key = `${ref.url}|${ref.behavior}|${ref.format}`;
+  const key = `${ref.url}|${ref.behavior}`;
   return `rp-${createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
 }
 
 // Collect every distinct rule-provider referenced by the non-default channels
-// into the top-level `rule-providers:` map. mihomo (not submerge) fetches each
-// list — `proxy: DIRECT` so the fetch never loops through the tunnel it configures
-// — and caches it under the mihomo Home Dir (`./providers/...`, gitignored).
+// into the top-level `rule-providers:` map. The `format` is derived from the URL
+// extension (mihomo trusts the declared format). mihomo (not submerge) fetches
+// each list — `proxy: DIRECT` so the fetch never loops through the tunnel it
+// configures — and caches it under the mihomo Home Dir (`./providers/...`, gitignored).
 function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const channel of nonDefault) {
     for (const ref of channel.ruleProviders ?? []) {
       const name = ruleProviderName(ref);
-      if (out[name]) continue; // identical (url,behavior,format) → one def
+      if (out[name]) continue; // identical (url,behavior) → one def
+      const format = ruleProviderFormat(ref.url);
       out[name] = {
         type: "http",
         url: ref.url,
         behavior: ref.behavior,
-        format: ref.format,
+        format,
         interval: 86400, // daily auto-update
         proxy: "DIRECT",
-        path: `./providers/${name}.${PROVIDER_EXT[ref.format]}`,
+        path: `./providers/${name}.${PROVIDER_EXT[format]}`,
         "size-limit": 0,
       };
     }

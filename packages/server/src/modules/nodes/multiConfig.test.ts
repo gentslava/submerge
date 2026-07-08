@@ -308,9 +308,7 @@ describe("buildMultiConfig — multiple channels", () => {
           groupName: "ch-ads",
           isDefault: false,
           policy: sticky,
-          ruleProviders: [
-            { url: "https://example.com/ads.yaml", behavior: "classical", format: "yaml" },
-          ],
+          ruleProviders: [{ url: "https://example.com/ads.yaml", behavior: "classical" }],
           proxies: [B],
         }),
       ]),
@@ -334,7 +332,7 @@ describe("buildMultiConfig — multiple channels", () => {
   it("dedupes an identical provider across channels into one def with two RULE-SET rules", () => {
     const A = px("A", "a.com");
     const B = px("B", "b.com");
-    const ref = { url: "https://example.com/list.mrs", behavior: "domain", format: "mrs" } as const;
+    const ref = { url: "https://example.com/list.mrs", behavior: "domain" } as const;
     const cfg = parse(
       buildMultiConfig([
         channel({ proxies: [A] }),

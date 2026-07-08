@@ -14,6 +14,7 @@ import {
   proxySchema,
   reorderChannelsInput,
   reorderInput,
+  ruleProviderFormat,
   ruleProviderRefSchema,
   selectNodeInput,
   setChannelPolicyInput,
@@ -184,30 +185,37 @@ describe("channelMatcherSchema (read model stays permissive)", () => {
   });
 });
 
-describe("ruleProviderRefSchema", () => {
-  it("accepts an https classical yaml provider (format defaults to yaml)", () => {
+describe("ruleProviderFormat (derived from the URL extension)", () => {
+  it("maps extensions to mihomo formats, defaulting to yaml", () => {
+    expect(ruleProviderFormat("https://x/a.yaml")).toBe("yaml");
+    expect(ruleProviderFormat("https://x/a.yml")).toBe("yaml");
+    expect(ruleProviderFormat("https://x/a.list")).toBe("text");
+    expect(ruleProviderFormat("https://x/a.txt")).toBe("text");
+    expect(ruleProviderFormat("https://x/a.mrs")).toBe("mrs");
+    expect(ruleProviderFormat("https://x/get?list=ads")).toBe("yaml"); // no clear ext → default
+  });
+  it("ignores query/hash when reading the extension", () => {
+    expect(ruleProviderFormat("https://x/a.mrs?v=2")).toBe("mrs");
+    expect(ruleProviderFormat("https://x/a.list#frag")).toBe("text");
+  });
+});
+
+describe("ruleProviderRefSchema (format is derived from the URL, not chosen)", () => {
+  it("accepts an https classical provider (no format field)", () => {
     const r = ruleProviderRefSchema.parse({
       url: "https://example.com/reject.yaml",
       behavior: "classical",
     });
-    expect(r.format).toBe("yaml");
     expect(r.behavior).toBe("classical");
+    expect("format" in r).toBe(false);
   });
-  it("accepts an mrs provider with domain behavior", () => {
-    const r = ruleProviderRefSchema.parse({
-      url: "https://example.com/x.mrs",
-      behavior: "domain",
-      format: "mrs",
-    });
-    expect(r.format).toBe("mrs");
+  it("accepts an .mrs url with domain behavior", () => {
+    const r = ruleProviderRefSchema.parse({ url: "https://example.com/x.mrs", behavior: "domain" });
+    expect(r.behavior).toBe("domain");
   });
-  it("rejects mrs + classical (mihomo forbids it)", () => {
+  it("rejects an .mrs url with classical behavior (mihomo forbids mrs+classical)", () => {
     expect(() =>
-      ruleProviderRefSchema.parse({
-        url: "https://example.com/x",
-        behavior: "classical",
-        format: "mrs",
-      }),
+      ruleProviderRefSchema.parse({ url: "https://example.com/x.mrs", behavior: "classical" }),
     ).toThrow();
   });
   it("rejects a non-http(s) url", () => {

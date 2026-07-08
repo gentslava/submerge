@@ -34,7 +34,7 @@ geosite: z.array(geoCategorySchema).default([]),    // GEOSITE,<cat>           (
 geoip: z.array(geoCountrySchema).default([]),       // GEOIP,<code>            (4b)
 ```
 
-- **`ruleProviderRefSchema`** = `{ url: httpsUrl, behavior: "domain"|"ipcidr"|"classical", format: "yaml"|"text"|"mrs" (default "yaml"), name?: string }`. `name` is optional/cosmetic; the config-gen derives a stable internal id (§4). Write-side validates `url` is `http(s)` and (for `mrs`) `behavior ∈ {domain, ipcidr}` (mihomo rejects `mrs`+`classical`).
+- **`ruleProviderRefSchema`** = `{ url: httpsUrl, behavior: "domain"|"ipcidr"|"classical" }`. The mihomo `format` (`yaml`/`text`/`mrs`) is **derived from the URL extension** (`ruleProviderFormat`: `.list`/`.txt` → text, `.mrs` → mrs, else yaml) — it's a mechanical property of the file, not a user choice (mihomo trusts the declared format, so we supply it, but the admin shouldn't have to reason about it). `behavior` **stays a user choice** — it changes how mihomo parses the file and isn't reliably derivable from the URL. Write-side validates `url` is `http(s)` and rejects an `.mrs` URL with `classical` behavior (mihomo supports `mrs` only for `domain`/`ipcidr`). No user-facing `name` — config-gen derives a stable internal id (§4).
 - **Keyword / geo strings**: `keywords` validated as non-empty trimmed tokens (no dots/whitespace requirement — a keyword is a substring); `geoCategorySchema` = lowercase `[a-z0-9-]+` (e.g. `youtube`, `telegram`, `category-ads-all`); `geoCountrySchema` = ISO-3166 alpha-2 upper (e.g. `RU`, `CN`, `IR`), plus mihomo's `private`/`LAN`. Keep the validation strict at the write boundary (same pattern as `domainSchema`).
 
 **Policy** — add `highest-bandwidth` to the sticky criterion enum (4c):
@@ -61,7 +61,7 @@ RULE-SET,<providerName>,<group>      # for each matcher.ruleProviders
 
 (Intra-channel order among rule types is irrelevant — they all resolve to the same group.) The terminal `MATCH,<default-group>` / `MATCH,PROXY` / `MATCH,DIRECT` logic is unchanged.
 
-**Top-level `rule-providers:`** — collect every distinct provider ref across all enabled channels, **dedupe by `(url, behavior, format)`**, and emit one entry each:
+**Top-level `rule-providers:`** — collect every distinct provider ref across all enabled channels, **dedupe by `(url, behavior)`** (format is a function of the url), and emit one entry each:
 
 ```yaml
 rule-providers:
@@ -75,7 +75,7 @@ rule-providers:
     path: ./providers/rp-1.yaml
 ```
 
-- **Provider name** = stable `rp-<hash8(url|behavior|format)>` so the same list referenced by two channels collapses to one definition and two `RULE-SET` lines. Add these names to the **collision guard** joint namespace (`dedupeNames` reserved set) alongside proxy/group names.
+- **Provider name** = stable `rp-<hash8(url|behavior)>` so the same list referenced by two channels collapses to one definition and two `RULE-SET` lines. The `rp-` prefix + hex digest keeps it out of the (separate) proxy/proxy-group namespace by construction.
 - **`path`** must live under mihomo's Home Dir (`/root/.config/mihomo`, = host `./mihomo` bind mount) unless `SKIP_SAFE_PATH_CHECK=1`. Use `./providers/<name>.<ext>` (relative to Home Dir). `.gitignore` already ignores `mihomo/providers/`. The `mihomo` container fetches — **submerge does not download rule lists**; it only writes the YAML that tells mihomo where to fetch (boundary discipline: no new external fetch in the server).
 - **`proxy: DIRECT`** is mandatory — fetching a rule list *through* the proxy it configures is a chicken-and-egg loop.
 - **`interval`**: default 86400s; configurable later, not exposed in 4a UI (sane default).
@@ -121,7 +121,7 @@ Matcher editor (`ChannelCard` expanded, non-default channels) gains, below the e
 
 - **Keywords** — a tag-input identical in behavior to `DomainTags` (validates keyword tokens). Label «Ключевые слова».
 - **Geo** — two tag-inputs / comboboxes: «Категории (GEOSITE)» and «Страны (GEOIP)», validated against the geo schemas. (4b)
-- **Rule-providers** — a small repeatable row: URL + behavior select (`classical`/`domain`/`ipcidr`) + format select. «Списки правил». (4a)
+- **Rule-providers** — a small repeatable row: URL + behavior («Тип») select (`classical`/`domain`/`ipcidr`) + remove. «Списки правил». The `format` is auto-derived from the URL, so there is **no** format control. (4a)
 
 Each control follows the design-system gates (tokens-in-config, control-type fidelity, measure-don't-invent) and must back a real endpoint — no decorative inputs. Read the matcher-editor frame(s) via Pencil MCP (`fFpGe` «Маршрутизация» + its expanded-editor child; confirm exact ids at build time — the `docs/design-system.md` frame map is stale and must be refreshed as part of this work).
 
