@@ -111,6 +111,27 @@ describe("ControllerRegistry", () => {
     expect(defaultSelects[0]?.name).toBe("B");
   });
 
+  it("selects an optimal channel into its own group by effective latency", async () => {
+    const h = harness();
+    const optimal: ChannelPolicy = {
+      kind: "optimal",
+      testUrl: "https://probe",
+      intervalSec: 60,
+      toleranceMs: 50,
+    };
+    setChannels(h, [channel("ch1", false, optimal)]);
+    setGroup(h, "ch-ch1", ["A", "B"]);
+    // Give measurements via mihomo history (the prober's freshness path): B fast, A slow.
+    h.proxies.A = { name: "A", type: "vless", history: [{ time: "t", delay: 90 }] };
+    h.proxies.B = { name: "B", type: "vless", history: [{ time: "t", delay: 10 }] };
+
+    await h.registry.runOnce();
+
+    const ch1Selects = h.selected.filter((s) => s.group === "ch-ch1");
+    expect(ch1Selects.length).toBe(1);
+    expect(ch1Selects[0]?.name).toBe("B"); // lowest effective latency
+  });
+
   it("recent() merges decisions across channels, newest-first", async () => {
     const h = harness();
     setChannels(h, [channel("ch1", false, stickyPolicy()), channel("ch2", false, stickyPolicy())]);

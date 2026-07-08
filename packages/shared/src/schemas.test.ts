@@ -105,6 +105,25 @@ describe("channelPolicySchema", () => {
     });
     expect(p.kind === "sticky" && p.maxHoldHours).toBeNull();
   });
+  it("accepts an optimal policy", () => {
+    const p = channelPolicySchema.parse({
+      kind: "optimal",
+      testUrl: "https://x/generate_204",
+      intervalSec: 60,
+      toleranceMs: 50,
+    });
+    expect(p.kind).toBe("optimal");
+  });
+  it("rejects an optimal policy with a negative tolerance", () => {
+    expect(() =>
+      channelPolicySchema.parse({
+        kind: "optimal",
+        testUrl: "u",
+        intervalSec: 60,
+        toleranceMs: -1,
+      }),
+    ).toThrow();
+  });
   it("rejects an unknown kind", () => {
     expect(() => channelPolicySchema.parse({ kind: "nope" })).toThrow();
   });

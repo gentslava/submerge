@@ -54,3 +54,26 @@ export const DEFAULT_SPEED_POLICY: ChannelPolicy = {
   // The old `switchOnTimeout: true` meant mihomo `lazy: false` = always re-evaluate.
   reevaluateWhileHealthy: DEFAULT_AUTO_SWITCH_ON_TIMEOUT,
 };
+
+/** «Оптимальный» policy defaults — windowed speed-vs-liveness selection. Shorter
+ *  interval than speed's 300 s so the EWMA reflects recent conditions; same tolerance
+ *  as the switch margin on effective latency. */
+export const DEFAULT_OPTIMAL_POLICY: ChannelPolicy = {
+  kind: "optimal",
+  testUrl: DEFAULT_AUTO_TEST_URL,
+  intervalSec: 60,
+  toleranceMs: DEFAULT_AUTO_TOLERANCE,
+};
+
+/** EWMA half-life (seconds) for the optimal policy — how fast old samples decay.
+ *  Constant in v1 (not a per-policy knob) to keep the UI to three fields. */
+export const OPTIMAL_EWMA_HALF_LIFE_SEC = 300;
+/** Success-rate floor in the effective-latency denominator, so a fully-dead node
+ *  (ewmaSuccess → 0) can't divide-by-zero and simply sorts last. */
+export const OPTIMAL_SUCCESS_EPSILON = 0.05;
+/** Missed probes of the ACTIVE node before the optimal policy fails over to the best
+ *  reachable node. 1 = flee on the FIRST timeout: never hold a node that just went
+ *  unreachable while a live alternative exists, then let the EWMA ranking pick the
+ *  long-run leader among the healthy nodes. Guards the slow-abandonment trap (a dead
+ *  node's EWMA effective latency crawls up over minutes at a long half-life). */
+export const OPTIMAL_ACTIVE_FAILURE_THRESHOLD = 1;

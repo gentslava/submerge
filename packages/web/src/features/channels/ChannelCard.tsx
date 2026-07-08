@@ -20,6 +20,7 @@ import { PresetChips } from "./PresetChips";
 
 const POLICY_LABEL: Record<Channel["policy"]["kind"], string> = {
   speed: "По задержке",
+  optimal: "Оптимальный",
   sticky: "Стабильный IP",
   manual: "Приоритетный узел",
 };

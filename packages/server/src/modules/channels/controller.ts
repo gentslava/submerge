@@ -4,6 +4,9 @@ import {
   type DecisionEntry,
   type NodeItem,
   type NodeView,
+  OPTIMAL_ACTIVE_FAILURE_THRESHOLD,
+  OPTIMAL_EWMA_HALF_LIFE_SEC,
+  OPTIMAL_SUCCESS_EPSILON,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
 import { historyForUrl, type ProxiesResponse } from "../../clients/mihomo.js";
@@ -119,6 +122,15 @@ export class ChannelController {
   // later is still handled. Cleared only AFTER a successful clearFixed, so a
   // thrown DELETE (swallowed by the registry) is retried on the next tick.
   private lastClearedFixed: string | null = null;
+  // Per-node EWMA state for the `optimal` policy: smoothed latency (ms, over
+  // successful probes) and smoothed success rate (0..1). Combined into an
+  // "effective latency" score in tickOptimal. Cleared by reset() on a policy change.
+  private optimalLatency = new Map<string, number>();
+  private optimalSuccess = new Map<string, number>();
+  // Consecutive missed probes of the optimal policy's ACTIVE node, for the liveness
+  // failover (flee a node that just went unreachable rather than waiting for its slow
+  // EWMA effective latency to climb). Reset to 0 whenever the active node answers.
+  private optimalActiveMisses = 0;
   private log: DecisionEntry[] = [];
 
   constructor(private deps: ControllerDeps) {}
@@ -138,6 +150,9 @@ export class ChannelController {
     this.lastCheck = Number.NEGATIVE_INFINITY;
     this.lastSpeedNow = null;
     this.lastClearedFixed = null;
+    this.optimalLatency.clear();
+    this.optimalSuccess.clear();
+    this.optimalActiveMisses = 0;
   }
 
   protected record(entry: DecisionEntry): void {
@@ -184,7 +199,114 @@ export class ChannelController {
       await this.tickManual(view, channel.id, policy, url, t); // Task 4
       return;
     }
+    if (policy.kind === "optimal") {
+      await this.tickOptimal(view, channel.id, policy, t);
+      return;
+    }
     await this.tickSticky(view, channel.id, policy, url, t);
+  }
+
+  // Active + statistics-driven: rank candidates by EWMA "effective latency"
+  // (smoothed latency penalized by unreliability) and switch only when a challenger
+  // beats the active node by more than `toleranceMs` on that smoothed number — so
+  // momentary spikes don't cause the url-test flapping the passive `speed` policy has.
+  // Latency samples come from the group view (kept fresh by the prober), so this adds
+  // no probe traffic of its own. See docs/specs/2026-07-07-optimal-policy-design.md.
+  private async tickOptimal(
+    view: NodeView,
+    channelId: string,
+    policy: Extract<ChannelPolicy, { kind: "optimal" }>,
+    at: number,
+  ): Promise<void> {
+    const candidates = selectableNames(view);
+    if (candidates.length === 0) return;
+
+    // EWMA smoothing factor from the check interval and a fixed half-life: a shorter
+    // interval samples more often, so each sample weighs less to keep the ~5-min window.
+    // (α is derived from intervalSec, not the actual tick spacing — tick() throttles to
+    // ~intervalSec with 1 s slack on the 5 s poll grid, so the effective half-life drifts
+    // slightly for tiny non-multiple intervals. Acceptable for a smoothing window.)
+    const alpha = 1 - 2 ** (-policy.intervalSec / OPTIMAL_EWMA_HALF_LIFE_SEC);
+    const delayOf = (name: string): number | null => {
+      const item = view.all.find((n) => n.name === name);
+      return item?.delay != null && item.delay > 0 ? item.delay : null;
+    };
+    const ewma = (prev: number | undefined, sample: number): number =>
+      prev === undefined ? sample : prev + alpha * (sample - prev);
+
+    for (const name of candidates) {
+      const d = delayOf(name);
+      this.optimalSuccess.set(name, ewma(this.optimalSuccess.get(name), d != null ? 1 : 0));
+      // Only successful measurements move the latency EWMA; a miss ages success only.
+      if (d != null) this.optimalLatency.set(name, ewma(this.optimalLatency.get(name), d));
+    }
+
+    // Effective latency = smoothed latency inflated by unreliability. A never-measured
+    // node has no latency yet → +∞ so it's never chosen until it proves reachable.
+    // Precompute once per candidate (the argmin + the reason both read it).
+    const eff = new Map<string, number>();
+    for (const name of candidates) {
+      const lat = this.optimalLatency.get(name);
+      eff.set(
+        name,
+        lat === undefined
+          ? Number.POSITIVE_INFINITY
+          : lat / Math.max(this.optimalSuccess.get(name) ?? 0, OPTIMAL_SUCCESS_EPSILON),
+      );
+    }
+    const effOf = (name: string): number => eff.get(name) ?? Number.POSITIVE_INFINITY;
+    // Round for the decision log; "∞" for a still-unmeasured node.
+    const num = (v: number): string => (Number.isFinite(v) ? String(Math.round(v)) : "∞");
+
+    let best = candidates[0] as string;
+    for (const name of candidates) if (effOf(name) < effOf(best)) best = name;
+
+    const active = view.autoNow;
+    if (!active || !candidates.includes(active)) {
+      const suffix = Number.isFinite(effOf(best)) ? ` (${num(effOf(best))} ms eff)` : "";
+      await this.apply(channelId, active, best, `initial pick: ${best}${suffix}`, at);
+      this.optimalActiveMisses = 0;
+      return;
+    }
+
+    // Liveness failover: the active node's own effective latency climbs only slowly
+    // once it dies (a dead node keeps its last good latency, its success EWMA decays
+    // by a tiny α at a long half-life), so it would otherwise hold traffic on a dead
+    // node for minutes. Instead, count the active node's consecutive missed probes and
+    // flee to the best REACHABLE node the moment the threshold is hit (1 = on the first
+    // timeout) — then the normal EWMA ranking below resumes picking the long-run leader.
+    this.optimalActiveMisses = delayOf(active) != null ? 0 : this.optimalActiveMisses + 1;
+    if (this.optimalActiveMisses >= OPTIMAL_ACTIVE_FAILURE_THRESHOLD) {
+      const reachable = candidates.filter((n) => n !== active && delayOf(n) != null);
+      if (reachable.length > 0) {
+        let target = reachable[0] as string;
+        for (const n of reachable) if (effOf(n) < effOf(target)) target = n;
+        await this.apply(
+          channelId,
+          active,
+          target,
+          `optimal: ${active} down → ${target} (${num(effOf(target))} ms eff)`,
+          at,
+        );
+        this.optimalActiveMisses = 0;
+        return;
+      }
+      // Nothing reachable to flee to — hold and keep retrying next tick.
+    }
+
+    const activeEff = effOf(active);
+    const bestEff = effOf(best);
+    // Infinity − Infinity = NaN and NaN > tol is false, so an all-unmeasured tick
+    // correctly holds the active node rather than switching on noise.
+    if (best !== active && activeEff - bestEff > policy.toleranceMs) {
+      await this.apply(
+        channelId,
+        active,
+        best,
+        `optimal: ${active} → ${best} (${num(bestEff)} vs ${num(activeEff)} ms eff)`,
+        at,
+      );
+    }
   }
 
   private async tickSticky(

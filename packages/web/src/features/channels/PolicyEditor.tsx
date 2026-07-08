@@ -67,6 +67,11 @@ export function PolicyEditor({
     onChange({ ...policy, ...patch });
   }
 
+  function updateOptimal(patch: Partial<Extract<ChannelPolicy, { kind: "optimal" }>>) {
+    if (policy.kind !== "optimal") return;
+    onChange({ ...policy, ...patch });
+  }
+
   // Switch the policy kind, carrying over shared fields where they exist and seeding
   // the rest with sane defaults. `manual` needs a concrete node, so it seeds from
   // wherever the channel is already routing (`activeNode`, if the caller has that
@@ -90,14 +95,16 @@ export function PolicyEditor({
     const next: ChannelPolicy =
       kind === "speed"
         ? { kind: "speed", testUrl, intervalSec, toleranceMs: 50, reevaluateWhileHealthy: true }
-        : {
-            kind: "sticky",
-            testUrl,
-            intervalSec,
-            failureThreshold: 3,
-            maxHoldHours: null,
-            initialCriterion: "fastest",
-          };
+        : kind === "optimal"
+          ? { kind: "optimal", testUrl, intervalSec, toleranceMs: 50 }
+          : {
+              kind: "sticky",
+              testUrl,
+              intervalSec,
+              failureThreshold: 3,
+              maxHoldHours: null,
+              initialCriterion: "fastest",
+            };
     onChange(next);
   }
 
@@ -105,7 +112,7 @@ export function PolicyEditor({
     <>
       <Row
         label="Политика"
-        sub="По задержке — гонка; стабильный IP — держит узел; приоритетный — ваш узел"
+        sub="По задержке — гонка; оптимальный — стабильно быстрый; стабильный IP — держит узел; приоритетный — ваш узел"
       >
         <Segmented
           aria-label="Политика выбора"
@@ -113,6 +120,7 @@ export function PolicyEditor({
           onChange={(v) => switchPolicy(v as ChannelPolicy["kind"])}
           options={[
             { value: "speed", label: "По задержке" },
+            { value: "optimal", label: "Оптимальный" },
             { value: "sticky", label: "Стабильный IP" },
             { value: "manual", label: "Приоритетный узел" },
           ]}
@@ -226,6 +234,50 @@ export function PolicyEditor({
                 { value: "fallback", label: "Запасной узел" },
                 { value: "hold", label: "Держать" },
               ]}
+            />
+          </Row>
+        </>
+      ) : policy.kind === "optimal" ? (
+        <>
+          <Row label="Проверочный URL" sub="Куда mihomo шлёт проверочный запрос">
+            <Input
+              key={policy.testUrl}
+              type="url"
+              aria-label="Проверочный URL"
+              defaultValue={policy.testUrl}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v.length > 0) updateOptimal({ testUrl: v });
+              }}
+              className="w-full font-mono text-sub md:w-[360px]"
+            />
+          </Row>
+          <Row label="Интервал проверки" sub="Окно, на котором усредняется задержка и живучесть">
+            <Select
+              aria-label="Интервал проверки"
+              value={String(policy.intervalSec)}
+              onChange={(e) => updateOptimal({ intervalSec: Number(e.target.value) })}
+            >
+              {secondsOptions(CHECK_PRESETS, String(policy.intervalSec))}
+            </Select>
+          </Row>
+          <Row
+            label="Допуск, мс"
+            sub="Переключаться, только если другой узел устойчиво быстрее на столько"
+          >
+            <Input
+              key={policy.toleranceMs}
+              type="number"
+              aria-label="Допуск (мс)"
+              min={0}
+              step={1}
+              defaultValue={policy.toleranceMs}
+              onBlur={(e) => {
+                const trimmed = e.target.value.trim();
+                if (!/^\d+$/.test(trimmed)) return;
+                updateOptimal({ toleranceMs: Number(trimmed) });
+              }}
+              className="w-[90px] text-center font-mono"
             />
           </Row>
         </>
