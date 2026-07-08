@@ -63,7 +63,6 @@ describe("buildMultiConfig — optimal policy", () => {
       kind: "optimal",
       testUrl: "https://x/generate_204",
       intervalSec: 60,
-      toleranceMs: 50,
     };
     const cfg = parse(
       buildMultiConfig([channel({ proxies: [px("A"), px("B")], policy: optimal })]),
@@ -81,7 +80,6 @@ describe("buildMultiConfig — optimal policy", () => {
       kind: "optimal",
       testUrl: "https://probe.example/gen_204",
       intervalSec: 10,
-      toleranceMs: 50,
     };
     // Two same-named endpoints collapse into a url-test subgroup "A".
     const A1 = px("A", "a1.com");
@@ -95,7 +93,7 @@ describe("buildMultiConfig — optimal policy", () => {
     // so members were measured far too rarely for the optimal ranking to be meaningful.
     expect(sub.interval).toBe(10);
     expect(sub.url).toBe("https://probe.example/gen_204");
-    // optimal carries its own tolerance and always re-tests (lazy=false).
+    // optimal has no toleranceMs → the subgroup gets the default tolerance; always re-tests.
     expect(sub.tolerance).toBe(50);
     expect(sub.lazy).toBe(false);
   });

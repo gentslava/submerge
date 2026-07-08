@@ -1,4 +1,4 @@
-import type { ChannelPolicy } from "@submerge/shared";
+import { type ChannelPolicy, OPTIMAL_SWITCH_MARGIN_PCT } from "@submerge/shared";
 import { Link } from "@tanstack/react-router";
 import { History, MousePointer2, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useLiveState } from "@/features/live/LiveProvider";
@@ -55,8 +55,11 @@ function policyParams(policy: ChannelPolicy): Param[] {
     ];
   }
   if (policy.kind === "optimal") {
-    // Windowed score, so the one extra knob is the switch margin — mirror speed's «ДОПУСК».
-    return [...common, { caption: "ДОПУСК", value: `${policy.toleranceMs} ms` }];
+    // Switch margin is relative (a % of the current node's latency), not a fixed ms.
+    return [
+      ...common,
+      { caption: "ЗАПАС", value: `${Math.round(OPTIMAL_SWITCH_MARGIN_PCT * 100)}%` },
+    ];
   }
   return [
     ...common,

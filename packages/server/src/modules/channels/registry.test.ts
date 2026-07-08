@@ -113,12 +113,7 @@ describe("ControllerRegistry", () => {
 
   it("selects an optimal channel into its own group by effective latency", async () => {
     const h = harness();
-    const optimal: ChannelPolicy = {
-      kind: "optimal",
-      testUrl: "https://probe",
-      intervalSec: 60,
-      toleranceMs: 50,
-    };
+    const optimal: ChannelPolicy = { kind: "optimal", testUrl: "https://probe", intervalSec: 60 };
     setChannels(h, [channel("ch1", false, optimal)]);
     setGroup(h, "ch-ch1", ["A", "B"]);
     // Give measurements via mihomo history (the prober's freshness path): B fast, A slow.

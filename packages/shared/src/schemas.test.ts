@@ -108,23 +108,25 @@ describe("channelPolicySchema", () => {
     });
     expect(p.kind === "sticky" && p.maxHoldHours).toBeNull();
   });
-  it("accepts an optimal policy", () => {
+  it("accepts an optimal policy (no toleranceMs — the switch margin is relative)", () => {
     const p = channelPolicySchema.parse({
       kind: "optimal",
       testUrl: "https://x/generate_204",
       intervalSec: 60,
-      toleranceMs: 50,
     });
     expect(p.kind).toBe("optimal");
+    // A legacy row carrying the dropped toleranceMs still parses (extra key stripped).
+    const legacy = channelPolicySchema.parse({
+      kind: "optimal",
+      testUrl: "u",
+      intervalSec: 60,
+      toleranceMs: 50,
+    });
+    expect(legacy.kind === "optimal" && "toleranceMs" in legacy).toBe(false);
   });
-  it("rejects an optimal policy with a negative tolerance", () => {
+  it("rejects an optimal policy with intervalSec below 1", () => {
     expect(() =>
-      channelPolicySchema.parse({
-        kind: "optimal",
-        testUrl: "u",
-        intervalSec: 60,
-        toleranceMs: -1,
-      }),
+      channelPolicySchema.parse({ kind: "optimal", testUrl: "u", intervalSec: 0 }),
     ).toThrow();
   });
   it("rejects an unknown kind", () => {

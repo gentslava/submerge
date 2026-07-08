@@ -140,12 +140,7 @@ export function PolicyEditor({
             reevaluateWhileHealthy: d.reevaluateWhileHealthy,
           }
         : kind === "optimal"
-          ? {
-              kind: "optimal",
-              testUrl: d.testUrl,
-              intervalSec: d.intervalSec,
-              toleranceMs: d.toleranceMs,
-            }
+          ? { kind: "optimal", testUrl: d.testUrl, intervalSec: d.intervalSec }
           : {
               kind: "sticky",
               testUrl: d.testUrl,
@@ -238,7 +233,7 @@ export function PolicyEditor({
           </Row>
           <Row
             label="Критерий выбора"
-            sub="По скорости — наименьший пинг; по стабильности — узел с меньшими потерями пакетов"
+            sub="По скорости — наименьший пинг; по стабильности — меньше потерь пакетов; по ширине канала — наибольшая измеренная скорость"
           >
             <Segmented
               aria-label="Критерий выбора"
@@ -306,7 +301,10 @@ export function PolicyEditor({
               className="w-full font-mono text-sub md:w-[360px]"
             />
           </Row>
-          <Row label="Интервал проверки" sub="Окно, на котором усредняется задержка и живучесть">
+          <Row
+            label="Интервал проверки"
+            sub="Как часто мерить; окно усреднения строится по числу замеров"
+          >
             <Select
               aria-label="Интервал проверки"
               value={String(policy.intervalSec)}
@@ -315,25 +313,8 @@ export function PolicyEditor({
               {secondsOptions(CHECK_PRESETS, String(policy.intervalSec))}
             </Select>
           </Row>
-          <Row
-            label="Допуск, мс"
-            sub="Переключаться, только если другой узел устойчиво быстрее на столько"
-          >
-            <Input
-              key={policy.toleranceMs}
-              type="number"
-              aria-label="Допуск (мс)"
-              min={0}
-              step={1}
-              defaultValue={policy.toleranceMs}
-              onBlur={(e) => {
-                const trimmed = e.target.value.trim();
-                if (!/^\d+$/.test(trimmed)) return;
-                updateOptimal({ toleranceMs: Number(trimmed) });
-              }}
-              className="w-[90px] text-center font-mono"
-            />
-          </Row>
+          {/* No «Допуск» knob: the optimal switch margin is relative (a % of the current
+              node's latency) and auto-scales with the fleet — see OPTIMAL_SWITCH_MARGIN_PCT. */}
         </>
       ) : (
         <>

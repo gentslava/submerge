@@ -1,7 +1,7 @@
 # «Оптимальный» policy — historical-winner node selection — design
 
-- **Date:** 2026-07-07
-- **Status:** Draft (design agreed; not yet implemented)
+- **Date:** 2026-07-07 (v2 rework 2026-07-08: sample-based window, relative margin, slow-but-alive escape)
+- **Status:** Implemented
 - **Related:** [2026-07-01 channel routing](2026-07-01-channel-routing-design.md), [2026-07-03 background prober](2026-07-03-background-prober-design.md), ADR-0004 (anti-overengineering)
 - **Extends:** the channel `policy` discriminated union (`speed | sticky | manual`) with a fourth kind, `optimal`.
 
@@ -54,9 +54,13 @@ updated once per tick from the group view mihomo/​the prober already produced:
 - `ewmaSuccess` — fraction of measurements that succeeded (0..1), hit = 1 / miss (null or
   timeout) = 0.
 
-Both use the same smoothing factor `α`, derived from a fixed half-life so the knob count
-stays low: `α = 1 − 2^(−intervalSec / halfLifeSec)`, `halfLifeSec = 300` (5 min) constant
-in v1. So ~5 min of history dominates the score; older samples decay away.
+Both use the same smoothing factor `α`, derived from a half-life measured in
+**measurements**, not seconds: `α = 1 − 2^(−1 / OPTIMAL_EWMA_HALF_LIFE_SAMPLES)`,
+`OPTIMAL_EWMA_HALF_LIFE_SAMPLES = 8`. Because `tickOptimal` runs once per «Интервал
+проверки», one tick = one sample, so the window is ~15–20 measurements **regardless of the
+interval setting** — a 10 s interval and a 5 min interval get the same-shaped window.
+(v2 change: the original `α = 1 − 2^(−intervalSec/300s)` meant 30 samples at a 10 s interval
+but only 1 at 5 min — over-smoothed for fast intervals, which made the policy unresponsive.)
 
 **Score = effective latency**, a single intuitive number that folds in liveness:
 
@@ -90,30 +94,36 @@ Each tick:
    `ewmaSuccess` (hit/miss) for that node. Nodes absent from the view this tick get no
    update (their EWMA simply ages on the next hit).
 3. Compute `effLatency` for each candidate; `best = argmin`.
-4. `active = view.autoNow`.
-   - No valid active (null / not a candidate) → `select(best)`, record `initial: best`.
-   - **Liveness failover (fast path):** count the active node's consecutive missed probes;
-     the moment it reaches `OPTIMAL_ACTIVE_FAILURE_THRESHOLD` (**1** — flee on the first
-     timeout) and any *reachable* candidate exists, switch to the best reachable node
-     immediately and record `optimal: A down → B`. This is essential because a dead node
-     keeps its last good latency while its success EWMA decays only by a tiny α (long
-     half-life vs a short interval), so its effective latency would take *minutes* to
-     climb past a live alternative — far too long to hold traffic on a dead exit. If
-     nothing is reachable this tick, hold and retry next tick.
-   - Else (active alive) switch to `best` **only if**
-     `effLatency(active) − effLatency(best) > toleranceMs` (the familiar tolerance as the
-     switch margin, on the *smoothed* number, so it suppresses flapping instead of chasing
-     noise). Otherwise hold.
-5. Record the decision with both effective latencies:
-   `optimal: A → B (312 vs 418 ms eff)`.
+4. `active = view.autoNow`. No valid active (null / not a candidate) → `select(best)`,
+   record `initial: best`. Otherwise compute `target` = the best (lowest eff) candidate that
+   answers **right now** (`delay != null`, excluding `active`) — we never switch onto a node
+   that's momentarily down — and try three switch paths, in order:
+   - **(1) Liveness failover** — a *dead* active node (timed out) flees on the first miss
+     (`OPTIMAL_ACTIVE_FAILURE_THRESHOLD = 1`) to `target`: `optimal: A down → B`. A dead node
+     keeps its last good latency while its success EWMA decays slowly, so its eff would take
+     minutes to climb past a live node — far too long to hold a dead exit.
+   - **(2) Slow-but-alive escape** — the active node is *up* but its **raw current** latency
+     is far worse than `target` (`activeRaw > targetEff × (1 + OPTIMAL_SLOW_FACTOR)`,
+     `SLOW_FACTOR = 0.5`) for `OPTIMAL_SLOW_TICKS = 2` consecutive ticks → switch:
+     `optimal: A slow (2878 ms) → B`. This catches an acute spike/degradation the *smoothed*
+     eff would absorb too slowly — "a node that got lucky once shouldn't keep priority once
+     it's clearly worse right now". The 2-tick streak avoids reacting to a single blip.
+   - **(3) Proactive switch** — `target` beats the active node by a **relative** margin on the
+     smoothed score: `targetEff ≤ activeEff × (1 − OPTIMAL_SWITCH_MARGIN_PCT)`,
+     `MARGIN_PCT = 0.10`. Relative (a % of the current node's eff), not a fixed ms, so a fast
+     fleet (~300 ms) switches on ~30 ms while a slow one (~1 s) needs ~100 ms — a fixed 50 ms
+     either flapped the slow fleet or froze the fast one. Records `optimal: A → B (…eff)`.
 
-The two-tier logic is deliberate: **liveness is handled instantly** (flee a timed-out node),
-while **speed ranking is smoothed** (a healthy node is only displaced by a durably-better
-one). This is the "flee fast, then watch for the leader" behaviour.
+The layering is deliberate — **liveness first, then acute slowness, then steady speed** —
+so the policy is *proactive* (moves toward a durably- or acutely-better node) without the
+url-test flapping: the relative margin + the 2-tick slow streak provide the hysteresis.
 
-Because the comparison is on smoothed effective latency with a margin, momentary spikes on
-the active node don't trigger a move, and a genuinely better node wins only once its
-*windowed* advantage exceeds the margin — no url-test flapping.
+**v2 change (why the rework):** the original design used a single absolute `toleranceMs` on
+the smoothed eff. In a tightly-clustered fleet (nodes at 280–360 ms) a 50 ms margin was
+almost never crossed by a steady difference, and the 300 s (=30-sample) window absorbed even
+huge spikes — so in practice the *only* switch that fired was the death failover. The
+sample-based window (responsive), the relative margin (crosses in a fast fleet), and the
+slow-but-alive escape (catches spikes) together restore the intended proactivity.
 
 **Freshness (why passive reading is safe).** `tickOptimal` reads latencies from the group
 view rather than probing — the background prober already keeps every node measured. The
@@ -138,17 +148,21 @@ export const optimalPolicySchema = z.object({
   kind: z.literal("optimal"),
   testUrl: z.string().min(1),
   intervalSec: z.number().int().min(1),
-  toleranceMs: z.number().int().min(0), // switch margin on effective (smoothed) latency
+  // No toleranceMs: the switch margin is RELATIVE (a % of the current node's eff) and the
+  // EWMA window is in samples — both code constants, not per-policy knobs. A legacy row
+  // still carrying toleranceMs parses fine (z.object strips the unknown key).
 });
 ```
 
-`halfLifeSec` and `ε` are constants in v1 (not exposed) to keep the UI to three knobs,
-matching `sticky`'s density. `defaults.ts` gets `DEFAULT_OPTIMAL_POLICY`.
+The window (`OPTIMAL_EWMA_HALF_LIFE_SAMPLES`), margin (`OPTIMAL_SWITCH_MARGIN_PCT`), slow
+factor/ticks and success-floor `ε` are constants in `defaults.ts` (not exposed), so the
+optimal UI shows just URL + interval. `defaults.ts` gets `DEFAULT_OPTIMAL_POLICY`.
 
-**`multiConfig.ts` / `config.ts`** — `groupFor` already maps every non-`speed` kind to a
-`select` group, and `urlTestTuning` already falls back to the default tuning for the
-collapsed subgroups. So `optimal` needs **no config-generation change** — it produces the
-same `select` top-level group as `sticky`/`manual`.
+**`multiConfig.ts` / `config.ts`** — `groupFor` maps every non-`speed` kind to a `select`
+group; `urlTestTuning` now uses the policy's own `testUrl`/`intervalSec` (tolerance falls
+back to the default, since `optimal` has no `toleranceMs`) so collapsed subgroups probe at
+the channel's interval. `optimal` produces the same `select` top-level group as
+`sticky`/`manual`.
 
 **`controller.ts`** — `tick()` gains an `optimal` branch (throttled like sticky/manual)
 delegating to `tickOptimal`; add the per-node EWMA state + `reset()` clearing.

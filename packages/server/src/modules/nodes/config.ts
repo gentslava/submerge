@@ -73,9 +73,10 @@ export interface UrlTestTuning {
   lazy: boolean;
 }
 export function urlTestTuning(policy: ChannelPolicy): UrlTestTuning {
-  // Use each policy's OWN probe settings when it has them (speed/optimal: url +
-  // interval + tolerance; sticky: url + interval). Only `manual` — which has no probe
-  // knobs — falls back to the built-in defaults. Previously every non-`speed` policy
+  // Use each policy's OWN probe settings when it has them (speed: url + interval +
+  // tolerance; optimal + sticky: url + interval, tolerance falls back to the default).
+  // Only `manual` — which has no probe knobs — falls back entirely to the built-in
+  // defaults. Previously every non-`speed` policy
   // fell back to DEFAULT_SPEED_POLICY, pinning collapsed url-test subgroups to the 300 s
   // default even when the channel asked for e.g. 10 s — so under `optimal`/`sticky` the
   // subgroup members were measured far too rarely for the controller's ranking / the

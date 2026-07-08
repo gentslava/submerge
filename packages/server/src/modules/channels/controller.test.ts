@@ -320,13 +320,16 @@ describe("ChannelController speed (passive)", () => {
 });
 
 describe("ChannelController optimal", () => {
+  // The EWMA window is now sample-based (α = 1 − 2^(−1/8) ≈ 0.083), independent of
+  // intervalSec — so intervalSec here only drives the tick throttle (10 s → advance the
+  // clock by 10 000 ms between ticks). The switch margin is RELATIVE (10 % of the active
+  // node's eff), not a fixed ms.
   const optimalPolicy = (
     over: Partial<Extract<ChannelPolicy, { kind: "optimal" }>> = {},
   ): ChannelPolicy => ({
     kind: "optimal",
     testUrl: "https://probe",
-    intervalSec: 60,
-    toleranceMs: 50,
+    intervalSec: 10,
     ...over,
   });
 
@@ -344,50 +347,109 @@ describe("ChannelController optimal", () => {
     expect(h.reasons.at(-1)?.reason).toContain("initial");
   });
 
-  it("holds the active node while a challenger's lead stays within tolerance", async () => {
-    const h = harness(optimalPolicy({ toleranceMs: 50 }));
-    // A active, B faster by 20 ms — under the 50 ms margin → no switch.
-    await h.ctrl.tick(vw("A", { A: 100, B: 80 }));
+  it("holds while a challenger's lead stays under the relative margin (< 10 %)", async () => {
+    const h = harness(optimalPolicy());
+    // B is 7.5 % faster (185 vs 200) — under the 10 % margin → no switch.
+    await h.ctrl.tick(vw("A", { A: 200, B: 185 }));
     expect(h.selected.length).toBe(0);
   });
 
-  it("switches once a challenger beats the active node by more than tolerance", async () => {
-    const h = harness(optimalPolicy({ toleranceMs: 50 }));
-    await h.ctrl.tick(vw("A", { A: 200, B: 100 })); // 100 ms lead > 50 ms margin
+  it("proactively switches when a challenger beats the active node by the relative margin", async () => {
+    const h = harness(optimalPolicy());
+    // B is 15 % faster (170 vs 200) → over the 10 % margin → switch (no death needed).
+    await h.ctrl.tick(vw("A", { A: 200, B: 170 }));
     expect(h.selected.at(-1)).toBe("B");
     expect(h.reasons.at(-1)?.reason).toContain("A → B");
   });
 
+  it("scales the margin with the fleet: a slow fleet needs a bigger absolute gap", async () => {
+    // Slow fleet, 5 % gap (950 vs 1000) → held; 20 % gap (800 vs 1000) → switched. The same
+    // 50 ms gap that would flap here is ignored — the margin is a %, not a fixed ms.
+    const hold = harness(optimalPolicy());
+    await hold.ctrl.tick(vw("A", { A: 1000, B: 950 }));
+    expect(hold.selected.length).toBe(0);
+
+    const move = harness(optimalPolicy());
+    await move.ctrl.tick(vw("A", { A: 1000, B: 800 }));
+    expect(move.selected.at(-1)).toBe("B");
+  });
+
   it("penalizes a flaky challenger: a fast-but-dropping node does not displace a solid active one", async () => {
-    // intervalSec=300 → EWMA α=0.5 (deterministic). A is active and solid (100 ms,
-    // always up → no liveness failover). B is a challenger that starts by dropping
-    // probes, so by the time it finally answers fast (60 ms) its success EWMA is only
-    // 0.5 → effLatency(B) = 60/0.5 = 120 > A's 100, and B does NOT steal traffic despite
-    // being raw-faster. (The flaky-node penalty is on the *challenger*; a failing ACTIVE
-    // node is handled by the liveness failover instead.)
-    const h = harness(optimalPolicy({ intervalSec: 300, toleranceMs: 10 }));
+    // A active + solid (100 ms). B is raw-fast (50 ms) but drops a probe first, so its
+    // success EWMA is low → effLatency(B) = 50 / max(success, ε) is inflated well above A,
+    // and B never steals traffic. (The penalty is on the challenger; a failing ACTIVE node
+    // is handled by the liveness / slow escapes instead.)
+    const h = harness(optimalPolicy());
     await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0
-    h.setClock(300_000);
-    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0
-    h.setClock(600_000);
-    await h.ctrl.tick(vw("A", { A: 100, B: 60 })); // B fast now but success only 0.5 → eff 120 > 100
-    expect(h.selected.length).toBe(0); // A held: flaky B's derated score never beat it
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: 100, B: 50 })); // B fast but success ≈ 0.08 → eff ≈ 600
+    expect(h.selected.length).toBe(0);
+  });
+
+  it("slow-but-alive escape: leaves an active node that stays much slower than the best (no death)", async () => {
+    // A and B start equal (200) → no proactive switch. Then A's RAW latency sits at 320
+    // (60 % worse than B) while alive — the smoothed eff barely crosses the 10 % margin, so
+    // the slow escape (raw > best × 1.5 for 2 ticks) is what moves it.
+    const h = harness(optimalPolicy());
+    await h.ctrl.tick(vw("A", { A: 200, B: 200 }));
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 1
+    expect(h.selected.length).toBe(0);
+    h.setClock(20_000);
+    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 2 → switch
+    expect(h.selected.at(-1)).toBe("B");
+    expect(h.reasons.at(-1)?.reason).toContain("slow");
+  });
+
+  it("flees a huge spike immediately (proactive path, no 2-tick wait)", async () => {
+    // A active + best; then one enormous spike (2878 vs B 300) lifts A's smoothed eff past
+    // the 10 % margin on the SAME tick → proactive switch fires at once (not the slow path).
+    const h = harness(optimalPolicy());
+    await h.ctrl.tick(vw("A", { A: 300, B: 320 })); // A best → hold
+    expect(h.selected.length).toBe(0);
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: 2878, B: 300 }));
+    expect(h.selected.at(-1)).toBe("B");
+  });
+
+  it("does not flap back the instant the abandoned node recovers", async () => {
+    const h = harness(optimalPolicy());
+    await h.ctrl.tick(vw("A", { A: 300, B: 320 }));
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: 2878, B: 300 })); // A → B
+    expect(h.selected.at(-1)).toBe("B");
+    const afterSwitch = h.selected.length;
+    // A recovers to 300; B is now active at 300. A's eff is still elevated by the spike, so
+    // it does NOT beat B by 10 % → no immediate flap back.
+    h.setClock(20_000);
+    await h.ctrl.tick(vw("B", { A: 300, B: 300 }));
+    expect(h.selected.length).toBe(afterSwitch);
+  });
+
+  it("slow-but-alive debounces: a single slow tick between healthy ticks never switches", async () => {
+    const h = harness(optimalPolicy());
+    await h.ctrl.tick(vw("A", { A: 200, B: 200 }));
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 1
+    h.setClock(20_000);
+    await h.ctrl.tick(vw("A", { A: 200, B: 200 })); // healthy → resets the streak
+    h.setClock(30_000);
+    await h.ctrl.tick(vw("A", { A: 320, B: 200 })); // slow tick 1 again (not 2)
+    expect(h.selected.length).toBe(0);
   });
 
   it("reset() clears the EWMA window so a stale penalty doesn't carry over", async () => {
-    const h = harness(optimalPolicy({ intervalSec: 300, toleranceMs: 50 }));
-    await h.ctrl.tick(vw(null, { A: 100, B: 100 })); // pick A (tie → first)
-    h.setClock(300_000);
-    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0.5
-    h.setClock(600_000);
-    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0.25 (eff 400)
+    const h = harness(optimalPolicy());
+    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → success 0
+    h.setClock(10_000);
+    await h.ctrl.tick(vw("A", { A: 100, B: null })); // B miss → still 0
     const beforeReset = h.selected.length;
 
-    h.ctrl.reset(); // wipes per-node EWMA
+    h.ctrl.reset(); // wipes per-node EWMA + counters
 
-    h.setClock(900_000);
-    // Fresh window: B healthy at 40 ms (eff 40) beats A 100 by 60 > 50 → switch.
-    // Without reset, B's decayed success would keep its effective latency above A's.
+    h.setClock(20_000);
+    // Fresh window: B seeds at 40 ms (eff 40) and beats A 100 by 60 % → switch. Without
+    // reset, B's decayed success would keep its effective latency far above A's.
     await h.ctrl.tick(vw("A", { A: 100, B: 40 }));
     expect(h.selected.length).toBe(beforeReset + 1);
     expect(h.selected.at(-1)).toBe("B");
@@ -395,49 +457,41 @@ describe("ChannelController optimal", () => {
 
   it("holds the active node when no candidate has a measurement yet (no NaN-driven switch)", async () => {
     const h = harness(optimalPolicy());
-    // Both unmeasured → eff +∞; active B valid → activeEff − bestEff is NaN, never > tol.
     await h.ctrl.tick(vw("B", { A: null, B: null }));
     expect(h.selected.length).toBe(0);
   });
 
   it("re-picks when the active node is no longer among the candidates", async () => {
     const h = harness(optimalPolicy());
-    // Active "Z" isn't in the view → treated as no valid pin → initial pick of the best.
     await h.ctrl.tick(vw("Z", { A: 100, B: 40 }));
     expect(h.selected.at(-1)).toBe("B");
     expect(h.reasons.at(-1)?.reason).toContain("initial");
   });
 
-  it("flees a dead active node on the FIRST timeout (liveness failover), bypassing EWMA", async () => {
-    // A is active and its stale latency keeps its effective latency lowest for many
-    // ticks after it dies (tiny α at intervalSec=10 vs 300 s half-life). Without a
-    // liveness failover it would hold the dead node for minutes; instead the moment A
-    // times out we flee to the best *reachable* node (B) — even though A's effLatency
-    // is still numerically lowest — then EWMA resumes picking the long-run leader.
-    const h = harness(optimalPolicy({ intervalSec: 10, toleranceMs: 50 }));
+  it("flees a dead active node on the FIRST timeout (liveness failover)", async () => {
+    const h = harness(optimalPolicy());
     await h.ctrl.tick(vw("A", { A: 100, B: 120 })); // A active + healthy, B worse → hold
     expect(h.selected.length).toBe(0);
     h.setClock(10_000);
-    await h.ctrl.tick(vw("A", { A: null, B: 120 })); // A times out once → flee immediately
+    await h.ctrl.tick(vw("A", { A: null, B: 120 })); // A times out once → flee to reachable B
     expect(h.selected.at(-1)).toBe("B");
     expect(h.reasons.at(-1)?.reason).toContain("down");
   });
 
   it("holds when the active node times out but nothing else is reachable either", async () => {
-    const h = harness(optimalPolicy({ intervalSec: 10, toleranceMs: 50 }));
+    const h = harness(optimalPolicy());
     await h.ctrl.tick(vw("A", { A: 100, B: 120 }));
     h.setClock(10_000);
-    // A down AND B down → no reachable target → keep the current pin, retry next tick.
     await h.ctrl.tick(vw("A", { A: null, B: null }));
     expect(h.selected.length).toBe(0);
   });
 
-  it("does not failover while the active node keeps answering", async () => {
-    const h = harness(optimalPolicy({ intervalSec: 10, toleranceMs: 50 }));
+  it("does not switch while the active node stays the best", async () => {
+    const h = harness(optimalPolicy());
     await h.ctrl.tick(vw("A", { A: 100, B: 120 }));
     for (let i = 1; i <= 5; i++) {
       h.setClock(i * 10_000);
-      await h.ctrl.tick(vw("A", { A: 100, B: 120 })); // A alive & best → never switches
+      await h.ctrl.tick(vw("A", { A: 100, B: 120 }));
     }
     expect(h.selected.length).toBe(0);
   });
