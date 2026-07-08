@@ -98,7 +98,7 @@ export const CHANNEL_PRESETS = [
   { id: "twitch", label: "Twitch", category: "Стриминг" },
   { id: "soundcloud", label: "SoundCloud", category: "Стриминг" },
   { id: "applemusic", label: "Apple Music", category: "Стриминг" },
-  { id: "hbomax", label: "Max", category: "Стриминг" },
+  { id: "hbomax", label: "HBO Max", category: "Стриминг" },
   { id: "primevideo", label: "Prime Video", category: "Стриминг" },
   { id: "crunchyroll", label: "Crunchyroll", category: "Стриминг" },
   { id: "vimeo", label: "Vimeo", category: "Стриминг" },
