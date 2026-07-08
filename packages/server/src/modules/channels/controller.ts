@@ -12,7 +12,7 @@ import {
   OPTIMAL_SWITCH_MARGIN_PCT,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
-import { historyForUrl, type ProxiesResponse } from "../../clients/mihomo.js";
+import { historyForUrl, type MihomoProxy, type ProxiesResponse } from "../../clients/mihomo.js";
 import { policyProbe } from "./service.js";
 
 // The real exit nodes a channel can pin, in view order.
@@ -88,10 +88,11 @@ export interface ControllerDeps {
   ringSize?: number;
 }
 
-// Normalize an arbitrary mihomo select group into a NodeView. Unlike `toNodeView`
-// (nodes/service.ts), this is intentionally minimal: the controller only reads
-// `autoNow` (the group's current selection) and `selectableNames(view)` (member
-// names + delay for pickBest) — no collapsed-group/meta/udp handling needed here.
+// Normalize an arbitrary mihomo select group into a NodeView. The controller reads
+// `autoNow` and per-member delay for optimal/sticky/manual decisions — collapsed
+// url-test subgroups must mirror `toNodeView` (active member's latency), not the
+// group's own history, which is often empty under select+optimal while leaves are
+// kept fresh by the prober.
 export function toGroupView(
   proxies: ProxiesResponse["proxies"],
   group: string,
@@ -99,16 +100,28 @@ export function toGroupView(
 ): NodeView {
   const g = proxies[group];
   if (!g?.all) return { now: null, autoNow: null, all: [] };
+  const delaysOf = (info: MihomoProxy | undefined) => historyForUrl(info, testUrl);
+  const lastDelay = (ds: ReturnType<typeof delaysOf>): number | null => {
+    const last = ds.at(-1);
+    return last && last.delay > 0 ? last.delay : null;
+  };
   const all: NodeItem[] = g.all.map((name) => {
     const info = proxies[name];
-    // Read the per-URL series the group actually decides on (falls back to the
-    // shared history), so the decision-log delta matches the node cards.
-    const h = historyForUrl(info, testUrl);
-    const last = h.at(-1);
+    if (info?.all && !PSEUDO_NODE_SET.has(name)) {
+      const active = info.now ? proxies[info.now] : undefined;
+      const aDelays = delaysOf(active);
+      return {
+        name,
+        type: info.type,
+        delay: lastDelay(aDelays),
+        history: aDelays.map((e) => e.delay),
+      };
+    }
+    const h = delaysOf(info);
     return {
       name,
       type: info?.type ?? "unknown",
-      delay: last && last.delay > 0 ? last.delay : null,
+      delay: lastDelay(h),
       history: h.map((e) => e.delay),
     };
   });

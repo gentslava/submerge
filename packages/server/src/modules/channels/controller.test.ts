@@ -105,6 +105,34 @@ describe("toGroupView", () => {
       ],
     });
   });
+
+  it("reads a collapsed url-test subgroup's delay from its active member (not empty group history)", () => {
+    const px: ProxiesResponse["proxies"] = {
+      AUTO: { name: "AUTO", type: "select", now: "G", all: ["G", "KZ"], history: [] },
+      G: { name: "G", type: "url-test", now: "G #2", all: ["G #1", "G #2"], history: [] },
+      "G #1": {
+        name: "G #1",
+        type: "vless",
+        history: [{ time: "t", delay: 900 }],
+        extra: { "https://u": { alive: true, history: [{ time: "t", delay: 400 }] } },
+      },
+      "G #2": {
+        name: "G #2",
+        type: "vless",
+        history: [{ time: "t", delay: 800 }],
+        extra: { "https://u": { alive: true, history: [{ time: "t", delay: 247 }] } },
+      },
+      KZ: {
+        name: "KZ",
+        type: "vless",
+        extra: { "https://u": { alive: true, history: [{ time: "t", delay: 359 }] } },
+      },
+    };
+    const view = toGroupView(px, "AUTO", "https://u");
+    expect(view.autoNow).toBe("G");
+    expect(view.all.find((n) => n.name === "G")).toMatchObject({ delay: 247, history: [247] });
+    expect(view.all.find((n) => n.name === "KZ")).toMatchObject({ delay: 359, history: [359] });
+  });
 });
 
 const stickyPolicy = (
