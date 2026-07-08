@@ -1,4 +1,4 @@
-import { CHANNEL_PRESETS } from "@submerge/shared";
+import { CHANNEL_PRESETS, PRESET_DOMAINS } from "@submerge/shared";
 import { Check, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,8 @@ for (const preset of CHANNEL_PRESETS) {
  * check icon; inactive chips sit on bg-hover/text-secondary with a plus icon
  * (border-transparent, so the 1px stroke doesn't shift layout on toggle). Real
  * `<button>`s rather than the `Badge` span — chips must stay keyboard/click operable.
+ * Each chip carries a native `title` listing the preset's domains — a zero-JS,
+ * accessible hover/focus tooltip surfacing exactly what traffic the chip routes.
  */
 export function PresetChips({ value, onChange }: PresetChipsProps) {
   function toggle(id: string) {
@@ -50,6 +52,7 @@ export function PresetChips({ value, onChange }: PresetChipsProps) {
                   type="button"
                   onClick={() => toggle(preset.id)}
                   aria-pressed={active}
+                  title={`${preset.label}\n${PRESET_DOMAINS[preset.id].join("\n")}`}
                   className={cn(
                     "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sub transition-colors",
                     active
