@@ -52,7 +52,7 @@ describe("PolicyEditor — settings preserved across policy switches", () => {
     expect(last.kind === "speed" && last.intervalSec).toBe(10);
   });
 
-  it("carries interval + tolerance from speed into optimal", () => {
+  it("carries the interval from speed into optimal (optimal has no tolerance knob)", () => {
     const onChange = vi.fn();
     render(
       <Harness
@@ -71,7 +71,7 @@ describe("PolicyEditor — settings preserved across policy switches", () => {
     expect(last.kind).toBe("optimal");
     if (last.kind === "optimal") {
       expect(last.intervalSec).toBe(30);
-      expect(last.toleranceMs).toBe(120);
+      expect("toleranceMs" in last).toBe(false); // optimal's margin is relative, not a field
     }
   });
 

@@ -5,11 +5,14 @@ import {
   type NodeItem,
   type NodeView,
   OPTIMAL_ACTIVE_FAILURE_THRESHOLD,
-  OPTIMAL_EWMA_HALF_LIFE_SEC,
+  OPTIMAL_EWMA_HALF_LIFE_SAMPLES,
+  OPTIMAL_SLOW_FACTOR,
+  OPTIMAL_SLOW_TICKS,
   OPTIMAL_SUCCESS_EPSILON,
+  OPTIMAL_SWITCH_MARGIN_PCT,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
-import { historyForUrl, type ProxiesResponse } from "../../clients/mihomo.js";
+import { historyForUrl, type MihomoProxy, type ProxiesResponse } from "../../clients/mihomo.js";
 import { policyProbe } from "./service.js";
 
 // The real exit nodes a channel can pin, in view order.
@@ -85,10 +88,11 @@ export interface ControllerDeps {
   ringSize?: number;
 }
 
-// Normalize an arbitrary mihomo select group into a NodeView. Unlike `toNodeView`
-// (nodes/service.ts), this is intentionally minimal: the controller only reads
-// `autoNow` (the group's current selection) and `selectableNames(view)` (member
-// names + delay for pickBest) — no collapsed-group/meta/udp handling needed here.
+// Normalize an arbitrary mihomo select group into a NodeView. The controller reads
+// `autoNow` and per-member delay for optimal/sticky/manual decisions — collapsed
+// url-test subgroups must mirror `toNodeView` (active member's latency), not the
+// group's own history, which is often empty under select+optimal while leaves are
+// kept fresh by the prober.
 export function toGroupView(
   proxies: ProxiesResponse["proxies"],
   group: string,
@@ -96,16 +100,28 @@ export function toGroupView(
 ): NodeView {
   const g = proxies[group];
   if (!g?.all) return { now: null, autoNow: null, all: [] };
+  const delaysOf = (info: MihomoProxy | undefined) => historyForUrl(info, testUrl);
+  const lastDelay = (ds: ReturnType<typeof delaysOf>): number | null => {
+    const last = ds.at(-1);
+    return last && last.delay > 0 ? last.delay : null;
+  };
   const all: NodeItem[] = g.all.map((name) => {
     const info = proxies[name];
-    // Read the per-URL series the group actually decides on (falls back to the
-    // shared history), so the decision-log delta matches the node cards.
-    const h = historyForUrl(info, testUrl);
-    const last = h.at(-1);
+    if (info?.all && !PSEUDO_NODE_SET.has(name)) {
+      const active = info.now ? proxies[info.now] : undefined;
+      const aDelays = delaysOf(active);
+      return {
+        name,
+        type: info.type,
+        delay: lastDelay(aDelays),
+        history: aDelays.map((e) => e.delay),
+      };
+    }
+    const h = delaysOf(info);
     return {
       name,
       type: info?.type ?? "unknown",
-      delay: last && last.delay > 0 ? last.delay : null,
+      delay: lastDelay(h),
       history: h.map((e) => e.delay),
     };
   });
@@ -135,6 +151,9 @@ export class ChannelController {
   // failover (flee a node that just went unreachable rather than waiting for its slow
   // EWMA effective latency to climb). Reset to 0 whenever the active node answers.
   private optimalActiveMisses = 0;
+  // Consecutive «slow but alive» ticks of the active node (raw latency far worse than the
+  // best reachable node) — the proactive-degradation escape. Reset when it's not slow.
+  private optimalSlowTicks = 0;
   private log: DecisionEntry[] = [];
 
   constructor(private deps: ControllerDeps) {}
@@ -157,6 +176,7 @@ export class ChannelController {
     this.optimalLatency.clear();
     this.optimalSuccess.clear();
     this.optimalActiveMisses = 0;
+    this.optimalSlowTicks = 0;
   }
 
   // Pick the best node for a sticky (re)pick. `highest-bandwidth` ranks by the
@@ -239,27 +259,27 @@ export class ChannelController {
     await this.tickSticky(view, channel.id, policy, url, t);
   }
 
-  // Active + statistics-driven: rank candidates by EWMA "effective latency"
-  // (smoothed latency penalized by unreliability) and switch only when a challenger
-  // beats the active node by more than `toleranceMs` on that smoothed number — so
-  // momentary spikes don't cause the url-test flapping the passive `speed` policy has.
-  // Latency samples come from the group view (kept fresh by the prober), so this adds
-  // no probe traffic of its own. See docs/specs/2026-07-07-optimal-policy-design.md.
+  // Active + statistics-driven: rank candidates by EWMA "effective latency" (smoothed
+  // latency penalized by unreliability) and proactively move to a meaningfully-better node,
+  // while a spike/degradation of the active node (or its death) triggers a faster escape.
+  // Three switch paths: (1) liveness failover — dead active → flee immediately; (2) slow-
+  // but-alive — active up but its RAW latency is far worse than the best for a short streak;
+  // (3) proactive — best beats active by a RELATIVE margin on the smoothed score. Latency
+  // samples come from the group view (kept fresh by the prober), so this adds no probe
+  // traffic of its own. See docs/specs/2026-07-07-optimal-policy-design.md.
   private async tickOptimal(
     view: NodeView,
     channelId: string,
-    policy: Extract<ChannelPolicy, { kind: "optimal" }>,
+    _policy: Extract<ChannelPolicy, { kind: "optimal" }>,
     at: number,
   ): Promise<void> {
     const candidates = selectableNames(view);
     if (candidates.length === 0) return;
 
-    // EWMA smoothing factor from the check interval and a fixed half-life: a shorter
-    // interval samples more often, so each sample weighs less to keep the ~5-min window.
-    // (α is derived from intervalSec, not the actual tick spacing — tick() throttles to
-    // ~intervalSec with 1 s slack on the 5 s poll grid, so the effective half-life drifts
-    // slightly for tiny non-multiple intervals. Acceptable for a smoothing window.)
-    const alpha = 1 - 2 ** (-policy.intervalSec / OPTIMAL_EWMA_HALF_LIFE_SEC);
+    // EWMA smoothing factor from a half-life measured in MEASUREMENTS (not seconds), so the
+    // window is the same regardless of «Интервал проверки» — tickOptimal is throttled to run
+    // once per interval, so one tick = one sample. α = 1 − 2^(−1/N).
+    const alpha = 1 - 2 ** (-1 / OPTIMAL_EWMA_HALF_LIFE_SAMPLES);
     const delayOf = (name: string): number | null => {
       const item = view.all.find((n) => n.name === name);
       return item?.delay != null && item.delay > 0 ? item.delay : null;
@@ -299,46 +319,80 @@ export class ChannelController {
       const suffix = Number.isFinite(effOf(best)) ? ` (${num(effOf(best))} ms eff)` : "";
       await this.apply(channelId, active, best, `initial pick: ${best}${suffix}`, at);
       this.optimalActiveMisses = 0;
+      this.optimalSlowTicks = 0;
       return;
     }
 
-    // Liveness failover: the active node's own effective latency climbs only slowly
-    // once it dies (a dead node keeps its last good latency, its success EWMA decays
-    // by a tiny α at a long half-life), so it would otherwise hold traffic on a dead
-    // node for minutes. Instead, count the active node's consecutive missed probes and
-    // flee to the best REACHABLE node the moment the threshold is hit (1 = on the first
-    // timeout) — then the normal EWMA ranking below resumes picking the long-run leader.
-    this.optimalActiveMisses = delayOf(active) != null ? 0 : this.optimalActiveMisses + 1;
-    if (this.optimalActiveMisses >= OPTIMAL_ACTIVE_FAILURE_THRESHOLD) {
-      const reachable = candidates.filter((n) => n !== active && delayOf(n) != null);
-      if (reachable.length > 0) {
-        let target = reachable[0] as string;
-        for (const n of reachable) if (effOf(n) < effOf(target)) target = n;
-        await this.apply(
-          channelId,
-          active,
-          target,
-          `optimal: ${active} down → ${target} (${num(effOf(target))} ms eff)`,
-          at,
-        );
-        this.optimalActiveMisses = 0;
-        return;
+    // Only ever switch TO a node that answers RIGHT NOW — never route onto one that's
+    // momentarily down even if its history looks great. `target` is the best reachable
+    // node other than the active one (by effective latency), or null when none answer.
+    let target: string | null = null;
+    let targetRaw: number | null = null;
+    for (const n of candidates) {
+      const raw = delayOf(n);
+      if (n === active || raw == null) continue;
+      if (target === null || effOf(n) < effOf(target)) {
+        target = n;
+        targetRaw = raw;
       }
-      // Nothing reachable to flee to — hold and keep retrying next tick.
     }
-
+    const targetEff = target === null ? Number.POSITIVE_INFINITY : effOf(target);
     const activeEff = effOf(active);
-    const bestEff = effOf(best);
-    // Infinity − Infinity = NaN and NaN > tol is false, so an all-unmeasured tick
-    // correctly holds the active node rather than switching on noise.
-    if (best !== active && activeEff - bestEff > policy.toleranceMs) {
+    const activeRaw = delayOf(active); // null = the active node timed out this tick
+    // The proactive margin must see acute degradation too: a node with a good EWMA history
+    // but a bad current ping would otherwise keep a low activeEff and block a switch even
+    // when every other node is clearly faster right now (e.g. 358 ms raw vs 259 ms best).
+    const activeScore = activeRaw != null ? Math.max(activeEff, activeRaw) : activeEff;
+
+    // (1) Liveness failover — a dead active node is abandoned immediately (threshold 1);
+    // its smoothed eff would climb too slowly to move it otherwise.
+    this.optimalActiveMisses = activeRaw != null ? 0 : this.optimalActiveMisses + 1;
+    if (this.optimalActiveMisses >= OPTIMAL_ACTIVE_FAILURE_THRESHOLD && target) {
       await this.apply(
         channelId,
         active,
-        best,
-        `optimal: ${active} → ${best} (${num(bestEff)} vs ${num(activeEff)} ms eff)`,
+        target,
+        `optimal: ${active} down → ${target} (${num(targetEff)} ms eff)`,
         at,
       );
+      this.optimalActiveMisses = 0;
+      this.optimalSlowTicks = 0;
+      return;
+    }
+
+    // (2) Slow-but-alive escape — the active node is up but its RAW current latency is far
+    // worse than the best reachable node's RAW latency (a gap the smoothed eff can hide when
+    // the active node still has a good history). React after a short streak so a single blip
+    // doesn't flap.
+    const slow =
+      activeRaw != null && targetRaw != null && activeRaw > targetRaw * (1 + OPTIMAL_SLOW_FACTOR);
+    this.optimalSlowTicks = slow ? this.optimalSlowTicks + 1 : 0;
+    if (this.optimalSlowTicks >= OPTIMAL_SLOW_TICKS && target) {
+      await this.apply(
+        channelId,
+        active,
+        target,
+        `optimal: ${active} slow (${num(activeRaw ?? Number.POSITIVE_INFINITY)} ms) → ${target} (${num(targetEff)} ms eff)`,
+        at,
+      );
+      this.optimalSlowTicks = 0;
+      return;
+    }
+
+    // (3) Proactive switch — best reachable beats the active node by a RELATIVE margin on
+    // the active score (max of smoothed eff and current raw), so it scales with fleet speed
+    // and still reacts when EWMA lags behind a spike.
+    if (target && targetEff <= activeScore * (1 - OPTIMAL_SWITCH_MARGIN_PCT)) {
+      await this.apply(
+        channelId,
+        active,
+        target,
+        `optimal: ${active} → ${target} (${num(targetEff)} vs ${num(activeScore)} ms eff)`,
+        at,
+      );
+      // Parity with the other exit paths — a big spike can satisfy both `slow` (0→1) and
+      // this margin on the same tick; clear the streak so it doesn't carry to the new node.
+      this.optimalSlowTicks = 0;
     }
   }
 

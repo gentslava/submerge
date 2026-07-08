@@ -191,14 +191,14 @@ export const manualPolicySchema = z.object({
 });
 
 // Controller-driven (like sticky): picks the node with the best WINDOWED speed-vs-
-// liveness score (EWMA effective latency = ewmaLatency / max(ewmaSuccess, ε)) instead
-// of the instantaneous fastest, and only switches when a challenger beats the current
-// by `toleranceMs` on that smoothed number. See docs/specs/2026-07-07-optimal-policy-design.md.
+// liveness score (EWMA effective latency = ewmaLatency / max(ewmaSuccess, ε)) instead of
+// the instantaneous fastest. The switch margin is RELATIVE (a % of the current node's
+// score) and the EWMA window is measured in samples — both constants, not per-policy
+// knobs — so there's no `toleranceMs`. See docs/specs/2026-07-07-optimal-policy-design.md.
 export const optimalPolicySchema = z.object({
   kind: z.literal("optimal"),
   testUrl: z.string().min(1),
   intervalSec: z.number().int().min(1),
-  toleranceMs: z.number().int().min(0), // switch margin on effective (smoothed) latency
 });
 
 export const channelPolicySchema = z.discriminatedUnion("kind", [

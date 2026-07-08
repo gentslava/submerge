@@ -86,25 +86,37 @@ export const DEFAULT_SPEED_POLICY: ChannelPolicy = {
   reevaluateWhileHealthy: DEFAULT_AUTO_SWITCH_ON_TIMEOUT,
 };
 
-/** «Оптимальный» policy defaults — windowed speed-vs-liveness selection. Shorter
- *  interval than speed's 300 s so the EWMA reflects recent conditions; same tolerance
- *  as the switch margin on effective latency. */
+/** «Оптимальный» policy defaults — windowed speed-vs-liveness selection. The switch
+ *  margin is RELATIVE (a % of the current node's score, see OPTIMAL_SWITCH_MARGIN_PCT),
+ *  not a fixed ms, so it scales with how fast the fleet is — hence no `toleranceMs`. */
 export const DEFAULT_OPTIMAL_POLICY: ChannelPolicy = {
   kind: "optimal",
   testUrl: DEFAULT_AUTO_TEST_URL,
   intervalSec: 60,
-  toleranceMs: DEFAULT_AUTO_TOLERANCE,
 };
 
-/** EWMA half-life (seconds) for the optimal policy — how fast old samples decay.
- *  Constant in v1 (not a per-policy knob) to keep the UI to three fields. */
-export const OPTIMAL_EWMA_HALF_LIFE_SEC = 300;
+/** EWMA half-life for the optimal policy, measured in MEASUREMENTS (not seconds) so the
+ *  window is the same regardless of «Интервал проверки» (a 300 s window meant 30 samples
+ *  at a 10 s interval but only 1 at 5 min). ~8 samples half-life ≈ a rolling window of the
+ *  last ~15–20 measurements: responsive enough to react to a real spike/degradation, still
+ *  smoothed enough not to chase single-sample noise. α = 1 − 2^(−1/N). Tune on real fleets. */
+export const OPTIMAL_EWMA_HALF_LIFE_SAMPLES = 8;
 /** Success-rate floor in the effective-latency denominator, so a fully-dead node
  *  (ewmaSuccess → 0) can't divide-by-zero and simply sorts last. */
 export const OPTIMAL_SUCCESS_EPSILON = 0.05;
-/** Missed probes of the ACTIVE node before the optimal policy fails over to the best
- *  reachable node. 1 = flee on the FIRST timeout: never hold a node that just went
- *  unreachable while a live alternative exists, then let the EWMA ranking pick the
- *  long-run leader among the healthy nodes. Guards the slow-abandonment trap (a dead
- *  node's EWMA effective latency crawls up over minutes at a long half-life). */
+/** Proactive switch margin as a FRACTION of the current node's effective latency: switch
+ *  to the best reachable node when it's at least this much faster. Relative (not fixed ms)
+ *  so a fast fleet (~300 ms) switches on ~30 ms while a slow one (~1 s) needs ~100 ms — a
+ *  fixed 50 ms either flapped the slow fleet or froze the fast one. */
+export const OPTIMAL_SWITCH_MARGIN_PCT = 0.1;
+/** Missed probes of the ACTIVE node before failing over to the best reachable node.
+ *  1 = flee on the FIRST timeout (never hold a dead node while a live alternative exists). */
 export const OPTIMAL_ACTIVE_FAILURE_THRESHOLD = 1;
+/** «Slow but alive» escape: the active node counts as slow this tick when its RAW current
+ *  latency exceeds the best reachable node's RAW latency by more than this fraction (raw-to-
+ *  raw, not smoothed — a node with a good EWMA history but a bad current ping must still
+ *  count as slow). Catches a moderate gap the proactive margin can miss when activeEff lags. */
+export const OPTIMAL_SLOW_FACTOR = 0.35;
+/** Consecutive «slow» ticks before the slow-but-alive escape fires — a short streak so a
+ *  single-sample blip doesn't cause a switch (the current node isn't dead, just spiking). */
+export const OPTIMAL_SLOW_TICKS = 2;

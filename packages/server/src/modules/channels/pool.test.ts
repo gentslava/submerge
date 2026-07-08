@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import type { Channel } from "@submerge/shared";
+import { type Channel, emptyChannelMatcher } from "@submerge/shared";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
@@ -27,7 +27,7 @@ function channel(overrides: Partial<Channel>): Channel {
     enabled: true,
     isDefault: false,
     policy: manualPolicy,
-    matcher: { presets: [], domains: [] },
+    matcher: emptyChannelMatcher(),
     lastReason: null,
     lastReasonAt: null,
     ...overrides,

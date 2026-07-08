@@ -1,4 +1,4 @@
-import type { Channel, ChannelPolicy } from "@submerge/shared";
+import { type Channel, type ChannelPolicy, emptyChannelMatcher } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { ControllerRegistry } from "./registry.js";
@@ -27,7 +27,7 @@ const channel = (
   enabled,
   isDefault,
   policy,
-  matcher: { presets: [], domains: [] },
+  matcher: emptyChannelMatcher(),
   lastReason: null,
   lastReasonAt: null,
 });
@@ -113,12 +113,7 @@ describe("ControllerRegistry", () => {
 
   it("selects an optimal channel into its own group by effective latency", async () => {
     const h = harness();
-    const optimal: ChannelPolicy = {
-      kind: "optimal",
-      testUrl: "https://probe",
-      intervalSec: 60,
-      toleranceMs: 50,
-    };
+    const optimal: ChannelPolicy = { kind: "optimal", testUrl: "https://probe", intervalSec: 60 };
     setChannels(h, [channel("ch1", false, optimal)]);
     setGroup(h, "ch-ch1", ["A", "B"]);
     // Give measurements via mihomo history (the prober's freshness path): B fast, A slow.
