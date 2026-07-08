@@ -36,11 +36,12 @@ export function NodeRow({
   const isExcluded = item.excluded ?? false;
   const [expanded, setExpanded] = useState(false);
   const speedTest = useSpeedTest();
-  // Cached throughput (Phase 4c) — only for singleton nodes (a group is a url-test
-  // of members, not a single testable exit).
-  const mbps = !isGroup ? (speedTest?.mbpsOf(item.name) ?? null) : null;
+  // Cached throughput (Phase 4c). Works for a collapsed group too: the group name is
+  // in the hidden PROBE group, so the test routes through whichever member the group
+  // currently resolves to — i.e. "how fast this group is right now".
+  const mbps = speedTest?.mbpsOf(item.name) ?? null;
   const testing = speedTest?.testing.has(item.name) ?? false;
-  const canSpeedTest = !isGroup && speedTest !== null;
+  const canSpeedTest = speedTest !== null;
   // Sub-line: a collapsed group shows its server count ("5 серверов"); a plain
   // node shows its protocol badges (VLESS · TCP · Reality / · WS · TLS), plus the
   // cached download speed once measured.
