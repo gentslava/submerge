@@ -14,9 +14,11 @@ import { Switch } from "@/components/ui/switch";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
 import { DomainTags } from "./DomainTags";
+import { KeywordTags } from "./KeywordTags";
 import { PolicyEditor } from "./PolicyEditor";
 import { PoolPicker } from "./PoolPicker";
 import { PresetChips } from "./PresetChips";
+import { RuleProviderRows } from "./RuleProviderRows";
 
 const POLICY_LABEL: Record<Channel["policy"]["kind"], string> = {
   speed: "По задержке",
@@ -296,6 +298,34 @@ function ChannelEditor({
           </>
         )}
       </div>
+      {!channel.isDefault && (
+        <>
+          <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-label text-text-primary">Ключевые слова</span>
+              <span className="text-xs text-text-tertiary">
+                Совпадение по части адреса (DOMAIN-KEYWORD)
+              </span>
+            </div>
+            <KeywordTags
+              value={channel.matcher.keywords}
+              onChange={(keywords) => onUpdateMatcher({ ...channel.matcher, keywords })}
+            />
+          </div>
+          <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-label text-text-primary">Списки правил</span>
+              <span className="text-xs text-text-tertiary">
+                Внешние списки правил (rule-providers), обновляются автоматически
+              </span>
+            </div>
+            <RuleProviderRows
+              value={channel.matcher.ruleProviders}
+              onChange={(ruleProviders) => onUpdateMatcher({ ...channel.matcher, ruleProviders })}
+            />
+          </div>
+        </>
+      )}
       <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
         <span className="text-label text-text-primary">Пул</span>
         <PoolPicker channelId={channel.id} />
