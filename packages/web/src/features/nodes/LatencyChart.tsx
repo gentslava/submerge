@@ -42,10 +42,7 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
 
   return (
     <div className="flex w-full flex-col gap-2.5 lg:w-[400px] lg:shrink-0">
-      <div className="flex items-center justify-between">
-        <span className="text-meta text-text-secondary">
-          Задержка · {durationLabel(windowSeconds)}
-        </span>
+      <div className="flex items-center justify-end">
         <span className="font-mono text-fine text-text-tertiary">
           {peak > 0 ? `пик ${peak} ms` : "нет данных"}
         </span>
