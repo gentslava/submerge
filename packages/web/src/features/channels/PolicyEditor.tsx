@@ -1,5 +1,9 @@
-import type { ChannelPolicy } from "@submerge/shared";
-import type { ReactNode } from "react";
+import {
+  type ChannelPolicy,
+  DEFAULT_AUTO_TEST_URL,
+  DEFAULT_AUTO_TOLERANCE,
+} from "@submerge/shared";
+import { type ReactNode, useRef } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -52,6 +56,41 @@ export function PolicyEditor({
   // `nodeNames[0]` same as before.
   activeNode?: string;
 }) {
+  // Remember every field the user has set, so switching to a policy that LACKS a field
+  // (e.g. `manual` has no interval/url/tolerance) and back doesn't reset it to a default —
+  // the reported "интервал сбрасывается на 60 при смене стратегий". The controlled
+  // `policy` only ever carries the CURRENT kind's fields; this ref is the union that
+  // survives kind switches. Absorbed from `policy` on each render (external edits win),
+  // and read by switchPolicy when building the next kind.
+  //
+  // `pinnedNode` is intentionally NOT remembered here — re-entering `manual` re-seeds it
+  // from where the channel is actually routing (see switchPolicy), which is the desired
+  // "pin the current exit" behavior, not a stale earlier pick.
+  //
+  // The draft is per-PolicyEditor-instance. Correctness across channels relies on each
+  // channel getting its own instance (Settings = the single default; Routing keys each
+  // card by channel id) — don't reuse one instance across channels without a reset.
+  const draft = useRef({
+    testUrl: DEFAULT_AUTO_TEST_URL,
+    intervalSec: 60,
+    toleranceMs: DEFAULT_AUTO_TOLERANCE,
+    reevaluateWhileHealthy: true,
+    failureThreshold: 3,
+    maxHoldHours: null as number | null,
+    initialCriterion: "fastest" as "fastest" | "lowest-loss",
+    onFailure: "fallback" as "fallback" | "hold",
+  });
+  if ("testUrl" in policy) draft.current.testUrl = policy.testUrl;
+  if ("intervalSec" in policy) draft.current.intervalSec = policy.intervalSec;
+  if ("toleranceMs" in policy) draft.current.toleranceMs = policy.toleranceMs;
+  if (policy.kind === "speed") draft.current.reevaluateWhileHealthy = policy.reevaluateWhileHealthy;
+  if (policy.kind === "sticky") {
+    draft.current.failureThreshold = policy.failureThreshold;
+    draft.current.maxHoldHours = policy.maxHoldHours;
+    draft.current.initialCriterion = policy.initialCriterion;
+  }
+  if (policy.kind === "manual") draft.current.onFailure = policy.onFailure;
+
   function updateSpeed(patch: Partial<Extract<ChannelPolicy, { kind: "speed" }>>) {
     if (policy.kind !== "speed") return;
     onChange({ ...policy, ...patch });
@@ -72,14 +111,15 @@ export function PolicyEditor({
     onChange({ ...policy, ...patch });
   }
 
-  // Switch the policy kind, carrying over shared fields where they exist and seeding
-  // the rest with sane defaults. `manual` needs a concrete node, so it seeds from
-  // wherever the channel is already routing (`activeNode`, if the caller has that
-  // context and it's still a live node) — falling back to the first available one
-  // (`nodeNames[0]`) when it isn't. This only picks the seed; it never reorders the
-  // rendered <select> options.
+  // Switch the policy kind, rebuilding the target policy from the remembered `draft`
+  // so previously-set fields (interval/url/tolerance and each kind's own knobs) survive
+  // the switch — including a round-trip through `manual`, which carries none of them.
+  // `manual` needs a concrete node, so it seeds from wherever the channel is already
+  // routing (`activeNode`, if the caller has that context and it's still a live node) —
+  // falling back to the first available one (`nodeNames[0]`) when it isn't.
   function switchPolicy(kind: ChannelPolicy["kind"]) {
     if (policy.kind === kind) return;
+    const d = draft.current;
     if (kind === "manual") {
       const pinnedNode =
         activeNode !== undefined && nodeNames.includes(activeNode) ? activeNode : nodeNames[0];
@@ -87,23 +127,32 @@ export function PolicyEditor({
         toast.error("Нет доступных узлов для закрепления");
         return;
       }
-      onChange({ kind: "manual", pinnedNode, onFailure: "fallback" });
+      onChange({ kind: "manual", pinnedNode, onFailure: d.onFailure });
       return;
     }
-    const testUrl = "testUrl" in policy ? policy.testUrl : "https://www.gstatic.com/generate_204";
-    const intervalSec = "intervalSec" in policy ? policy.intervalSec : 60;
     const next: ChannelPolicy =
       kind === "speed"
-        ? { kind: "speed", testUrl, intervalSec, toleranceMs: 50, reevaluateWhileHealthy: true }
+        ? {
+            kind: "speed",
+            testUrl: d.testUrl,
+            intervalSec: d.intervalSec,
+            toleranceMs: d.toleranceMs,
+            reevaluateWhileHealthy: d.reevaluateWhileHealthy,
+          }
         : kind === "optimal"
-          ? { kind: "optimal", testUrl, intervalSec, toleranceMs: 50 }
+          ? {
+              kind: "optimal",
+              testUrl: d.testUrl,
+              intervalSec: d.intervalSec,
+              toleranceMs: d.toleranceMs,
+            }
           : {
               kind: "sticky",
-              testUrl,
-              intervalSec,
-              failureThreshold: 3,
-              maxHoldHours: null,
-              initialCriterion: "fastest",
+              testUrl: d.testUrl,
+              intervalSec: d.intervalSec,
+              failureThreshold: d.failureThreshold,
+              maxHoldHours: d.maxHoldHours,
+              initialCriterion: d.initialCriterion,
             };
     onChange(next);
   }
