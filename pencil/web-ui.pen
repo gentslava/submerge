@@ -44229,6 +44229,31 @@
                                       "fontSize": 14
                                     }
                                   }
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "V8drG",
+                                  "name": "Действия",
+                                  "width": 44,
+                                  "height": 44,
+                                  "fill": "$bg-elevated",
+                                  "cornerRadius": "$radius-md",
+                                  "stroke": "$border-subtle",
+                                  "strokeWidth": 1,
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "qL7N7",
+                                      "name": "more",
+                                      "width": 18,
+                                      "height": 18,
+                                      "icon": "ellipsis",
+                                      "library": "lucide",
+                                      "fill": "$text-secondary"
+                                    }
+                                  ]
                                 }
                               ]
                             }
@@ -44357,6 +44382,31 @@
                                       "fontSize": 14
                                     }
                                   }
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "KXuWb",
+                                  "name": "Действия",
+                                  "width": 44,
+                                  "height": 44,
+                                  "fill": "$bg-elevated",
+                                  "cornerRadius": "$radius-md",
+                                  "stroke": "$border-subtle",
+                                  "strokeWidth": 1,
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "UBgpJ",
+                                      "name": "more",
+                                      "width": 18,
+                                      "height": 18,
+                                      "icon": "ellipsis",
+                                      "library": "lucide",
+                                      "fill": "$text-secondary"
+                                    }
+                                  ]
                                 }
                               ]
                             }
@@ -44482,6 +44532,31 @@
                                       "fontSize": 14
                                     }
                                   }
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "zLkPy",
+                                  "name": "Действия",
+                                  "width": 44,
+                                  "height": 44,
+                                  "fill": "$accent-bg",
+                                  "cornerRadius": "$radius-md",
+                                  "stroke": "$accent-border",
+                                  "strokeWidth": 1,
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "z58plw",
+                                      "name": "more",
+                                      "width": 18,
+                                      "height": 18,
+                                      "icon": "ellipsis",
+                                      "library": "lucide",
+                                      "fill": "$accent-text"
+                                    }
+                                  ]
                                 }
                               ]
                             }
@@ -44669,6 +44744,135 @@
                           "content": "Ещё",
                           "fontFamily": "$font-sans",
                           "fontSize": 11,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "a3kTW",
+                  "layoutPosition": "absolute",
+                  "x": 184,
+                  "y": 646,
+                  "name": "Меню действий · Telegram",
+                  "width": 190,
+                  "fill": "$bg-elevated",
+                  "cornerRadius": "$radius-md",
+                  "stroke": "$border-default",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "padding": 6,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "imBam",
+                      "name": "Пинг",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#00000000",
+                      "cornerRadius": "$radius-sm",
+                      "gap": 10,
+                      "padding": [
+                        0,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "oRZF0",
+                          "name": "i",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "activity",
+                          "library": "lucide",
+                          "fill": "$text-primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "avkSZ",
+                          "name": "t",
+                          "fill": "$text-primary",
+                          "content": "Проверить пинг",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "j00k8y",
+                      "name": "Скорость",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#00000000",
+                      "cornerRadius": "$radius-sm",
+                      "gap": 10,
+                      "padding": [
+                        0,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "H2MN9",
+                          "name": "i",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "zap",
+                          "library": "lucide",
+                          "fill": "$text-primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "wNBFi",
+                          "name": "t",
+                          "fill": "$text-primary",
+                          "content": "Замерить скорость",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "mkRdi",
+                      "name": "Отключить",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "$status-timeout-bg",
+                      "cornerRadius": "$radius-sm",
+                      "gap": 10,
+                      "padding": [
+                        0,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "Z5xbF",
+                          "name": "i",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "ban",
+                          "library": "lucide",
+                          "fill": "$status-timeout"
+                        },
+                        {
+                          "type": "text",
+                          "id": "yzl6s",
+                          "name": "t",
+                          "fill": "$status-timeout",
+                          "content": "Отключить узел",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
                           "fontWeight": "500"
                         }
                       ]
