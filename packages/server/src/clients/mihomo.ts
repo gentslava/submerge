@@ -99,7 +99,12 @@ const connectionSchema = z.looseObject({
 });
 export type MihomoConnection = z.infer<typeof connectionSchema>;
 const connectionsResponseSchema = z.object({
-  connections: z.array(connectionSchema).default([]),
+  // mihomo serializes an idle connection list as `null` (Go nil slice), not `[]`.
+  // Treat that as an empty snapshot; HTTP/errors still represent engine failures.
+  connections: z
+    .array(connectionSchema)
+    .nullish()
+    .transform((value) => value ?? []),
 });
 
 function call(path: string, init: RequestInit = {}): Promise<Response> {

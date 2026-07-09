@@ -76,6 +76,14 @@ describe("mihomo client", () => {
     expect(conns[0]?.metadata.process).toBe(""); // defaulted
   });
 
+  it("normalizes an idle /connections null list to an empty snapshot", async () => {
+    mockFetch((url) => {
+      expect(url).toContain("/connections");
+      return json({ downloadTotal: 0, uploadTotal: 0, connections: null });
+    });
+    await expect(getConnections()).resolves.toEqual([]);
+  });
+
   it("closes a connection via DELETE and tolerates a 404", async () => {
     let method = "";
     let path = "";
