@@ -28,9 +28,9 @@ export function NodeList({
   const groups = groupNodes(nodes, sources);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
+    <div className="node-list-container flex flex-col gap-3">
       {/* Columns header */}
-      <div className="flex items-center gap-4 border-b border-border-subtle bg-elevated px-4 py-[11px]">
+      <div className="node-list-header hidden items-center gap-4 border-b border-border-subtle bg-elevated px-4 py-[11px]">
         <span className="flex-1 text-caption text-text-tertiary">УЗЕЛ</span>
         <span className="w-24 text-right text-caption text-text-tertiary">ПИНГ</span>
         <span aria-hidden="true" className="w-12" />

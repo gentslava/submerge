@@ -121,27 +121,32 @@ export function SourcesScreen() {
 
       <SourceForm />
 
-      <section className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
-        <div className="flex items-center justify-between px-4 py-3.5">
-          <span className="text-caption text-text-tertiary">СПИСОК ИСТОЧНИКОВ</span>
+      <section className="flex flex-col gap-3 md:gap-0 md:overflow-hidden md:rounded-lg md:border md:border-border-subtle md:bg-surface">
+        <div className="flex items-center justify-between px-0 py-1 md:px-4 md:py-3.5">
+          <span className="text-section text-text-primary md:text-caption md:text-text-tertiary">
+            Источники
+          </span>
           {count > 0 && (
             <span className="text-xs text-text-tertiary">
               {count} {pluralRu(count, ["источник", "источника", "источников"])}
             </span>
           )}
         </div>
-        <div className="h-px w-full bg-border-subtle" />
+        <div className="hidden h-px w-full bg-border-subtle md:block" />
 
         {sourcesQuery.isLoading ? (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-3 md:gap-0">
             {[0, 1, 2].map((i) => (
-              <div key={i} className="border-b border-border-subtle px-4 py-3.5 last:border-0">
+              <div
+                key={i}
+                className="rounded-xl border border-border-subtle bg-surface p-3.5 md:rounded-none md:border-0 md:border-b md:px-4 md:last:border-0"
+              >
                 <Skeleton className="h-10 w-full rounded-md" />
               </div>
             ))}
           </div>
         ) : sourcesQuery.isError ? (
-          <div className="flex flex-col items-center gap-3 p-8 text-center text-text-secondary">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-border-subtle bg-surface p-8 text-center text-text-secondary md:rounded-none md:border-0">
             <span>Не удалось загрузить источники.</span>
             <Button variant="secondary" size="sm" onClick={() => sourcesQuery.refetch()}>
               Повторить
@@ -189,7 +194,7 @@ export function SourcesScreen() {
             </DragOverlay>
           </DndContext>
         ) : (
-          <div className="flex flex-col items-center gap-3 p-10 text-center text-text-secondary">
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-border-subtle bg-surface p-10 text-center text-text-secondary md:rounded-none md:border-0">
             <span>Пока нет источников — вставьте ссылку в форму выше.</span>
             <Button
               variant="secondary"

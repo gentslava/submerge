@@ -129,7 +129,7 @@ export function SourceForm() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:items-center md:justify-between">
           <div className="flex items-center gap-2">
             <span className="text-sub text-text-secondary">Тип:</span>
             <span className="inline-flex items-center gap-[5px] rounded-full bg-hover px-[9px] py-[3px] text-meta text-text-tertiary">
@@ -166,11 +166,18 @@ export function SourceForm() {
           </div>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex md:justify-end">
           {/* The button sets disabled:pointer-events-none, so hover passes to this
               span — its title explains why Добавить is inactive while empty. */}
-          <span title={typed ? undefined : "Вставьте ссылку источника"} className="inline-flex">
-            <Button type="submit" disabled={!typed || addMutation.isPending}>
+          <span
+            title={typed ? undefined : "Вставьте ссылку источника"}
+            className="inline-flex w-full md:w-auto"
+          >
+            <Button
+              type="submit"
+              disabled={!typed || addMutation.isPending}
+              className="w-full md:w-auto"
+            >
               <Plus className="h-4 w-4" aria-hidden="true" />
               {addMutation.isPending ? "Добавляю…" : "Добавить"}
             </Button>

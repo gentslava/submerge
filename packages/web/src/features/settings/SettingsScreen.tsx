@@ -253,7 +253,7 @@ function Section({ title, desc, children }: { title: string; desc: string; child
     <section className="flex flex-col gap-3.5">
       <div className="flex flex-col gap-1">
         <h2 className="text-cardtitle text-text-primary">{title}</h2>
-        <p className="text-sub text-text-secondary">{desc}</p>
+        <p className="hidden text-sub text-text-secondary md:block">{desc}</p>
       </div>
       <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
         {children}

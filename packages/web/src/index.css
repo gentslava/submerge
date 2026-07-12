@@ -63,6 +63,10 @@
 }
 /* @end generated design tokens */
 
+:root {
+  --mobile-bottom-nav-height: calc(4rem + max(0.75rem, env(safe-area-inset-bottom)) + 1px);
+}
+
 /* Expose roles as Tailwind utilities (bg-base, text-primary, border-default, …) */
 @theme inline {
   --color-canvas: var(--bg-base);
@@ -140,5 +144,39 @@
   [role="button"]:not([aria-disabled="true"]),
   label[for] {
     cursor: pointer;
+  }
+}
+
+/* The node list can be much narrower than the browser viewport when the sidebar
+   or DevTools is open. Its layout therefore follows the list's own width: below
+   768px actions live in the per-node overflow menu; wider lists regain columns. */
+.node-list-container {
+  container: node-list / inline-size;
+}
+
+@container node-list (min-width: 48rem) {
+  .node-list-container {
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-surface);
+  }
+
+  .node-list-header,
+  .node-group-desktop-header,
+  .node-row-desktop,
+  .node-member-desktop {
+    display: flex;
+  }
+
+  .node-group {
+    display: contents;
+  }
+
+  .node-group-mobile-header,
+  .node-row-mobile,
+  .node-member-mobile {
+    display: none;
   }
 }

@@ -176,12 +176,16 @@ export function RoutingScreen() {
 
   return (
     <div className="flex flex-col gap-5 px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
-      <header className="flex w-full items-center justify-between gap-4">
+      <header className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
         <div className="flex flex-col gap-[5px]">
           <h1 className="text-h1 text-text-primary">Маршрутизация</h1>
           <p className="text-sub text-text-secondary">Какие сайты через какие узлы</p>
         </div>
-        <Button onClick={handleCreate} disabled={createMutation.isPending}>
+        <Button
+          onClick={handleCreate}
+          disabled={createMutation.isPending}
+          className="w-full md:w-auto"
+        >
           <Plus className="h-4 w-4" aria-hidden="true" />
           Новый канал
         </Button>

@@ -91,6 +91,7 @@ export interface NodeGroup {
   label: string;
   kind: Source["kind"] | "other";
   hwid: boolean;
+  source?: Source;
   nodes: NodeItem[];
 }
 
@@ -113,6 +114,7 @@ export function groupNodes(nodes: NodeItem[], sources: Source[]): NodeGroup[] {
         label: src.label,
         kind: src.kind,
         hwid: src.hwid,
+        source: src,
         nodes: members,
       });
     }

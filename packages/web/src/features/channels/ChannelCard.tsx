@@ -385,8 +385,8 @@ function ChannelEditor({
 // control to the trailing edge.
 function EditorRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex w-full items-center gap-6 border-b border-border-subtle px-[18px] py-4">
-      <span className="flex-1 text-label text-text-primary">{label}</span>
+    <div className="flex w-full flex-col items-stretch gap-3 border-b border-border-subtle px-[18px] py-4 md:flex-row md:items-center md:gap-6">
+      <span className="md:flex-1 text-label text-text-primary">{label}</span>
       {children}
     </div>
   );

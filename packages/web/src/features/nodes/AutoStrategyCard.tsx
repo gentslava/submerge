@@ -106,13 +106,13 @@ export function AutoStrategyCard({
       : "Ручной выбор";
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border-subtle bg-surface">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+    <section className="overflow-visible rounded-none border-0 bg-transparent md:overflow-hidden md:rounded-lg md:border md:border-border-subtle md:bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-0 md:px-4 md:py-3.5">
         {/* biome-ignore lint/a11y/useSemanticElements: role="group" is the correct ARIA pattern for a segmented toggle of buttons; <fieldset> carries unwanted form-control semantics. */}
         <div
           role="group"
           aria-label="Стратегия выбора узла"
-          className="flex gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]"
+          className="flex w-full gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px] md:w-auto"
         >
           {TABS.map(({ key, label, Icon }) => {
             const active = key === (isAuto ? "auto" : "manual");
@@ -124,7 +124,7 @@ export function AutoStrategyCard({
                 aria-current={active ? "true" : undefined}
                 onClick={key === "auto" ? onAuto : onManual}
                 className={cn(
-                  "flex items-center gap-[7px] rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:pointer-events-none disabled:opacity-60",
+                  "flex flex-1 items-center justify-center gap-[7px] rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:pointer-events-none disabled:opacity-60 md:flex-none",
                   active
                     ? "bg-accent text-accent-fg"
                     : "text-text-secondary hover:text-text-primary",
@@ -136,7 +136,7 @@ export function AutoStrategyCard({
             );
           })}
         </div>
-        <div className="flex items-center gap-3.5">
+        <div className="hidden items-center gap-3.5 md:flex">
           <span className="flex items-center gap-[7px]">
             <span aria-hidden="true" className={cn("h-2 w-2 rounded-full", live.dot)} />
             <span className="text-xs text-text-secondary">{live.label}</span>
@@ -152,12 +152,12 @@ export function AutoStrategyCard({
         </div>
       </div>
 
-      <div className="h-px w-full bg-border-subtle" />
+      <div className="hidden h-px w-full bg-border-subtle md:block" />
 
       {/* Mobile: a 2-col grid (URL spans a full row, dense flow backfills the gap).
           Desktop (md+): a single content-flexible row where the URL grows + truncates
           and short values size to content, split by vertical dividers. */}
-      <div className="grid grid-flow-row-dense grid-cols-2 gap-x-4 gap-y-3.5 px-4 py-3.5 md:flex md:items-center md:gap-0">
+      <div className="hidden grid-flow-row-dense grid-cols-2 gap-x-4 gap-y-3.5 px-4 py-3.5 md:flex md:items-center md:gap-0">
         {params.map((p, i) => (
           <div
             key={p.caption}
@@ -188,9 +188,9 @@ export function AutoStrategyCard({
         ))}
       </div>
 
-      <div className="h-px w-full bg-border-subtle" />
+      <div className="hidden h-px w-full bg-border-subtle md:block" />
 
-      <div className="flex flex-col gap-1 bg-elevated px-4 py-[11px]">
+      <div className="hidden flex-col gap-1 bg-elevated px-4 py-[11px] md:flex">
         <div className="flex items-center gap-2.5">
           <History className="h-3.5 w-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
           <span className="font-mono text-xs text-text-tertiary">{status}</span>

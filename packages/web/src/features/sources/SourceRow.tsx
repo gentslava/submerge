@@ -163,7 +163,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
       ref={ref}
       style={style}
       className={cn(
-        "flex flex-col gap-3 border-b border-border-subtle px-4 py-3.5 last:border-0 md:flex-row md:items-center md:gap-3.5",
+        "relative flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3.5 md:rounded-none md:border-0 md:border-b md:px-4 md:py-3.5 md:last:border-0 md:flex-row md:items-center md:gap-3.5",
         !source.enabled && "opacity-50",
         overlay && "rounded-lg border bg-surface opacity-100 shadow-lg",
         className,
@@ -171,7 +171,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
     >
       {/* Lead: handle + icon + name/badges. On desktop this trio is the row's flex-1
           lead; on mobile it's the first stacked line. */}
-      <div className="flex min-w-0 items-center gap-3.5 md:flex-1">
+      <div className="flex min-w-0 items-center gap-3.5 pr-12 md:flex-1 md:pr-0">
         {handle}
 
         {/* Kind icon tile */}
@@ -199,6 +199,15 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
         </div>
       </div>
 
+      <span className="absolute top-4 right-3.5 md:hidden">
+        <Switch
+          checked={source.enabled}
+          onCheckedChange={onToggle}
+          disabled={isBusy}
+          aria-label="Включить источник"
+        />
+      </span>
+
       {/* Meta + controls. md:contents dissolves this wrapper on desktop so both become
           direct row children (meta then controls, right-aligned); on mobile they share
           a second line — metadata left, controls right. */}
@@ -214,13 +223,15 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
 
         {/* Controls — ml-auto keeps them right-aligned on mobile even when there's no
             meta on the left; md:contents lets the desktop row lay them out normally. */}
-        <div className="flex shrink-0 items-center gap-2.5 ml-auto md:ml-0 md:pl-1.5">
-          <Switch
-            checked={source.enabled}
-            onCheckedChange={onToggle}
-            disabled={isBusy}
-            aria-label="Включить источник"
-          />
+        <div className="ml-auto flex shrink-0 items-center gap-2.5 md:ml-0 md:pl-1.5">
+          <span className="hidden md:inline-flex">
+            <Switch
+              checked={source.enabled}
+              onCheckedChange={onToggle}
+              disabled={isBusy}
+              aria-label="Включить источник"
+            />
+          </span>
           <IconBtn onClick={onRefresh} disabled={isBusy} label="Обновить источник">
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </IconBtn>

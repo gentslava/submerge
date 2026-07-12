@@ -233,8 +233,8 @@ function Body({
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">
-        <h2 className="text-cardtitle text-text-primary">Все узлы</h2>
-        <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
+        <h2 className="text-section text-text-primary md:text-cardtitle">Все узлы</h2>
+        <span className="hidden items-center gap-1.5 text-xs text-text-tertiary md:flex">
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
           сгруппировано по подпискам
         </span>

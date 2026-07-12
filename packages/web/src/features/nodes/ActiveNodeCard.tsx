@@ -38,14 +38,22 @@ export function ActiveNodeCard({
   const badges = active && !isPseudo(active.name) ? typeBadges(active) : [];
 
   return (
-    <section className="flex flex-col gap-7 rounded-xl border border-border-subtle bg-surface p-[22px] lg:flex-row">
-      <div className="flex flex-1 flex-col gap-[18px]">
+    <section className="flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4 md:gap-7 md:p-[22px] lg:flex-row">
+      <div className="flex flex-1 flex-col gap-3 md:gap-[18px]">
         <div className="flex flex-wrap items-center gap-2.5">
-          <span className="text-caption tracking-[0.6px] text-text-tertiary">
+          <span className="hidden text-caption tracking-[0.6px] text-text-tertiary md:inline">
             {isAuto ? "АКТИВНЫЙ УЗЕЛ · ВЫБРАН АВТОМАТИЧЕСКИ" : "АКТИВНЫЙ УЗЕЛ"}
           </span>
+          <span className="text-caption tracking-[0.6px] text-text-tertiary md:hidden">
+            АКТИВНЫЙ УЗЕЛ
+          </span>
           {active != null && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-fine font-semibold text-accent-text">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-fine font-semibold text-accent-text",
+                isAuto && "hidden md:inline-flex",
+              )}
+            >
               <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-accent-text" />
               Активен
             </span>
@@ -58,7 +66,7 @@ export function ActiveNodeCard({
           )}
         </div>
 
-        <h2 className="text-[23px] font-semibold text-text-primary">
+        <h2 className="text-section text-text-primary md:text-[23px]">
           {active?.name ?? (isAuto ? "Авто" : "Нет активного узла")}
         </h2>
 
@@ -75,7 +83,7 @@ export function ActiveNodeCard({
           </div>
         )}
 
-        <div className="flex flex-wrap items-end gap-x-[34px] gap-y-4">
+        <div className="flex flex-wrap items-end gap-x-5 gap-y-4 md:gap-x-[34px]">
           {/* Latency — status dot + big mono value */}
           <div className="flex flex-col gap-1">
             <span className="flex items-center gap-2">
