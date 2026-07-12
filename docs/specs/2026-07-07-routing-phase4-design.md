@@ -1,6 +1,6 @@
 # Routing Phase 4 — rule-providers, keyword/geo rules, on-demand speed test
 
-**Status:** proposed · **Date:** 2026-07-07 · **Scope:** `packages/shared` matcher/policy schemas · `packages/server` config generation + channels module + mihomo client + a bandwidth probe · `packages/web` «Маршрутизация» matcher editor + a speed-test action · `docker-compose.yml` (geo/provider volume)
+**Status:** implemented (4a–4c) · **Date:** 2026-07-07 · **Scope:** `packages/shared` matcher/policy schemas · `packages/server` config generation + channels module + mihomo client + a bandwidth probe · `packages/web` «Маршрутизация» matcher editor + a speed-test action · `docker-compose.yml` (geo/provider volume)
 
 Builds on the shipped channel-routing model ([2026-07-01-channel-routing-design.md](2026-07-01-channel-routing-design.md), phases 1–3b). That design already listed these as **Phase 4 (Polish)**; this spec turns the bullet points into a concrete, staged design against the live code.
 
