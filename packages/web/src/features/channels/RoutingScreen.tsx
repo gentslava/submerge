@@ -175,16 +175,25 @@ export function RoutingScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
-      <header className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+    <div className="responsive-page responsive-page--routing page-content flex flex-col gap-5 px-4 pt-5 pb-8">
+      <header className="routing-header flex w-full items-center justify-between gap-3">
         <div className="flex flex-col gap-[5px]">
           <h1 className="text-h1 text-text-primary">Маршрутизация</h1>
           <p className="text-sub text-text-secondary">Какие сайты через какие узлы</p>
         </div>
         <Button
+          size="icon"
           onClick={handleCreate}
           disabled={createMutation.isPending}
-          className="w-full md:w-auto"
+          className="routing-create-compact"
+          aria-label="Новый канал"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+        </Button>
+        <Button
+          onClick={handleCreate}
+          disabled={createMutation.isPending}
+          className="routing-create-inline hidden"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           Новый канал
@@ -308,8 +317,8 @@ interface SortableChannelCardProps {
 
 // Wires one non-default channel into the sortable list: `useSortable` supplies the
 // drag transform (applied to the whole card via ChannelCard's forwardRef) and the
-// activator ref/listeners for the grip handle. The grip is desktop-only (`hidden
-// md:flex`); below `md` it's replaced by ↑↓ arrow buttons that call the same
+// activator ref/listeners for the grip handle. The grip appears in the inline
+// container mode; below it ↑↓ arrow buttons call the same
 // reorder path directly (no drag gesture needed on touch).
 function SortableChannelCard({
   channel,
@@ -346,11 +355,11 @@ function SortableChannelCard({
             {...attributes}
             {...listeners}
             aria-label={`Перетащить «${channel.name}» для сортировки`}
-            className="hidden h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary active:cursor-grabbing md:flex"
+            className="routing-reorder-desktop hidden h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary active:cursor-grabbing"
           >
             <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
           </button>
-          <span className="flex shrink-0 flex-col md:hidden">
+          <span className="routing-reorder-compact flex shrink-0 flex-col">
             <button
               type="button"
               onClick={onMoveUp}

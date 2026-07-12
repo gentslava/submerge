@@ -6,9 +6,9 @@ import {
   groupNodes,
   latencyClass,
   latencyLabel,
+  realNodes,
   securityBadge,
   serverCountLabel,
-  splitNodes,
   transportBadge,
   typeBadges,
 } from "./nodeView";
@@ -46,13 +46,12 @@ describe("nodeView", () => {
     expect(latencyLabel(0)).toBe("timeout");
     expect(latencyLabel(330)).toBe("330 ms");
   });
-  it("separates pseudo modes from real nodes", () => {
-    const { modes, nodes } = splitNodes([
+  it("filters pseudo modes from real nodes", () => {
+    const nodes = realNodes([
       { name: "AUTO", type: "URLTest", delay: null, history: [] },
       { name: "NL-1", type: "vless", delay: 47, history: [] },
       { name: "DIRECT", type: "Direct", delay: null, history: [] },
     ]);
-    expect(modes.map((m) => m.name)).toEqual(["AUTO", "DIRECT"]);
     expect(nodes.map((n) => n.name)).toEqual(["NL-1"]);
   });
 

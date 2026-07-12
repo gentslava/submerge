@@ -14,11 +14,8 @@ export function isPseudo(name: string): boolean {
   return PSEUDO_NODE_SET.has(name);
 }
 
-export function splitNodes(all: NodeItem[]): { modes: NodeItem[]; nodes: NodeItem[] } {
-  const modes: NodeItem[] = [];
-  const nodes: NodeItem[] = [];
-  for (const n of all) (PSEUDO_NODE_SET.has(n.name) ? modes : nodes).push(n);
-  return { modes, nodes };
+export function realNodes(all: NodeItem[]): NodeItem[] {
+  return all.filter((node) => !PSEUDO_NODE_SET.has(node.name));
 }
 
 export function latencyLabel(delay: number | null): string {

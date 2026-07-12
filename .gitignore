@@ -9,6 +9,10 @@ dist/
 
 # v2 server runtime — SQLite DB and secrets, do not commit
 packages/server/data/
+# Local web/e2e runs may start the server from the web package; never retain
+# their SQLite state or Playwright output in the worktree.
+packages/web/data/
+packages/web/test-results/
 .env
 .env.*
 !.env.example

@@ -151,6 +151,31 @@ describe("sources service", () => {
     expect(list.map((s) => s.id)).toEqual([b.id, a.id]); // listSources orders by sortOrder
   });
 
+  it("rejects a partial, duplicate, or unknown source order", async () => {
+    const db = freshDb();
+    stubNet();
+    const { source: a } = await addSource(
+      db,
+      { value: "vless://u@ex.com:443#A", hwid: false },
+      tmpConfig(),
+      hwidFile(),
+    );
+    const { source: b } = await addSource(
+      db,
+      { value: "vless://u@ex.com:443#B", hwid: false },
+      tmpConfig(),
+      hwidFile(),
+    );
+
+    await expect(reorderSources(db, [a.id], tmpConfig())).rejects.toThrow(/complete source order/i);
+    await expect(reorderSources(db, [a.id, a.id], tmpConfig())).rejects.toThrow(
+      /complete source order/i,
+    );
+    await expect(reorderSources(db, [a.id, b.id + 999], tmpConfig())).rejects.toThrow(
+      /complete source order/i,
+    );
+  });
+
   it("re-ingests and updates the snapshot on refresh", async () => {
     const db = freshDb();
     stubNet(); // first ingest → node "A"

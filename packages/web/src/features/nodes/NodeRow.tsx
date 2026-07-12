@@ -10,7 +10,7 @@ import {
   Undo2,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -130,7 +130,7 @@ export function NodeRow({
         )}
 
         {/* Ping value — a spinner stands in while this node is being pinged */}
-        <div className="flex w-16 shrink-0 items-center justify-end md:w-24">
+        <div className="node-row-ping-cell flex w-16 shrink-0 items-center justify-end">
           {pinging ? (
             <Loader2 className="h-4 w-4 animate-spin text-text-tertiary" aria-label="Опрос…" />
           ) : (
@@ -198,14 +198,14 @@ export function NodeRow({
         </div>
 
         {/* Action cell */}
-        <div className="flex w-auto shrink-0 justify-end md:w-[120px]">
+        <div className="node-row-action-cell flex w-auto shrink-0 justify-end">
           {isActive ? (
             // Solid accent (not opacity-dimmed) — the active node reads as "on", not disabled.
             <Button
               variant="primary"
               size="sm"
               disabled
-              className="w-[92px] disabled:opacity-100 md:w-[112px]"
+              className="node-row-action-button w-[92px] disabled:opacity-100"
             >
               <Check className="h-4 w-4" aria-hidden="true" />
               Активен
@@ -214,7 +214,7 @@ export function NodeRow({
             <Button
               variant="secondary"
               size="sm"
-              className="w-[92px] md:w-[112px]"
+              className="node-row-action-button w-[92px]"
               disabled={isExcluded}
               onClick={onSelect}
             >
@@ -308,6 +308,7 @@ function MobileNodeRow({
   onToggleExcluded,
 }: MobileNodeRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<"above" | "below">("above");
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const lClass = latencyClass(item.delay);
@@ -329,6 +330,29 @@ function MobileNodeRow({
       document.removeEventListener("pointerdown", closeOnOutsidePress);
       document.removeEventListener("keydown", closeOnEscape);
     };
+  }, [menuOpen]);
+
+  // Open away from the nearest edge. The menu initially renders above (the common,
+  // bottom-nav-safe case), then this layout effect flips it before paint if the
+  // trigger is near the viewport top. The fixed bottom nav is a lower boundary,
+  // so a menu never flips into it.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current;
+    const menu = menuRef.current;
+    if (!menuOpen || !trigger || !menu) return;
+
+    const gap = 8;
+    const triggerBounds = trigger.getBoundingClientRect();
+    const menuHeight = menu.getBoundingClientRect().height;
+    const bottomNavTop = document
+      .querySelector<HTMLElement>("nav.fixed")
+      ?.getBoundingClientRect().top;
+    const availableAbove = triggerBounds.top;
+    const availableBelow = (bottomNavTop ?? window.innerHeight) - triggerBounds.bottom;
+    const fitsAbove = availableAbove >= menuHeight + gap;
+    const fitsBelow = availableBelow >= menuHeight + gap;
+
+    setMenuPlacement(fitsAbove || !fitsBelow ? "above" : "below");
   }, [menuOpen]);
 
   return (
@@ -408,55 +432,62 @@ function MobileNodeRow({
               Выбрать
             </Button>
           )}
-          <button
-            ref={triggerRef}
-            type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            aria-label={`Действия для ${item.name}`}
-            aria-expanded={menuOpen}
-            className="flex h-11 w-11 items-center justify-center rounded-md border border-accent-border bg-accent-bg text-accent-text transition-colors hover:bg-hover"
-          >
-            <Ellipsis className="h-[18px] w-[18px]" aria-hidden="true" />
-          </button>
+          <div className="relative">
+            <button
+              ref={triggerRef}
+              type="button"
+              onClick={() => setMenuOpen((open) => !open)}
+              aria-label={`Действия для ${item.name}`}
+              aria-expanded={menuOpen}
+              className="flex h-11 w-11 items-center justify-center rounded-md border border-accent-border bg-accent-bg text-accent-text transition-colors hover:bg-hover"
+            >
+              <Ellipsis className="h-[18px] w-[18px]" aria-hidden="true" />
+            </button>
+
+            {menuOpen && (
+              <div
+                ref={menuRef}
+                className={cn(
+                  "absolute right-0 z-20 flex w-[210px] flex-col gap-0.5 rounded-md border border-border-default bg-elevated p-1.5",
+                  menuPlacement === "above"
+                    ? "bottom-[calc(100%+0.5rem)]"
+                    : "top-[calc(100%+0.5rem)]",
+                )}
+              >
+                <MenuItem
+                  label="Проверить пинг"
+                  icon={Activity}
+                  disabled={pinging || isExcluded}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onPing();
+                  }}
+                />
+                {canSpeedTest && (
+                  <MenuItem
+                    label="Замерить скорость"
+                    icon={Zap}
+                    disabled={testing || isExcluded}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onSpeedTest();
+                    }}
+                  />
+                )}
+                <MenuItem
+                  label={isExcluded ? "Вернуть узел" : "Отключить узел"}
+                  icon={isExcluded ? Undo2 : Ban}
+                  danger={!isExcluded}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onToggleExcluded(!isExcluded);
+                  }}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {menuOpen && (
-        <div
-          ref={menuRef}
-          className="absolute right-3 bottom-3 z-20 flex w-[210px] flex-col gap-0.5 rounded-md border border-border-default bg-elevated p-1.5"
-        >
-          <MenuItem
-            label="Проверить пинг"
-            icon={Activity}
-            disabled={pinging || isExcluded}
-            onClick={() => {
-              setMenuOpen(false);
-              onPing();
-            }}
-          />
-          {canSpeedTest && (
-            <MenuItem
-              label="Замерить скорость"
-              icon={Zap}
-              disabled={testing || isExcluded}
-              onClick={() => {
-                setMenuOpen(false);
-                onSpeedTest();
-              }}
-            />
-          )}
-          <MenuItem
-            label={isExcluded ? "Вернуть узел" : "Отключить узел"}
-            icon={isExcluded ? Undo2 : Ban}
-            danger={!isExcluded}
-            onClick={() => {
-              setMenuOpen(false);
-              onToggleExcluded(!isExcluded);
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }

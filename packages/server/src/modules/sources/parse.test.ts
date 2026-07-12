@@ -304,6 +304,17 @@ describe("parseProxiesFromText", () => {
     expect(out).toHaveLength(1);
     expect(out[0]?.name).toBe("A");
   });
+  it("filters invalid Clash proxy entries without dropping valid neighbours", () => {
+    const yaml = [
+      "proxies:",
+      "  - {name: Valid, type: vless, server: ex.com, port: 443, uuid: u}",
+      "  - {name: Broken, type: vless, port: 443, uuid: u}",
+    ].join("\n");
+
+    expect(parseProxiesFromText(yaml).proxies).toEqual([
+      { name: "Valid", type: "vless", server: "ex.com", port: 443, uuid: "u" },
+    ]);
+  });
   it("parses a v2ray/xray vnext outbound", () => {
     const json = JSON.stringify({
       remarks: "R",

@@ -1,6 +1,6 @@
-// Generate a multi-channel mihomo config.yaml. The single-default case delegates
-// here from buildConfig (config.ts) and MUST reproduce the legacy output
-// byte-for-byte — the default channel owns the canonical, unprefixed names.
+// Generate a multi-channel mihomo config.yaml. The single-default case remains
+// byte-identical to the former generator — the default channel owns the canonical,
+// unprefixed names.
 import { createHash } from "node:crypto";
 import {
   type ChannelPolicy,

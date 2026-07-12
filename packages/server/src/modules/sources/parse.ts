@@ -2,8 +2,12 @@
 //  - vless:// (ws+tls / tcp+reality / grpc / xhttp / http)
 //  - subscriptions: clash/mihomo yaml | base64 list | v2ray/xray JSON | sing-box JSON
 //  - happ:// is handled separately via the happ-decoder client (see ingest.ts)
-import type { Proxy as ProxyConfig } from "@submerge/shared";
-import { type SourceKind, sourceKindSchema } from "@submerge/shared";
+import {
+  type Proxy as ProxyConfig,
+  proxySchema,
+  type SourceKind,
+  sourceKindSchema,
+} from "@submerge/shared";
 import * as yaml from "js-yaml";
 
 // ── Extract a subscription URL from a client deep-link ──────────────
@@ -509,8 +513,13 @@ export function parseProxiesFromText(text: string): ParsedProxies {
   // JSON parses as YAML but lacks .proxies, so it falls through to the JSON branch
   try {
     const doc = yaml.load(text) as { proxies?: unknown[] } | undefined;
-    if (doc && Array.isArray(doc.proxies) && doc.proxies.length)
-      return { proxies: doc.proxies as ProxyConfig[], skipped: [] };
+    if (doc && Array.isArray(doc.proxies) && doc.proxies.length) {
+      const proxies = doc.proxies.flatMap((proxy) => {
+        const parsed = proxySchema.safeParse(proxy);
+        return parsed.success ? [parsed.data] : [];
+      });
+      if (proxies.length) return { proxies, skipped: [] };
+    }
   } catch {
     /* not yaml */
   }

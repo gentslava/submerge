@@ -11,7 +11,7 @@ The PoC is written in bare Node + vanilla JS + single HTML — not maintainable 
 - **No SSR.** Panel behind a password → SSR/RSC solves non-existent problems and gets in the way of long-lived real-time connections. So not Next.js/Nuxt. Frontend — **SPA** (Vite + React 19).
 - **tRPC v11** — end-to-end type safety without codegen (single repo, we own both ends).
 - **Real-time** — SSE (tRPC subscription), not WebSocket (simpler and more reliable for a unidirectional stream behind a reverse proxy).
-- **UI** — shadcn/ui + Tailwind v4 + TanStack Query/Router + uPlot (live charts).
+- **UI** — shadcn/ui + Tailwind v4 + TanStack Query/Router; charting stays dependency-free until a real data visualisation requires a dedicated library.
 - **Monorepo** pnpm workspaces: `shared` / `server` / `web`.
 
 React chosen over Svelte: for a self-hosted dashboard the Svelte runtime advantage is imperceptible, while ecosystem maturity, ready-made components, and AI code generation quality tip the scales.

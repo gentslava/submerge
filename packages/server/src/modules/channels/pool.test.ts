@@ -102,6 +102,24 @@ describe("resolveChannelProxies", () => {
     expect(resolveChannelProxies(db, ch, allProxies)).toEqual(sourceProxies);
   });
 
+  it("skips a disabled source member", () => {
+    const sourceProxies = [proxy("S1", "s1.example", 1080)];
+    const src = db
+      .insert(sources)
+      .values({
+        kind: "vless",
+        value: "vless://disabled",
+        label: "Disabled source",
+        enabled: false,
+        proxies: sourceProxies,
+      })
+      .returning()
+      .get();
+    setPool(db, "ch1", [{ kind: "source", ref: String(src.id) }]);
+
+    expect(resolveChannelProxies(db, ch, allProxies)).toEqual([]);
+  });
+
   it("resolves a node member to the matching proxy in allProxies", () => {
     setPool(db, "ch1", [{ kind: "node", ref: "B" }]);
     expect(resolveChannelProxies(db, ch, allProxies)).toEqual([proxy("B", "b.example", 443)]);

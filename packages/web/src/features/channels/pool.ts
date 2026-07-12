@@ -1,4 +1,4 @@
-import type { Channel, ChannelPoolMember } from "@submerge/shared";
+import { type Channel, type ChannelPoolMember, channelGroupName } from "@submerge/shared";
 
 // Pure pool-editing logic for the PoolPicker, kept apart from the component so it's
 // unit-testable without a tRPC/query-client harness (mirrors sources/reorder.ts).
@@ -9,16 +9,15 @@ import type { Channel, ChannelPoolMember } from "@submerge/shared";
 // exposes both — a source-level bulk checkbox and per-node checkboxes — but they
 // are NOT merged into one flag: checking a source just adds/removes that one ref.
 
-// Mihomo proxy-group names generated for each channel — mirrors the server's
-// groupNameFor (see server's channels/pool.ts): Default -> "AUTO", every other
-// channel -> "ch-<id>". These groups show up in `nodes.list` (they're selectable
+// Mihomo proxy-group names generated for each channel. These groups show up in
+// `nodes.list` (they're selectable
 // targets of the PROXY group) but are routing groups, not real exit nodes, so the
 // PoolPicker must exclude them from its pickable node list — a channel's pool
 // picks real nodes/sources, never another channel's group. Derived from the
 // actual channel ids rather than a `startsWith("ch-")` string match, since a real
 // node could legitimately be named "ch-...".
 export function channelGroupNames(channels: Channel[]): Set<string> {
-  return new Set(channels.map((c) => (c.isDefault ? "AUTO" : `ch-${c.id}`)));
+  return new Set(channels.map(channelGroupName));
 }
 
 export function hasSourceMember(pool: ChannelPoolMember[], sourceId: number): boolean {

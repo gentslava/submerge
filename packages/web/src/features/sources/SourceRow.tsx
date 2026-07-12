@@ -63,11 +63,11 @@ function SourceMeta({ meta }: { meta: SubscriptionMeta }) {
   const hasTraffic = used != null || total != null;
   const pct = used != null && total ? Math.min(100, Math.round((used / total) * 100)) : null;
   return (
-    <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5 md:flex-none md:shrink-0 md:items-end">
+    <div className="source-meta flex min-w-0 flex-1 flex-col items-start gap-1.5">
       {hasTraffic && (
         <div className="flex min-w-0 items-center gap-2">
           {total != null && (
-            <span className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-hover md:w-24">
+            <span className="source-meta-traffic h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-hover">
               <span
                 className="block h-full rounded-full bg-accent"
                 style={{ width: `${pct ?? 0}%` }}
@@ -163,7 +163,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
       ref={ref}
       style={style}
       className={cn(
-        "relative flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3.5 md:rounded-none md:border-0 md:border-b md:px-4 md:py-3.5 md:last:border-0 md:flex-row md:items-center md:gap-3.5",
+        "source-row relative flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3.5",
         !source.enabled && "opacity-50",
         overlay && "rounded-lg border bg-surface opacity-100 shadow-lg",
         className,
@@ -171,7 +171,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
     >
       {/* Lead: handle + icon + name/badges. On desktop this trio is the row's flex-1
           lead; on mobile it's the first stacked line. */}
-      <div className="flex min-w-0 items-center gap-3.5 pr-12 md:flex-1 md:pr-0">
+      <div className="source-row-lead flex min-w-0 items-center gap-3.5 pr-12">
         {handle}
 
         {/* Kind icon tile */}
@@ -199,7 +199,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
         </div>
       </div>
 
-      <span className="absolute top-4 right-3.5 md:hidden">
+      <span className="source-row-mobile-switch absolute top-4 right-3.5">
         <Switch
           checked={source.enabled}
           onCheckedChange={onToggle}
@@ -208,10 +208,10 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
         />
       </span>
 
-      {/* Meta + controls. md:contents dissolves this wrapper on desktop so both become
+      {/* Meta + controls. The data-width mode dissolves this wrapper so both become
           direct row children (meta then controls, right-aligned); on mobile they share
           a second line — metadata left, controls right. */}
-      <div className="flex items-center justify-between gap-3 md:contents">
+      <div className="source-row-meta-controls flex items-center justify-between gap-3">
         {/* Subscription metadata (traffic / expiry / auto), or a note for plain vless configs */}
         {source.meta ? (
           <SourceMeta meta={source.meta} />
@@ -222,9 +222,9 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
         ) : null}
 
         {/* Controls — ml-auto keeps them right-aligned on mobile even when there's no
-            meta on the left; md:contents lets the desktop row lay them out normally. */}
-        <div className="ml-auto flex shrink-0 items-center gap-2.5 md:ml-0 md:pl-1.5">
-          <span className="hidden md:inline-flex">
+            meta on the left; the data-width mode lays the desktop row out normally. */}
+        <div className="source-row-controls ml-auto flex shrink-0 items-center gap-2.5">
+          <span className="source-row-desktop-switch hidden">
             <Switch
               checked={source.enabled}
               onCheckedChange={onToggle}

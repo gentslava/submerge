@@ -5,7 +5,7 @@ import {
 } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { buildConfig } from "./config.js";
+import { buildDefaultConfig } from "./config.test-support.js";
 import { buildMultiConfig, type ChannelConfigInput } from "./multiConfig.js";
 
 const px = (name: string, server = "ex.com", port = 443): ProxyConfig => ({
@@ -42,9 +42,9 @@ const parse = (raw: string): Record<string, any> => yaml.load(raw) as Record<str
 const PROBE_RULE = "DOMAIN,speed.cloudflare.com,PROBE";
 
 describe("buildMultiConfig — single Default channel (byte-identity)", () => {
-  it("reproduces buildConfig output exactly for the default-only case", () => {
+  it("reproduces the single-default output exactly", () => {
     const proxies = [px("A"), px("B")];
-    const legacy = buildConfig(proxies, DEFAULT_SPEED_POLICY);
+    const legacy = buildDefaultConfig(proxies, DEFAULT_SPEED_POLICY);
     const multi = buildMultiConfig([channel({ proxies })]);
     // The invariant: delegation makes these byte-for-byte identical.
     expect(multi).toBe(legacy);

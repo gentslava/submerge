@@ -1,11 +1,15 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseEnv } from "./env.js";
+
+const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 describe("parseEnv", () => {
   it("returns defaults for an empty environment", () => {
     const env = parseEnv({});
     expect(env.PORT).toBe(3000);
-    expect(env.DB_PATH).toBe("./data/submerge.db");
+    expect(env.DB_PATH).toBe(resolve(serverRoot, "data/submerge.db"));
     expect(env.ADMIN_PASSWORD).toBeUndefined();
   });
   it("parses PORT from a string", () => {

@@ -26,7 +26,7 @@ export function NodesHeader({
 
   return (
     <>
-      <header className="flex items-center justify-between gap-4 md:hidden">
+      <header className="nodes-header-compact flex items-center justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h1 className="text-[22px] font-semibold text-text-primary">Узлы</h1>
           <p className="truncate text-meta text-text-tertiary">{summary}</p>
@@ -69,7 +69,7 @@ export function NodesHeader({
         </div>
       </header>
 
-      <header className="hidden flex-col gap-3 md:flex md:flex-row md:items-center md:justify-between">
+      <header className="nodes-header-inline hidden flex-row items-center justify-between gap-3">
         <div className="flex flex-col gap-[5px]">
           <h1 className="text-h1 text-text-primary">Узлы</h1>
           <p className="text-sub text-text-secondary">
@@ -80,19 +80,14 @@ export function NodesHeader({
         <div className="flex items-center gap-2.5">
           <Button
             variant="secondary"
-            className="flex-1 md:flex-none"
+            className="flex-none"
             onClick={onRefresh}
             disabled={refreshing}
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Обновить
           </Button>
-          <Button
-            variant="primary"
-            className="flex-1 md:flex-none"
-            onClick={onPingAll}
-            disabled={pinging}
-          >
+          <Button variant="primary" className="flex-none" onClick={onPingAll} disabled={pinging}>
             <Zap className="h-4 w-4" aria-hidden="true" />
             Пинг всех
           </Button>

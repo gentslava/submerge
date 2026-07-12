@@ -1,8 +1,15 @@
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
+
+// Runtime data must belong to the server package, not to the caller's cwd. This
+// matters for browser tooling, which starts commands from packages/web.
+const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const defaultDbPath = resolve(serverRoot, "data/submerge.db");
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
-  DB_PATH: z.string().default("./data/submerge.db"),
+  DB_PATH: z.string().default(defaultDbPath),
   MIHOMO_API: z.url().default("http://mihomo:9090"),
   // mihomo's mixed (HTTP/SOCKS) proxy port, as the SERVER reaches it — used only by
   // the on-demand speed test to download a payload through a chosen node. Inside

@@ -1,4 +1,9 @@
-import type { Channel, ChannelPoolMember, Proxy as ProxyConfig } from "@submerge/shared";
+import {
+  type Channel,
+  type ChannelPoolMember,
+  channelGroupName,
+  type Proxy as ProxyConfig,
+} from "@submerge/shared";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { channelPool, sources } from "../../db/schema.js";
@@ -7,7 +12,7 @@ import { channelPool, sources } from "../../db/schema.js";
 // existing "AUTO" group (Phase 1/2 config is unchanged); every other channel gets
 // its own group, namespaced by id so it can't collide with AUTO or another channel.
 export function groupNameFor(channel: Channel): string {
-  return channel.isDefault ? "AUTO" : `ch-${channel.id}`;
+  return channelGroupName(channel);
 }
 
 export function getPool(db: Db, channelId: string): ChannelPoolMember[] {
@@ -68,7 +73,7 @@ export function resolveChannelProxies(
     const sourceId = Number(member.ref);
     if (!Number.isFinite(sourceId)) continue;
     const row = db.select().from(sources).where(eq(sources.id, sourceId)).get();
-    if (!row) continue;
+    if (!row?.enabled) continue;
     for (const proxy of row.proxies) add(proxy);
   }
   for (const member of pool) {

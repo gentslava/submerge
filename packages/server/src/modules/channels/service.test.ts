@@ -154,6 +154,15 @@ describe("channel CRUD", () => {
     const list = listChannels(db);
     expect(list.map((c) => c.id)).toEqual([b.id, a.id, "default"]);
   });
+
+  it("rejects a partial, duplicate, or unknown non-default channel order", () => {
+    const a = createChannel(db, { name: "Streaming", policy: manualPolicy });
+    const b = createChannel(db, { name: "Gaming", policy: manualPolicy });
+
+    expect(() => reorderChannels(db, [a.id])).toThrow(/complete channel order/i);
+    expect(() => reorderChannels(db, [a.id, a.id])).toThrow(/complete channel order/i);
+    expect(() => reorderChannels(db, [a.id, `${b.id}-unknown`])).toThrow(/complete channel order/i);
+  });
 });
 
 describe("updateChannel matcher persistence + config regeneration", () => {

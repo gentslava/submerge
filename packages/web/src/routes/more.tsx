@@ -11,7 +11,7 @@ export function MoreRoute() {
   const logout = useLogout();
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 pt-5 pb-8 md:p-8">
+    <div className="responsive-page responsive-page--more page-content page-content--more mx-auto flex max-w-4xl flex-col gap-4 px-4 pt-5 pb-8">
       <header className="flex flex-col gap-0.5">
         <h1 className="text-h1 text-text-primary">Ещё</h1>
         <p className="text-sub text-text-secondary">Остальные разделы и управление сервером</p>

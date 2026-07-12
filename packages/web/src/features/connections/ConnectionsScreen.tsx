@@ -119,9 +119,9 @@ export function ConnectionsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-[5px]">
+    <div className="responsive-page responsive-page--connections page-content connections-screen flex min-w-0 flex-col gap-5 px-4 pt-5 pb-8">
+      <header className="connections-header flex flex-wrap items-center justify-between gap-4">
+        <div className="shrink-0 flex flex-col gap-[5px]">
           <h1 className="text-2xl font-semibold text-text-primary">Соединения</h1>
           <p className="text-sm text-text-secondary">
             {showError
@@ -131,8 +131,8 @@ export function ConnectionsScreen() {
                 : "Нет активных соединений"}
           </p>
         </div>
-        <div className="flex w-full flex-col gap-2.5 md:w-auto md:flex-row md:items-center">
-          <div className="flex h-10 w-full items-center gap-2 rounded-lg border border-border-default bg-input px-3 md:w-60">
+        <div className="connections-toolbar flex flex-wrap items-center gap-2.5">
+          <div className="connections-search flex h-10 items-center gap-2 rounded-lg border border-border-default bg-input px-3">
             <Search size={15} className="shrink-0 text-text-tertiary" />
             <input
               value={search}
@@ -146,7 +146,7 @@ export function ConnectionsScreen() {
             variant="destructive"
             disabled={count === 0 || closeAllMut.isPending}
             onClick={() => setConfirmOpen(true)}
-            className="w-full shrink-0 whitespace-nowrap md:w-auto"
+            className="connections-close-all w-auto shrink-0 whitespace-nowrap"
           >
             <Unplug size={15} />
             Разорвать все
@@ -154,7 +154,7 @@ export function ConnectionsScreen() {
         </div>
       </header>
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="connections-summary flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2">
           <SummaryChip
             icon={<ArrowDown size={15} className="text-online" />}
@@ -181,7 +181,7 @@ export function ConnectionsScreen() {
         />
       </div>
 
-      <div className="hidden overflow-x-auto rounded-[10px] border border-border-subtle bg-surface md:block">
+      <div className="connections-table-desktop hidden overflow-x-auto rounded-[10px] border border-border-subtle bg-surface">
         <div className="min-w-[760px]">
           <ColumnsHeader />
           {isPending ? (
@@ -204,7 +204,7 @@ export function ConnectionsScreen() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 md:hidden">
+      <div className="connections-table-mobile flex flex-col gap-3">
         {isPending ? (
           [0, 1, 2].map((i) => <Skeleton key={i} className="h-[132px] w-full rounded-xl" />)
         ) : showError ? (

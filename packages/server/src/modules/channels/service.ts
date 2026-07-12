@@ -12,6 +12,7 @@ import {
 import { asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { channelPool, channels } from "../../db/schema.js";
+import { isExactIdPermutation } from "../../lib/ids.js";
 import { getSetting } from "../settings/service.js";
 
 export const DEFAULT_CHANNEL_ID = "default";
@@ -203,8 +204,16 @@ export function deleteChannel(db: Db, id: string): void {
 // whether) the caller placed it in `ids`.
 export function reorderChannels(db: Db, ids: string[]): void {
   db.transaction((tx) => {
-    const defaultRow = tx.select().from(channels).where(eq(channels.isDefault, true)).get();
+    const current = tx.select().from(channels).all();
+    const defaultRow = current.find((channel) => channel.isDefault);
     const ordered = ids.filter((id) => id !== defaultRow?.id);
+    const expectedIds = current
+      .filter((channel) => !channel.isDefault)
+      .map((channel) => channel.id);
+    const defaultCount = defaultRow ? ids.filter((id) => id === defaultRow.id).length : 0;
+    if (defaultCount > 1 || !isExactIdPermutation(ordered, expectedIds))
+      throw new Error("complete channel order is required");
+
     ordered.forEach((id, index) => {
       tx.update(channels).set({ priority: index }).where(eq(channels.id, id)).run();
     });

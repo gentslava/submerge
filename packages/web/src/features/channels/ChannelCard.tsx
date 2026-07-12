@@ -168,7 +168,7 @@ function RegularRow({
         onClick={onToggleExpanded}
         aria-expanded={expanded}
         aria-label={toggleLabel}
-        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left md:flex-nowrap"
+        className="channel-card-toggle flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left"
       >
         {/* Stretched hit target — covers the whole header (padding + gaps
             included) so a click anywhere but the reorder/switch/chevron toggles
@@ -222,7 +222,7 @@ function DefaultRow({
         onClick={onToggleExpanded}
         aria-expanded={expanded}
         aria-label={toggleLabel}
-        className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left md:flex-nowrap"
+        className="channel-card-toggle flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 text-left"
       >
         {/* Stretched hit target — see RegularRow. */}
         <span className="absolute inset-0" aria-hidden="true" />
@@ -230,7 +230,7 @@ function DefaultRow({
         <span className="shrink-0 rounded-full border border-accent-border bg-accent-bg px-2 py-0.5 text-fine font-semibold text-accent-text">
           catch-all
         </span>
-        <div className="flex w-full min-w-0 items-center gap-2 px-1 md:w-auto md:flex-1">
+        <div className="channel-default-summary flex w-full min-w-0 items-center gap-2 px-1">
           <span className="text-xs text-text-tertiary">Всё остальное</span>
           <span className="text-sub text-text-disabled">·</span>
           <span className="text-xs text-text-tertiary">Все узлы</span>
@@ -286,7 +286,7 @@ function ChannelEditor({
             const v = e.target.value.trim();
             if (v.length > 0 && v !== channel.name) onUpdateName(v);
           }}
-          className="w-full font-mono text-sub md:w-[280px]"
+          className="channel-editor-name-input w-full font-mono text-sub"
         />
       </EditorRow>
       <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
@@ -385,8 +385,8 @@ function ChannelEditor({
 // control to the trailing edge.
 function EditorRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex w-full flex-col items-stretch gap-3 border-b border-border-subtle px-[18px] py-4 md:flex-row md:items-center md:gap-6">
-      <span className="md:flex-1 text-label text-text-primary">{label}</span>
+    <div className="channel-editor-row flex w-full flex-col items-stretch gap-3 border-b border-border-subtle px-[18px] py-4">
+      <span className="channel-editor-row-label text-label text-text-primary">{label}</span>
       {children}
     </div>
   );
@@ -489,7 +489,7 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
   return (
     <div
       ref={summaryRef}
-      className="relative flex w-full min-w-0 items-center gap-2 px-1 md:w-auto md:flex-1"
+      className="matcher-summary relative flex w-full min-w-0 items-center gap-2 px-1"
     >
       {items.length > 0 ? (
         items.slice(0, displayedCount).map((item) => (

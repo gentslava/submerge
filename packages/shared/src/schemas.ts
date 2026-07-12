@@ -331,6 +331,12 @@ export const channelSchema = z.object({
 });
 export type Channel = z.infer<typeof channelSchema>;
 
+// Mihomo group names are a cross-package contract: the server emits these groups
+// while the web excludes them from the pool picker as non-exit nodes.
+export function channelGroupName(channel: Pick<Channel, "id" | "isDefault">): string {
+  return channel.isDefault ? "AUTO" : `ch-${channel.id}`;
+}
+
 export const setChannelPolicyInput = z.object({
   id: z.string().min(1),
   policy: channelPolicySchema,

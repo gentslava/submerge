@@ -1,0 +1,431 @@
+/* Page content follows its available inline size. Viewport media queries remain
+   reserved for application chrome (sidebar and phone navigation). */
+.responsive-page {
+  container: app-page / inline-size;
+  min-inline-size: 0;
+}
+
+.app-main {
+  container: app-main / inline-size;
+  min-inline-size: 0;
+}
+
+@container app-main (min-width: 42rem) {
+  .page-content {
+    padding-top: 1.625rem;
+    padding-inline: 2rem;
+  }
+
+  .page-content--more {
+    padding-bottom: 2rem;
+  }
+}
+
+/* Nodes switch by their page width: a sidebar or docked DevTools can leave a
+   desktop viewport with a compact-sized content pane. */
+.latency-chart {
+  --latency-chart-height: 54px;
+}
+
+.latency-chart-track {
+  height: var(--latency-chart-height);
+}
+
+.nodes-auto-param-content {
+  display: grid;
+  grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.nodes-auto-param-content > :first-child {
+  white-space: nowrap;
+}
+
+/* The URL is allowed to consume the flexible cell, never its neighbour. The
+   value span provides the ellipsis; this wrapper makes that boundary strict. */
+.nodes-auto-param-grow .nodes-auto-param-content {
+  overflow: hidden;
+}
+
+@container app-page (min-width: 42rem) {
+  .nodes-header-compact,
+  .nodes-active-heading-compact {
+    display: none;
+  }
+
+  .nodes-header-inline,
+  .nodes-active-heading-wide,
+  .nodes-active-auto-badge,
+  .nodes-list-grouping-hint,
+  .nodes-auto-strategy-controls,
+  .nodes-auto-strategy-divider,
+  .nodes-auto-strategy-status,
+  .latency-chart-peak,
+  .latency-chart-axis {
+    display: flex;
+  }
+
+  .routing-create-compact {
+    display: none;
+  }
+
+  .routing-create-inline {
+    display: inline-flex;
+  }
+
+  .routing-reorder-desktop,
+  .source-row-desktop-switch {
+    display: flex;
+  }
+
+  .settings-section-description {
+    display: block;
+  }
+
+  .routing-reorder-compact,
+  .source-row-mobile-switch {
+    display: none;
+  }
+
+  .source-form-options {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .segmented-control {
+    display: inline-flex;
+    width: auto;
+    flex-wrap: nowrap;
+  }
+
+  .rule-provider-row {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .rule-provider-input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .rule-provider-actions {
+    flex-shrink: 0;
+  }
+
+  .source-form-submit {
+    justify-content: flex-end;
+  }
+
+  .source-form-submit-wrap,
+  .source-form-submit-button {
+    width: auto;
+  }
+
+  .labeled-control-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+  }
+
+  .labeled-control-row-control {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .settings-proxy-field {
+    width: auto;
+  }
+
+  .settings-field-260 {
+    width: 16.25rem;
+  }
+
+  .settings-secret-field {
+    width: 20rem;
+  }
+
+  .policy-url-input {
+    width: 22.5rem;
+  }
+
+  .policy-node-select,
+  .channel-editor-name-input {
+    width: 17.5rem;
+  }
+
+  .channel-card-toggle {
+    flex-wrap: nowrap;
+  }
+
+  .channel-default-summary,
+  .matcher-summary {
+    width: auto;
+    flex: 1;
+  }
+
+  .channel-editor-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .channel-editor-row-label {
+    flex: 1;
+  }
+
+  .nodes-auto-strategy {
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-surface);
+  }
+
+  .nodes-auto-strategy-toolbar {
+    padding: 0.875rem 1rem;
+  }
+
+  .nodes-auto-strategy-tabs {
+    width: auto;
+  }
+
+  .nodes-auto-strategy-tab {
+    flex: none;
+  }
+
+  .nodes-active-card {
+    gap: 1.75rem;
+    padding: 1.375rem;
+  }
+
+  .nodes-active-content {
+    gap: 1.125rem;
+  }
+
+  .nodes-active-name {
+    font-size: 23px;
+  }
+
+  .nodes-list-title {
+    font-size: var(--text-cardtitle);
+    font-weight: var(--text-cardtitle--font-weight);
+  }
+
+  .nodes-active-stats {
+    column-gap: 2.125rem;
+  }
+
+  .latency-chart {
+    --latency-chart-height: 92px;
+  }
+}
+
+@container app-page (min-width: 48rem) {
+  .sources-list {
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-surface);
+  }
+
+  .sources-list-header {
+    padding: 0.875rem 1rem;
+  }
+
+  .sources-list-title {
+    font-size: var(--text-caption);
+    font-weight: var(--text-caption--font-weight);
+    letter-spacing: var(--text-caption--letter-spacing);
+    color: var(--text-tertiary);
+  }
+
+  .sources-list-divider {
+    display: block;
+  }
+
+  .sources-list-body {
+    gap: 0;
+  }
+
+  .sources-list-skeleton-row {
+    border: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    border-radius: 0;
+    padding: 0.875rem 1rem;
+  }
+
+  .sources-list-state {
+    border: 0;
+    border-radius: 0;
+  }
+
+  .source-row {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.875rem;
+    border: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    border-radius: 0;
+    padding: 0.875rem 1rem;
+  }
+
+  .source-row:last-child {
+    border-bottom: 0;
+  }
+
+  .source-row-lead {
+    flex: 1;
+    padding-right: 0;
+  }
+
+  .source-row-meta-controls {
+    display: contents;
+  }
+
+  .source-row-controls {
+    margin-left: 0;
+    padding-left: 0.375rem;
+  }
+
+  .source-meta {
+    flex: none;
+    flex-shrink: 0;
+    align-items: end;
+  }
+
+  .source-meta-traffic {
+    width: 6rem;
+  }
+
+  .nodes-active-card {
+    flex-direction: row;
+  }
+
+  .latency-chart {
+    width: 25rem;
+    flex-shrink: 0;
+  }
+}
+
+/* The URL and four short values only fit a divider-separated strip in a truly
+   wide pane. Between data and detail widths keep the more legible five rows. */
+@container app-page (min-width: 60rem) {
+  .nodes-auto-params {
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  .nodes-auto-param-grow {
+    flex: 1 1 auto;
+  }
+
+  .nodes-auto-param-fixed {
+    flex: 0 0 auto;
+  }
+
+  .nodes-auto-param-divider {
+    display: block;
+  }
+
+  .nodes-auto-param-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+}
+
+/* The node list can be much narrower than the browser viewport when the sidebar
+   or DevTools is open. The region owns the query; the framed table remains its
+   child, so the frame can react to the available list width itself. */
+.node-list-region {
+  container: node-list / inline-size;
+  min-inline-size: 0;
+}
+
+@container node-list (min-width: 48rem) {
+  .node-list-container {
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-surface);
+  }
+
+  .node-list-header,
+  .node-group-desktop-header,
+  .node-row-desktop,
+  .node-member-desktop {
+    display: flex;
+  }
+
+  .node-group {
+    display: contents;
+  }
+
+  .node-group-mobile-header,
+  .node-row-mobile,
+  .node-member-mobile {
+    display: none;
+  }
+
+  .node-row-ping-cell {
+    width: 6rem;
+  }
+
+  .node-row-action-cell {
+    width: 7.5rem;
+  }
+
+  .node-row-action-button {
+    width: 7rem;
+  }
+}
+
+.connections-toolbar {
+  flex: 0 1 auto;
+  min-width: min(22rem, 100%);
+}
+
+.connections-search {
+  width: 15rem;
+  flex: 0 1 15rem;
+}
+
+/* Compact panes intentionally favour a clear vertical action block. The decision
+   follows the page container, not the browser viewport. */
+@container app-page (max-width: 47.999rem) {
+  .connections-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .connections-toolbar {
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .connections-search,
+  .connections-close-all {
+    width: 100%;
+  }
+
+  .connections-search {
+    flex: none;
+  }
+}
+
+@container app-page (min-width: 48rem) {
+  .connections-table-desktop {
+    display: block;
+  }
+
+  .connections-table-mobile {
+    display: none;
+  }
+}

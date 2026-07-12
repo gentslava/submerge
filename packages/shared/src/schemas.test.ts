@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyChannelMatcher } from "./defaults.js";
 import {
+  channelGroupName,
   channelMatcherInputSchema,
   channelMatcherSchema,
   channelPolicySchema,
@@ -40,6 +41,13 @@ describe("schemas", () => {
       uuid: "u",
     });
     expect(p.name).toBe("n1");
+  });
+});
+
+describe("channelGroupName", () => {
+  it("keeps the Default group as AUTO and namespaces other channels by id", () => {
+    expect(channelGroupName({ id: "default", isDefault: true })).toBe("AUTO");
+    expect(channelGroupName({ id: "streaming", isDefault: false })).toBe("ch-streaming");
   });
 });
 
