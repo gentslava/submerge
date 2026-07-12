@@ -92,6 +92,53 @@ describe("nodeView", () => {
     expect(groups.map((g) => g.label)).toEqual(["Real"]);
   });
 
+  it("omits a disabled source when its nodes also belong to an enabled source", () => {
+    const sources: Source[] = [
+      src({
+        id: 1,
+        label: "Enabled Remnawave",
+        enabled: true,
+        sortOrder: 0,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+      src({
+        id: 2,
+        label: "Disabled Remnawave",
+        enabled: false,
+        sortOrder: 1,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+    ];
+
+    const groups = groupNodes([node("nl-1")], sources);
+
+    expect(groups.map((g) => g.label)).toEqual(["Enabled Remnawave"]);
+  });
+
+  it("does not assign a shared node to two enabled sources", () => {
+    const sources: Source[] = [
+      src({
+        id: 1,
+        label: "First source",
+        sortOrder: 0,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+      src({
+        id: 2,
+        label: "Second source",
+        sortOrder: 1,
+        proxies: [
+          { name: "nl-1", type: "vless", server: "s", port: 1 },
+          { name: "de-1", type: "vless", server: "s", port: 1 },
+        ],
+      }),
+    ];
+
+    const groups = groupNodes([node("nl-1"), node("de-1")], sources);
+
+    expect(groups.map((g) => g.nodes.map((n) => n.name))).toEqual([["nl-1"], ["de-1"]]);
+  });
+
   it("derives the transport badge, defaulting to TCP when network is omitted", () => {
     const n = (over: Partial<NodeItem>): NodeItem => ({ ...node("x"), ...over });
     expect(transportBadge(n({ network: "ws", security: "tls" }))).toBe("WS");
