@@ -5,7 +5,15 @@ import {
   type ChannelPolicy,
 } from "@submerge/shared";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
-import { type CSSProperties, forwardRef, type ReactNode, useState } from "react";
+import {
+  type CSSProperties,
+  forwardRef,
+  type ReactNode,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -16,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { DomainTags } from "./DomainTags";
 import { GeoIpTags, GeoSiteTags } from "./GeoTags";
 import { KeywordTags } from "./KeywordTags";
+import { fitMatcherItems } from "./matcher-summary";
 import { PolicyEditor } from "./PolicyEditor";
 import { PoolPicker } from "./PoolPicker";
 import { PresetChips } from "./PresetChips";
@@ -129,8 +138,9 @@ export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(function
 // the toggle (which now wraps only name/badge/summary), rather than one big control.
 //
 // Below `md` (per HXRTv's mobile-390 state) the summary line wraps onto its own row —
-// `MatcherSummary` takes `w-full` there so it drops under name+badge instead of
-// squeezing/clipping inside the fixed-height header.
+// `MatcherSummary` takes `w-full` there so it drops under name+badge. It measures
+// complete chips and reserves room for a `+N` counter, so no chip is cut beside the
+// fixed controls column.
 function RegularRow({
   channel,
   onToggleEnabled,
@@ -403,39 +413,147 @@ function presetLabels(presets: string[]): string[] {
   return labels;
 }
 
+type MatcherSummaryItem = { value: string; monospace: boolean };
+
 // Matcher + pool summary, combined in one row per the mockup's "mid" frame. The
 // collapsed row doesn't load every channel's pool just to render this summary
 // (that's an N+1 `channels.getPool` per row — the expanded editor's PoolPicker
 // fetches it lazily, only for the channel actually being edited) — showing "Все
 // узлы" here is the honest default rather than a per-channel count we don't have.
 function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
-  const labels = presetLabels(matcher.presets);
-  const [firstDomain, ...restDomains] = matcher.domains;
-  const hasMatcherContent = labels.length > 0 || matcher.domains.length > 0;
+  const items = useMemo<MatcherSummaryItem[]>(() => {
+    const labels = presetLabels(matcher.presets);
+    return [
+      ...labels.map((label) => ({ value: label, monospace: false })),
+      ...matcher.domains.map((domain) => ({ value: domain, monospace: true })),
+    ];
+  }, [matcher.domains, matcher.presets]);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const suffixMeasureRef = useRef<HTMLSpanElement>(null);
+  const itemMeasureRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const counterMeasureRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const [visibleCount, setVisibleCount] = useState(() => Math.min(items.length, 3));
+  const [suffixFits, setSuffixFits] = useState(true);
+  const displayedCount = Math.min(visibleCount, items.length);
+  const remainingCount = items.length - displayedCount;
+  const showSuffix = items.length === 0 || displayedCount > 0 || suffixFits;
+
+  useLayoutEffect(() => {
+    const summary = summaryRef.current;
+    if (summary == null || items.length === 0) return;
+
+    const recalculate = () => {
+      const styles = getComputedStyle(summary);
+      const horizontalPadding =
+        (Number.parseFloat(styles.paddingLeft) || 0) +
+        (Number.parseFloat(styles.paddingRight) || 0);
+      const availableWidth = Math.max(0, summary.clientWidth - horizontalPadding);
+      const suffixWidth = suffixMeasureRef.current?.offsetWidth ?? 0;
+      const itemWidths = items.map((_, index) => itemMeasureRefs.current[index]?.offsetWidth ?? 0);
+      const counterWidths = Array.from(
+        { length: items.length + 1 },
+        (_, count) => counterMeasureRefs.current[count]?.offsetWidth ?? 0,
+      );
+
+      // jsdom has no layout engine; retaining the three-chip fallback keeps tests
+      // deterministic while browsers always calculate from their real widths.
+      if (availableWidth === 0 || suffixWidth === 0 || itemWidths.some((width) => width === 0))
+        return;
+
+      const gap = Number.parseFloat(styles.columnGap);
+      if (!Number.isFinite(gap)) return;
+
+      const nextSuffixFits =
+        (counterWidths[items.length] ?? 0) + suffixWidth + gap <= availableWidth;
+      const nextVisibleCount = fitMatcherItems({
+        availableWidth,
+        itemWidths,
+        counterWidths,
+        suffixWidth,
+        gap,
+      });
+      setVisibleCount((current) => (current === nextVisibleCount ? current : nextVisibleCount));
+      setSuffixFits((current) => (current === nextSuffixFits ? current : nextSuffixFits));
+    };
+
+    recalculate();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(recalculate);
+    observer?.observe(summary);
+    window.addEventListener("resize", recalculate);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", recalculate);
+    };
+  }, [items]);
 
   return (
-    <div className="flex w-full min-w-0 items-center gap-2 px-1 md:w-auto md:flex-1">
-      {labels.map((label) => (
-        <span
-          key={label}
-          className="shrink-0 rounded-full bg-hover px-2 py-[3px] text-fine text-text-secondary"
-        >
-          {label}
-        </span>
-      ))}
-      {firstDomain && (
-        <span className="shrink-0 rounded-full bg-hover px-2 py-[3px] font-mono text-fine text-text-secondary">
-          {firstDomain}
+    <div
+      ref={summaryRef}
+      className="relative flex w-full min-w-0 items-center gap-2 px-1 md:w-auto md:flex-1"
+    >
+      {items.length > 0 ? (
+        items.slice(0, displayedCount).map((item) => (
+          <Badge
+            key={`${item.monospace}-${item.value}`}
+            variant="idle"
+            className={cn("shrink-0", item.monospace && "font-mono")}
+          >
+            {item.value}
+          </Badge>
+        ))
+      ) : (
+        <span className="text-xs text-text-tertiary">Домены не заданы</span>
+      )}
+      {remainingCount > 0 && (
+        <Badge variant="neutral" className="shrink-0">
+          <span aria-hidden="true">+{remainingCount}</span>
+          <span className="sr-only">
+            Ещё {remainingCount} {pluralRu(remainingCount, ["правило", "правила", "правил"])}{" "}
+            маршрутизации
+          </span>
+        </Badge>
+      )}
+      {showSuffix && (
+        <span className="inline-flex shrink-0 items-center gap-2">
+          <span className="text-sub text-text-disabled">·</span>
+          <span className="text-xs text-text-tertiary">Все узлы</span>
         </span>
       )}
-      {restDomains.length > 0 && (
-        <span className="shrink-0 text-xs text-text-tertiary">
-          +{restDomains.length} {pluralRu(restDomains.length, ["домен", "домена", "доменов"])}
+
+      <span
+        className="pointer-events-none fixed -left-full top-0 invisible flex items-center gap-2 whitespace-nowrap"
+        aria-hidden="true"
+      >
+        {items.map((item, index) => (
+          <span
+            key={`${item.monospace}-${item.value}`}
+            ref={(element) => {
+              itemMeasureRefs.current[index] = element;
+            }}
+          >
+            <Badge variant="idle" className={cn(item.monospace && "font-mono")}>
+              {item.value}
+            </Badge>
+          </span>
+        ))}
+        {Array.from({ length: items.length }, (_, index) => {
+          const count = index + 1;
+          return (
+            <span
+              key={count}
+              ref={(element) => {
+                counterMeasureRefs.current[count] = element;
+              }}
+            >
+              <Badge variant="neutral">+{count}</Badge>
+            </span>
+          );
+        })}
+        <span ref={suffixMeasureRef} className="inline-flex items-center gap-2">
+          <span className="text-sub text-text-disabled">·</span>
+          <span className="text-xs text-text-tertiary">Все узлы</span>
         </span>
-      )}
-      {!hasMatcherContent && <span className="text-xs text-text-tertiary">Домены не заданы</span>}
-      <span className="shrink-0 text-sub text-text-disabled">·</span>
-      <span className="shrink-0 text-xs text-text-tertiary">Все узлы</span>
+      </span>
     </div>
   );
 }
