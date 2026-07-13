@@ -23,3 +23,4 @@ for their status. Mark a plan **done** here when its feature is merged to master
 | [Preset expansion — domains, services, categories](2026-07-08-preset-expansion.md) | done |
 | [Routing Phase 4 — rule-providers · keyword/geo · speed test](2026-07-07-routing-phase4.md) | done |
 | [Adaptive layout system](2026-07-12-adaptive-layout-system.md) | done |
+| [System Direct channel](2026-07-13-system-direct-channel.md) | active |

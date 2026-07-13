@@ -1,7 +1,7 @@
 # System Direct channel — design
 
 - **Date:** 2026-07-13
-- **Status:** Proposed
+- **Status:** Accepted
 - **Related:** [Channel-based routing](2026-07-01-channel-routing-design.md), [routing Phase 4](2026-07-07-routing-phase4-design.md), `docs/design-system.md`
 
 ## 1. Problem
