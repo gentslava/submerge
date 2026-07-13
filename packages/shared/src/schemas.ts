@@ -350,22 +350,40 @@ export const channelMatcherInputSchema = z.object({
   cidrs: z.array(cidrSchema).default([]),
 });
 
-export const channelSchema = z.object({
-  id: z.string().min(1),
-  name: z.string(),
-  priority: z.number().int(),
-  enabled: z.boolean(),
-  isDefault: z.boolean(),
-  policy: channelPolicySchema,
-  matcher: channelMatcherSchema,
-  lastReason: z.string().nullable(),
-  lastReasonAt: z.number().nullable(), // epoch ms of the last controller decision
-});
-export type Channel = z.infer<typeof channelSchema>;
+export const directPresetSettingsSchema = z
+  .object({
+    privateNetworks: z.boolean(),
+    localDomains: z.boolean(),
+  })
+  .strict();
+export type DirectPresetSettings = z.infer<typeof directPresetSettingsSchema>;
+
+export const proxyChannelSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string(),
+    target: z.literal("proxy"),
+    priority: z.number().int(),
+    enabled: z.boolean(),
+    isDefault: z.boolean(),
+    policy: channelPolicySchema,
+    matcher: channelMatcherSchema,
+    lastReason: z.string().nullable(),
+    lastReasonAt: z.number().nullable(), // epoch ms of the last controller decision
+  })
+  .strict();
+export type ProxyChannel = z.infer<typeof proxyChannelSchema>;
+
+// Compatibility alias for the proxy-only storage-preparation slice. The full
+// target union is introduced together with its server and UI consumers.
+export const channelSchema = proxyChannelSchema;
+export type Channel = ProxyChannel;
 
 // Mihomo group names are a cross-package contract: the server emits these groups
 // while the web excludes them from the pool picker as non-exit nodes.
-export function channelGroupName(channel: Pick<Channel, "id" | "isDefault">): string {
+export function channelGroupName(
+  channel: Pick<ProxyChannel, "id" | "isDefault" | "target">,
+): string {
   return channel.isDefault ? "AUTO" : `ch-${channel.id}`;
 }
 

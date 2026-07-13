@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_AUTO_TEST_URL, DEFAULT_SPEED_POLICY } from "@submerge/shared";
+import { DEFAULT_AUTO_TEST_URL, DEFAULT_SPEED_POLICY, emptyChannelMatcher } from "@submerge/shared";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as yaml from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,6 +100,7 @@ describe("channel CRUD", () => {
     const b = createChannel(db, { name: "Gaming", policy: manualPolicy });
     expect(a.id).toBe("ch1");
     expect(b.id).toBe("ch2");
+    expect(a.target).toBe("proxy");
     expect(a.isDefault).toBe(false);
     expect(a.matcher).toEqual({
       presets: [],
@@ -140,6 +141,7 @@ describe("channel CRUD", () => {
       .values({
         id: "legacy",
         name: "Legacy",
+        target: "proxy",
         priority: 1,
         enabled: true,
         isDefault: false,
@@ -149,6 +151,42 @@ describe("channel CRUD", () => {
       .run();
 
     expect(readChannel(db, "legacy")?.matcher).toEqual(matcher);
+  });
+
+  it("falls back corrupt policy and matcher fields independently", () => {
+    db.insert(channels)
+      .values({
+        id: "bad-policy",
+        name: "Bad policy",
+        target: "proxy",
+        priority: 1,
+        enabled: true,
+        isDefault: false,
+        policy: { invalid: true } as never,
+        matcher: { ...emptyChannelMatcher(), domains: ["example.com"] },
+      })
+      .run();
+    db.insert(channels)
+      .values({
+        id: "bad-matcher",
+        name: "Bad matcher",
+        target: "proxy",
+        priority: 2,
+        enabled: true,
+        isDefault: false,
+        policy: manualPolicy,
+        matcher: "not a matcher" as never,
+      })
+      .run();
+
+    expect(readChannel(db, "bad-policy")).toMatchObject({
+      policy: DEFAULT_SPEED_POLICY,
+      matcher: { domains: ["example.com"] },
+    });
+    expect(readChannel(db, "bad-matcher")).toMatchObject({
+      policy: manualPolicy,
+      matcher: emptyChannelMatcher(),
+    });
   });
 
   it("updateChannel patches name/enabled/matcher without touching other fields", () => {

@@ -1,5 +1,4 @@
 import {
-  type Channel,
   type ChannelPolicy,
   type DecisionEntry,
   type NodeItem,
@@ -10,6 +9,7 @@ import {
   OPTIMAL_SLOW_TICKS,
   OPTIMAL_SUCCESS_EPSILON,
   OPTIMAL_SWITCH_MARGIN_PCT,
+  type ProxyChannel,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
 import { historyForUrl, type MihomoProxy, type ProxiesResponse } from "../../clients/mihomo.js";
@@ -70,7 +70,7 @@ export async function pickBest(
 }
 
 export interface ControllerDeps {
-  readChannel: () => Channel;
+  readChannel: () => ProxyChannel;
   // The mihomo select-group this channel pins into (e.g. "AUTO" for the default
   // channel, "ch-<id>" for a routed channel with its own group).
   group: string;

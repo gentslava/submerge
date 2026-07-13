@@ -11,6 +11,7 @@ const defaultPolicy = {
 const defaultChannel = {
   id: "default",
   name: "Default",
+  target: "proxy",
   priority: 0,
   enabled: true,
   isDefault: true,

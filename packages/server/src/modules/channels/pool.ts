@@ -1,7 +1,7 @@
 import {
-  type Channel,
   type ChannelPoolMember,
   channelGroupName,
+  type ProxyChannel,
   type Proxy as ProxyConfig,
 } from "@submerge/shared";
 import { eq } from "drizzle-orm";
@@ -11,7 +11,7 @@ import { channelPool, sources } from "../../db/schema.js";
 // mihomo group name a channel's policy targets: the Default channel keeps the
 // existing "AUTO" group (Phase 1/2 config is unchanged); every other channel gets
 // its own group, namespaced by id so it can't collide with AUTO or another channel.
-export function groupNameFor(channel: Channel): string {
+export function groupNameFor(channel: ProxyChannel): string {
   return channelGroupName(channel);
 }
 
@@ -53,7 +53,7 @@ export function setPool(db: Db, channelId: string, members: ChannelPoolMember[])
 // insertion order.
 export function resolveChannelProxies(
   db: Db,
-  channel: Channel,
+  channel: ProxyChannel,
   allProxies: ProxyConfig[],
 ): ProxyConfig[] {
   const pool = getPool(db, channel.id);

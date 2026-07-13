@@ -1,11 +1,11 @@
-import type { Channel, DecisionEntry } from "@submerge/shared";
+import type { DecisionEntry, ProxyChannel } from "@submerge/shared";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { ChannelController, toGroupView } from "./controller.js";
 import { groupNameFor } from "./pool.js";
 import { policyProbe } from "./service.js";
 
 export interface RegistryDeps {
-  listChannels: () => Channel[];
+  listChannels: () => ProxyChannel[];
   fetchProxies: () => Promise<ProxiesResponse>;
   probe: (name: string, url: string) => Promise<number | null>;
   select: (group: string, name: string) => Promise<void>;
@@ -20,7 +20,7 @@ export interface RegistryDeps {
 // — recreating would drop its transient state (failures/heldSince/lastCheck) and
 // break throttling/hold-window behavior across polls.
 interface ChannelBox {
-  current: Channel;
+  current: ProxyChannel;
 }
 
 // Ticks one ChannelController per channel, every poll. Each channel gets its own
@@ -33,7 +33,7 @@ export class ControllerRegistry {
 
   constructor(private deps: RegistryDeps) {}
 
-  private controllerFor(channel: Channel): ChannelController {
+  private controllerFor(channel: ProxyChannel): ChannelController {
     const box = this.boxes.get(channel.id);
     if (box) box.current = channel;
     else this.boxes.set(channel.id, { current: channel });
@@ -41,7 +41,7 @@ export class ControllerRegistry {
     const existing = this.controllers.get(channel.id);
     if (existing) return existing;
 
-    const readChannel = (): Channel => this.boxes.get(channel.id)?.current ?? channel;
+    const readChannel = (): ProxyChannel => this.boxes.get(channel.id)?.current ?? channel;
     const ctrl = new ChannelController({
       readChannel,
       group: groupNameFor(channel),

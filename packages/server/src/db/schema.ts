@@ -1,12 +1,22 @@
 import type {
   ChannelMatcher,
   ChannelPolicy,
+  DirectPresetSettings,
   Proxy as ProxyConfig,
   SubscriptionMeta,
 } from "@submerge/shared";
-import { DEFAULT_SPEED_POLICY, emptyChannelMatcher } from "@submerge/shared";
+import { emptyChannelMatcher } from "@submerge/shared";
 import { sql } from "drizzle-orm";
-import { index, integer, real, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import {
+  check,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 // Source entries: subscription URLs, vless://, happ:// links, or client deep-links.
 export const sources = sqliteTable("sources", {
@@ -59,23 +69,40 @@ export const excludedNodes = sqliteTable("excluded_nodes", {
 // Routing channels: each binds a matcher + pool + policy. Phase 1 seeds exactly one
 // non-deletable Default channel (is_default = true). policy/matcher are JSON blobs
 // validated by the shared Zod schemas at the service boundary.
-export const channels = sqliteTable("channels", {
-  id: text("id").primaryKey(), // "default" for the Default channel
-  name: text("name").notNull(),
-  priority: integer("priority").notNull().default(0),
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
-  policy: text("policy", { mode: "json" })
-    .$type<ChannelPolicy>()
-    .notNull()
-    .$defaultFn(() => DEFAULT_SPEED_POLICY),
-  matcher: text("matcher", { mode: "json" })
-    .$type<ChannelMatcher>()
-    .notNull()
-    .$defaultFn(emptyChannelMatcher),
-  lastReason: text("last_reason"),
-  lastReasonAt: integer("last_reason_at"),
-});
+export const channels = sqliteTable(
+  "channels",
+  {
+    id: text("id").primaryKey(), // "default" for the Default channel
+    name: text("name").notNull(),
+    target: text("target", { enum: ["proxy", "direct"] })
+      .notNull()
+      .default("proxy"),
+    priority: integer("priority").notNull().default(0),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    policy: text("policy", { mode: "json" }).$type<ChannelPolicy | null>(),
+    matcher: text("matcher", { mode: "json" })
+      .$type<ChannelMatcher>()
+      .notNull()
+      .$defaultFn(emptyChannelMatcher),
+    directPresets: text("direct_presets", { mode: "json" }).$type<DirectPresetSettings | null>(),
+    lastReason: text("last_reason"),
+    lastReasonAt: integer("last_reason_at"),
+  },
+  (t) => [
+    check("channels_target_check", sql`${t.target} in ('proxy', 'direct')`),
+    check(
+      "channels_target_policy_check",
+      sql`(${t.target} = 'proxy' and ${t.policy} is not null) or (${t.target} = 'direct' and ${t.policy} is null)`,
+    ),
+    check("channels_target_default_check", sql`${t.target} = 'proxy' or ${t.isDefault} = false`),
+    check(
+      "channels_target_presets_check",
+      sql`(${t.target} = 'proxy' and ${t.directPresets} is null) or (${t.target} = 'direct' and ${t.directPresets} is not null)`,
+    ),
+    uniqueIndex("channels_direct_target_unique").on(t.target).where(sql`${t.target} = 'direct'`),
+  ],
+);
 
 // Pool membership: which sources/nodes a channel is allowed to route through.
 // Cascade-deletes with its channel; (channel_id, kind, ref) is unique to prevent

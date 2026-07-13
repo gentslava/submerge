@@ -15,6 +15,7 @@ const node = (ref: string): ChannelPoolMember => ({ kind: "node", ref });
 const channel = (overrides: Partial<Channel>): Channel => ({
   id: "ch1",
   name: "Streaming",
+  target: "proxy",
   priority: -1,
   enabled: true,
   isDefault: false,

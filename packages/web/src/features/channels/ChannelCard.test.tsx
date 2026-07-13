@@ -8,6 +8,7 @@ const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 const channel: Channel = {
   id: "channel-ai",
   name: "AI",
+  target: "proxy",
   priority: 0,
   enabled: true,
   isDefault: false,

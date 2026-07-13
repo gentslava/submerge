@@ -23,6 +23,7 @@ const channel = (
 ): Channel => ({
   id,
   name: id,
+  target: "proxy",
   priority: isDefault ? 1 : 0,
   enabled,
   isDefault,

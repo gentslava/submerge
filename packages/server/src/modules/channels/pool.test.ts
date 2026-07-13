@@ -23,6 +23,7 @@ function channel(overrides: Partial<Channel>): Channel {
   return {
     id: "ch1",
     name: "Streaming",
+    target: "proxy",
     priority: -1,
     enabled: true,
     isDefault: false,
@@ -84,7 +85,15 @@ describe("resolveChannelProxies", () => {
   beforeEach(() => {
     db = freshDb();
     ensureDefaultChannel(db);
-    db.insert(channels).values({ id: "ch1", name: "Streaming", priority: -1 }).run();
+    db.insert(channels)
+      .values({
+        id: "ch1",
+        name: "Streaming",
+        target: "proxy",
+        priority: -1,
+        policy: manualPolicy,
+      })
+      .run();
   });
 
   it("returns all proxies when the pool is empty (all-nodes, like Default)", () => {

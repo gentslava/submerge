@@ -1,12 +1,14 @@
 import {
-  type Channel,
   type ChannelPolicy,
   type CreateChannelInput,
-  channelSchema,
+  channelMatcherSchema,
+  channelPolicySchema,
   DEFAULT_AUTO_TEST_INTERVAL,
   DEFAULT_AUTO_TEST_URL,
   DEFAULT_SPEED_POLICY,
   emptyChannelMatcher,
+  type ProxyChannel,
+  proxyChannelSchema,
   type UpdateChannelInput,
 } from "@submerge/shared";
 import { asc, eq } from "drizzle-orm";
@@ -48,6 +50,7 @@ export function ensureDefaultChannel(db: Db): void {
     .values({
       id: DEFAULT_CHANNEL_ID,
       name: "Default",
+      target: "proxy",
       priority: 0,
       enabled: true,
       isDefault: true,
@@ -59,30 +62,32 @@ export function ensureDefaultChannel(db: Db): void {
 
 // Validate a raw row's JSON policy/matcher against the shared schema. On a corrupt
 // blob we fall back to the safe default rather than crashing the request path.
-function rowToChannel(row: typeof channels.$inferSelect): Channel {
-  const parsed = channelSchema.safeParse(row);
-  if (parsed.success) return parsed.data;
-  return {
+function rowToChannel(row: typeof channels.$inferSelect): ProxyChannel {
+  const policy = channelPolicySchema.safeParse(row.policy);
+  const matcher = channelMatcherSchema.safeParse(row.matcher);
+  return proxyChannelSchema.parse({
     id: row.id,
     name: row.name,
+    target: row.target,
     priority: row.priority,
     enabled: row.enabled,
     isDefault: row.isDefault,
-    policy: DEFAULT_SPEED_POLICY,
-    matcher: emptyChannelMatcher(),
+    policy: policy.success ? policy.data : DEFAULT_SPEED_POLICY,
+    matcher: matcher.success ? matcher.data : emptyChannelMatcher(),
     lastReason: row.lastReason ?? null,
     lastReasonAt: row.lastReasonAt ?? null,
-  };
+  });
 }
 
 // Read the Default row, validating the JSON policy/matcher. Synthesizes an in-memory
 // Default when the row doesn't exist yet (before the first `ensureDefaultChannel`).
-export function readDefaultChannel(db: Db): Channel {
+export function readDefaultChannel(db: Db): ProxyChannel {
   const row = db.select().from(channels).where(eq(channels.id, DEFAULT_CHANNEL_ID)).get();
   if (!row) {
     return {
       id: DEFAULT_CHANNEL_ID,
       name: "Default",
+      target: "proxy",
       priority: 0,
       enabled: true,
       isDefault: true,
@@ -125,12 +130,12 @@ export function policyProbe(policy: ChannelPolicy): { url: string; intervalSec: 
 // All channels, in match order: lower priority is tried first, Default (the
 // catch-all) sorts last because `createChannel`/`reorderChannels` always keep its
 // priority the highest. `id asc` only breaks ties between rows sharing a priority.
-export function listChannels(db: Db): Channel[] {
+export function listChannels(db: Db): ProxyChannel[] {
   const rows = db.select().from(channels).orderBy(asc(channels.priority), asc(channels.id)).all();
   return rows.map(rowToChannel);
 }
 
-export function readChannel(db: Db, id: string): Channel | undefined {
+export function readChannel(db: Db, id: string): ProxyChannel | undefined {
   const row = db.select().from(channels).where(eq(channels.id, id)).get();
   return row ? rowToChannel(row) : undefined;
 }
@@ -152,7 +157,7 @@ function nextChannelId(rows: (typeof channels.$inferSelect)[]): string {
 // Create a new, non-default channel. It's inserted one priority step ahead of
 // Default so it's matched before the catch-all; Default itself is untouched here
 // — `reorderChannels` is what re-packs priorities when the admin reorders the list.
-export function createChannel(db: Db, input: CreateChannelInput): Channel {
+export function createChannel(db: Db, input: CreateChannelInput): ProxyChannel {
   const rows = db.select().from(channels).all();
   const id = nextChannelId(rows);
   const defaultPriority = rows.find((row) => row.isDefault)?.priority ?? 0;
@@ -160,6 +165,7 @@ export function createChannel(db: Db, input: CreateChannelInput): Channel {
     .values({
       id,
       name: input.name,
+      target: "proxy",
       priority: defaultPriority - 1,
       enabled: true,
       isDefault: false,
@@ -168,7 +174,7 @@ export function createChannel(db: Db, input: CreateChannelInput): Channel {
     })
     .run();
   // Just-inserted row is always readable back — non-null assertion is safe here.
-  return readChannel(db, id) as Channel;
+  return readChannel(db, id) as ProxyChannel;
 }
 
 export function updateChannel(

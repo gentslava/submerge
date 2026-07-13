@@ -11,10 +11,12 @@ import {
   cidrVersion,
   createChannelInput,
   deleteChannelInput,
+  directPresetSettingsSchema,
   isValidCidr,
   isValidDomain,
   nodeItemSchema,
   nodeViewSchema,
+  proxyChannelSchema,
   proxySchema,
   reorderChannelsInput,
   reorderInput,
@@ -48,8 +50,10 @@ describe("schemas", () => {
 
 describe("channelGroupName", () => {
   it("keeps the Default group as AUTO and namespaces other channels by id", () => {
-    expect(channelGroupName({ id: "default", isDefault: true })).toBe("AUTO");
-    expect(channelGroupName({ id: "streaming", isDefault: false })).toBe("ch-streaming");
+    expect(channelGroupName({ id: "default", isDefault: true, target: "proxy" })).toBe("AUTO");
+    expect(channelGroupName({ id: "streaming", isDefault: false, target: "proxy" })).toBe(
+      "ch-streaming",
+    );
   });
 });
 
@@ -396,6 +400,7 @@ describe("channelSchema", () => {
     const c = channelSchema.parse({
       id: "default",
       name: "Default",
+      target: "proxy",
       priority: 0,
       enabled: true,
       isDefault: true,
@@ -411,6 +416,51 @@ describe("channelSchema", () => {
       lastReasonAt: null,
     });
     expect(c.isDefault).toBe(true);
+    expect(c).toHaveProperty("target", "proxy");
+  });
+
+  it("requires the explicit proxy target and rejects unknown fields", () => {
+    const row = {
+      id: "default",
+      name: "Default",
+      priority: 0,
+      enabled: true,
+      isDefault: true,
+      policy: {
+        kind: "speed" as const,
+        testUrl: "u",
+        intervalSec: 300,
+        toleranceMs: 50,
+        reevaluateWhileHealthy: true,
+      },
+      matcher: emptyChannelMatcher(),
+      lastReason: null,
+      lastReasonAt: null,
+    };
+
+    expect(() => channelSchema.parse(row)).toThrow();
+    expect(() => channelSchema.parse({ ...row, target: "direct" })).toThrow();
+    expect(() => channelSchema.parse({ ...row, target: "proxy", directPresets: null })).toThrow();
+  });
+
+  it("exports the proxy compatibility alias", () => {
+    expect(proxyChannelSchema).toBe(channelSchema);
+  });
+});
+
+describe("directPresetSettingsSchema", () => {
+  it("requires exactly both system-preset booleans", () => {
+    expect(
+      directPresetSettingsSchema.safeParse({ privateNetworks: true, localDomains: false }).success,
+    ).toBe(true);
+    expect(directPresetSettingsSchema.safeParse({ privateNetworks: true }).success).toBe(false);
+    expect(
+      directPresetSettingsSchema.safeParse({
+        privateNetworks: true,
+        localDomains: false,
+        extra: true,
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -549,6 +599,7 @@ describe("channelWithPoolSchema", () => {
     const c = channelWithPoolSchema.parse({
       id: "default",
       name: "Default",
+      target: "proxy",
       priority: 0,
       enabled: true,
       isDefault: true,

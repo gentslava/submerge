@@ -4,6 +4,7 @@ import { expectNoDocumentOverflow, installTrpcFixture } from "./fixtures";
 const advancedChannel = {
   id: "advanced",
   name: "Advanced",
+  target: "proxy",
   priority: 0,
   enabled: true,
   isDefault: false,
