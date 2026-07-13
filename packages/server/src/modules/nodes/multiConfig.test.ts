@@ -510,6 +510,29 @@ describe("buildMultiConfig — multiple channels", () => {
 });
 
 describe("buildMultiConfig — native Direct channel", () => {
+  it("protects every config shape from an upstream fake-IP resolver", () => {
+    const expectedDns = {
+      enable: true,
+      ipv6: false,
+      "enhanced-mode": "redir-host",
+      nameserver: ["system"],
+      fallback: ["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"],
+      "fallback-lazy-query": true,
+      "fallback-filter": {
+        geoip: false,
+        ipcidr: ["198.18.0.0/15"],
+      },
+    };
+
+    const configs = [
+      buildMultiConfig([channel({ proxies: [px("A")] }), direct()]),
+      buildMultiConfig([channel({ proxies: [px("A")] })]),
+      buildMultiConfig([channel({ proxies: [] })]),
+    ];
+
+    for (const raw of configs) expect(parse(raw).dns).toEqual(expectedDns);
+  });
+
   it("emits both built-in presets in exact order without creating a group", () => {
     const cfg = parse(buildMultiConfig([channel({ proxies: [px("A")] }), direct()]));
 

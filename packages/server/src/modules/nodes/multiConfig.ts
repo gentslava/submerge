@@ -1,6 +1,5 @@
-// Generate a multi-channel mihomo config.yaml. The single-default case remains
-// byte-identical to the former generator — the default channel owns the canonical,
-// unprefixed names.
+// Generate a multi-channel mihomo config.yaml. The default channel owns the
+// canonical, unprefixed proxy and group names.
 import { createHash } from "node:crypto";
 import {
   type ChannelPolicy,
@@ -199,6 +198,7 @@ function probeRules(noProxies: boolean): string[] {
 }
 
 const DIRECT_LOCAL_DOMAINS = ["localhost", "local", "lan", "home.arpa"] as const;
+const REAL_IP_DNS_SERVERS = ["https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"] as const;
 const DIRECT_PRIVATE_CIDRS = [
   "10.0.0.0/8",
   "100.64.0.0/10",
@@ -279,8 +279,7 @@ export function buildMultiConfig(
   const defaultChannel = proxyChannels.find((c) => c.isDefault);
   const nonDefault = channels.filter((c) => !c.isDefault);
   const nonDefaultProxy = proxyChannels.filter((c) => !c.isDefault);
-  // Default first: it claims its endpoints and names before anyone else, keeping
-  // the single-default output identical to the legacy generator.
+  // Default first: it claims its endpoints and names before anyone else.
   const ordered = defaultChannel ? [defaultChannel, ...nonDefaultProxy] : [...nonDefaultProxy];
 
   const flat: ProxyConfig[] = []; // global proxy definitions, pre-dedupe
@@ -299,7 +298,7 @@ export function buildMultiConfig(
     const tuning = urlTestTuning(channel.policy);
     // Only endpoints defined by EARLIER channels may be shared. Within a single
     // channel, two differently-named nodes on the same server:port stay separate
-    // (exactly as the legacy generator did) — critical for byte-identity.
+    // (matching the established single-channel naming behavior).
     const priorEndpoints = new Set(endpointToIndex.keys());
     const topLevel: TopLevelRef[] = [];
 
@@ -432,12 +431,26 @@ export function buildMultiConfig(
     ipv6: false,
     "external-controller": "0.0.0.0:9090",
     secret,
+    // Keep the host resolver for LAN/split DNS, but reject fake IPs owned by
+    // another mihomo instance. Native DIRECT needs a real destination or a
+    // router → fake-IP → submerge loop is possible.
+    dns: {
+      enable: true,
+      ipv6: false,
+      "enhanced-mode": "redir-host",
+      nameserver: ["system"],
+      fallback: [...REAL_IP_DNS_SERVERS],
+      "fallback-lazy-query": true,
+      "fallback-filter": {
+        geoip: false,
+        ipcidr: ["198.18.0.0/15"],
+      },
+    },
     // Geodata keys (only present when a channel uses a GEOSITE/GEOIP rule).
     ...(geo ?? {}),
     proxies: unique,
     // Only present when a channel actually references an external list — a
-    // provider-free config (incl. the single-default byte-identity case) stays
-    // free of this key.
+    // A provider-free config stays free of this key.
     ...(hasProviders ? { "rule-providers": ruleProviders } : {}),
     "proxy-groups": [
       { name: "PROXY", type: "select", proxies: proxyMembers },

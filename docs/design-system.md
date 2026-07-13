@@ -81,6 +81,8 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
   enabled switch, matcher-summary chips with the existing complete-chip `+N` behavior, and
   an expand control. Disabling the channel dims the whole card without hiding its saved
   matcher summary.
+- Expanding Direct keeps the header on `bg-surface`; expansion is communicated by the
+  editor and chevron, not by recoloring the header.
 - The expanded Direct editor contains the independent `Частные сети` and `Локальные
   домены` preset switches followed by every shared custom matcher editor: preset domains,
   custom domains, domain keywords, rule-providers, GEOSITE, GEOIP, and IPv4/IPv6 CIDR.

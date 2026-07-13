@@ -50284,7 +50284,7 @@
                           "id": "j7JHs",
                           "name": "Direct · Mobile head",
                           "width": "fill_container",
-                          "fill": "$bg-elevated",
+                          "fill": "$bg-surface",
                           "layout": "vertical",
                           "gap": 10,
                           "padding": [
@@ -54429,7 +54429,7 @@
                       "id": "YfePC",
                       "name": "Direct · Head",
                       "width": "fill_container",
-                      "fill": "$bg-elevated",
+                      "fill": "$bg-surface",
                       "gap": 12,
                       "padding": [
                         14,

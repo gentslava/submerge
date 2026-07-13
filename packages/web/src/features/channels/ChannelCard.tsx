@@ -251,12 +251,7 @@ function DirectRow({
   const Chevron = expanded ? ChevronUp : ChevronDown;
   const toggleLabel = `${expanded ? "Свернуть" : "Развернуть"} канал «Direct»`;
   return (
-    <div
-      className={cn(
-        "direct-channel-header relative flex w-full flex-col gap-2.5 px-3.5 py-3 @min-[42rem]/app-page:flex-row @min-[42rem]/app-page:items-center @min-[42rem]/app-page:gap-3 @min-[42rem]/app-page:px-4 @min-[42rem]/app-page:py-3.5",
-        expanded && "bg-elevated",
-      )}
-    >
+    <div className="direct-channel-header relative flex w-full flex-col gap-2.5 bg-surface px-3.5 py-3 @min-[42rem]/app-page:flex-row @min-[42rem]/app-page:items-center @min-[42rem]/app-page:gap-3 @min-[42rem]/app-page:px-4 @min-[42rem]/app-page:py-3.5">
       <div className="direct-channel-identity-controls flex w-full min-w-0 items-center gap-2 @min-[42rem]/app-page:contents">
         {reorderControl && (
           <span className="relative z-10 order-0 flex shrink-0 items-center">{reorderControl}</span>
@@ -581,7 +576,7 @@ function MatcherSummary({
         className={cn(
           "matcher-summary relative flex w-full min-w-0 items-center gap-2 px-1",
           direct &&
-            "order-2 px-0 [--matcher-max-visible:2] @min-[42rem]/app-page:w-auto @min-[42rem]/app-page:flex-1 @min-[42rem]/app-page:px-1 @min-[42rem]/app-page:[--matcher-max-visible:999]",
+            "pointer-events-none order-2 px-0 [--matcher-max-visible:2] @min-[42rem]/app-page:w-auto @min-[42rem]/app-page:flex-1 @min-[42rem]/app-page:px-1 @min-[42rem]/app-page:[--matcher-max-visible:999]",
         )}
       >
         {items.length > 0 ? (

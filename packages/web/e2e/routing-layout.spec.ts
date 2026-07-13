@@ -169,19 +169,32 @@ test("Direct exposes its built-in and custom matchers without proxy-only control
   await expectNoDocumentOverflow(page);
 });
 
-test("Direct expanded desktop head uses the approved elevated treatment", async ({ page }) => {
-  await page.emulateMedia({ colorScheme: "dark" });
-  await installTrpcFixture(page, { "channels.list": populatedChannels });
-  await page.setViewportSize({ width: 1440, height: 1024 });
-  await page.goto("/routing");
+for (const width of [390, 1440]) {
+  test(`Direct summary toggles the card on its surface header at ${width}px`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await installTrpcFixture(page, { "channels.list": populatedChannels });
+    await page.setViewportSize({ width, height: 1024 });
+    await page.goto("/routing");
 
-  await page.getByRole("button", { name: "Развернуть канал «Direct»" }).first().click();
-  const header = page.locator(".direct-channel-header");
-  await expect(header).toHaveCSS("background-color", "rgb(22, 25, 34)");
-  await expect(page.getByText("Пользовательские правила", { exact: true })).toBeVisible();
-  await page.screenshot({ path: "/tmp/submerge-direct-expanded-dark-1440.png", fullPage: true });
-  await expectNoDocumentOverflow(page);
-});
+    const header = page.locator(".direct-channel-header");
+    const summaryBox = await header.locator(".matcher-summary").boundingBox();
+    expect(summaryBox).not.toBeNull();
+    await page.mouse.click(
+      (summaryBox?.x ?? 0) + (summaryBox?.width ?? 0) / 2,
+      (summaryBox?.y ?? 0) + (summaryBox?.height ?? 0) / 2,
+    );
+
+    await expect(page.getByText("Пользовательские правила", { exact: true })).toBeVisible();
+    await expect(header).toHaveCSS("background-color", "rgb(16, 18, 25)");
+    if (width === 1440) {
+      await page.screenshot({
+        path: "/tmp/submerge-direct-expanded-dark-1440.png",
+        fullPage: true,
+      });
+    }
+    await expectNoDocumentOverflow(page);
+  });
+}
 
 test("Direct collapsed light state retains its surface hierarchy", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "light" });

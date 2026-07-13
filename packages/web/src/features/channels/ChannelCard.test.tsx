@@ -235,7 +235,7 @@ describe("ChannelCard", () => {
     expect(screen.queryByText(/по задержке/i)).not.toBeInTheDocument();
   });
 
-  it("keeps the compact Direct identity above its matcher summary", () => {
+  it("keeps the compact Direct identity above its matcher summary on the surface color", () => {
     const { container } = render(
       <ChannelCard
         channel={directChannel}
@@ -246,9 +246,18 @@ describe("ChannelCard", () => {
     );
 
     const header = container.querySelector(".direct-channel-header");
-    expect(header).toHaveClass("bg-elevated");
+    expect(header).toHaveClass("bg-surface");
+    expect(header).not.toHaveClass("bg-elevated");
     expect(header?.children[0]).toHaveClass("direct-channel-identity-controls");
     expect(header?.children[1]).toHaveClass("matcher-summary");
+  });
+
+  it("keeps the Direct matcher summary transparent to the full-header toggle", () => {
+    const { container } = render(<ChannelCard channel={directChannel} onUpdateDirect={vi.fn()} />);
+
+    expect(container.querySelector(".direct-channel-header .matcher-summary")).toHaveClass(
+      "pointer-events-none",
+    );
   });
 
   it("updates Direct enabled state and opens the Direct-only editor", () => {

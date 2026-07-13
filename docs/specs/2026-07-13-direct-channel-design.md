@@ -25,7 +25,7 @@ Direct routing must use the same ordered matcher model as proxy routing without 
 - A proxy group named `DIRECT`.
 - A node pool, selection policy, health controller, decision log, or active node for Direct.
 - Automatic bypass lists for services unrelated to local/private connectivity.
-- Transparent DNS or TUN-mode changes.
+- TUN-mode changes or exposing a DNS listener to clients.
 
 ## 4. Channel model
 
@@ -145,6 +145,38 @@ This same sequence covers a fresh database, an upgrade with negative or tied pri
 Channel create/rename rejects the reserved `Direct` name. Delete, policy, and pool mutations reject Direct server-side even if a custom client bypasses the UI.
 
 ## 7. mihomo generation and runtime
+
+The generated config must not resolve outbound hostnames through the container's
+system resolver unchecked. In router deployments that resolver may intentionally
+return fake-IP addresses owned by a different mihomo instance; using such an
+address for the native `DIRECT` outbound creates a routing loop. Submerge therefore
+enables mihomo's internal DNS in `redir-host` mode, keeps the system resolver first
+for LAN and split-DNS compatibility, and treats the reserved `198.18.0.0/15`
+benchmark range as a polluted answer that must be replaced by real-IP DoH fallback
+results. This applies to every generated config, including the all-Direct safety
+fallback and a manually selected native `DIRECT` member.
+
+```yaml
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: redir-host
+  nameserver:
+    - system
+  fallback:
+    - https://1.1.1.1/dns-query
+    - https://8.8.8.8/dns-query
+  fallback-lazy-query: true
+  fallback-filter:
+    geoip: false
+    ipcidr:
+      - 198.18.0.0/15
+```
+
+No DNS port is exposed and no client DNS behavior is changed. The public fallback
+query remains lazy: it starts when the primary system lookup fails, returns no
+usable IP, or yields an address inside the fake-IP range. Ordinary successful
+local and private answers remain authoritative.
 
 Rule generation walks enabled non-default channels in priority order. Each channel supplies a target:
 
