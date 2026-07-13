@@ -4,9 +4,10 @@ import {
   type ProxyChannel,
   type Proxy as ProxyConfig,
 } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
-import { channelPool, sources } from "../../db/schema.js";
+import { channelPool, channels, sources } from "../../db/schema.js";
 
 // mihomo group name a channel's policy targets: the Default channel keeps the
 // existing "AUTO" group (Phase 1/2 config is unchanged); every other channel gets
@@ -25,6 +26,10 @@ export function getPool(db: Db, channelId: string): ChannelPoolMember[] {
 // (kind, ref) first — the table's unique index would otherwise reject a repeated
 // pair when the same set is submitted twice from the UI.
 export function setPool(db: Db, channelId: string, members: ChannelPoolMember[]): void {
+  const channel = db.select().from(channels).where(eq(channels.id, channelId)).get();
+  if (channel?.target === "direct") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Direct channel cannot use a pool" });
+  }
   const seen = new Set<string>();
   const deduped: ChannelPoolMember[] = [];
   for (const member of members) {

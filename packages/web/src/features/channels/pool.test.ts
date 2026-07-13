@@ -1,4 +1,4 @@
-import { type Channel, type ChannelPoolMember, emptyChannelMatcher } from "@submerge/shared";
+import { type ChannelPoolMember, emptyChannelMatcher, type ProxyChannel } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
 import {
   channelGroupNames,
@@ -12,7 +12,7 @@ import {
 const src = (ref: string): ChannelPoolMember => ({ kind: "source", ref });
 const node = (ref: string): ChannelPoolMember => ({ kind: "node", ref });
 
-const channel = (overrides: Partial<Channel>): Channel => ({
+const channel = (overrides: Partial<ProxyChannel>): ProxyChannel => ({
   id: "ch1",
   name: "Streaming",
   target: "proxy",

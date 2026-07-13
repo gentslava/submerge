@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitMatcherItems, matcherSummaryItems } from "./matcher-summary";
+import { directMatcherSummaryItems, fitMatcherItems, matcherSummaryItems } from "./matcher-summary";
 
 describe("matcherSummaryItems", () => {
   it("summarizes every matcher family", () => {
@@ -74,6 +74,42 @@ describe("matcherSummaryItems", () => {
     });
 
     expect(items[0]?.value).toBe("список:http://");
+  });
+});
+
+describe("directMatcherSummaryItems", () => {
+  it("counts enabled system presets before custom matchers", () => {
+    expect(
+      directMatcherSummaryItems({
+        directPresets: { privateNetworks: true, localDomains: false },
+        matcher: {
+          presets: [],
+          domains: ["router.home.arpa"],
+          keywords: [],
+          ruleProviders: [],
+          geosite: [],
+          geoip: [],
+          cidrs: ["192.168.50.0/24"],
+        },
+      }).map(({ value }) => value),
+    ).toEqual(["Локальная сеть", "router.home.arpa", "192.168.50.0/24"]);
+  });
+
+  it("omits disabled system presets from the summary", () => {
+    expect(
+      directMatcherSummaryItems({
+        directPresets: { privateNetworks: false, localDomains: false },
+        matcher: {
+          presets: [],
+          domains: [],
+          keywords: [],
+          ruleProviders: [],
+          geosite: [],
+          geoip: [],
+          cidrs: [],
+        },
+      }),
+    ).toEqual([]);
   });
 });
 

@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import type { DirectChannel, ProxyChannel } from "@submerge/shared";
 
 const defaultPolicy = {
   kind: "speed",
@@ -8,11 +9,30 @@ const defaultPolicy = {
   reevaluateWhileHealthy: true,
 };
 
-const defaultChannel = {
+export const directChannelFixture: DirectChannel = {
+  id: "direct",
+  name: "Direct",
+  target: "direct",
+  priority: 0,
+  enabled: true,
+  isDefault: false,
+  directPresets: { privateNetworks: true, localDomains: true },
+  matcher: {
+    presets: ["telegram"],
+    domains: ["internal.example.test"],
+    keywords: ["intranet"],
+    ruleProviders: [{ url: "https://rules.example.test/direct.yaml", behavior: "classical" }],
+    geosite: ["private"],
+    geoip: ["PRIVATE"],
+    cidrs: ["100.64.0.0/10"],
+  },
+};
+
+export const defaultChannelFixture: ProxyChannel = {
   id: "default",
   name: "Default",
   target: "proxy",
-  priority: 0,
+  priority: 1,
   enabled: true,
   isDefault: true,
   policy: defaultPolicy,
@@ -54,8 +74,10 @@ const responses: Record<string, unknown> = {
     ],
   },
   "sources.list": [],
-  "channels.get": defaultChannel,
-  "channels.list": [defaultChannel],
+  "channels.get": defaultChannelFixture,
+  "channels.list": [directChannelFixture, defaultChannelFixture],
+  "channels.reorder": { ok: true, applied: true },
+  "channels.updateDirect": { channel: directChannelFixture, applied: true },
   "settings.get": { hwid: "fixture-hwid", mihomoSecret: "", proxyEndpoint: "127.0.0.1:7890" },
   "nodes.bandwidth": [],
   "nodes.health": { connected: true },

@@ -358,26 +358,41 @@ export const directPresetSettingsSchema = z
   .strict();
 export type DirectPresetSettings = z.infer<typeof directPresetSettingsSchema>;
 
-export const proxyChannelSchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string(),
+const channelBaseSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  priority: z.number().int(),
+  enabled: z.boolean(),
+  matcher: channelMatcherSchema,
+});
+
+export const proxyChannelSchema = channelBaseSchema
+  .extend({
     target: z.literal("proxy"),
-    priority: z.number().int(),
-    enabled: z.boolean(),
     isDefault: z.boolean(),
     policy: channelPolicySchema,
-    matcher: channelMatcherSchema,
     lastReason: z.string().nullable(),
     lastReasonAt: z.number().nullable(), // epoch ms of the last controller decision
   })
   .strict();
 export type ProxyChannel = z.infer<typeof proxyChannelSchema>;
 
-// Compatibility alias for the proxy-only storage-preparation slice. The full
-// target union is introduced together with its server and UI consumers.
-export const channelSchema = proxyChannelSchema;
-export type Channel = ProxyChannel;
+export const directChannelSchema = channelBaseSchema
+  .extend({
+    id: z.literal("direct"),
+    name: z.literal("Direct"),
+    target: z.literal("direct"),
+    isDefault: z.literal(false),
+    directPresets: directPresetSettingsSchema,
+  })
+  .strict();
+export type DirectChannel = z.infer<typeof directChannelSchema>;
+
+export const channelSchema = z.discriminatedUnion("target", [
+  proxyChannelSchema,
+  directChannelSchema,
+]);
+export type Channel = z.infer<typeof channelSchema>;
 
 // Mihomo group names are a cross-package contract: the server emits these groups
 // while the web excludes them from the pool picker as non-exit nodes.
@@ -404,7 +419,7 @@ export const channelPoolMemberSchema = z.object({
 export type ChannelPoolMember = z.infer<typeof channelPoolMemberSchema>;
 
 export const createChannelInput = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   policy: channelPolicySchema,
   matcher: channelMatcherInputSchema.optional(),
 });
@@ -412,11 +427,23 @@ export type CreateChannelInput = z.infer<typeof createChannelInput>;
 
 export const updateChannelInput = z.object({
   id: z.string().min(1),
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   enabled: z.boolean().optional(),
   matcher: channelMatcherInputSchema.optional(),
 });
 export type UpdateChannelInput = z.infer<typeof updateChannelInput>;
+
+export const updateDirectInput = z
+  .object({
+    enabled: z.boolean().optional(),
+    matcher: channelMatcherInputSchema.optional(),
+    directPresets: directPresetSettingsSchema.optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: "at least one Direct field is required",
+  });
+export type UpdateDirectInput = z.infer<typeof updateDirectInput>;
 
 // Shared "just an id" input, reused by deleteChannelInput and by getPool (which
 // isn't a delete — see router.ts).
@@ -437,7 +464,7 @@ export const setChannelPoolInput = z.object({
 });
 export type SetChannelPoolInput = z.infer<typeof setChannelPoolInput>;
 
-export const channelWithPoolSchema = channelSchema.extend({
+export const channelWithPoolSchema = proxyChannelSchema.extend({
   pool: z.array(channelPoolMemberSchema),
 });
 export type ChannelWithPool = z.infer<typeof channelWithPoolSchema>;

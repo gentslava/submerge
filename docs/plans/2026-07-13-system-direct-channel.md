@@ -390,6 +390,15 @@ Browser evidence must use populated Direct fixtures and cover:
 
 Record screenshots/computed evidence in the active implementation notes before review; do not rely only on Playwright's pass result.
 
+**Implementation evidence — 2026-07-13:**
+
+- The Routing Playwright matrix passed at `320`, `390`, `425`, `768`, `983`, `984`, `1024`, and `1440` px with no document, `.app-main`, or `.responsive-page` overflow.
+- At 390 px the Direct header measured `flex-direction: column`, `10px` row gap, `12px 14px` padding, with the matcher summary fully below the identity/control row and every visible chip contained. The first chip measured `10px` text with `7px` horizontal and `3px` vertical padding.
+- The 390 px editor measured `14px` section padding, `11px` captions, and `10px 12px` preset-card padding.
+- At 1440×1024, dark expanded Direct used the approved elevated header color `rgb(22, 25, 34)`; the light collapsed card remained on `rgb(255, 255, 255)`; the disabled dark card remained visible at `0.5` opacity with an unchecked switch.
+- Browser evidence was captured outside the repository at `/tmp/submerge-direct-{compact-dark-390,expanded-dark-390,expanded-dark-1440,collapsed-light-1440,disabled-dark-1440}.png`; computed compact/editor evidence was written alongside it as JSON.
+- The real local-stack smoke preserved Direct matcher/preset/enabled/priority state across disable, update, reorder, and restart. Generated YAML contained the nine built-in private CIDRs plus custom domain/CIDR rules targeting literal `DIRECT` and no `ch-direct` group. A request to Docker alias `direct-smoke.test` succeeded through the existing mihomo proxy; mihomo logged `match IPCIDR(172.16.0.0/12) using DIRECT`. The temporary alias was removed and the normal development Compose topology restored.
+
 ### 6. Verify a real disposable local stack
 
 Use existing project commands/ports only. Start infrastructure normally, then start the server with an isolated database:

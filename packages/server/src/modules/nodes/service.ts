@@ -117,14 +117,12 @@ export async function applyConfig(
   // no DOMAIN-SUFFIX rules — until re-enabled. The Default is the catch-all and
   // stays active regardless of its own `enabled` flag.
   const inputs: ChannelConfigInput[] = listChannels(db)
-    .filter((ch) => ch.isDefault || ch.enabled)
-    .map((ch) => {
-      const pool = keep(resolveChannelProxies(db, ch, allProxies));
+    .filter((ch) => (ch.target === "proxy" && ch.isDefault) || ch.enabled)
+    .map((ch): ChannelConfigInput => {
       const base = {
+        target: ch.target,
         id: ch.id,
-        groupName: groupNameFor(ch),
         isDefault: ch.isDefault,
-        policy: ch.policy,
         domains: resolveMatcherDomains(ch.matcher),
         keywords: ch.matcher.keywords,
         ruleProviders: ch.matcher.ruleProviders,
@@ -132,13 +130,29 @@ export async function applyConfig(
         geoip: ch.matcher.geoip,
         cidrs: ch.matcher.cidrs,
       };
+      if (ch.target === "direct") {
+        return {
+          ...base,
+          target: "direct",
+          id: "direct",
+          isDefault: false,
+          directPresets: ch.directPresets,
+        };
+      }
+      const pool = keep(resolveChannelProxies(db, ch, allProxies));
+      const proxyBase = {
+        ...base,
+        target: "proxy" as const,
+        groupName: groupNameFor(ch),
+        policy: ch.policy,
+      };
       // The Default channel DEFINES the whole (non-excluded) inventory — every node is
       // written to the config, pinged by the prober, and manually selectable via PROXY
       // — while its AUTO group RACES only the pool. Other channels define + race their
       // pool. Excluded nodes are already filtered out of both `inventory` and `pool`.
       return ch.isDefault
-        ? { ...base, proxies: inventory, race: pool }
-        : { ...base, proxies: pool };
+        ? { ...proxyBase, proxies: inventory, race: pool }
+        : { ...proxyBase, proxies: pool };
     });
   const content = buildMultiConfig(inputs, readMihomoSecret(db));
   // Unchanged config → skip the write + the destructive reload so mihomo keeps its

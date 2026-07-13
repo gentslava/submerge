@@ -13,6 +13,7 @@ export function buildDefaultConfig(
   return buildMultiConfig(
     [
       {
+        target: "proxy",
         id: "default",
         groupName: "AUTO",
         isDefault: true,

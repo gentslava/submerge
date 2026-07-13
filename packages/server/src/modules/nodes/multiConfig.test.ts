@@ -6,7 +6,11 @@ import {
 import * as yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
 import { buildDefaultConfig } from "./config.test-support.js";
-import { buildMultiConfig, type ChannelConfigInput } from "./multiConfig.js";
+import {
+  buildMultiConfig,
+  type ChannelConfigInput,
+  type DirectChannelConfigInput,
+} from "./multiConfig.js";
 
 const px = (name: string, server = "ex.com", port = 443): ProxyConfig => ({
   name,
@@ -26,6 +30,7 @@ const sticky: ChannelPolicy = {
 };
 
 const channel = (over: Partial<ChannelConfigInput>): ChannelConfigInput => ({
+  target: "proxy",
   id: "default",
   groupName: "AUTO",
   isDefault: true,
@@ -33,6 +38,20 @@ const channel = (over: Partial<ChannelConfigInput>): ChannelConfigInput => ({
   domains: [],
   cidrs: [],
   proxies: [],
+  ...over,
+});
+
+const direct = (over: Partial<DirectChannelConfigInput> = {}): DirectChannelConfigInput => ({
+  target: "direct",
+  id: "direct",
+  isDefault: false,
+  domains: [],
+  keywords: [],
+  ruleProviders: [],
+  geosite: [],
+  geoip: [],
+  cidrs: [],
+  directPresets: { privateNetworks: true, localDomains: true },
   ...over,
 });
 
@@ -487,5 +506,138 @@ describe("buildMultiConfig — multiple channels", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const media = cfg["proxy-groups"].find((g: any) => g.name === "ch-media");
     expect(media.proxies).toEqual(["X"]);
+  });
+});
+
+describe("buildMultiConfig — native Direct channel", () => {
+  it("emits both built-in presets in exact order without creating a group", () => {
+    const cfg = parse(buildMultiConfig([channel({ proxies: [px("A")] }), direct()]));
+
+    expect(cfg.rules).toEqual([
+      PROBE_RULE,
+      "DOMAIN-SUFFIX,localhost,DIRECT",
+      "DOMAIN-SUFFIX,local,DIRECT",
+      "DOMAIN-SUFFIX,lan,DIRECT",
+      "DOMAIN-SUFFIX,home.arpa,DIRECT",
+      "IP-CIDR,10.0.0.0/8,DIRECT",
+      "IP-CIDR,100.64.0.0/10,DIRECT",
+      "IP-CIDR,127.0.0.0/8,DIRECT",
+      "IP-CIDR,169.254.0.0/16,DIRECT",
+      "IP-CIDR,172.16.0.0/12,DIRECT",
+      "IP-CIDR,192.168.0.0/16,DIRECT",
+      "IP-CIDR6,::1/128,DIRECT",
+      "IP-CIDR6,fc00::/7,DIRECT",
+      "IP-CIDR6,fe80::/10,DIRECT",
+      "MATCH,PROXY",
+    ]);
+    expect(cfg.rules.every((rule: string) => !rule.includes("no-resolve"))).toBe(true);
+    expect(cfg["proxy-groups"].some((group: { name: string }) => group.name === "direct")).toBe(
+      false,
+    );
+    const proxyGroup = cfg["proxy-groups"].find(
+      (group: { name: string }) => group.name === "PROXY",
+    );
+    expect(proxyGroup.proxies.filter((name: string) => name === "DIRECT")).toHaveLength(1);
+  });
+
+  it("targets every custom matcher family at DIRECT and skips invalid tolerant CIDRs", () => {
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [px("A")] }),
+        direct({
+          directPresets: { privateNetworks: false, localDomains: false },
+          keywords: ["internal"],
+          domains: ["dev.example"],
+          ruleProviders: [{ url: "https://example.com/direct.yaml", behavior: "classical" }],
+          geosite: ["private"],
+          geoip: ["LAN"],
+          cidrs: ["10.20.0.0/16", "broken", "2001:db8::/32"],
+        }),
+      ]),
+    );
+    const providerName = Object.keys(cfg["rule-providers"])[0] as string;
+    expect(cfg.rules).toEqual([
+      PROBE_RULE,
+      "DOMAIN-KEYWORD,internal,DIRECT",
+      "DOMAIN-SUFFIX,dev.example,DIRECT",
+      `RULE-SET,${providerName},DIRECT`,
+      "GEOSITE,private,DIRECT",
+      "GEOIP,LAN,DIRECT,no-resolve",
+      "IP-CIDR,10.20.0.0/16,DIRECT",
+      "IP-CIDR6,2001:db8::/32,DIRECT",
+      "MATCH,PROXY",
+    ]);
+    expect(cfg["rule-providers"][providerName]).toMatchObject({ proxy: "DIRECT" });
+    expect(cfg["geodata-mode"]).toBe(true);
+  });
+
+  it("keeps Direct rules at cross-channel priority and bases terminal MATCH on proxy channels only", () => {
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [px("A")] }),
+        direct({
+          directPresets: { privateNetworks: false, localDomains: false },
+          domains: ["first.example"],
+        }),
+        channel({
+          target: "proxy",
+          id: "later",
+          groupName: "ch-later",
+          isDefault: false,
+          policy: sticky,
+          domains: ["later.example"],
+          proxies: [px("B", "b.example")],
+        }),
+      ]),
+    );
+    expect(cfg.rules).toEqual([
+      PROBE_RULE,
+      "DOMAIN-SUFFIX,first.example,DIRECT",
+      "DOMAIN-SUFFIX,later.example,ch-later",
+      "MATCH,AUTO",
+    ]);
+
+    const directOnly = parse(
+      buildMultiConfig([
+        channel({ proxies: [px("A")] }),
+        direct({
+          directPresets: { privateNetworks: false, localDomains: false },
+          domains: ["direct.example"],
+        }),
+      ]),
+    );
+    expect(directOnly.rules.at(-1)).toBe("MATCH,PROXY");
+  });
+
+  it("treats an enabled empty Direct as a no-op and built-ins alone as geo-free", () => {
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [px("A")] }),
+        direct({ directPresets: { privateNetworks: false, localDomains: false } }),
+      ]),
+    );
+    expect(cfg.rules).toEqual([PROBE_RULE, "MATCH,PROXY"]);
+    expect(cfg["rule-providers"]).toBeUndefined();
+    expect(cfg["geodata-mode"]).toBeUndefined();
+
+    const builtins = parse(buildMultiConfig([channel({ proxies: [px("A")] }), direct()]));
+    expect(builtins["geodata-mode"]).toBeUndefined();
+    expect(builtins["geox-url"]).toBeUndefined();
+  });
+
+  it("keeps the zero-exit safety config minimal regardless of Direct settings", () => {
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [] }),
+        direct({
+          domains: ["ignored.example"],
+          ruleProviders: [{ url: "https://example.com/direct.yaml", behavior: "classical" }],
+          geosite: ["private"],
+        }),
+      ]),
+    );
+    expect(cfg.rules).toEqual(["MATCH,DIRECT"]);
+    expect(cfg["rule-providers"]).toBeUndefined();
+    expect(cfg["geodata-mode"]).toBeUndefined();
   });
 });

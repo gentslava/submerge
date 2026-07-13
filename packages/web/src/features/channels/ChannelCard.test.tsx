@@ -1,11 +1,11 @@
-import type { Channel } from "@submerge/shared";
-import { act, render, screen, within } from "@testing-library/react";
+import type { DirectChannel, ProxyChannel } from "@submerge/shared";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChannelCard } from "./ChannelCard";
 
 const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 
-const channel: Channel = {
+const channel: ProxyChannel = {
   id: "channel-ai",
   name: "AI",
   target: "proxy",
@@ -30,7 +30,7 @@ const channel: Channel = {
   lastReasonAt: null,
 };
 
-const advancedChannel: Channel = {
+const advancedChannel: ProxyChannel = {
   ...channel,
   id: "channel-advanced",
   name: "Advanced",
@@ -45,11 +45,30 @@ const advancedChannel: Channel = {
   },
 };
 
-const defaultChannel: Channel = {
+const defaultChannel: ProxyChannel = {
   ...channel,
   id: "default",
   name: "Default",
   isDefault: true,
+};
+
+const directChannel: DirectChannel = {
+  id: "direct",
+  name: "Direct",
+  target: "direct",
+  priority: 0,
+  enabled: true,
+  isDefault: false,
+  directPresets: { privateNetworks: true, localDomains: true },
+  matcher: {
+    presets: [],
+    domains: [],
+    keywords: [],
+    ruleProviders: [],
+    geosite: [],
+    geoip: [],
+    cidrs: ["192.168.50.0/24"],
+  },
 };
 
 function channelProps() {
@@ -63,7 +82,7 @@ function channelProps() {
   };
 }
 
-function renderChannel(channelValue: Channel = channel) {
+function renderChannel(channelValue: ProxyChannel = channel) {
   return render(<ChannelCard channel={channelValue} {...channelProps()} />);
 }
 
@@ -115,7 +134,13 @@ describe("ChannelCard", () => {
     });
     vi.stubGlobal(
       "getComputedStyle",
-      () => ({ columnGap: "8px", paddingLeft: "4px", paddingRight: "4px" }) as CSSStyleDeclaration,
+      () =>
+        ({
+          columnGap: "8px",
+          paddingLeft: "4px",
+          paddingRight: "4px",
+          getPropertyValue: () => "",
+        }) as unknown as CSSStyleDeclaration,
     );
 
     const { container } = renderChannel();
@@ -147,7 +172,13 @@ describe("ChannelCard", () => {
     });
     vi.stubGlobal(
       "getComputedStyle",
-      () => ({ columnGap: "8px", paddingLeft: "4px", paddingRight: "4px" }) as CSSStyleDeclaration,
+      () =>
+        ({
+          columnGap: "8px",
+          paddingLeft: "4px",
+          paddingRight: "4px",
+          getPropertyValue: () => "",
+        }) as unknown as CSSStyleDeclaration,
     );
 
     const { container } = renderChannel();
@@ -167,7 +198,13 @@ describe("ChannelCard", () => {
     });
     vi.stubGlobal(
       "getComputedStyle",
-      () => ({ columnGap: "8px", paddingLeft: "4px", paddingRight: "4px" }) as CSSStyleDeclaration,
+      () =>
+        ({
+          columnGap: "8px",
+          paddingLeft: "4px",
+          paddingRight: "4px",
+          getPropertyValue: () => "",
+        }) as unknown as CSSStyleDeclaration,
     );
 
     const { container } = renderChannel();
@@ -175,5 +212,90 @@ describe("ChannelCard", () => {
     const summary = within(container.querySelector(".matcher-summary") as HTMLElement);
     expect(summary.queryByText("Все узлы")).not.toBeInTheDocument();
     expect(summary.getByText("+7")).toBeInTheDocument();
+  });
+
+  it("renders a target-specific Direct card without proxy-only actions", () => {
+    const onUpdateDirect = vi.fn();
+    render(
+      <ChannelCard
+        channel={directChannel}
+        onUpdateDirect={onUpdateDirect}
+        reorderControl={<button type="button">reorder-direct</button>}
+      />,
+    );
+
+    expect(screen.getByText("Direct")).toBeInTheDocument();
+    expect(screen.getByText("Системный")).toBeInTheDocument();
+    expect(screen.getByText("DIRECT")).toBeInTheDocument();
+    const summary = within(document.querySelector(".matcher-summary") as HTMLElement);
+    expect(summary.getByText("Локальная сеть")).toBeInTheDocument();
+    expect(summary.getByText("Локальные домены")).toBeInTheDocument();
+    expect(summary.getByText("192.168.50.0/24")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "reorder-direct" })).toBeInTheDocument();
+    expect(screen.queryByText(/по задержке/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the compact Direct identity above its matcher summary", () => {
+    const { container } = render(
+      <ChannelCard
+        channel={directChannel}
+        onUpdateDirect={vi.fn()}
+        initiallyExpanded
+        reorderControl={<button type="button">reorder-direct</button>}
+      />,
+    );
+
+    const header = container.querySelector(".direct-channel-header");
+    expect(header).toHaveClass("bg-elevated");
+    expect(header?.children[0]).toHaveClass("direct-channel-identity-controls");
+    expect(header?.children[1]).toHaveClass("matcher-summary");
+  });
+
+  it("updates Direct enabled state and opens the Direct-only editor", () => {
+    const onUpdateDirect = vi.fn();
+    render(<ChannelCard channel={directChannel} onUpdateDirect={onUpdateDirect} />);
+
+    fireEvent.click(screen.getByRole("switch", { name: "Включить канал «Direct»" }));
+    expect(onUpdateDirect).toHaveBeenCalledWith({ enabled: false });
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Развернуть канал «Direct»" })[0] as HTMLElement,
+    );
+    expect(screen.getByText("Системные исключения")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Имя канала")).not.toBeInTheDocument();
+    expect(screen.queryByText("Пул")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /удалить канал/i })).not.toBeInTheDocument();
+  });
+
+  it("dims a disabled Direct card while keeping its saved summary visible", () => {
+    const { container } = render(
+      <ChannelCard channel={{ ...directChannel, enabled: false }} onUpdateDirect={vi.fn()} />,
+    );
+    expect(container.firstElementChild).toHaveClass("opacity-50");
+    const summary = within(container.querySelector(".matcher-summary") as HTMLElement);
+    expect(summary.getByText("192.168.50.0/24")).toBeInTheDocument();
+  });
+
+  it("blocks a second Direct edit while the first mutation is pending", () => {
+    const onUpdateDirect = vi.fn();
+    const { rerender } = render(
+      <ChannelCard channel={directChannel} onUpdateDirect={onUpdateDirect} initiallyExpanded />,
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Частные сети" }));
+    expect(onUpdateDirect).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ChannelCard
+        channel={directChannel}
+        onUpdateDirect={onUpdateDirect}
+        initiallyExpanded
+        busy
+      />,
+    );
+    const localDomains = screen.getByRole("switch", { name: "Локальные домены" });
+    expect(localDomains).toBeDisabled();
+    fireEvent.click(localDomains);
+    expect(onUpdateDirect).toHaveBeenCalledTimes(1);
   });
 });

@@ -59,7 +59,8 @@ export function TagInput({
       else setDraft("");
       return;
     }
-    onChange(addTag(value, candidate));
+    const next = addTag(value, candidate);
+    if (next !== value) onChange(next);
     setDraft("");
   }
 

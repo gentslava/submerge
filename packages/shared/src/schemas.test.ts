@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emptyChannelMatcher } from "./defaults.js";
+import { DEFAULT_SPEED_POLICY, emptyChannelMatcher } from "./defaults.js";
 import {
   channelGroupName,
   channelMatcherInputSchema,
@@ -11,6 +11,7 @@ import {
   cidrVersion,
   createChannelInput,
   deleteChannelInput,
+  directChannelSchema,
   directPresetSettingsSchema,
   isValidCidr,
   isValidDomain,
@@ -27,6 +28,7 @@ import {
   setChannelPoolInput,
   sourceKindSchema,
   updateChannelInput,
+  updateDirectInput,
 } from "./schemas.js";
 
 describe("schemas", () => {
@@ -443,8 +445,63 @@ describe("channelSchema", () => {
     expect(() => channelSchema.parse({ ...row, target: "proxy", directPresets: null })).toThrow();
   });
 
-  it("exports the proxy compatibility alias", () => {
-    expect(proxyChannelSchema).toBe(channelSchema);
+  it("parses the strict Direct variant with its literal system identity", () => {
+    const direct = channelSchema.parse({
+      id: "direct",
+      name: "Direct",
+      target: "direct",
+      priority: 0,
+      enabled: true,
+      isDefault: false,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    });
+
+    expect(direct).toEqual({
+      id: "direct",
+      name: "Direct",
+      target: "direct",
+      priority: 0,
+      enabled: true,
+      isDefault: false,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    });
+  });
+
+  it("keeps both target variants strict and rejects proxy-only fields on Direct", () => {
+    const direct = {
+      id: "direct",
+      name: "Direct",
+      target: "direct" as const,
+      priority: 0,
+      enabled: true,
+      isDefault: false,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    };
+    expect(() => channelSchema.parse({ ...direct, policy: DEFAULT_SPEED_POLICY })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, lastReason: null })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, id: "other" })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, name: "Bypass" })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, isDefault: true })).toThrow();
+  });
+
+  it("exports distinct strict target schemas", () => {
+    expect(proxyChannelSchema).not.toBe(channelSchema);
+    expect(() =>
+      directChannelSchema.parse({
+        id: "direct",
+        name: "Direct",
+        target: "direct",
+        priority: 0,
+        enabled: true,
+        isDefault: false,
+        matcher: emptyChannelMatcher(),
+        directPresets: { privateNetworks: true, localDomains: true },
+        unknown: true,
+      }),
+    ).toThrow();
   });
 });
 
@@ -557,6 +614,34 @@ describe("updateChannelInput", () => {
       matcher: { presets: [], domains: ["youtube.com"] },
     });
     expect(input.matcher?.domains).toEqual(["youtube.com"]);
+  });
+});
+
+describe("updateDirectInput", () => {
+  it("accepts only non-empty atomic Direct patches", () => {
+    expect(updateDirectInput.safeParse({ enabled: false }).success).toBe(true);
+    expect(
+      updateDirectInput.safeParse({
+        matcher: { presets: [], domains: [], cidrs: ["10.0.0.0/8"] },
+        directPresets: { privateNetworks: false, localDomains: true },
+      }).success,
+    ).toBe(true);
+    expect(updateDirectInput.safeParse({}).success).toBe(false);
+  });
+
+  it("rejects every proxy-only and unknown field instead of stripping it", () => {
+    for (const forbidden of [
+      { id: "direct" },
+      { name: "Direct" },
+      { policy: DEFAULT_SPEED_POLICY },
+      { pool: [] },
+      { isDefault: false },
+      { target: "direct" },
+      { lastReason: null },
+      { unknown: true },
+    ]) {
+      expect(updateDirectInput.safeParse({ enabled: true, ...forbidden }).success).toBe(false);
+    }
   });
 });
 

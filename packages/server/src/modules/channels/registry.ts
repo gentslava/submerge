@@ -1,11 +1,11 @@
-import type { DecisionEntry, ProxyChannel } from "@submerge/shared";
+import type { Channel, DecisionEntry, ProxyChannel } from "@submerge/shared";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { ChannelController, toGroupView } from "./controller.js";
 import { groupNameFor } from "./pool.js";
 import { policyProbe } from "./service.js";
 
 export interface RegistryDeps {
-  listChannels: () => ProxyChannel[];
+  listChannels: () => Channel[];
   fetchProxies: () => Promise<ProxiesResponse>;
   probe: (name: string, url: string) => Promise<number | null>;
   select: (group: string, name: string) => Promise<void>;
@@ -61,7 +61,14 @@ export class ControllerRegistry {
     // A disabled non-default channel is excluded from control entirely — it must
     // not be ticked/pinned. The Default always runs regardless of its own
     // `enabled` flag (it's the permanent catch-all).
-    const active = chs.filter((ch) => ch.isDefault || ch.enabled);
+    const active = chs
+      .filter((ch): ch is ProxyChannel => ch.target === "proxy")
+      .filter((ch) => ch.isDefault || ch.enabled);
+    if (active.length === 0) {
+      this.controllers.clear();
+      this.boxes.clear();
+      return;
+    }
     const px = (await this.deps.fetchProxies()).proxies;
     for (const ch of active) {
       const ctrl = this.controllerFor(ch);

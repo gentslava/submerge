@@ -1,4 +1,4 @@
-import { CHANNEL_PRESETS, type ChannelMatcher } from "@submerge/shared";
+import { CHANNEL_PRESETS, type ChannelMatcher, type DirectChannel } from "@submerge/shared";
 
 export interface MatcherSummaryItem {
   key: string;
@@ -56,6 +56,19 @@ export function matcherSummaryItems(matcher: ChannelMatcher): MatcherSummaryItem
       monospace: true,
     })),
   ];
+}
+
+export function directMatcherSummaryItems(
+  channel: Pick<DirectChannel, "directPresets" | "matcher">,
+): MatcherSummaryItem[] {
+  const systemItems: MatcherSummaryItem[] = [];
+  if (channel.directPresets.privateNetworks) {
+    systemItems.push({ key: "direct-private-networks", value: "Локальная сеть", monospace: false });
+  }
+  if (channel.directPresets.localDomains) {
+    systemItems.push({ key: "direct-local-domains", value: "Локальные домены", monospace: false });
+  }
+  return [...systemItems, ...matcherSummaryItems(channel.matcher)];
 }
 
 export function fitMatcherItems({

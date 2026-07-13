@@ -21,7 +21,10 @@ import {
   type Channel,
   type ChannelPolicy,
   DEFAULT_AUTO_TEST_URL,
+  type DirectChannel,
+  type ProxyChannel,
   PSEUDO_NODE_SET,
+  type UpdateDirectInput,
 } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, GripVertical, Info, Plus } from "lucide-react";
@@ -50,7 +53,8 @@ const NEW_CHANNEL_SEED_POLICY: ChannelPolicy = {
 /**
  * «Маршрутизация» screen — measured against the mockup's `P7RAD`/`fSRZN` (main
  * layout) and `HXRTv` (create / disabled / mobile-390 states). Each `ChannelCard`
- * expands into a real editor for name + domains + pool + policy + delete.
+ * expands into its target-specific editor; proxy channels expose name, matcher,
+ * pool, policy, and delete controls, while Direct exposes only bypass rules.
  * «Новый канал» creates a real channel (seeded policy + empty matcher) and opens
  * it expanded. Reorder is drag (desktop, grip-handle) / ↑↓ arrows (mobile, below
  * `md`) over the non-default channels only — the Default channel is pinned last
@@ -64,7 +68,12 @@ export function RoutingScreen() {
   const channelsQuery = useQuery(trpc.channels.list.queryOptions());
   const channels = channelsQuery.data ?? [];
   const nonDefaultChannels = channels.filter((c) => !c.isDefault);
-  const defaultChannel = channels.find((c) => c.isDefault);
+  const defaultChannel = channels.find(
+    (channel): channel is ProxyChannel => channel.target === "proxy" && channel.isDefault,
+  );
+  const userProxyChannelCount = nonDefaultChannels.filter(
+    (channel) => channel.target === "proxy",
+  ).length;
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   // Real (pinnable) exit nodes for each card's policy editor — same derivation as
   // the Settings screen (mihomo's built-in groups/policies aren't valid pins).
@@ -87,6 +96,16 @@ export function RoutingScreen() {
 
   const setPolicyMutation = useMutation(
     trpc.channels.setPolicy.mutationOptions({
+      onSuccess: (data) => {
+        void invalidateChannels();
+        warnIfNotApplied(data.applied);
+      },
+      onError: (e) => toast.error(e.message),
+    }),
+  );
+
+  const updateDirectMutation = useMutation(
+    trpc.channels.updateDirect.mutationOptions({
       onSuccess: (data) => {
         void invalidateChannels();
         warnIfNotApplied(data.applied);
@@ -227,42 +246,73 @@ export function RoutingScreen() {
               items={nonDefaultChannels.map((c) => c.id)}
               strategy={verticalListSortingStrategy}
             >
-              {nonDefaultChannels.map((channel, index) => (
-                <SortableChannelCard
-                  key={channel.id}
-                  channel={channel}
-                  canMoveUp={index > 0}
-                  canMoveDown={index < nonDefaultChannels.length - 1}
-                  nodeNames={nodeNames}
-                  busy={updateMutation.isPending && updateMutation.variables?.id === channel.id}
-                  initiallyExpanded={channel.id === justCreatedId}
-                  onToggleEnabled={(enabled) => updateMutation.mutate({ id: channel.id, enabled })}
-                  onUpdateName={(name) => updateMutation.mutate({ id: channel.id, name })}
-                  onUpdateMatcher={(matcher) => updateMutation.mutate({ id: channel.id, matcher })}
-                  onUpdatePolicy={(policy) => setPolicyMutation.mutate({ id: channel.id, policy })}
-                  onRemove={() => removeMutation.mutate({ id: channel.id })}
-                  onMoveUp={() => moveChannel(channel, -1)}
-                  onMoveDown={() => moveChannel(channel, 1)}
-                />
-              ))}
+              {nonDefaultChannels.map((channel, index) =>
+                channel.target === "direct" ? (
+                  <SortableChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < nonDefaultChannels.length - 1}
+                    busy={updateDirectMutation.isPending}
+                    initiallyExpanded={false}
+                    onUpdateDirect={(patch) => updateDirectMutation.mutate(patch)}
+                    onMoveUp={() => moveChannel(channel, -1)}
+                    onMoveDown={() => moveChannel(channel, 1)}
+                  />
+                ) : (
+                  <SortableChannelCard
+                    key={channel.id}
+                    channel={channel}
+                    canMoveUp={index > 0}
+                    canMoveDown={index < nonDefaultChannels.length - 1}
+                    nodeNames={nodeNames}
+                    busy={updateMutation.isPending && updateMutation.variables?.id === channel.id}
+                    initiallyExpanded={channel.id === justCreatedId}
+                    onToggleEnabled={(enabled) =>
+                      updateMutation.mutate({ id: channel.id, enabled })
+                    }
+                    onUpdateName={(name) => updateMutation.mutate({ id: channel.id, name })}
+                    onUpdateMatcher={(matcher) =>
+                      updateMutation.mutate({ id: channel.id, matcher })
+                    }
+                    onUpdatePolicy={(policy) =>
+                      setPolicyMutation.mutate({ id: channel.id, policy })
+                    }
+                    onRemove={() => removeMutation.mutate({ id: channel.id })}
+                    onMoveUp={() => moveChannel(channel, -1)}
+                    onMoveDown={() => moveChannel(channel, 1)}
+                  />
+                ),
+              )}
             </SortableContext>
             <DragOverlay modifiers={[restrictToVerticalAxis]}>
               {activeChannel ? (
-                <ChannelCard
-                  channel={activeChannel}
-                  nodeNames={nodeNames}
-                  className="shadow-lg"
-                  reorderControl={
-                    <span className="flex h-8 w-5 shrink-0 items-center justify-center text-text-secondary">
-                      <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
-                    </span>
-                  }
-                  onToggleEnabled={() => {}}
-                  onUpdateName={() => {}}
-                  onUpdateMatcher={() => {}}
-                  onUpdatePolicy={() => {}}
-                  onRemove={() => {}}
-                />
+                activeChannel.target === "direct" ? (
+                  <ChannelCard
+                    channel={activeChannel}
+                    className="shadow-lg"
+                    reorderControl={<OverlayGrip />}
+                    onUpdateDirect={(patch) => updateDirectMutation.mutate(patch)}
+                  />
+                ) : (
+                  <ChannelCard
+                    channel={activeChannel}
+                    nodeNames={nodeNames}
+                    className="shadow-lg"
+                    reorderControl={<OverlayGrip />}
+                    onToggleEnabled={(enabled) =>
+                      updateMutation.mutate({ id: activeChannel.id, enabled })
+                    }
+                    onUpdateName={(name) => updateMutation.mutate({ id: activeChannel.id, name })}
+                    onUpdateMatcher={(matcher) =>
+                      updateMutation.mutate({ id: activeChannel.id, matcher })
+                    }
+                    onUpdatePolicy={(policy) =>
+                      setPolicyMutation.mutate({ id: activeChannel.id, policy })
+                    }
+                    onRemove={() => removeMutation.mutate({ id: activeChannel.id })}
+                  />
+                )
               ) : null}
             </DragOverlay>
           </DndContext>
@@ -284,12 +334,12 @@ export function RoutingScreen() {
               onRemove={() => removeMutation.mutate({ id: defaultChannel.id })}
             />
           )}
-          {channels.length === 1 && (
+          {userProxyChannelCount === 0 && (
             <div className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface p-4">
               <Info className="h-5 w-5 shrink-0 text-text-tertiary" aria-hidden="true" />
               <p className="text-sub text-text-secondary">
-                Пока один канал — весь трафик идёт через Default. Создайте канал, чтобы направить
-                домены через отдельные узлы.
+                Direct направляет настроенные исключения напрямую, а Default — весь остальной
+                трафик. Создайте канал, чтобы направить выбранные сайты через отдельные узлы.
               </p>
             </div>
           )}
@@ -299,20 +349,36 @@ export function RoutingScreen() {
   );
 }
 
-interface SortableChannelCardProps {
-  channel: Channel;
+interface SortableChannelCardBaseProps {
   canMoveUp: boolean;
   canMoveDown: boolean;
-  nodeNames: string[];
   busy: boolean;
   initiallyExpanded: boolean;
-  onToggleEnabled: (enabled: boolean) => void;
-  onUpdateName: (name: string) => void;
-  onUpdateMatcher: (matcher: Channel["matcher"]) => void;
-  onUpdatePolicy: (policy: ChannelPolicy) => void;
-  onRemove: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+}
+
+interface SortableProxyChannelCardProps extends SortableChannelCardBaseProps {
+  channel: ProxyChannel;
+  nodeNames: string[];
+  onToggleEnabled: (enabled: boolean) => void;
+  onUpdateName: (name: string) => void;
+  onUpdateMatcher: (matcher: ProxyChannel["matcher"]) => void;
+  onUpdatePolicy: (policy: ChannelPolicy) => void;
+  onRemove: () => void;
+}
+
+interface SortableDirectChannelCardProps extends SortableChannelCardBaseProps {
+  channel: DirectChannel;
+  onUpdateDirect: (patch: UpdateDirectInput) => void;
+}
+
+type SortableChannelCardProps = SortableProxyChannelCardProps | SortableDirectChannelCardProps;
+
+function isSortableDirectProps(
+  props: SortableChannelCardProps,
+): props is SortableDirectChannelCardProps {
+  return props.channel.target === "direct";
 }
 
 // Wires one non-default channel into the sortable list: `useSortable` supplies the
@@ -320,14 +386,8 @@ interface SortableChannelCardProps {
 // activator ref/listeners for the grip handle. The grip appears in the inline
 // container mode; below it ↑↓ arrow buttons call the same
 // reorder path directly (no drag gesture needed on touch).
-function SortableChannelCard({
-  channel,
-  canMoveUp,
-  canMoveDown,
-  onMoveUp,
-  onMoveDown,
-  ...rest
-}: SortableChannelCardProps) {
+function SortableChannelCard(props: SortableChannelCardProps) {
+  const { channel, canMoveUp, canMoveDown, onMoveUp, onMoveDown } = props;
   const {
     attributes,
     listeners,
@@ -339,49 +399,72 @@ function SortableChannelCard({
   } = useSortable({ id: channel.id });
   const style: CSSProperties = { transform: CSS.Transform.toString(transform), transition };
 
+  const reorderControl = (
+    <span className="flex shrink-0 items-center">
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        {...attributes}
+        {...listeners}
+        aria-label={`Перетащить «${channel.name}» для сортировки`}
+        className="routing-reorder-desktop hidden h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary active:cursor-grabbing"
+      >
+        <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
+      </button>
+      <span className="routing-reorder-compact flex shrink-0 flex-col">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={!canMoveUp}
+          aria-label={`Поднять канал «${channel.name}» выше`}
+          className="flex h-4 w-5 items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ChevronUp className="h-4 w-4" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={!canMoveDown}
+          aria-label={`Опустить канал «${channel.name}» ниже`}
+          className="flex h-4 w-5 items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary disabled:pointer-events-none disabled:opacity-30"
+        >
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </span>
+    </span>
+  );
+  const common = {
+    ref: setNodeRef,
+    style,
+    className: cn(isDragging && "opacity-0"),
+    reorderControl,
+    busy: props.busy,
+    initiallyExpanded: props.initiallyExpanded,
+  };
+
+  if (isSortableDirectProps(props)) {
+    return (
+      <ChannelCard {...common} channel={props.channel} onUpdateDirect={props.onUpdateDirect} />
+    );
+  }
   return (
     <ChannelCard
-      ref={setNodeRef}
-      style={style}
-      // While this card is the one being dragged, hide it in place — the DragOverlay
-      // renders the floating copy — so the drop can't "jump" between the two.
-      className={cn(isDragging && "opacity-0")}
-      channel={channel}
-      reorderControl={
-        <span className="flex shrink-0 items-center">
-          <button
-            type="button"
-            ref={setActivatorNodeRef}
-            {...attributes}
-            {...listeners}
-            aria-label={`Перетащить «${channel.name}» для сортировки`}
-            className="routing-reorder-desktop hidden h-8 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary active:cursor-grabbing"
-          >
-            <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
-          </button>
-          <span className="routing-reorder-compact flex shrink-0 flex-col">
-            <button
-              type="button"
-              onClick={onMoveUp}
-              disabled={!canMoveUp}
-              aria-label={`Поднять канал «${channel.name}» выше`}
-              className="flex h-4 w-5 items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary disabled:pointer-events-none disabled:opacity-30"
-            >
-              <ChevronUp className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={onMoveDown}
-              disabled={!canMoveDown}
-              aria-label={`Опустить канал «${channel.name}» ниже`}
-              className="flex h-4 w-5 items-center justify-center text-text-tertiary transition-colors hover:text-text-secondary disabled:pointer-events-none disabled:opacity-30"
-            >
-              <ChevronDown className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </span>
-        </span>
-      }
-      {...rest}
+      {...common}
+      channel={props.channel}
+      nodeNames={props.nodeNames}
+      onToggleEnabled={props.onToggleEnabled}
+      onUpdateName={props.onUpdateName}
+      onUpdateMatcher={props.onUpdateMatcher}
+      onUpdatePolicy={props.onUpdatePolicy}
+      onRemove={props.onRemove}
     />
+  );
+}
+
+function OverlayGrip() {
+  return (
+    <span className="flex h-8 w-5 shrink-0 items-center justify-center text-text-secondary">
+      <GripVertical className="h-[18px] w-[18px]" aria-hidden="true" />
+    </span>
   );
 }

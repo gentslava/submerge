@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import {
   type ChannelPolicy,
   cidrVersion,
+  type DirectPresetSettings,
   PROBE_GROUP,
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
@@ -17,21 +18,21 @@ import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
 import { dedupeNames, groupProxies, type UrlTestTuning, urlTestTuning } from "./config.js";
 
-export interface ChannelConfigInput {
+interface MatcherConfigInput {
   id: string;
-  groupName: string; // "AUTO" for the default channel, "ch-<id>" otherwise (groupNameFor)
   isDefault: boolean;
-  policy: ChannelPolicy;
-  domains: string[]; // resolveMatcherDomains(matcher) — custom domains + expanded presets
-  // Phase 4a matcher extras (default []): DOMAIN-KEYWORD tokens + external
-  // rule-provider refs. Only meaningful on non-default channels — the Default
-  // channel is the catch-all and emits no per-domain rules.
+  domains: string[];
   keywords?: string[];
   ruleProviders?: RuleProviderRef[];
-  // Phase 4b geo matchers (default []): GEOSITE categories + GEOIP country codes.
   geosite?: string[];
   geoip?: string[];
   cidrs: string[];
+}
+
+export interface ProxyChannelConfigInput extends MatcherConfigInput {
+  target: "proxy";
+  groupName: string; // "AUTO" for the default channel, "ch-<id>" otherwise (groupNameFor)
+  policy: ChannelPolicy;
   // The proxies this channel DEFINES + contributes to PROXY. The default channel is
   // fed the full inventory here so every node is defined + pinged + manually
   // selectable; other channels get their pool.
@@ -41,6 +42,15 @@ export interface ChannelConfigInput {
   // default define the whole inventory in `proxies` while AUTO races only the pool.
   race?: ProxyConfig[];
 }
+
+export interface DirectChannelConfigInput extends MatcherConfigInput {
+  target: "direct";
+  id: "direct";
+  isDefault: false;
+  directPresets: DirectPresetSettings;
+}
+
+export type ChannelConfigInput = ProxyChannelConfigInput | DirectChannelConfigInput;
 
 // A channel's top-level member is either a shared proxy (referenced by its index
 // into the global proxy list, so the final post-dedupe name resolves) or a
@@ -60,7 +70,7 @@ interface SubGroupSpec {
 }
 
 interface ChannelBuild {
-  channel: ChannelConfigInput;
+  channel: ProxyChannelConfigInput;
   topLevel: TopLevelRef[];
 }
 
@@ -71,7 +81,7 @@ const endpointKey = (p: ProxyConfig): string => `${p.server}:${p.port}`;
 // group name so two channels collapsing the same base can't collide.
 function allocateSubGroupName(
   used: Set<string>,
-  channel: ChannelConfigInput,
+  channel: ProxyChannelConfigInput,
   base: string,
 ): string {
   const candidate = channel.isDefault ? base : `${channel.groupName}::${base}`;
@@ -99,7 +109,7 @@ function allocateSubGroupName(
 // group/subgroup names in one joint namespace: mihomo rejects a proxy sharing
 // a name with a proxy-group, so a collapsed subgroup must never claim a name
 // some channel's bare proxy will use.
-function collectSingleProxyNames(orderedChannels: ChannelConfigInput[]): Set<string> {
+function collectSingleProxyNames(orderedChannels: ProxyChannelConfigInput[]): Set<string> {
   const names = new Set<string>();
   const claimed = new Set<string>(); // endpoint keys claimed by channels processed so far
   for (const channel of orderedChannels) {
@@ -188,10 +198,32 @@ function probeRules(noProxies: boolean): string[] {
   return noProxies ? [] : [`DOMAIN,${SPEED_TEST_HOST},${PROBE_GROUP}`];
 }
 
+const DIRECT_LOCAL_DOMAINS = ["localhost", "local", "lan", "home.arpa"] as const;
+const DIRECT_PRIVATE_CIDRS = [
+  "10.0.0.0/8",
+  "100.64.0.0/10",
+  "127.0.0.0/8",
+  "169.254.0.0/16",
+  "172.16.0.0/12",
+  "192.168.0.0/16",
+  "::1/128",
+  "fc00::/7",
+  "fe80::/10",
+] as const;
+
+function appendCidrRule(rules: string[], rawCidr: string, target: string): void {
+  const cidr = rawCidr.trim();
+  const version = cidrVersion(cidr);
+  if (version === null) return;
+  // Intentionally no no-resolve: resolved hostnames must be eligible to match.
+  rules.push(`${version === 4 ? "IP-CIDR" : "IP-CIDR6"},${cidr},${target}`);
+}
+
 function buildRules(
   nonDefault: ChannelConfigInput[],
   noProxies: boolean,
   defaultGroupName: string,
+  nonDefaultProxyCount: number,
 ): string[] {
   // With no exit nodes anywhere there is nothing to route — everything is DIRECT.
   if (noProxies) return ["MATCH,DIRECT"];
@@ -200,33 +232,40 @@ function buildRules(
   // point at the channel's own group, so intra-channel order is irrelevant;
   // cross-channel precedence is the channel order (= priority).
   for (const channel of nonDefault) {
+    const target = channel.target === "direct" ? "DIRECT" : channel.groupName;
+    if (channel.target === "direct") {
+      if (channel.directPresets.localDomains) {
+        for (const domain of DIRECT_LOCAL_DOMAINS) {
+          rules.push(`DOMAIN-SUFFIX,${domain},DIRECT`);
+        }
+      }
+      if (channel.directPresets.privateNetworks) {
+        for (const cidr of DIRECT_PRIVATE_CIDRS) appendCidrRule(rules, cidr, "DIRECT");
+      }
+    }
     for (const keyword of channel.keywords ?? []) {
-      rules.push(`DOMAIN-KEYWORD,${keyword},${channel.groupName}`);
+      rules.push(`DOMAIN-KEYWORD,${keyword},${target}`);
     }
     for (const domain of channel.domains) {
-      rules.push(`DOMAIN-SUFFIX,${domain},${channel.groupName}`);
+      rules.push(`DOMAIN-SUFFIX,${domain},${target}`);
     }
     for (const ref of channel.ruleProviders ?? []) {
-      rules.push(`RULE-SET,${ruleProviderName(ref)},${channel.groupName}`);
+      rules.push(`RULE-SET,${ruleProviderName(ref)},${target}`);
     }
     for (const category of channel.geosite ?? []) {
-      rules.push(`GEOSITE,${category},${channel.groupName}`);
+      rules.push(`GEOSITE,${category},${target}`);
     }
     for (const code of channel.geoip ?? []) {
       // no-resolve: match on the connection's destination IP without a DNS lookup.
-      rules.push(`GEOIP,${code},${channel.groupName},no-resolve`);
+      rules.push(`GEOIP,${code},${target},no-resolve`);
     }
     for (const rawCidr of channel.cidrs) {
-      const cidr = rawCidr.trim();
-      const version = cidrVersion(cidr);
-      if (version === null) continue;
-      // Intentionally no no-resolve: resolved hostnames must be eligible to match.
-      rules.push(`${version === 4 ? "IP-CIDR" : "IP-CIDR6"},${cidr},${channel.groupName}`);
+      appendCidrRule(rules, rawCidr, target);
     }
   }
   // Default-only stays on the legacy PROXY catch-all (so config.test.ts holds);
   // once other channels exist the catch-all is the default channel's own group.
-  rules.push(nonDefault.length === 0 ? "MATCH,PROXY" : `MATCH,${defaultGroupName}`);
+  rules.push(nonDefaultProxyCount === 0 ? "MATCH,PROXY" : `MATCH,${defaultGroupName}`);
   return rules;
 }
 
@@ -234,11 +273,15 @@ export function buildMultiConfig(
   channels: ChannelConfigInput[],
   secret: string = env.MIHOMO_SECRET,
 ): string {
-  const defaultChannel = channels.find((c) => c.isDefault);
+  const proxyChannels = channels.filter(
+    (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
+  );
+  const defaultChannel = proxyChannels.find((c) => c.isDefault);
   const nonDefault = channels.filter((c) => !c.isDefault);
+  const nonDefaultProxy = proxyChannels.filter((c) => !c.isDefault);
   // Default first: it claims its endpoints and names before anyone else, keeping
   // the single-default output identical to the legacy generator.
-  const ordered = defaultChannel ? [defaultChannel, ...nonDefault] : [...nonDefault];
+  const ordered = defaultChannel ? [defaultChannel, ...nonDefaultProxy] : [...nonDefaultProxy];
 
   const flat: ProxyConfig[] = []; // global proxy definitions, pre-dedupe
   const endpointToIndex = new Map<string, number>();
@@ -246,7 +289,7 @@ export function buildMultiConfig(
   // the reserved names, every channel's own group name, and every channel's
   // bare proxy names — the joint-uniqueness guard (see collectSingleProxyNames).
   const usedSubGroupNames = new Set<string>(PSEUDO_NODE_SET);
-  for (const c of channels) usedSubGroupNames.add(c.groupName);
+  for (const c of proxyChannels) usedSubGroupNames.add(c.groupName);
   for (const name of collectSingleProxyNames(ordered)) usedSubGroupNames.add(name);
 
   const builds = new Map<string, ChannelBuild>();
@@ -291,7 +334,7 @@ export function buildMultiConfig(
   // already claimed by a proxy-group. Reserve PSEUDO + channel group names +
   // every allocated subgroup name (now final) before deduping proxy names.
   const reservedGroupNames = new Set<string>(PSEUDO_NODE_SET);
-  for (const c of channels) reservedGroupNames.add(c.groupName);
+  for (const c of proxyChannels) reservedGroupNames.add(c.groupName);
   for (const spec of allSubGroups) reservedGroupNames.add(spec.name);
 
   const unique = dedupeNames(flat, reservedGroupNames);
@@ -350,7 +393,7 @@ export function buildMultiConfig(
 
   const channelGroups: Record<string, unknown>[] = [];
   if (defaultBuild) channelGroups.push(groupFor(defaultBuild));
-  for (const c of nonDefault) channelGroups.push(groupFor(builds.get(c.id) as ChannelBuild));
+  for (const c of nonDefaultProxy) channelGroups.push(groupFor(builds.get(c.id) as ChannelBuild));
 
   // Hidden speed-test group (Phase 4c): all inventory + REJECT, defaulting to REJECT
   // (first member). The test host is thus unreachable during normal use — NOT routed
@@ -402,7 +445,9 @@ export function buildMultiConfig(
       ...subGroupObjects,
       ...probeGroup,
     ],
-    rules: probeRules(noProxies).concat(buildRules(nonDefault, noProxies, defaultGroupName)),
+    rules: probeRules(noProxies).concat(
+      buildRules(nonDefault, noProxies, defaultGroupName, nonDefaultProxy.length),
+    ),
   };
   return yaml.dump(cfg, { lineWidth: -1 });
 }

@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { type Channel, emptyChannelMatcher } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
@@ -70,6 +71,34 @@ describe("getPool / setPool", () => {
     // A second call fully replaces the previous set (not a merge).
     setPool(db, "default", [{ kind: "node", ref: "B" }]);
     expect(getPool(db, "default")).toEqual([{ kind: "node", ref: "B" }]);
+  });
+
+  it("rejects pool mutation for Direct without writing any member", () => {
+    db.insert(channels)
+      .values({
+        id: "direct",
+        name: "Direct",
+        target: "direct",
+        priority: 0,
+        enabled: true,
+        isDefault: false,
+        policy: null,
+        matcher: emptyChannelMatcher(),
+        directPresets: { privateNetworks: true, localDomains: true },
+      })
+      .run();
+
+    try {
+      setPool(db, "direct", [{ kind: "node", ref: "A" }]);
+      throw new Error("expected BAD_REQUEST");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TRPCError);
+      expect(error).toMatchObject({
+        code: "BAD_REQUEST",
+        message: "Direct channel cannot use a pool",
+      });
+    }
+    expect(getPool(db, "direct")).toEqual([]);
   });
 });
 
