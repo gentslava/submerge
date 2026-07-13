@@ -39,3 +39,6 @@ out/
 .local-run/
 # browser-driver scratch (screenshots, snapshots)
 .playwright-mcp/
+
+# Agent feature worktrees (isolated branches, never repository content)
+.worktrees/
