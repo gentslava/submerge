@@ -10,7 +10,7 @@ const populatedConnections = {
       destIp: "203.0.113.10",
       port: "443",
       network: "tcp",
-      node: "Амстердам — основной маршрут",
+      node: "DIRECT",
       up: 2048,
       down: 4096,
       start: "2026-07-12T08:00:00.000Z",
@@ -29,6 +29,29 @@ const populatedConnections = {
     },
   ],
 };
+
+const connectionSources = [
+  {
+    id: 1,
+    kind: "sub",
+    value: "https://example.test/subscription",
+    label: "Основная подписка",
+    hwid: false,
+    enabled: true,
+    sortOrder: 0,
+    proxies: [
+      {
+        name: "Амстердам — основной маршрут",
+        type: "vless",
+        server: "example.test",
+        port: 443,
+      },
+    ],
+    meta: null,
+    updatedAt: "2026-07-12T08:00:00.000Z",
+    createdAt: "2026-07-12T08:00:00.000Z",
+  },
+];
 
 test("connections keep search compact beside the destructive action on desktop", async ({
   page,
@@ -84,7 +107,10 @@ test("connections use the available content pane rather than the viewport for to
 });
 
 test("populated connections keep their mobile cards reachable", async ({ page }) => {
-  await installTrpcFixture(page, { "connections.list": populatedConnections });
+  await installTrpcFixture(page, {
+    "connections.list": populatedConnections,
+    "sources.list": connectionSources,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/connections");
 
@@ -95,12 +121,19 @@ test("populated connections keep their mobile cards reachable", async ({ page })
     "title",
     "api.very-long-development-service.example.com:443",
   );
+  await expect(
+    mobile.getByText("Амстердам — основной маршрут", { exact: true }).first(),
+  ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
+  await expect(mobile.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
   await expect(mobile.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
   await expectNoDocumentOverflow(page);
 });
 
 test("populated connections keep their desktop rows and actions reachable", async ({ page }) => {
-  await installTrpcFixture(page, { "connections.list": populatedConnections });
+  await installTrpcFixture(page, {
+    "connections.list": populatedConnections,
+    "sources.list": connectionSources,
+  });
   await page.setViewportSize({ width: 1440, height: 1024 });
   await page.goto("/connections");
 
@@ -110,6 +143,10 @@ test("populated connections keep their desktop rows and actions reachable", asyn
   await expect(
     desktop.getByText("api.very-long-development-service.example.com:443"),
   ).toHaveAttribute("title", "api.very-long-development-service.example.com:443");
+  await expect(
+    desktop.getByText("Амстердам — основной маршрут", { exact: true }).first(),
+  ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
+  await expect(desktop.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
   await expect(desktop.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
   await expectNoDocumentOverflow(page);
 });
