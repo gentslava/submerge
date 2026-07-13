@@ -253,3 +253,13 @@ Expected: no screenshot or geometry regression.
 - [ ] **Step 3: Run independent spec-compliance and code-quality reviews, resolve every required finding, and repeat the relevant checks.**
 
 - [ ] **Step 4: Update `docs/plans/README.md` status only after all gates are green. Commit only on explicit user request.**
+
+## Corrective verification — 2026-07-13
+
+- `pnpm verify:static`: Biome, token drift, strict TypeScript, 538 Vitest tests, and
+  production builds passed.
+- Playwright: 33/33 passed without retries across 320–1440px, populated/error states,
+  container boundaries, internal overflow, and popup collision/focus behavior.
+- Pencil frames `I4hmn` and `jwsEZ` were compared with captures in
+  `/private/tmp/submerge-visual-evidence/` at 1440×1024 dark and 390px mobile.
+- Independent server/shared, UI, and infrastructure reviews were resolved before commit.

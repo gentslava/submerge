@@ -38,7 +38,7 @@ Use Context7: `resolve-library-id` "mihomo" (or "clash-meta"), then `query-docs`
 On `home.server`, hand-write a minimal config with `AUTO` (url-test) referencing a nested `url-test` group, drop it in a scratch path, and reload via the mihomo API — check it loads without error:
 
 ```bash
-ssh home.server 'C=compose-quantify-auxiliary-driver-aqpf1w-mihomo-1; sudo docker exec "$C" sh -c "wget -qO- --header=\"Authorization: Bearer poc\" http://127.0.0.1:9090/version"'
+ssh home.server 'C=compose-quantify-auxiliary-driver-aqpf1w-mihomo-1; sudo docker exec "$C" sh -c "wget -qO- --header=\"Authorization: Bearer <mihomo-secret>\" http://127.0.0.1:9090/version"'
 ```
 
 (Use a throwaway config; do NOT overwrite the live one.)
