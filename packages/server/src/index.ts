@@ -99,7 +99,9 @@ const server = createServer((req, res) => {
   res.end("not found");
 });
 
-server.listen(env.PORT, () => log.info(`submerge server on :${env.PORT}`));
+server.listen(env.PORT, env.HOST, () =>
+  log.info({ host: env.HOST, port: env.PORT }, "submerge server listening"),
+);
 
 // Graceful shutdown: stop the hub, then stop accepting new connections and exit
 const shutdown = () => {

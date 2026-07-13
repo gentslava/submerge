@@ -1,0 +1,20 @@
+# Isolated sidecars for the host-run development server. Runtime state lives under
+# .local-run/. Standard host ports make the topology identical to deployment;
+# Compose fails clearly if another stack already owns them.
+services:
+  mihomo:
+    image: metacubex/mihomo:latest
+    command: -d /root/.config/mihomo -ext-ctl 0.0.0.0:9090
+    volumes:
+      - ./.local-run/mihomo:/root/.config/mihomo
+    ports:
+      - "127.0.0.1:7890:7890"
+      - "127.0.0.1:9090:9090"
+
+  happ-decoder:
+    image: ghcr.io/gentslava/submerge-happ-decoder:latest
+    init: true
+    volumes:
+      - ./.local-run/mihomo:/mihomo:ro
+    ports:
+      - "127.0.0.1:8080:8080"

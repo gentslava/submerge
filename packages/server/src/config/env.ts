@@ -9,6 +9,7 @@ const defaultDbPath = resolve(serverRoot, "data/submerge.db");
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
+  HOST: z.string().min(1).default("0.0.0.0"),
   DB_PATH: z.string().default(defaultDbPath),
   MIHOMO_API: z.url().default("http://mihomo:9090"),
   // mihomo's mixed (HTTP/SOCKS) proxy port, as the SERVER reaches it — used only by

@@ -9,13 +9,14 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { "@": resolve(__dirname, "src") } },
   server: {
+    host: "127.0.0.1",
     port: 5173,
     // Proxy the API (tRPC + SSE subscriptions both live under /trpc). Target is the
     // local server by default; set VITE_PROXY_TARGET to develop against a remote
     // deployment (e.g. the live instance) with real data + hot reload.
     proxy: {
       "/trpc": {
-        target: process.env.VITE_PROXY_TARGET ?? "http://localhost:3000",
+        target: process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:3000",
         changeOrigin: true,
       },
     },
