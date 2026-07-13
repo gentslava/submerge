@@ -15,4 +15,4 @@ quick map. Update both when a spec ships.
 | [2026-07-06 node exclusion + pool inventory fix](2026-07-06-node-exclusion-design.md) | implemented (A/A2/B) |
 | [2026-07-07 «Оптимальный» policy (historical-winner selection)](2026-07-07-optimal-policy-design.md) | implemented |
 | [2026-07-07 routing Phase 4 (rule-providers · keyword/geo · speed test)](2026-07-07-routing-phase4-design.md) | implemented (4a–4c) |
-| [2026-07-13 system Direct channel](2026-07-13-direct-channel-design.md) | accepted |
+| [2026-07-13 system Direct channel](2026-07-13-direct-channel-design.md) | implemented |
