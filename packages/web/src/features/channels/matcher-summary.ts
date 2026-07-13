@@ -50,6 +50,11 @@ export function matcherSummaryItems(matcher: ChannelMatcher): MatcherSummaryItem
       value: `geoip:${value}`,
       monospace: true,
     })),
+    ...matcher.cidrs.map((value, index) => ({
+      key: `cidr-${value}-${index}`,
+      value,
+      monospace: true,
+    })),
   ];
 }
 

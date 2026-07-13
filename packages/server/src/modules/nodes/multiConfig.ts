@@ -4,6 +4,7 @@
 import { createHash } from "node:crypto";
 import {
   type ChannelPolicy,
+  cidrVersion,
   PROBE_GROUP,
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
@@ -30,6 +31,7 @@ export interface ChannelConfigInput {
   // Phase 4b geo matchers (default []): GEOSITE categories + GEOIP country codes.
   geosite?: string[];
   geoip?: string[];
+  cidrs: string[];
   // The proxies this channel DEFINES + contributes to PROXY. The default channel is
   // fed the full inventory here so every node is defined + pinged + manually
   // selectable; other channels get their pool.
@@ -213,6 +215,13 @@ function buildRules(
     for (const code of channel.geoip ?? []) {
       // no-resolve: match on the connection's destination IP without a DNS lookup.
       rules.push(`GEOIP,${code},${channel.groupName},no-resolve`);
+    }
+    for (const rawCidr of channel.cidrs) {
+      const cidr = rawCidr.trim();
+      const version = cidrVersion(cidr);
+      if (version === null) continue;
+      // Intentionally no no-resolve: resolved hostnames must be eligible to match.
+      rules.push(`${version === 4 ? "IP-CIDR" : "IP-CIDR6"},${cidr},${channel.groupName}`);
     }
   }
   // Default-only stays on the legacy PROXY catch-all (so config.test.ts holds);

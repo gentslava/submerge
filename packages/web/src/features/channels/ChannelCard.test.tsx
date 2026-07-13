@@ -23,6 +23,7 @@ const channel: Channel = {
     ruleProviders: [],
     geosite: [],
     geoip: [],
+    cidrs: [],
   },
   lastReason: null,
   lastReasonAt: null,
@@ -39,6 +40,7 @@ const advancedChannel: Channel = {
     ruleProviders: [{ url: "https://rules.example.com/list.yaml", behavior: "classical" }],
     geosite: ["category-ai"],
     geoip: ["US"],
+    cidrs: ["10.0.0.0/8"],
   },
 };
 
@@ -80,7 +82,7 @@ describe("ChannelCard", () => {
     expect(summary.getByText("список:rules.example.com")).toBeInTheDocument();
     expect(summary.getByText("geosite:category-ai")).toBeInTheDocument();
     expect(summary.queryByText("geoip:US")).not.toBeInTheDocument();
-    expect(summary.getByText("+1")).toBeInTheDocument();
+    expect(summary.getByText("+2")).toBeInTheDocument();
     expect(summary.queryByText("Правила не заданы")).not.toBeInTheDocument();
   });
 

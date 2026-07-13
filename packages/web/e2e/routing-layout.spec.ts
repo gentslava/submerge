@@ -15,6 +15,7 @@ const advancedChannel = {
     ruleProviders: [{ url: "https://rules.example.com/list.yaml", behavior: "classical" }],
     geosite: ["category-ai"],
     geoip: ["US"],
+    cidrs: ["10.0.0.0/8"],
   },
   lastReason: null,
   lastReasonAt: null,
@@ -62,6 +63,6 @@ test("routing summarizes advanced matcher rules without inventing pool state", a
   const summary = page.locator(".matcher-summary");
   await expect(summary).toContainText("ключ:ads");
   await expect(summary).not.toContainText("Все узлы");
-  await expect(summary.getByText("+3", { exact: true }).first()).toBeVisible();
+  await expect(summary.getByText("+4", { exact: true }).first()).toBeVisible();
   await expectNoDocumentOverflow(page);
 });

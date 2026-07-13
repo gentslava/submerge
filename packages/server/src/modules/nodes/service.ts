@@ -130,6 +130,7 @@ export async function applyConfig(
         ruleProviders: ch.matcher.ruleProviders,
         geosite: ch.matcher.geosite,
         geoip: ch.matcher.geoip,
+        cidrs: ch.matcher.cidrs,
       };
       // The Default channel DEFINES the whole (non-excluded) inventory — every node is
       // written to the config, pinged by the prober, and manually selectable via PROXY

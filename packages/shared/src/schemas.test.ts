@@ -8,8 +8,10 @@ import {
   channelPoolMemberSchema,
   channelSchema,
   channelWithPoolSchema,
+  cidrVersion,
   createChannelInput,
   deleteChannelInput,
+  isValidCidr,
   isValidDomain,
   nodeItemSchema,
   nodeViewSchema,
@@ -196,6 +198,53 @@ describe("channelMatcherSchema (read model stays permissive)", () => {
     const m = channelMatcherSchema.parse({ presets: [], domains: [] });
     expect(m.keywords).toEqual([]);
     expect(m.ruleProviders).toEqual([]);
+  });
+
+  it("defaults CIDRs to empty while retaining malformed legacy values", () => {
+    expect(channelMatcherSchema.parse({ presets: [], domains: [] }).cidrs).toEqual([]);
+    expect(
+      channelMatcherSchema.parse({ presets: [], domains: [], cidrs: ["not-a-cidr"] }).cidrs,
+    ).toEqual(["not-a-cidr"]);
+  });
+});
+
+describe("CIDR matcher fields", () => {
+  it("trims and accepts IPv4 and IPv6 CIDRs at the write boundary", () => {
+    const matcher = channelMatcherInputSchema.parse({
+      presets: [],
+      domains: [],
+      cidrs: [" 10.0.0.0/8 ", " 2001:db8::/32 "],
+    });
+    expect(matcher.cidrs).toEqual(["10.0.0.0/8", "2001:db8::/32"]);
+  });
+
+  it("rejects bare IPs, invalid prefixes, delimiters, newlines, and blanks", () => {
+    for (const cidr of [
+      "192.168.1.1",
+      "2001:db8::1",
+      "10.0.0.0/33",
+      "2001:db8::/129",
+      "10.0.0.0/8,192.168.0.0/16",
+      "10.0.0.0/8\n192.168.0.0/16",
+      " ",
+    ]) {
+      expect(
+        channelMatcherInputSchema.safeParse({ presets: [], domains: [], cidrs: [cidr] }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("validates and identifies CIDR families through the shared contract", () => {
+    expect(isValidCidr(" 10.0.0.0/8 ")).toBe(true);
+    expect(isValidCidr("2001:db8::/32")).toBe(true);
+    expect(isValidCidr("10.0.0.0/33")).toBe(false);
+    expect(cidrVersion(" 10.0.0.0/8 ")).toBe(4);
+    expect(cidrVersion("2001:db8::/32")).toBe(6);
+    expect(cidrVersion("not-a-cidr")).toBeNull();
+  });
+
+  it("includes CIDRs in a fresh empty matcher", () => {
+    expect(emptyChannelMatcher().cidrs).toEqual([]);
   });
 });
 

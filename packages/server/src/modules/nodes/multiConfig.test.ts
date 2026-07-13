@@ -31,6 +31,7 @@ const channel = (over: Partial<ChannelConfigInput>): ChannelConfigInput => ({
   isDefault: true,
   policy: DEFAULT_SPEED_POLICY,
   domains: [],
+  cidrs: [],
   proxies: [],
   ...over,
 });
@@ -396,6 +397,47 @@ describe("buildMultiConfig — multiple channels", () => {
     ]);
     expect(cfg["geodata-mode"]).toBe(true);
     expect(cfg["geox-url"].geosite).toContain("geosite.dat");
+  });
+
+  it("emits valid IPv4/IPv6 CIDRs at channel priority without no-resolve", () => {
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [px("A")] }),
+        channel({
+          id: "local",
+          groupName: "ch-local",
+          isDefault: false,
+          policy: sticky,
+          domains: ["local"],
+          cidrs: ["10.0.0.0/8", "not-a-cidr", "2001:db8::/32"],
+          proxies: [px("B", "b.com")],
+        }),
+        channel({
+          id: "later",
+          groupName: "ch-later",
+          isDefault: false,
+          policy: sticky,
+          domains: ["later.example"],
+          cidrs: ["192.168.0.0/16"],
+          proxies: [px("C", "c.com")],
+        }),
+      ]),
+    );
+
+    expect(cfg.rules).toEqual([
+      PROBE_RULE,
+      "DOMAIN-SUFFIX,local,ch-local",
+      "IP-CIDR,10.0.0.0/8,ch-local",
+      "IP-CIDR6,2001:db8::/32,ch-local",
+      "DOMAIN-SUFFIX,later.example,ch-later",
+      "IP-CIDR,192.168.0.0/16,ch-later",
+      "MATCH,AUTO",
+    ]);
+    expect(
+      cfg.rules.every(
+        (rule: string) => !rule.startsWith("IP-CIDR") || !rule.includes("no-resolve"),
+      ),
+    ).toBe(true);
   });
 
   it("keeps a geo-free config free of any geodata keys", () => {

@@ -11,6 +11,7 @@ describe("matcherSummaryItems", () => {
         ruleProviders: [{ url: "https://rules.example.com/list.yaml", behavior: "classical" }],
         geosite: ["category-ai"],
         geoip: ["US"],
+        cidrs: ["10.0.0.0/8", "2001:db8::/32"],
       }).map(({ value }) => value),
     ).toEqual([
       "OpenAI",
@@ -19,6 +20,25 @@ describe("matcherSummaryItems", () => {
       "список:rules.example.com",
       "geosite:category-ai",
       "geoip:US",
+      "10.0.0.0/8",
+      "2001:db8::/32",
+    ]);
+  });
+
+  it("renders CIDRs as monospace summary items", () => {
+    const items = matcherSummaryItems({
+      presets: [],
+      domains: [],
+      keywords: [],
+      ruleProviders: [],
+      geosite: [],
+      geoip: [],
+      cidrs: ["10.0.0.0/8", "2001:db8::/32"],
+    });
+
+    expect(items).toEqual([
+      { key: "cidr-10.0.0.0/8-0", value: "10.0.0.0/8", monospace: true },
+      { key: "cidr-2001:db8::/32-1", value: "2001:db8::/32", monospace: true },
     ]);
   });
 
@@ -31,6 +51,7 @@ describe("matcherSummaryItems", () => {
         ruleProviders: [],
         geosite: [],
         geoip: [],
+        cidrs: [],
       }),
     ).toEqual([
       {
@@ -49,6 +70,7 @@ describe("matcherSummaryItems", () => {
       ruleProviders: [{ url: "http://", behavior: "domain" }],
       geosite: [],
       geoip: [],
+      cidrs: [],
     });
 
     expect(items[0]?.value).toBe("список:http://");

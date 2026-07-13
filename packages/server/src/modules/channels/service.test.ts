@@ -108,6 +108,7 @@ describe("channel CRUD", () => {
       ruleProviders: [],
       geosite: [],
       geoip: [],
+      cidrs: [],
     });
     const defaultPriority = readDefaultChannel(db).priority;
     expect(a.priority).toBeLessThan(defaultPriority);
@@ -133,6 +134,7 @@ describe("channel CRUD", () => {
       ruleProviders: [{ url: "http://", behavior: "domain" as const }],
       geosite: [],
       geoip: [],
+      cidrs: ["not-a-cidr"],
     };
     db.insert(channels)
       .values({
@@ -194,7 +196,7 @@ describe("updateChannel matcher persistence + config regeneration", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("persists a new matcher and reflects it in the regenerated config's DOMAIN-SUFFIX rules", async () => {
+  it("persists a new matcher and carries domains and CIDRs into regenerated rules", async () => {
     const db = freshDb();
     ensureDefaultChannel(db);
     db.insert(sources)
@@ -202,7 +204,9 @@ describe("updateChannel matcher persistence + config regeneration", () => {
       .run();
     const created = createChannel(db, { name: "Media", policy: manualPolicy });
 
-    updateChannel(db, created.id, { matcher: { presets: ["youtube"], domains: ["ex.com"] } });
+    updateChannel(db, created.id, {
+      matcher: { presets: ["youtube"], domains: ["ex.com"], cidrs: ["10.0.0.0/8"] },
+    });
 
     // The row itself reflects the new matcher — updateChannel persisted it.
     const updated = readChannel(db, created.id);
@@ -213,6 +217,7 @@ describe("updateChannel matcher persistence + config regeneration", () => {
       ruleProviders: [],
       geosite: [],
       geoip: [],
+      cidrs: ["10.0.0.0/8"],
     });
 
     // And the regenerated config's rules — resolveMatcherDomains(matcher) fed into
@@ -228,5 +233,6 @@ describe("updateChannel matcher persistence + config regeneration", () => {
     const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,ex.com,ch-${created.id}`);
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${created.id}`);
+    expect(cfg.rules).toContain(`IP-CIDR,10.0.0.0/8,ch-${created.id}`);
   });
 });

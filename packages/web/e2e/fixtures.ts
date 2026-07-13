@@ -15,7 +15,15 @@ const defaultChannel = {
   enabled: true,
   isDefault: true,
   policy: defaultPolicy,
-  matcher: { presets: [], domains: [], keywords: [], ruleProviders: [], geosite: [], geoip: [] },
+  matcher: {
+    presets: [],
+    domains: [],
+    keywords: [],
+    ruleProviders: [],
+    geosite: [],
+    geoip: [],
+    cidrs: [],
+  },
   lastReason: null,
   lastReasonAt: null,
 };

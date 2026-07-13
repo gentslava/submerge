@@ -266,6 +266,9 @@ export const channelMatcherSchema = z.object({
   // in the read model (like domains/keywords); the write boundary is strict.
   geosite: z.array(z.string()).default([]),
   geoip: z.array(z.string()).default([]),
+  // General IPv4/IPv6 CIDR matchers. The read model stays permissive so a
+  // malformed legacy value does not make the whole channel unreadable.
+  cidrs: z.array(z.string()).default([]),
 });
 export type ChannelMatcher = z.infer<typeof channelMatcherSchema>;
 
@@ -280,6 +283,23 @@ const DOMAIN_RE = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-
 export const domainSchema = z.string().trim().min(1).max(253).regex(DOMAIN_RE, "invalid domain");
 export function isValidDomain(value: string): boolean {
   return domainSchema.safeParse(value).success;
+}
+
+// IPv4/IPv6 networks routed with mihomo IP-CIDR/IP-CIDR6 rules. The strict
+// write boundary trims each value and requires an explicit, valid prefix.
+const cidrV4Schema = z.cidrv4();
+const cidrV6Schema = z.cidrv6();
+const cidrSchema = z
+  .string()
+  .trim()
+  .pipe(z.union([cidrV4Schema, cidrV6Schema]));
+export function isValidCidr(value: string): boolean {
+  return cidrSchema.safeParse(value).success;
+}
+export function cidrVersion(value: string): 4 | 6 | null {
+  const result = cidrSchema.safeParse(value);
+  if (!result.success) return null;
+  return cidrV4Schema.safeParse(result.data).success ? 4 : 6;
 }
 
 // A DOMAIN-KEYWORD token (Phase 4a): a substring matched against the request
@@ -327,6 +347,7 @@ export const channelMatcherInputSchema = z.object({
   ruleProviders: z.array(ruleProviderRefInputSchema).default([]),
   geosite: z.array(geoCategorySchema).default([]),
   geoip: z.array(geoCountrySchema).default([]),
+  cidrs: z.array(cidrSchema).default([]),
 });
 
 export const channelSchema = z.object({
