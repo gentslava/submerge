@@ -26,7 +26,7 @@ export const nodesRouter = router({
     .mutation(({ input }) => testDelay(input.name, policyProbe(readDefaultPolicy(db)).url)),
   select: protectedProcedure
     .input(selectNodeInput)
-    .mutation(({ input }) => selectNode(input.group, input.name)),
+    .mutation(({ input }) => selectNode(db, input.group, input.name)),
   // Global deny-list toggle: exclude/include a node, then regenerate + reload the
   // config (an excluded node is dropped from the engine; including re-adds it).
   setExcluded: protectedProcedure.input(setExcludedInput).mutation(async ({ input }) => {

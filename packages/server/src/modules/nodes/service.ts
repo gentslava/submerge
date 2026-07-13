@@ -7,6 +7,7 @@ import {
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { asc, eq } from "drizzle-orm";
 import type { MihomoProxy, ProxiesResponse } from "../../clients/mihomo.js";
 import {
@@ -334,7 +335,20 @@ export async function testDelay(name: string, url?: string): Promise<number | nu
   }
 }
 
-export async function selectNode(group: string, name: string): Promise<void> {
+export async function selectNode(db: Db, group: string, name: string): Promise<void> {
+  if (group !== "PROXY") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Группа недоступна для выбора" });
+  }
+  if (name !== "AUTO" && name !== "DIRECT") {
+    const selectable = new Set(
+      groupProxies(collectProxies(db)).map((entry) =>
+        entry.kind === "single" ? entry.proxy.name : entry.base,
+      ),
+    );
+    if (!selectable.has(name) || getExcludedSet(db).has(name)) {
+      throw new TRPCError({ code: "CONFLICT", message: "Узел недоступен для выбора" });
+    }
+  }
   await selectProxy(group, name);
 }
 

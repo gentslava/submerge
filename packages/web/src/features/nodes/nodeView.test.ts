@@ -114,6 +114,26 @@ describe("nodeView", () => {
     expect(groups.map((g) => g.label)).toEqual(["Enabled Remnawave"]);
   });
 
+  it("does not expose a stale live node owned only by a disabled source as Прочие", () => {
+    const sources: Source[] = [
+      src({
+        id: 1,
+        label: "Disabled Remnawave",
+        enabled: false,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+    ];
+
+    expect(groupNodes([node("nl-1")], sources)).toEqual([]);
+  });
+
+  it("keeps a genuinely unknown live node under Прочие", () => {
+    const groups = groupNodes([node("external")], [src({ enabled: false, proxies: [] })]);
+
+    expect(groups.map((group) => group.label)).toEqual(["Прочие"]);
+    expect(groups[0]?.nodes.map((item) => item.name)).toEqual(["external"]);
+  });
+
   it("does not assign a shared node to two enabled sources", () => {
     const sources: Source[] = [
       src({

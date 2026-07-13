@@ -26,6 +26,7 @@ import {
   listNodes,
   mergeDbInventory,
   type ProxyMeta,
+  selectNode,
   setExcluded,
   testDelay,
   toNodeView,
@@ -530,6 +531,69 @@ describe("testDelay", () => {
       vi.fn(() => new Response("err", { status: 503 })),
     );
     expect(await testDelay("A")).toBeNull();
+  });
+});
+
+describe("selectNode", () => {
+  it("rejects a stale node owned only by a disabled source before calling mihomo", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({
+        kind: "sub",
+        value: "disabled",
+        label: "disabled",
+        enabled: false,
+        proxies: [proxy("Stale")],
+      })
+      .run();
+    const fetch = vi.fn(() => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(selectNode(db, "PROXY", "Stale")).rejects.toThrow("Узел недоступен");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects an excluded enabled node before calling mihomo", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "enabled", label: "enabled", proxies: [proxy("Blocked")] })
+      .run();
+    setExcluded(db, "Blocked", true);
+    const fetch = vi.fn(() => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(selectNode(db, "PROXY", "Blocked")).rejects.toThrow("Узел недоступен");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("allows enabled collapsed names and the supported virtual choices", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({
+        kind: "sub",
+        value: "enabled",
+        label: "enabled",
+        proxies: [px("Shared", "a.com"), px("Shared", "b.com")],
+      })
+      .run();
+    const fetch = vi.fn(() => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await selectNode(db, "PROXY", "Shared");
+    await selectNode(db, "PROXY", "AUTO");
+    await selectNode(db, "PROXY", "DIRECT");
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects unknown nodes and internal groups", async () => {
+    const db = freshDb();
+    const fetch = vi.fn(() => new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(selectNode(db, "PROXY", "Unknown")).rejects.toThrow("Узел недоступен");
+    await expect(selectNode(db, "AUTO", "Unknown")).rejects.toThrow("Группа недоступна");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

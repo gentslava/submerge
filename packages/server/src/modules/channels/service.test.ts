@@ -7,7 +7,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as yaml from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
-import { sources } from "../../db/schema.js";
+import { channels, sources } from "../../db/schema.js";
 import { applyConfig } from "../nodes/service.js";
 import { setSetting } from "../settings/service.js";
 import { getPool, setPool } from "./pool.js";
@@ -123,6 +123,30 @@ describe("channel CRUD", () => {
 
   it("readChannel returns undefined for a missing id", () => {
     expect(readChannel(db, "nope")).toBeUndefined();
+  });
+
+  it("keeps the rest of a legacy matcher when a stored provider URL has no host", () => {
+    const matcher = {
+      presets: ["youtube"],
+      domains: ["example.com"],
+      keywords: [],
+      ruleProviders: [{ url: "http://", behavior: "domain" as const }],
+      geosite: [],
+      geoip: [],
+    };
+    db.insert(channels)
+      .values({
+        id: "legacy",
+        name: "Legacy",
+        priority: 1,
+        enabled: true,
+        isDefault: false,
+        policy: manualPolicy,
+        matcher,
+      })
+      .run();
+
+    expect(readChannel(db, "legacy")?.matcher).toEqual(matcher);
   });
 
   it("updateChannel patches name/enabled/matcher without touching other fields", () => {

@@ -77,6 +77,9 @@ describe("nodeView + tRPC input schemas", () => {
   it("rejects an empty group", () => {
     expect(() => selectNodeInput.parse({ group: "", name: "n1" })).toThrow();
   });
+  it("accepts only the public PROXY selection group", () => {
+    expect(() => selectNodeInput.parse({ group: "AUTO", name: "n1" })).toThrow();
+  });
 });
 
 describe("nodeItemSchema.members", () => {
@@ -234,6 +237,9 @@ describe("ruleProviderRefSchema (format is derived from the URL, not chosen)", (
       ruleProviderRefSchema.parse({ url: "ftp://example.com/x.yaml", behavior: "domain" }),
     ).toThrow();
   });
+  it("keeps a legacy http(s) prefix readable even when the host is invalid", () => {
+    expect(ruleProviderRefSchema.parse({ url: "http://", behavior: "domain" }).url).toBe("http://");
+  });
   it("rejects an unknown behavior", () => {
     expect(() =>
       ruleProviderRefSchema.parse({ url: "https://example.com/x", behavior: "bogus" }),
@@ -324,6 +330,13 @@ describe("channelMatcherInputSchema (Phase-4a: keywords + ruleProviders)", () =>
         presets: [],
         domains: [],
         ruleProviders: [{ url: "not-a-url", behavior: "domain" }],
+      }),
+    ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({
+        presets: [],
+        domains: [],
+        ruleProviders: [{ url: "http://", behavior: "domain" }],
       }),
     ).toThrow();
   });

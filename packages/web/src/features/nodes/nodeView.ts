@@ -96,6 +96,7 @@ export interface NodeGroup {
 // Pseudo modes (AUTO/DIRECT/…) are excluded — they render in their own section.
 export function groupNodes(nodes: NodeItem[], sources: Source[]): NodeGroup[] {
   const claimed = new Set<string>();
+  const ownedByAnySource = new Set(sources.flatMap((source) => source.proxies.map((p) => p.name)));
   const ordered = sources
     .filter((source) => source.enabled)
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -117,7 +118,9 @@ export function groupNodes(nodes: NodeItem[], sources: Source[]): NodeGroup[] {
     }
   }
 
-  const orphans = nodes.filter((n) => !claimed.has(n.name));
+  const orphans = nodes.filter(
+    (node) => !claimed.has(node.name) && !ownedByAnySource.has(node.name),
+  );
   if (orphans.length > 0) {
     groups.push({ key: "other", label: "Прочие", kind: "other", hwid: false, nodes: orphans });
   }

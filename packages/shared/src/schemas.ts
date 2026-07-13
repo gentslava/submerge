@@ -104,7 +104,7 @@ export const idInput = z.object({ id: z.number().int() });
 export type IdInput = z.infer<typeof idInput>;
 export const reorderInput = z.object({ ids: z.array(z.number().int()) });
 export type ReorderInput = z.infer<typeof reorderInput>;
-export const selectNodeInput = z.object({ group: z.string().min(1), name: z.string().min(1) });
+export const selectNodeInput = z.object({ group: z.literal("PROXY"), name: z.string().min(1) });
 export type SelectNodeInput = z.infer<typeof selectNodeInput>;
 export const delayInput = z.object({ name: z.string().min(1) });
 export type DelayInput = z.infer<typeof delayInput>;
@@ -235,7 +235,7 @@ export const ruleProviderRefSchema = z
       .string()
       .trim()
       .min(1)
-      .refine((v) => /^https?:\/\//i.test(v), "must be an http(s) URL"),
+      .refine((value) => /^https?:\/\//i.test(value), "must be an http(s) URL"),
     behavior: z.enum(["domain", "ipcidr", "classical"]),
   })
   .refine((r) => !(ruleProviderFormat(r.url) === "mrs" && r.behavior === "classical"), {
@@ -243,6 +243,17 @@ export const ruleProviderRefSchema = z
     path: ["behavior"],
   });
 export type RuleProviderRef = z.infer<typeof ruleProviderRefSchema>;
+
+const ruleProviderRefInputSchema = ruleProviderRefSchema.and(
+  z.object({
+    url: z
+      .string()
+      .trim()
+      .min(1)
+      .pipe(z.url())
+      .refine((value) => /^https?:\/\//i.test(value), "must be a valid http(s) URL"),
+  }),
+);
 
 export const channelMatcherSchema = z.object({
   presets: z.array(z.string()).default([]),
@@ -313,7 +324,7 @@ export const channelMatcherInputSchema = z.object({
   presets: z.array(z.string()).default([]),
   domains: z.array(domainSchema).default([]),
   keywords: z.array(keywordSchema).default([]),
-  ruleProviders: z.array(ruleProviderRefSchema).default([]),
+  ruleProviders: z.array(ruleProviderRefInputSchema).default([]),
   geosite: z.array(geoCategorySchema).default([]),
   geoip: z.array(geoCountrySchema).default([]),
 });
