@@ -18,13 +18,14 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
+  retries: 0,
   // The fixtures share one Vite server. A single CI worker keeps teardown deterministic.
   ...(process.env.CI ? { workers: 1 } : {}),
   reporter: "list",
   ...(webServer ? { webServer } : {}),
   use: {
     baseURL,
+    colorScheme: "dark",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     ...devices["Desktop Chrome"],

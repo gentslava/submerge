@@ -30,7 +30,7 @@ test("nodes stay compact when a desktop viewport leaves a narrow content pane", 
   await expectNoDocumentOverflow(page);
 });
 
-for (const width of [320, 390]) {
+for (const width of [320, 390, 425]) {
   test(`nodes keep compact controls and do not overflow at ${width}px`, async ({ page }) => {
     await installTrpcFixture(page);
     await page.setViewportSize({ width, height: 844 });
@@ -73,10 +73,17 @@ test("nodes switch dense list rows exactly at the 48rem data boundary", async ({
   await expect(page.locator(".node-row-desktop").first()).toBeVisible();
   await expect(page.locator(".node-row-mobile").first()).toBeHidden();
   await expect(page.locator(".node-list-container")).toHaveCSS("border-top-width", "1px");
-  await expect(page.locator(".node-list-container")).toHaveCSS(
-    "background-color",
-    "rgb(255, 255, 255)",
-  );
+  const [tableSurface, surfaceToken] = await page
+    .locator(".node-list-container")
+    .evaluate((element) => {
+      const probe = document.createElement("div");
+      probe.style.backgroundColor = "var(--bg-surface)";
+      document.body.append(probe);
+      const resolvedToken = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return [getComputedStyle(element).backgroundColor, resolvedToken];
+    });
+  expect(tableSurface).toBe(surfaceToken);
   await expectNoDocumentOverflow(page);
 });
 
@@ -147,4 +154,67 @@ test("node action menus flip below an upper-edge trigger", async ({ page }) => {
   expect(menuBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height + 8);
 
   await expectNoDocumentOverflow(page);
+});
+
+test("a hidden desktop bottom nav does not affect node menu placement", async ({ page }) => {
+  await installTrpcFixture(page, { "nodes.list": scrollableNodesList });
+  await page.setViewportSize({ width: 920, height: 844 });
+  await page.goto("/");
+
+  await expect(page.locator("nav.fixed")).toBeHidden();
+  await expect(page.locator(".node-row-mobile").first()).toBeVisible();
+  const trigger = page.getByRole("button", { name: `Действия для ${primaryNodeName}` });
+  await trigger.evaluate((element) => element.scrollIntoView({ block: "start" }));
+  await trigger.click();
+
+  const menu = page.getByRole("button", { name: "Отключить узел" }).locator("..");
+  const triggerBox = await trigger.boundingBox();
+  const menuBox = await menu.boundingBox();
+  if (!triggerBox || !menuBox) throw new Error("Expected action menu geometry to be measurable");
+  expect(menuBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height + 8);
+});
+
+test("compact header menu closes on Escape and returns focus", async ({ page }) => {
+  await installTrpcFixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const trigger = page.getByRole("button", { name: "Дополнительные действия" });
+  await trigger.click();
+  await expect(page.getByRole("button", { name: "Пинг всех" })).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByRole("button", { name: "Пинг всех" })).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
+test("keyboard menu actions close and return focus to the compact header trigger", async ({
+  page,
+}) => {
+  await installTrpcFixture(page, { "nodes.delay": 42 });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const trigger = page.getByRole("button", { name: "Дополнительные действия" });
+  await trigger.click();
+  const action = page.getByRole("button", { name: "Пинг всех" });
+  await action.focus();
+  await action.press("Enter");
+
+  await expect(action).toBeHidden();
+  await expect(trigger).toBeFocused();
+});
+
+test("compact header menu closes on an outside pointer press", async ({ page }) => {
+  await installTrpcFixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Дополнительные действия" }).click();
+  await expect(page.getByRole("button", { name: "Пинг всех" })).toBeVisible();
+
+  await page.getByRole("heading", { name: "Узлы", exact: true }).click();
+
+  await expect(page.getByRole("button", { name: "Пинг всех" })).toBeHidden();
 });
