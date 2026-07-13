@@ -289,7 +289,9 @@ function ConnectionRow({
         <span className="truncate text-sm font-medium text-text-primary">{c.source}</span>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate font-mono text-sub font-medium text-text-primary">{dest}</span>
+        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+          {dest}
+        </span>
         {showIp && (
           <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
         )}
@@ -354,7 +356,9 @@ function MobileConnectionCard({
         </button>
       </div>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-mono text-sub font-medium text-text-primary">{dest}</span>
+        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+          {dest}
+        </span>
         {showIp && (
           <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
         )}

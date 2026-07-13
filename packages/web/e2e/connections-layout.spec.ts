@@ -89,7 +89,12 @@ test("populated connections keep their mobile cards reachable", async ({ page })
   await page.goto("/connections");
 
   const mobile = page.locator(".connections-table-mobile");
-  await expect(mobile.getByText("api.very-long-development-service.example.com:443")).toBeVisible();
+  const destination = mobile.getByText("api.very-long-development-service.example.com:443");
+  await expect(destination).toBeVisible();
+  await expect(destination).toHaveAttribute(
+    "title",
+    "api.very-long-development-service.example.com:443",
+  );
   await expect(mobile.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
   await expectNoDocumentOverflow(page);
 });
@@ -102,6 +107,9 @@ test("populated connections keep their desktop rows and actions reachable", asyn
   const desktop = page.locator(".connections-table-desktop");
   await expect(desktop).toBeVisible();
   await expect(page.locator(".connections-table-mobile")).toBeHidden();
+  await expect(
+    desktop.getByText("api.very-long-development-service.example.com:443"),
+  ).toHaveAttribute("title", "api.very-long-development-service.example.com:443");
   await expect(desktop.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
   await expectNoDocumentOverflow(page);
 });
