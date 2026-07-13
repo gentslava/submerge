@@ -90,6 +90,17 @@ describe("NodeRow", () => {
     );
   });
 
+  it("returns focus to the trigger after starting a speed test", () => {
+    const item: NodeItem = { name: "NL-1", type: "vless", delay: 47, history: [] };
+    render(<NodeRow {...base} item={item} />);
+
+    const trigger = screen.getByRole("button", { name: "Действия для NL-1" });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Замерить скорость" }));
+
+    expect(trigger).toHaveFocus();
+  });
+
   it("uses ordinary buttons rather than an incomplete ARIA menu pattern", () => {
     const item: NodeItem = { name: "NL-1", type: "vless", delay: 47, history: [] };
     render(<NodeRow {...base} item={item} />);

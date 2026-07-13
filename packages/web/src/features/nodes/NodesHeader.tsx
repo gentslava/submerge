@@ -1,8 +1,9 @@
 import { Ellipsis, RefreshCw, Zap } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useDismissiblePopup } from "@/hooks/use-dismissible-popup";
 import { formatInterval } from "@/lib/duration";
 import { pluralRu } from "@/lib/plural";
+import { cn } from "@/lib/utils";
 
 interface NodesHeaderProps {
   nodeCount: number;
@@ -21,7 +22,7 @@ export function NodesHeader({
   onRefresh,
   onPingAll,
 }: NodesHeaderProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const menu = useDismissiblePopup({ preferredPlacement: "below" });
   const summary = `Группа PROXY · ${nodeCount} ${pluralRu(nodeCount, ["узел", "узла", "узлов"])}`;
 
   return (
@@ -42,21 +43,30 @@ export function NodesHeader({
             <RefreshCw className="h-[18px] w-[18px]" aria-hidden="true" />
           </Button>
           <Button
+            ref={menu.triggerRef}
             variant="secondary"
             size="icon"
-            onClick={() => setMenuOpen((open) => !open)}
+            onClick={menu.toggle}
             aria-label="Дополнительные действия"
-            aria-expanded={menuOpen}
+            aria-expanded={menu.open}
           >
             <Ellipsis className="h-[18px] w-[18px]" aria-hidden="true" />
           </Button>
-          {menuOpen && (
-            <div className="absolute right-0 top-11 z-20 w-44 rounded-md border border-border-default bg-elevated p-1.5">
+          {menu.open && (
+            <div
+              ref={menu.popupRef}
+              className={cn(
+                "absolute right-0 z-20 w-44 rounded-md border border-border-default bg-elevated p-1.5",
+                menu.placement === "above"
+                  ? "bottom-[calc(100%+0.5rem)]"
+                  : "top-[calc(100%+0.5rem)]",
+              )}
+            >
               <button
                 type="button"
                 disabled={pinging}
                 onClick={() => {
-                  setMenuOpen(false);
+                  menu.closeAndRestoreFocus();
                   onPingAll();
                 }}
                 className="flex h-10 w-full items-center gap-2.5 rounded-sm px-2.5 text-left text-sub font-medium text-text-primary transition-colors hover:bg-hover disabled:pointer-events-none disabled:opacity-50"

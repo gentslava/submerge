@@ -10,8 +10,9 @@ import {
   Undo2,
   Zap,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useDismissiblePopup } from "@/hooks/use-dismissible-popup";
 import { cn } from "@/lib/utils";
 import {
   dotColors,
@@ -307,53 +308,8 @@ function MobileNodeRow({
   onSpeedTest,
   onToggleExcluded,
 }: MobileNodeRowProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPlacement, setMenuPlacement] = useState<"above" | "below">("above");
-  const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menu = useDismissiblePopup({ preferredPlacement: "above" });
   const lClass = latencyClass(item.delay);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const closeOnOutsidePress = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      setMenuOpen(false);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePress);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutsidePress);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [menuOpen]);
-
-  // Open away from the nearest edge. The menu initially renders above (the common,
-  // bottom-nav-safe case), then this layout effect flips it before paint if the
-  // trigger is near the viewport top. The fixed bottom nav is a lower boundary,
-  // so a menu never flips into it.
-  useLayoutEffect(() => {
-    const trigger = triggerRef.current;
-    const menu = menuRef.current;
-    if (!menuOpen || !trigger || !menu) return;
-
-    const gap = 8;
-    const triggerBounds = trigger.getBoundingClientRect();
-    const menuHeight = menu.getBoundingClientRect().height;
-    const bottomNavTop = document
-      .querySelector<HTMLElement>("nav.fixed")
-      ?.getBoundingClientRect().top;
-    const availableAbove = triggerBounds.top;
-    const availableBelow = (bottomNavTop ?? window.innerHeight) - triggerBounds.bottom;
-    const fitsAbove = availableAbove >= menuHeight + gap;
-    const fitsBelow = availableBelow >= menuHeight + gap;
-
-    setMenuPlacement(fitsAbove || !fitsBelow ? "above" : "below");
-  }, [menuOpen]);
 
   return (
     <div
@@ -434,22 +390,22 @@ function MobileNodeRow({
           )}
           <div className="relative">
             <button
-              ref={triggerRef}
+              ref={menu.triggerRef}
               type="button"
-              onClick={() => setMenuOpen((open) => !open)}
+              onClick={menu.toggle}
               aria-label={`Действия для ${item.name}`}
-              aria-expanded={menuOpen}
+              aria-expanded={menu.open}
               className="flex h-11 w-11 items-center justify-center rounded-md border border-accent-border bg-accent-bg text-accent-text transition-colors hover:bg-hover"
             >
               <Ellipsis className="h-[18px] w-[18px]" aria-hidden="true" />
             </button>
 
-            {menuOpen && (
+            {menu.open && (
               <div
-                ref={menuRef}
+                ref={menu.popupRef}
                 className={cn(
                   "absolute right-0 z-20 flex w-[210px] flex-col gap-0.5 rounded-md border border-border-default bg-elevated p-1.5",
-                  menuPlacement === "above"
+                  menu.placement === "above"
                     ? "bottom-[calc(100%+0.5rem)]"
                     : "top-[calc(100%+0.5rem)]",
                 )}
@@ -459,7 +415,7 @@ function MobileNodeRow({
                   icon={Activity}
                   disabled={pinging || isExcluded}
                   onClick={() => {
-                    setMenuOpen(false);
+                    menu.closeAndRestoreFocus();
                     onPing();
                   }}
                 />
@@ -469,7 +425,7 @@ function MobileNodeRow({
                     icon={Zap}
                     disabled={testing || isExcluded}
                     onClick={() => {
-                      setMenuOpen(false);
+                      menu.closeAndRestoreFocus();
                       onSpeedTest();
                     }}
                   />
@@ -479,7 +435,7 @@ function MobileNodeRow({
                   icon={isExcluded ? Undo2 : Ban}
                   danger={!isExcluded}
                   onClick={() => {
-                    setMenuOpen(false);
+                    menu.closeAndRestoreFocus();
                     onToggleExcluded(!isExcluded);
                   }}
                 />

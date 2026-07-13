@@ -8,7 +8,10 @@ const linkClass =
 
 export function BottomNav() {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 flex min-h-[var(--mobile-bottom-nav-height)] border-t border-border-subtle bg-surface pb-[max(12px,env(safe-area-inset-bottom))] pt-2 md:hidden">
+    <nav
+      data-popup-bottom-boundary
+      className="fixed inset-x-0 bottom-0 z-30 flex min-h-[var(--mobile-bottom-nav-height)] border-t border-border-subtle bg-surface pb-[max(12px,env(safe-area-inset-bottom))] pt-2 md:hidden"
+    >
       {NAV_MOBILE_PRIMARY.map((entry) => {
         const { label, icon: Icon } = entry;
         if (entry.kind === "placeholder") {

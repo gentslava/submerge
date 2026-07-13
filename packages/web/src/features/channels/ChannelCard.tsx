@@ -1,9 +1,4 @@
-import {
-  CHANNEL_PRESETS,
-  type Channel,
-  type ChannelMatcher,
-  type ChannelPolicy,
-} from "@submerge/shared";
+import type { Channel, ChannelMatcher, ChannelPolicy } from "@submerge/shared";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import {
   type CSSProperties,
@@ -24,7 +19,7 @@ import { cn } from "@/lib/utils";
 import { DomainTags } from "./DomainTags";
 import { GeoIpTags, GeoSiteTags } from "./GeoTags";
 import { KeywordTags } from "./KeywordTags";
-import { fitMatcherItems } from "./matcher-summary";
+import { fitMatcherItems, matcherSummaryItems } from "./matcher-summary";
 import { PolicyEditor } from "./PolicyEditor";
 import { PoolPicker } from "./PoolPicker";
 import { PresetChips } from "./PresetChips";
@@ -232,8 +227,6 @@ function DefaultRow({
         </span>
         <div className="channel-default-summary flex w-full min-w-0 items-center gap-2 px-1">
           <span className="text-xs text-text-tertiary">Всё остальное</span>
-          <span className="text-sub text-text-disabled">·</span>
-          <span className="text-xs text-text-tertiary">Все узлы</span>
         </div>
       </button>
       <div className="relative z-10 flex shrink-0 items-center gap-3.5">
@@ -401,42 +394,17 @@ function PolicyBadge({ kind }: { kind: Channel["policy"]["kind"] }) {
   );
 }
 
-// Preset ids resolve to labels via the shared registry; unknown/stale ids (e.g. a
-// preset removed from CHANNEL_PRESETS after being saved) are silently dropped
-// rather than shown as a raw id.
-function presetLabels(presets: string[]): string[] {
-  const labels: string[] = [];
-  for (const id of presets) {
-    const label = CHANNEL_PRESETS.find((p) => p.id === id)?.label;
-    if (label != null) labels.push(label);
-  }
-  return labels;
-}
-
-type MatcherSummaryItem = { value: string; monospace: boolean };
-
-// Matcher + pool summary, combined in one row per the mockup's "mid" frame. The
-// collapsed row doesn't load every channel's pool just to render this summary
-// (that's an N+1 `channels.getPool` per row — the expanded editor's PoolPicker
-// fetches it lazily, only for the channel actually being edited) — showing "Все
-// узлы" here is the honest default rather than a per-channel count we don't have.
+// The collapsed card deliberately summarizes only matcher data it owns. PoolPicker
+// loads pool data lazily for the expanded card, so claiming "Все узлы" here would
+// invent state for restricted pools.
 function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
-  const items = useMemo<MatcherSummaryItem[]>(() => {
-    const labels = presetLabels(matcher.presets);
-    return [
-      ...labels.map((label) => ({ value: label, monospace: false })),
-      ...matcher.domains.map((domain) => ({ value: domain, monospace: true })),
-    ];
-  }, [matcher.domains, matcher.presets]);
+  const items = useMemo(() => matcherSummaryItems(matcher), [matcher]);
   const summaryRef = useRef<HTMLDivElement>(null);
-  const suffixMeasureRef = useRef<HTMLSpanElement>(null);
   const itemMeasureRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const counterMeasureRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const [visibleCount, setVisibleCount] = useState(() => Math.min(items.length, 3));
-  const [suffixFits, setSuffixFits] = useState(true);
   const displayedCount = Math.min(visibleCount, items.length);
   const remainingCount = items.length - displayedCount;
-  const showSuffix = items.length === 0 || displayedCount > 0 || suffixFits;
 
   useLayoutEffect(() => {
     const summary = summaryRef.current;
@@ -448,7 +416,6 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
         (Number.parseFloat(styles.paddingLeft) || 0) +
         (Number.parseFloat(styles.paddingRight) || 0);
       const availableWidth = Math.max(0, summary.clientWidth - horizontalPadding);
-      const suffixWidth = suffixMeasureRef.current?.offsetWidth ?? 0;
       const itemWidths = items.map((_, index) => itemMeasureRefs.current[index]?.offsetWidth ?? 0);
       const counterWidths = Array.from(
         { length: items.length + 1 },
@@ -457,76 +424,71 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
 
       // jsdom has no layout engine; retaining the three-chip fallback keeps tests
       // deterministic while browsers always calculate from their real widths.
-      if (availableWidth === 0 || suffixWidth === 0 || itemWidths.some((width) => width === 0))
-        return;
+      if (availableWidth === 0 || itemWidths.some((width) => width === 0)) return;
 
       const gap = Number.parseFloat(styles.columnGap);
       if (!Number.isFinite(gap)) return;
 
-      const nextSuffixFits =
-        (counterWidths[items.length] ?? 0) + suffixWidth + gap <= availableWidth;
       const nextVisibleCount = fitMatcherItems({
         availableWidth,
         itemWidths,
         counterWidths,
-        suffixWidth,
         gap,
       });
       setVisibleCount((current) => (current === nextVisibleCount ? current : nextVisibleCount));
-      setSuffixFits((current) => (current === nextSuffixFits ? current : nextSuffixFits));
     };
 
     recalculate();
+    let cancelled = false;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) recalculate();
+    });
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(recalculate);
     observer?.observe(summary);
     window.addEventListener("resize", recalculate);
     return () => {
+      cancelled = true;
       observer?.disconnect();
       window.removeEventListener("resize", recalculate);
     };
   }, [items]);
 
   return (
-    <div
-      ref={summaryRef}
-      className="matcher-summary relative flex w-full min-w-0 items-center gap-2 px-1"
-    >
-      {items.length > 0 ? (
-        items.slice(0, displayedCount).map((item) => (
-          <Badge
-            key={`${item.monospace}-${item.value}`}
-            variant="idle"
-            className={cn("shrink-0", item.monospace && "font-mono")}
-          >
-            {item.value}
+    <>
+      <div
+        ref={summaryRef}
+        className="matcher-summary relative flex w-full min-w-0 items-center gap-2 px-1"
+      >
+        {items.length > 0 ? (
+          items.slice(0, displayedCount).map((item) => (
+            <Badge
+              key={item.key}
+              variant="idle"
+              className={cn("shrink-0", item.monospace && "font-mono")}
+            >
+              {item.value}
+            </Badge>
+          ))
+        ) : (
+          <span className="text-xs text-text-tertiary">Правила не заданы</span>
+        )}
+        {remainingCount > 0 && (
+          <Badge variant="neutral" className="shrink-0">
+            <span aria-hidden="true">+{remainingCount}</span>
+            <span className="sr-only">
+              Ещё {remainingCount} {pluralRu(remainingCount, ["правило", "правила", "правил"])}{" "}
+              маршрутизации
+            </span>
           </Badge>
-        ))
-      ) : (
-        <span className="text-xs text-text-tertiary">Домены не заданы</span>
-      )}
-      {remainingCount > 0 && (
-        <Badge variant="neutral" className="shrink-0">
-          <span aria-hidden="true">+{remainingCount}</span>
-          <span className="sr-only">
-            Ещё {remainingCount} {pluralRu(remainingCount, ["правило", "правила", "правил"])}{" "}
-            маршрутизации
-          </span>
-        </Badge>
-      )}
-      {showSuffix && (
-        <span className="inline-flex shrink-0 items-center gap-2">
-          <span className="text-sub text-text-disabled">·</span>
-          <span className="text-xs text-text-tertiary">Все узлы</span>
-        </span>
-      )}
-
+        )}
+      </div>
       <span
         className="pointer-events-none fixed -left-full top-0 invisible flex items-center gap-2 whitespace-nowrap"
         aria-hidden="true"
       >
         {items.map((item, index) => (
           <span
-            key={`${item.monospace}-${item.value}`}
+            key={item.key}
             ref={(element) => {
               itemMeasureRefs.current[index] = element;
             }}
@@ -549,11 +511,7 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
             </span>
           );
         })}
-        <span ref={suffixMeasureRef} className="inline-flex items-center gap-2">
-          <span className="text-sub text-text-disabled">·</span>
-          <span className="text-xs text-text-tertiary">Все узлы</span>
-        </span>
       </span>
-    </div>
+    </>
   );
 }

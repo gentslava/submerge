@@ -1,8 +1,9 @@
 import type { Channel } from "@submerge/shared";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChannelCard } from "./ChannelCard";
-import { fitMatcherItems } from "./matcher-summary";
+
+const originalFonts = Object.getOwnPropertyDescriptor(document, "fonts");
 
 const channel: Channel = {
   id: "channel-ai",
@@ -27,42 +28,111 @@ const channel: Channel = {
   lastReasonAt: null,
 };
 
+const advancedChannel: Channel = {
+  ...channel,
+  id: "channel-advanced",
+  name: "Advanced",
+  matcher: {
+    presets: [],
+    domains: [],
+    keywords: ["ads"],
+    ruleProviders: [{ url: "https://rules.example.com/list.yaml", behavior: "classical" }],
+    geosite: ["category-ai"],
+    geoip: ["US"],
+  },
+};
+
+const defaultChannel: Channel = {
+  ...channel,
+  id: "default",
+  name: "Default",
+  isDefault: true,
+};
+
+function channelProps() {
+  return {
+    nodeNames: ["NL-1"],
+    onToggleEnabled: vi.fn(),
+    onUpdateName: vi.fn(),
+    onUpdateMatcher: vi.fn(),
+    onUpdatePolicy: vi.fn(),
+    onRemove: vi.fn(),
+  };
+}
+
+function renderChannel(channelValue: Channel = channel) {
+  return render(<ChannelCard channel={channelValue} {...channelProps()} />);
+}
+
 describe("ChannelCard", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    if (originalFonts) Object.defineProperty(document, "fonts", originalFonts);
+    else Reflect.deleteProperty(document, "fonts");
   });
 
-  it("keeps a complete counter when selecting chips for the available width", () => {
-    expect(
-      fitMatcherItems({
-        availableWidth: 260,
-        itemWidths: [64, 68, 70],
-        counterWidths: [0, 32, 32, 32],
-        suffixWidth: 64,
-        gap: 8,
-      }),
-    ).toBe(2);
+  it("summarizes every supported matcher family", () => {
+    const { container } = renderChannel(advancedChannel);
+
+    const summary = within(container.querySelector(".matcher-summary") as HTMLElement);
+    expect(summary.getByText("ключ:ads")).toBeInTheDocument();
+    expect(summary.getByText("список:rules.example.com")).toBeInTheDocument();
+    expect(summary.getByText("geosite:category-ai")).toBeInTheDocument();
+    expect(summary.queryByText("geoip:US")).not.toBeInTheDocument();
+    expect(summary.getByText("+1")).toBeInTheDocument();
+    expect(summary.queryByText("Правила не заданы")).not.toBeInTheDocument();
+  });
+
+  it("does not claim an unknown pool state for regular or Default channels", () => {
+    const callbacks = channelProps();
+    const { rerender } = render(<ChannelCard channel={channel} {...callbacks} />);
+    expect(screen.queryByText("Все узлы")).not.toBeInTheDocument();
+
+    rerender(<ChannelCard channel={defaultChannel} {...callbacks} />);
+    expect(screen.queryByText("Все узлы")).not.toBeInTheDocument();
+  });
+
+  it("remeasures matcher chips after fonts become ready", async () => {
+    let fontsReady = false;
+    let resolveFonts: (() => void) | undefined;
+    const ready = new Promise<void>((resolve) => {
+      resolveFonts = () => {
+        fontsReady = true;
+        resolve();
+      };
+    });
+    Object.defineProperty(document, "fonts", { configurable: true, value: { ready } });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(260);
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function offsetWidth(
+      this: HTMLElement,
+    ) {
+      if (this.textContent?.trim().startsWith("+")) return 32;
+      return fontsReady ? 100 : 40;
+    });
+    vi.stubGlobal(
+      "getComputedStyle",
+      () => ({ columnGap: "8px", paddingLeft: "4px", paddingRight: "4px" }) as CSSStyleDeclaration,
+    );
+
+    const { container } = renderChannel();
+    const summary = within(container.querySelector(".matcher-summary") as HTMLElement);
+    expect(summary.getByText("Gemini")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveFonts?.();
+      await ready;
+    });
+
+    expect(summary.queryByText("Gemini")).not.toBeInTheDocument();
   });
 
   it("reserves a counter for matcher items that do not fit in the summary", () => {
-    render(
-      <ChannelCard
-        channel={channel}
-        nodeNames={["NL-1"]}
-        onToggleEnabled={vi.fn()}
-        onUpdateName={vi.fn()}
-        onUpdateMatcher={vi.fn()}
-        onUpdatePolicy={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+    const { container } = renderChannel();
 
-    // The first counter is rendered in the summary and the second only in the
-    // invisible measurement layer. One occurrence would mean the visible summary
-    // stopped accounting for the remaining chips.
-    expect(screen.getAllByText("+4")).toHaveLength(2);
-    expect(screen.getAllByText("Все узлы")[0]?.parentElement).not.toHaveClass("overflow-hidden");
+    const summary = within(container.querySelector(".matcher-summary") as HTMLElement);
+    expect(summary.getByText("+4")).toBeInTheDocument();
+    expect(summary.queryByText("Все узлы")).not.toBeInTheDocument();
   });
 
   it("does not count a chip that only fits inside the summary padding", () => {
@@ -77,24 +147,12 @@ describe("ChannelCard", () => {
       () => ({ columnGap: "8px", paddingLeft: "4px", paddingRight: "4px" }) as CSSStyleDeclaration,
     );
 
-    render(
-      <ChannelCard
-        channel={channel}
-        nodeNames={["NL-1"]}
-        onToggleEnabled={vi.fn()}
-        onUpdateName={vi.fn()}
-        onUpdateMatcher={vi.fn()}
-        onUpdatePolicy={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+    const { container } = renderChannel();
 
-    // One copy of each label belongs to the invisible measurement layer. The
-    // visible summary must fall back to `+7 · Все узлы`, which fits even though
-    // adding the first chip would overflow by 1px.
-    expect(screen.getAllByText("OpenAI")).toHaveLength(1);
-    expect(screen.getAllByText("Все узлы")).toHaveLength(2);
-    expect(screen.getAllByText("+7")).toHaveLength(2);
+    const summary = within(container.querySelector(".matcher-summary") as HTMLElement);
+    expect(summary.getByText("OpenAI")).toBeInTheDocument();
+    expect(summary.queryByText("Claude")).not.toBeInTheDocument();
+    expect(summary.getByText("+6")).toBeInTheDocument();
   });
 
   it("uses a count-only fallback when even the compact summary is too wide", () => {
@@ -109,19 +167,10 @@ describe("ChannelCard", () => {
       () => ({ columnGap: "8px", paddingLeft: "4px", paddingRight: "4px" }) as CSSStyleDeclaration,
     );
 
-    render(
-      <ChannelCard
-        channel={channel}
-        nodeNames={["NL-1"]}
-        onToggleEnabled={vi.fn()}
-        onUpdateName={vi.fn()}
-        onUpdateMatcher={vi.fn()}
-        onUpdatePolicy={vi.fn()}
-        onRemove={vi.fn()}
-      />,
-    );
+    const { container } = renderChannel();
 
-    expect(screen.getAllByText("Все узлы")).toHaveLength(1);
-    expect(screen.getAllByText("+7")).toHaveLength(2);
+    const summary = within(container.querySelector(".matcher-summary") as HTMLElement);
+    expect(summary.queryByText("Все узлы")).not.toBeInTheDocument();
+    expect(summary.getByText("+7")).toBeInTheDocument();
   });
 });
