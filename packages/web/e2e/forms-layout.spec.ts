@@ -49,7 +49,7 @@ test("forms keep compact layouts in a 768px desktop viewport with the sidebar", 
   await expectNoDocumentOverflow(page);
 
   await page.goto("/routing");
-  await expect(page.locator(".channel-card-toggle").first()).toHaveCSS("flex-wrap", "wrap");
+  await expect(page.locator(".direct-channel-header")).toHaveCSS("flex-direction", "column");
   await expectNoDocumentOverflow(page);
 });
 
@@ -73,7 +73,7 @@ test("forms use their dense layouts only when the page container is wide enough"
   await expectNoDocumentOverflow(page);
 
   await page.goto("/routing");
-  await expect(page.locator(".channel-card-toggle").first()).toHaveCSS("flex-wrap", "nowrap");
+  await expect(page.locator(".direct-channel-header")).toHaveCSS("flex-direction", "row");
   await expectNoDocumentOverflow(page);
 });
 
@@ -107,6 +107,6 @@ test("forms retain reachable controls and bottom navigation on phone", async ({ 
   await expectNoDocumentOverflow(page);
 
   await page.goto("/routing");
-  await expect(page.locator(".channel-card-toggle").first()).toHaveCSS("flex-wrap", "wrap");
+  await expect(page.locator(".direct-channel-header")).toHaveCSS("flex-direction", "column");
   await expectNoDocumentOverflow(page);
 });
