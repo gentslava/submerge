@@ -1,8 +1,42 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TrafficBucketSample } from "./presentation";
 import { ThroughputChart, TrafficLatencyChart } from "./TrafficCharts";
+
+const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, "animate");
+
+function installChartAnimationMock(reduced = false) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn((query: string) => ({
+      matches: reduced,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  );
+  const animate = vi.fn(
+    (_frames: Keyframe[], _options: KeyframeAnimationOptions) =>
+      ({ cancel: vi.fn() }) as unknown as Animation,
+  );
+  Object.defineProperty(Element.prototype, "animate", {
+    configurable: true,
+    writable: true,
+    value: animate,
+  });
+  return animate;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  if (originalAnimate) Object.defineProperty(Element.prototype, "animate", originalAnimate);
+  else Reflect.deleteProperty(Element.prototype, "animate");
+});
 
 function bucket(
   startedAt: number,
@@ -105,6 +139,68 @@ describe("TrafficLatencyChart", () => {
       "datetime",
       "1970-01-01T00:00:02.000Z",
     );
+  });
+
+  it("shifts both latency variants and grows their new rightmost column", () => {
+    const animate = installChartAnimationMock();
+    const { rerender } = render(
+      <TrafficLatencyChart
+        node="nl-ams-01"
+        current={48}
+        samples={[48]}
+        sampleTimes={[1_000]}
+        checkIntervalSec={10}
+      />,
+    );
+
+    rerender(
+      <TrafficLatencyChart
+        node="nl-ams-01"
+        current={52}
+        samples={[48, 52]}
+        sampleTimes={[1_000, 2_000]}
+        checkIntervalSec={10}
+      />,
+    );
+
+    const calls = animate.mock.calls;
+    expect(
+      calls.filter(([frames]) => String(frames[0]?.transform).startsWith("translateX")),
+    ).toHaveLength(2);
+    expect(calls.filter(([frames]) => frames[0]?.transform === "scaleY(0)")).toHaveLength(2);
+  });
+
+  it("skips compact latency motion when rebucketing replaces its rendered columns", () => {
+    const animate = installChartAnimationMock();
+    const first = Array.from({ length: 25 }, (_, index) => index + 1);
+    const second = [...first, 26];
+    const firstTimes = first.map((value) => value * 1_000);
+    const secondTimes = second.map((value) => value * 1_000);
+    const { rerender } = render(
+      <TrafficLatencyChart
+        node="nl-ams-01"
+        current={25}
+        samples={first}
+        sampleTimes={firstTimes}
+        checkIntervalSec={10}
+      />,
+    );
+
+    rerender(
+      <TrafficLatencyChart
+        node="nl-ams-01"
+        current={26}
+        samples={second}
+        sampleTimes={secondTimes}
+        checkIntervalSec={10}
+      />,
+    );
+
+    const calls = animate.mock.calls;
+    expect(
+      calls.filter(([frames]) => String(frames[0]?.transform).startsWith("translateX")),
+    ).toHaveLength(25);
+    expect(calls.filter(([frames]) => frames[0]?.transform === "scaleY(0)")).toHaveLength(1);
   });
 });
 
@@ -217,5 +313,20 @@ describe("ThroughputChart", () => {
 
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("shifts both throughput variants and grows their stacked rightmost column", () => {
+    const animate = installChartAnimationMock();
+    const first = bucket(0, 100, 200);
+    const second = bucket(3_000, 300, 600);
+    const { rerender } = render(<ThroughputChart samples={[first]} />);
+
+    rerender(<ThroughputChart samples={[first, second]} />);
+
+    const calls = animate.mock.calls;
+    expect(
+      calls.filter(([frames]) => String(frames[0]?.transform).startsWith("translateX")),
+    ).toHaveLength(2);
+    expect(calls.filter(([frames]) => frames[0]?.transform === "scaleY(0)")).toHaveLength(4);
   });
 });

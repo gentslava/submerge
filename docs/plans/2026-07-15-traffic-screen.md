@@ -584,7 +584,7 @@ Push `feature/traffic-screen`; do not merge the draft PR.
 - Modify: `packages/web/src/features/traffic/TrafficCharts.tsx`
 - Modify: `packages/web/e2e/traffic-layout.spec.ts`
 
-- [ ] **Step 1: Write failing append-classification and motion tests**
+- [x] **Step 1: Write failing append-classification and motion tests**
 
 Cover partial and full rolling windows, initial hydration/replacement, inspection catch-up,
 series replacement, and reduced motion. Use a tiny harness whose real columns carry
@@ -623,7 +623,7 @@ from `translateX(calc(100% + 3px))` to zero while only the newest fill animates 
 `scaleY(0)` to `scaleY(1)`. While `enabled=false`, advance identities and then re-enable with
 the same identities; assert no queued call. Stub reduced motion and assert no call.
 
-- [ ] **Step 2: Run the new test and verify the red state**
+- [x] **Step 2: Run the new test and verify the red state**
 
 ```bash
 pnpm -F @submerge/web exec vitest run src/features/traffic/chart-motion.test.tsx
@@ -631,7 +631,7 @@ pnpm -F @submerge/web exec vitest run src/features/traffic/chart-motion.test.tsx
 
 Expected: FAIL because `chart-motion.ts` does not exist.
 
-- [ ] **Step 3: Implement the bounded Web Animations helper**
+- [x] **Step 3: Implement the bounded Web Animations helper**
 
 Create `chart-motion.ts` with no dependency beyond React:
 
@@ -715,11 +715,11 @@ export function useChartAppendMotion({
 }
 ```
 
-- [ ] **Step 4: Wire the same motion contract into both chart variants**
+- [x] **Step 4: Wire the same motion contract into both chart variants**
 
-In `LatencyWindow` and `ThroughputWindow`, call the hook with the raw source identities,
-series identity, inspector state, and the existing slot gap. Attach the returned ref to the
-plot and mark only real columns/fills:
+In `LatencyWindow` and `ThroughputWindow`, call the hook with identities matching each
+variant's rendered columns, the series identity, inspector state, and the existing slot gap.
+Attach the returned ref to the plot and mark only real columns/fills:
 
 ```tsx
 const motionRef = useChartAppendMotion({
@@ -737,12 +737,14 @@ const motionRef = useChartAppendMotion({
 </div>;
 ```
 
-Pass throughput bucket `at` values as identities and a constant `throughput` series. Pass
-latency sample keys as identities and the active node as the series. Set `motionEnabled` only
-while the inspector has no selected sample. Use `gapPx: 2` for latency and `gapPx: 3` for
+Pass throughput bucket `at` values as identities and a constant `throughput` series. Pass raw
+latency sample keys to the wide variant and compact representative keys to the compact
+variant, with the active node as the series. While inspection is frozen, keep advancing the
+latest source-derived identities so release cannot replay catch-up motion. Set `motionEnabled`
+only while the inspector has no selected sample. Use `gapPx: 2` for latency and `gapPx: 3` for
 throughput. Do not mark placeholder slots.
 
-- [ ] **Step 5: Run focused component tests**
+- [x] **Step 5: Run focused component tests**
 
 ```bash
 pnpm -F @submerge/web exec vitest run \
@@ -752,7 +754,7 @@ pnpm -F @submerge/web exec vitest run \
 
 Expected: PASS; existing tooltip, pin/freeze, keyboard, and responsive-slot tests remain green.
 
-- [ ] **Step 6: Add browser evidence for the first animated bucket**
+- [x] **Step 6: Add browser evidence for the first animated bucket**
 
 In the populated desktop test, install a pre-navigation wrapper around
 `Element.prototype.animate` that records keyframes only for elements inside
@@ -793,7 +795,7 @@ pnpm -F @submerge/web exec playwright test e2e/traffic-layout.spec.ts \
 
 Expected: 7/7 PASS with zero retries and unchanged dark/light/mobile geometry.
 
-- [ ] **Step 7: Run gates, review, commit, and update PR #23**
+- [x] **Step 7: Run gates, review, commit, and update PR #23**
 
 ```bash
 pnpm verify:static
@@ -806,3 +808,15 @@ git push origin feature/traffic-screen
 ```
 
 Run the required incremental and final reviews before commit/push. Do not merge PR #23.
+
+**Completion evidence:**
+
+- independent incremental review found no defects in the append helper or chart integration;
+- independent wide review found two P2 edge cases, both resolved with regression tests:
+  collapsed-group member switches now reseed latency history, and compact latency motion is
+  classified from its rendered representatives rather than the raw 40-sample window;
+- `pnpm verify:static` passed after the review fixes: Biome, Pencil token drift, TypeScript,
+  643 unit tests, and all production builds are green;
+- Playwright passed 14/14 for Traffic plus the layout contract with one worker and zero
+  retries, covering dark/light 1440×1024, mobile 390, supported widths, container boundaries,
+  fallback states, reset, overflow, and first-bucket animation evidence.

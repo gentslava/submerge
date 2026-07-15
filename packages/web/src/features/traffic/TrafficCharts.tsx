@@ -11,6 +11,7 @@ import {
 import { formatRate } from "@/features/nodes/nodeView";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
+import { useChartAppendMotion } from "./chart-motion";
 import type { TrafficBucketSample } from "./presentation";
 import { chartSummary, throughputPeak } from "./state";
 
@@ -302,6 +303,9 @@ function LatencyWindow({
   testId,
   selectedKey,
   onInspect,
+  motionIdentities,
+  motionSeries,
+  motionEnabled,
 }: {
   bars: readonly TimedLatencySample[];
   slots: number;
@@ -316,14 +320,24 @@ function LatencyWindow({
     slots?: number,
     count?: number,
   ) => void;
+  motionIdentities: readonly string[];
+  motionSeries: string;
+  motionEnabled: boolean;
 }) {
   const summary = chartSummary(bars.map((sample) => sample.value));
   const peak = summary.max ?? 1;
   const windowSeconds = latencyWindowSeconds(windowSampleCount ?? summary.count, checkIntervalSec);
+  const motionRef = useChartAppendMotion({
+    identities: motionIdentities,
+    series: motionSeries,
+    enabled: motionEnabled,
+    gapPx: 2,
+  });
 
   return (
     <>
       <div
+        ref={motionRef}
         aria-hidden="true"
         data-testid={testId}
         className="traffic-latency-plot flex h-20 items-stretch gap-0.5"
@@ -347,6 +361,7 @@ function LatencyWindow({
           const recent = index >= bars.length - RECENT_LATENCY_BARS;
           return (
             <button
+              data-chart-column
               type="button"
               tabIndex={-1}
               aria-label={sample.value <= 0 ? "таймаут" : `${sample.value} ms`}
@@ -364,6 +379,7 @@ function LatencyWindow({
               )}
             >
               <span
+                data-chart-fill
                 className={cn(
                   "w-full rounded-sm",
                   timeout ? "h-full bg-timeout" : heightClass(barLevel(sample.value, peak)),
@@ -391,6 +407,8 @@ function ThroughputWindow({
   testId,
   selectedAt,
   onInspect,
+  motionIdentities,
+  motionEnabled,
 }: {
   bars: readonly TrafficBucketSample[];
   slots: number;
@@ -403,11 +421,20 @@ function ThroughputWindow({
     slots?: number,
     count?: number,
   ) => void;
+  motionIdentities: readonly string[];
+  motionEnabled: boolean;
 }) {
   const peak = throughputPeak(bars);
+  const motionRef = useChartAppendMotion({
+    identities: motionIdentities,
+    series: "throughput",
+    enabled: motionEnabled,
+    gapPx: 3,
+  });
 
   return (
     <div
+      ref={motionRef}
       aria-hidden="true"
       data-testid={testId}
       className="traffic-throughput-plot flex h-24 items-stretch gap-[3px]"
@@ -431,6 +458,7 @@ function ThroughputWindow({
         if (total <= 0) {
           return (
             <button
+              data-chart-column
               type="button"
               tabIndex={-1}
               aria-label={`загрузка ${formatRate(sample.down)}, отдача ${formatRate(sample.up)}, пик ${formatRate(sample.peak)}`}
@@ -447,6 +475,7 @@ function ThroughputWindow({
               )}
             >
               <span
+                data-chart-fill
                 data-testid={`${testId}-zero`}
                 className="h-[3px] w-full rounded-sm bg-chart-track"
               />
@@ -457,6 +486,7 @@ function ThroughputWindow({
         const levels = throughputLevels(sample, peak);
         return (
           <button
+            data-chart-column
             type="button"
             tabIndex={-1}
             aria-label={`загрузка ${formatRate(sample.down)}, отдача ${formatRate(sample.up)}, пик ${formatRate(sample.peak)}`}
@@ -473,10 +503,16 @@ function ThroughputWindow({
             )}
           >
             {levels.up > 0 ? (
-              <span className={cn("w-full rounded-t-sm bg-online", heightClass(levels.up))} />
+              <span
+                data-chart-fill
+                className={cn("w-full rounded-t-sm bg-online", heightClass(levels.up))}
+              />
             ) : null}
             {levels.down > 0 ? (
-              <span className={cn("w-full rounded-b-sm bg-accent", heightClass(levels.down))} />
+              <span
+                data-chart-fill
+                className={cn("w-full rounded-b-sm bg-accent", heightClass(levels.down))}
+              />
             ) : null}
           </button>
         );
@@ -611,6 +647,10 @@ export function TrafficLatencyChart({
     LATENCY_CAP,
   ]);
   const tooltipId = useId();
+  const wideMotionIdentities = bars.map((sample) => sample.key);
+  const compactMotionIdentities = compactLatency(bars).map((sample) => sample.key);
+  const motionSeries = node ?? "no-active-node";
+  const motionEnabled = inspector.selected === null;
   const visibleBars = inspector.visibleValues;
   const compactBars = compactLatency(visibleBars);
   const summary = chartSummary(bars.map((sample) => sample.value));
@@ -692,6 +732,9 @@ export function TrafficLatencyChart({
                 testId="traffic-latency-bars-compact"
                 selectedKey={inspector.selectedKey}
                 onInspect={inspector.inspect}
+                motionIdentities={compactMotionIdentities}
+                motionSeries={motionSeries}
+                motionEnabled={motionEnabled}
               />
             </div>
             <div className="traffic-chart-variant--wide hidden flex-col gap-2.5">
@@ -702,6 +745,9 @@ export function TrafficLatencyChart({
                 testId="traffic-latency-bars"
                 selectedKey={inspector.selectedKey}
                 onInspect={inspector.inspect}
+                motionIdentities={wideMotionIdentities}
+                motionSeries={motionSeries}
+                motionEnabled={motionEnabled}
               />
             </div>
           </>
@@ -715,6 +761,8 @@ export function ThroughputChart({ samples }: { samples: readonly TrafficBucketSa
   const sourceBars = samples.slice(-TRAFFIC_CAP);
   const inspector = useChartInspector(sourceBars, (sample) => String(sample.at), TRAFFIC_CAP);
   const tooltipId = useId();
+  const motionIdentities = sourceBars.map((sample) => String(sample.at));
+  const motionEnabled = inspector.selected === null;
   const bars = inspector.visibleValues;
   const compactBars = compactThroughput(bars);
   const rawPeak = bars.reduce((value, sample) => Math.max(value, sample.peak), 0);
@@ -782,6 +830,8 @@ export function ThroughputChart({ samples }: { samples: readonly TrafficBucketSa
             testId="traffic-throughput-bars-compact"
             selectedAt={inspector.selected?.at ?? null}
             onInspect={inspector.inspect}
+            motionIdentities={motionIdentities}
+            motionEnabled={motionEnabled}
           />
         </div>
         <div className="traffic-chart-variant--wide hidden flex-col">
@@ -791,6 +841,8 @@ export function ThroughputChart({ samples }: { samples: readonly TrafficBucketSa
             testId="traffic-throughput-bars"
             selectedAt={inspector.selected?.at ?? null}
             onInspect={inspector.inspect}
+            motionIdentities={motionIdentities}
+            motionEnabled={motionEnabled}
           />
         </div>
       </div>

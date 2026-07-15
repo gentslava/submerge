@@ -134,6 +134,35 @@ describe("traffic dashboard store", () => {
     expect(store.getSnapshot().latency.sampleTimes).toEqual([Date.parse("2026-07-15T00:01:00Z")]);
   });
 
+  it("reseeds latency when a collapsed group's active member changes", () => {
+    const store = createTrafficDashboardStore();
+    const first = node("Amsterdam", 42, [40, 42], ["2026-07-15T00:00:00Z", "2026-07-15T00:00:10Z"]);
+    first.members = [
+      { name: "Amsterdam #1", delay: 42, history: [40, 42], active: true },
+      { name: "Amsterdam #2", delay: 70, history: [68, 70], active: false },
+    ];
+    store.pushNodeView(view("Amsterdam", null, [first]));
+
+    const second = node(
+      "Amsterdam",
+      70,
+      [68, 70],
+      ["2026-07-15T00:00:00Z", "2026-07-15T00:00:10Z"],
+    );
+    second.members = [
+      { name: "Amsterdam #1", delay: 42, history: [40, 42], active: false },
+      { name: "Amsterdam #2", delay: 70, history: [68, 70], active: true },
+    ];
+    store.pushNodeView(view("Amsterdam", null, [second]));
+
+    expect(store.getSnapshot().latency).toEqual({
+      node: "Amsterdam",
+      current: 70,
+      samples: [68, 70],
+      sampleTimes: [Date.parse("2026-07-15T00:00:00Z"), Date.parse("2026-07-15T00:00:10Z")],
+    });
+  });
+
   it("resets only displayed session windows and preserves last-seen latency state", () => {
     const history = [41, 42];
     const store = createTrafficDashboardStore();

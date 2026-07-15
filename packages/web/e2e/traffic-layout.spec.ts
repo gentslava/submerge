@@ -106,6 +106,21 @@ test("populated dark desktop matches the Traffic data layout and reset contract"
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1024 });
+  await page.addInitScript(() => {
+    const animationFrames: string[] = [];
+    (
+      window as typeof window & {
+        __trafficChartAnimations: string[];
+      }
+    ).__trafficChartAnimations = animationFrames;
+    const originalAnimate = Element.prototype.animate;
+    Element.prototype.animate = function animate(keyframes, options) {
+      if (this.closest(".traffic-throughput-plot, .traffic-latency-plot")) {
+        animationFrames.push(JSON.stringify(keyframes));
+      }
+      return originalAnimate.call(this, keyframes, options);
+    };
+  });
   await openTraffic(page);
 
   expect(
@@ -141,6 +156,15 @@ test("populated dark desktop matches the Traffic data layout and reset contract"
     page.getByRole("link", { name: "12 соединений — открыть экран Соединения" }),
   ).toBeVisible();
   await expect(page.getByTitle("9.4 МБ/с", { exact: true })).toBeVisible();
+  const animationFrames = await page.evaluate(
+    () =>
+      (
+        window as typeof window & {
+          __trafficChartAnimations: string[];
+        }
+      ).__trafficChartAnimations,
+  );
+  expect(animationFrames.some((frames) => frames.includes("scaleY(0)"))).toBe(true);
   await expect(page.getByText(/40 замеров за/)).toHaveClass(/sr-only/);
   await expect(page.getByText(/1 замер за 3 с/)).toHaveClass(/sr-only/);
 

@@ -81,6 +81,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
   let totals: { up: number; down: number } | null = null;
   let baseline: { up: number; down: number } | null = null;
   let latencyNode: string | null = null;
+  let latencySeries: string | null = null;
   let latencyCurrent: number | null = null;
   let latencySamples: number[] = [];
   let latencySampleTimes: (number | null)[] = [];
@@ -138,9 +139,12 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
     pushNodeView(view) {
       const active = view.now === "AUTO" ? view.autoNow : view.now;
       const activeNode = active ? view.all.find((item) => item.name === active) : undefined;
+      const activeMember = activeNode?.members?.find((member) => member.active)?.name;
+      const nextLatencySeries = activeMember ? `${active}\u0000${activeMember}` : active;
 
-      if (active !== latencyNode) {
+      if (nextLatencySeries !== latencySeries) {
         latencyNode = active;
+        latencySeries = nextLatencySeries;
         latencyCurrent = activeNode?.delay ?? null;
         latencySamples = activeNode?.history.slice(-LATENCY_WINDOW) ?? [];
         latencySampleTimes = activeNode
