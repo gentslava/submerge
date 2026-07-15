@@ -16243,7 +16243,7 @@
                       "id": "a1cFai",
                       "name": "Sub",
                       "fill": "$text-secondary",
-                      "content": "Поток событий ядра mihomo",
+                      "content": "События mihomo и submerge",
                       "fontFamily": "$font-sans",
                       "fontSize": 13,
                       "fontWeight": "normal"
@@ -16299,108 +16299,196 @@
               "children": [
                 {
                   "type": "frame",
-                  "id": "Ex1o1",
-                  "name": "Segmented",
-                  "fill": "$bg-base",
-                  "cornerRadius": "$radius-md",
-                  "stroke": "$border-subtle",
-                  "strokeWidth": 1,
-                  "gap": 3,
-                  "padding": 3,
+                  "id": "EDNnC",
+                  "name": "Фильтры",
+                  "gap": 10,
+                  "alignItems": "center",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "UolCk",
-                      "name": "Все",
-                      "fill": "$accent",
-                      "cornerRadius": "$radius-sm",
+                      "id": "gEijk",
+                      "name": "Поиск в логах",
+                      "width": 280,
+                      "height": 36,
+                      "fill": "$bg-input",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-default",
+                      "strokeWidth": 1,
+                      "gap": 8,
                       "padding": [
-                        7,
-                        14
+                        0,
+                        12
                       ],
                       "alignItems": "center",
                       "children": [
                         {
+                          "type": "icon",
+                          "id": "G9JWo",
+                          "name": "i",
+                          "width": 15,
+                          "height": 15,
+                          "icon": "search",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
                           "type": "text",
-                          "id": "Tx5W9",
-                          "name": "t",
-                          "fill": "$accent-fg",
-                          "content": "Все",
+                          "id": "jikIz",
+                          "name": "p",
+                          "fill": "$text-tertiary",
+                          "content": "Поиск в логах",
                           "fontFamily": "$font-sans",
                           "fontSize": 13,
-                          "fontWeight": "600"
+                          "fontWeight": "normal"
                         }
                       ]
                     },
                     {
                       "type": "frame",
-                      "id": "i7RtZ",
-                      "name": "info",
-                      "fill": "#00000000",
-                      "cornerRadius": "$radius-sm",
+                      "id": "F8fy9r",
+                      "name": "Фильтр источника",
+                      "width": 174,
+                      "height": 36,
+                      "fill": "$bg-input",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-default",
+                      "strokeWidth": 1,
+                      "gap": 8,
                       "padding": [
-                        7,
-                        14
+                        9,
+                        12
                       ],
+                      "justifyContent": "space_between",
                       "alignItems": "center",
                       "children": [
                         {
                           "type": "text",
-                          "id": "Vv5FN",
-                          "name": "t",
-                          "fill": "$text-secondary",
-                          "content": "info",
+                          "id": "SYoYD",
+                          "name": "v",
+                          "fill": "$text-primary",
+                          "content": "Все источники",
                           "fontFamily": "$font-sans",
                           "fontSize": 13,
-                          "fontWeight": "500"
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "V8U1j",
+                          "name": "chev",
+                          "width": 15,
+                          "height": 15,
+                          "icon": "chevron-down",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
                         }
                       ]
                     },
                     {
                       "type": "frame",
-                      "id": "JUg0Q",
-                      "name": "warn",
-                      "fill": "#00000000",
-                      "cornerRadius": "$radius-sm",
-                      "padding": [
-                        7,
-                        14
-                      ],
-                      "alignItems": "center",
+                      "id": "Ex1o1",
+                      "name": "Фильтр уровня",
+                      "fill": "$bg-base",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": 1,
+                      "gap": 3,
+                      "padding": 3,
                       "children": [
                         {
-                          "type": "text",
-                          "id": "L0KME",
-                          "name": "t",
-                          "fill": "$text-secondary",
-                          "content": "warn",
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "500"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "rT9At",
-                      "name": "error",
-                      "fill": "#00000000",
-                      "cornerRadius": "$radius-sm",
-                      "padding": [
-                        7,
-                        14
-                      ],
-                      "alignItems": "center",
-                      "children": [
+                          "type": "frame",
+                          "id": "UolCk",
+                          "name": "Все",
+                          "fill": "$accent",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Tx5W9",
+                              "name": "t",
+                              "fill": "$accent-fg",
+                              "content": "Все",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
                         {
-                          "type": "text",
-                          "id": "X6SaAW",
-                          "name": "t",
-                          "fill": "$text-secondary",
-                          "content": "error",
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "500"
+                          "type": "frame",
+                          "id": "i7RtZ",
+                          "name": "info",
+                          "fill": "#00000000",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Vv5FN",
+                              "name": "t",
+                              "fill": "$text-secondary",
+                              "content": "INFO",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "JUg0Q",
+                          "name": "warn",
+                          "fill": "#00000000",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "L0KME",
+                              "name": "t",
+                              "fill": "$text-secondary",
+                              "content": "WARN",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "rT9At",
+                          "name": "error",
+                          "fill": "#00000000",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "X6SaAW",
+                              "name": "t",
+                              "fill": "$text-secondary",
+                              "content": "ERROR",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
                         }
                       ]
                     }
@@ -16411,7 +16499,7 @@
                   "id": "VDu2G",
                   "name": "Count",
                   "fill": "$text-tertiary",
-                  "content": "12 строк",
+                  "content": "12 из 500",
                   "fontFamily": "$font-sans",
                   "fontSize": 12,
                   "fontWeight": "normal"
@@ -16485,6 +16573,32 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "O5gMv",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "F8O9gD",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "eGEic",
                       "name": "msg",
@@ -16546,6 +16660,32 @@
                           "fontSize": 10,
                           "fontWeight": "600",
                           "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "bN05l",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "cKEBa",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
                         }
                       ]
                     },
@@ -16615,6 +16755,32 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "RKDAR",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "WpVTm",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "AxFZO",
                       "name": "msg",
@@ -16676,6 +16842,32 @@
                           "fontSize": 10,
                           "fontWeight": "600",
                           "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "o8PE1",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "YAphd",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
                         }
                       ]
                     },
@@ -16745,6 +16937,32 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "Ym6Tg",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "so3s0",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "Q88Hg6",
                       "name": "msg",
@@ -16787,7 +17005,7 @@
                       "id": "G5e0W",
                       "name": "lvl",
                       "width": 60,
-                      "fill": "$bg-hover",
+                      "fill": "$status-slow-bg",
                       "cornerRadius": "$radius-sm",
                       "padding": [
                         3,
@@ -16800,8 +17018,8 @@
                           "type": "text",
                           "id": "rQgpq",
                           "name": "t",
-                          "fill": "$text-secondary",
-                          "content": "INFO",
+                          "fill": "$status-slow",
+                          "content": "WARN",
                           "fontFamily": "$font-mono",
                           "fontSize": 10,
                           "fontWeight": "600",
@@ -16810,11 +17028,37 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "m9g01",
+                      "name": "Источник SUBMERGE",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "$accent-border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "wuL6U",
+                          "name": "Источник",
+                          "fill": "$accent-text",
+                          "content": "SUBMERGE",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "gfY3H",
                       "name": "msg",
                       "fill": "$text-secondary",
-                      "content": "[url-test] PROXY → nl-ams-01 (47 ms) — выбран лучший узел",
+                      "content": "mihomo live traffic failed · scope=traffic",
                       "fontFamily": "$font-mono",
                       "fontSize": 12.5,
                       "fontWeight": "normal"
@@ -16871,6 +17115,32 @@
                           "fontSize": 10,
                           "fontWeight": "600",
                           "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "JXykx",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "VJvrn",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
                         }
                       ]
                     },
@@ -16940,6 +17210,32 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "JDDve",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "vqMik",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "aniaV",
                       "name": "msg",
@@ -17005,11 +17301,37 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "Yjes2",
+                      "name": "Источник SUBMERGE",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "$accent-border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "f5XgA",
+                          "name": "Источник",
+                          "fill": "$accent-text",
+                          "content": "SUBMERGE",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "a1C34d",
                       "name": "msg",
                       "fill": "$text-secondary",
-                      "content": "[Pool] us-nyc-03 задержка 210 ms — деградация",
+                      "content": "config written but mihomo reload failed — applies on next reload",
                       "fontFamily": "$font-mono",
                       "fontSize": 12.5,
                       "fontWeight": "normal"
@@ -17066,6 +17388,32 @@
                           "fontSize": 10,
                           "fontWeight": "600",
                           "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "IXXfF",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "MWcEq",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
                         }
                       ]
                     },
@@ -17135,6 +17483,32 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "DfPW1",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Chuq4",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "f4Sp5j",
                       "name": "msg",
@@ -17197,11 +17571,37 @@
                       ]
                     },
                     {
+                      "type": "frame",
+                      "id": "RnlAV",
+                      "name": "Источник SUBMERGE",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "$accent-border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "o4aAf",
+                          "name": "Источник",
+                          "fill": "$accent-text",
+                          "content": "SUBMERGE",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
                       "type": "text",
                       "id": "U1OLX",
                       "name": "msg",
                       "fill": "$text-secondary",
-                      "content": "[TCP] 192.168.1.47 → api.openai.com:443 via nl-ams-01",
+                      "content": "submerge server listening · 127.0.0.1:3000",
                       "fontFamily": "$font-mono",
                       "fontSize": 12.5,
                       "fontWeight": "normal"
@@ -46503,6 +46903,1399 @@
             },
             {
               "type": "frame",
+              "id": "zW719",
+              "name": "Логи · 390",
+              "clip": true,
+              "width": 390,
+              "height": 900,
+              "fill": "$bg-base",
+              "cornerRadius": 28,
+              "stroke": "$border-default",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "EXozR",
+                  "name": "Status",
+                  "width": "fill_container",
+                  "height": 44,
+                  "padding": [
+                    0,
+                    22
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "W6QSf",
+                      "name": "time",
+                      "fill": "$text-primary",
+                      "content": "9:41",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "ZJNmR",
+                      "name": "ic",
+                      "gap": 6,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "UrYDX",
+                          "name": "signal-high",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "signal-high",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "Qdgyr",
+                          "name": "wifi",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "wifi",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "bX0FR",
+                          "name": "battery-full",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "battery-full",
+                          "library": "lucide",
+                          "fill": "$text-secondary"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "nEJhu",
+                  "name": "AppBar",
+                  "width": "fill_container",
+                  "padding": [
+                    4,
+                    16,
+                    12,
+                    16
+                  ],
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "jtb1M",
+                      "name": "Ttl",
+                      "layout": "vertical",
+                      "gap": 2,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zNnVe",
+                          "name": "h",
+                          "fill": "$text-primary",
+                          "content": "Логи",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 22,
+                          "fontWeight": "600"
+                        },
+                        {
+                          "type": "text",
+                          "id": "NMRbt",
+                          "name": "s",
+                          "fill": "$text-tertiary",
+                          "content": "События mihomo и submerge",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "jG8eH",
+                      "name": "Actions",
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "SAA2P",
+                          "name": "Пауза",
+                          "width": 44,
+                          "height": 44,
+                          "fill": "$bg-elevated",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": 1,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "HJRpW",
+                              "name": "i",
+                              "width": 18,
+                              "height": 18,
+                              "icon": "pause",
+                              "library": "lucide",
+                              "fill": "$text-secondary"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Uyup2",
+                          "name": "Очистить",
+                          "width": 44,
+                          "height": 44,
+                          "fill": "$bg-elevated",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": 1,
+                          "justifyContent": "center",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "icon",
+                              "id": "nJ31o",
+                              "name": "i",
+                              "width": 18,
+                              "height": 18,
+                              "icon": "trash-2",
+                              "library": "lucide",
+                              "fill": "$text-secondary"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "CZRYu",
+                  "name": "Content",
+                  "clip": true,
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [
+                    4,
+                    16,
+                    12,
+                    16
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "EIiE0",
+                      "name": "Поиск",
+                      "width": "fill_container",
+                      "height": 36,
+                      "fill": "$bg-surface",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": 1,
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        11
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "oIQ2y",
+                          "name": "search",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "search",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "aCjzq",
+                          "name": "placeholder",
+                          "fill": "$text-tertiary",
+                          "content": "Поиск в логах",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "qHDsu",
+                      "name": "Фильтры",
+                      "width": "fill_container",
+                      "height": 34,
+                      "gap": 8,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "sf76W",
+                          "name": "Источник",
+                          "width": 142,
+                          "height": 34,
+                          "fill": "$bg-surface",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": 1,
+                          "padding": [
+                            0,
+                            10
+                          ],
+                          "justifyContent": "space_between",
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "gj1SV",
+                              "name": "value",
+                              "fill": "$text-primary",
+                              "content": "Все источники",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 11,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "icon",
+                              "id": "R4MTy",
+                              "name": "chevron",
+                              "width": 14,
+                              "height": 14,
+                              "icon": "chevron-down",
+                              "library": "lucide",
+                              "fill": "$text-tertiary"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "S3bEQ",
+                          "name": "Уровень",
+                          "width": "fill_container",
+                          "height": 34,
+                          "fill": "$bg-surface",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": 1,
+                          "gap": 2,
+                          "padding": 3,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "MVuFQ",
+                              "name": "Все",
+                              "width": "fill_container",
+                              "height": 28,
+                              "fill": "$accent-bg",
+                              "cornerRadius": "$radius-sm",
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "K49cRC",
+                                  "name": "label",
+                                  "fill": "$accent-text",
+                                  "content": "Все",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 9,
+                                  "fontWeight": "600"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "J8WMK",
+                              "name": "INFO",
+                              "width": "fill_container",
+                              "height": 28,
+                              "fill": "#00000000",
+                              "cornerRadius": "$radius-sm",
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "wqqXf",
+                                  "name": "label",
+                                  "fill": "$text-tertiary",
+                                  "content": "INFO",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 9,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "OJ8RL",
+                              "name": "WARN",
+                              "width": "fill_container",
+                              "height": 28,
+                              "fill": "#00000000",
+                              "cornerRadius": "$radius-sm",
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "eSv8n",
+                                  "name": "label",
+                                  "fill": "$text-tertiary",
+                                  "content": "WARN",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 9,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "l9ulvt",
+                              "name": "ERROR",
+                              "width": "fill_container",
+                              "height": 28,
+                              "fill": "#00000000",
+                              "cornerRadius": "$radius-sm",
+                              "justifyContent": "center",
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "ehNFb",
+                                  "name": "label",
+                                  "fill": "$text-tertiary",
+                                  "content": "ERROR",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 9,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "zZcZl",
+                      "name": "Состояние потока",
+                      "width": "fill_container",
+                      "height": 20,
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "LsNHc",
+                          "name": "live",
+                          "gap": 6,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "ellipse",
+                              "id": "C76Wlr",
+                              "name": "dot",
+                              "fill": "$status-online",
+                              "width": 6,
+                              "height": 6
+                            },
+                            {
+                              "type": "text",
+                              "id": "oW0Zf",
+                              "name": "label",
+                              "fill": "$text-secondary",
+                              "content": "Поток активен",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 11,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "dkI0R",
+                          "name": "count",
+                          "fill": "$text-tertiary",
+                          "content": "12 из 500",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "m9cIS8",
+                      "name": "Log List",
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": "fill_container",
+                      "fill": "$bg-surface",
+                      "cornerRadius": "$radius-lg",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": 1,
+                      "layout": "vertical",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "WxfjD",
+                          "name": "INFO · MIHOMO",
+                          "width": "fill_container",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "layout": "vertical",
+                          "gap": 6,
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "sgBgL",
+                              "name": "Meta",
+                              "width": "fill_container",
+                              "gap": 7,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "VjRbr",
+                                  "name": "time",
+                                  "fill": "$text-tertiary",
+                                  "content": "12:14:08",
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "gnOla",
+                                  "name": "level",
+                                  "height": 18,
+                                  "fill": "$status-online-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "r7cbMk",
+                                      "name": "label",
+                                      "fill": "$status-online",
+                                      "content": "INFO",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "WR5xL",
+                                  "name": "source",
+                                  "height": 18,
+                                  "fill": "$bg-elevated",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "zaKFm",
+                                      "name": "label",
+                                      "fill": "$text-secondary",
+                                      "content": "MIHOMO",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "YYKPE",
+                              "name": "message",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "proxy group \"PROXY\" selected node nl-ams-01",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "y6okRA",
+                          "name": "WARN · SUBMERGE",
+                          "width": "fill_container",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "layout": "vertical",
+                          "gap": 6,
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "WRIaS",
+                              "name": "Meta",
+                              "width": "fill_container",
+                              "gap": 7,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "VIz4R",
+                                  "name": "time",
+                                  "fill": "$text-tertiary",
+                                  "content": "12:14:07",
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "IuK2u",
+                                  "name": "level",
+                                  "height": 18,
+                                  "fill": "$status-slow-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "SpXjt",
+                                      "name": "label",
+                                      "fill": "$status-slow",
+                                      "content": "WARN",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "z3SLE",
+                                  "name": "source",
+                                  "height": 18,
+                                  "fill": "$accent-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "rPP6T",
+                                      "name": "label",
+                                      "fill": "$accent-text",
+                                      "content": "SUBMERGE",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "WmONx",
+                              "name": "message",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "mihomo live traffic failed · scope=traffic",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dZ2lE",
+                          "name": "ERROR · SUBMERGE",
+                          "width": "fill_container",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "layout": "vertical",
+                          "gap": 6,
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "x2geiD",
+                              "name": "Meta",
+                              "width": "fill_container",
+                              "gap": 7,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "zyIeC",
+                                  "name": "time",
+                                  "fill": "$text-tertiary",
+                                  "content": "12:13:59",
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "WM0cT",
+                                  "name": "level",
+                                  "height": 18,
+                                  "fill": "$status-timeout-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "OkKB9",
+                                      "name": "label",
+                                      "fill": "$status-timeout",
+                                      "content": "ERROR",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "q5ywH",
+                                  "name": "source",
+                                  "height": 18,
+                                  "fill": "$accent-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "xpDWQ",
+                                      "name": "label",
+                                      "fill": "$accent-text",
+                                      "content": "SUBMERGE",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "MZOPJ",
+                              "name": "message",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "config written but mihomo reload failed — applies on next reload",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "i0JSL4",
+                          "name": "DEBUG · MIHOMO",
+                          "width": "fill_container",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "layout": "vertical",
+                          "gap": 6,
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "oEgJY",
+                              "name": "Meta",
+                              "width": "fill_container",
+                              "gap": 7,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "mxfgB",
+                                  "name": "time",
+                                  "fill": "$text-tertiary",
+                                  "content": "12:13:52",
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Eb54V",
+                                  "name": "level",
+                                  "height": 18,
+                                  "fill": "$bg-elevated",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "S0DYc",
+                                      "name": "label",
+                                      "fill": "$text-secondary",
+                                      "content": "DEBUG",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "XiBHU",
+                                  "name": "source",
+                                  "height": 18,
+                                  "fill": "$bg-elevated",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "kOBBr",
+                                      "name": "label",
+                                      "fill": "$text-secondary",
+                                      "content": "MIHOMO",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "gUKfm",
+                              "name": "message",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "rule match: GEOIP,PRIVATE → DIRECT",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dOUqL",
+                          "name": "INFO · MIHOMO",
+                          "width": "fill_container",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "layout": "vertical",
+                          "gap": 6,
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Sq5vv",
+                              "name": "Meta",
+                              "width": "fill_container",
+                              "gap": 7,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "Xag6y",
+                                  "name": "time",
+                                  "fill": "$text-tertiary",
+                                  "content": "12:13:45",
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "UskAo",
+                                  "name": "level",
+                                  "height": 18,
+                                  "fill": "$status-online-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "j7ozY",
+                                      "name": "label",
+                                      "fill": "$status-online",
+                                      "content": "INFO",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "tK7jX",
+                                  "name": "source",
+                                  "height": 18,
+                                  "fill": "$bg-elevated",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "QMLkb",
+                                      "name": "label",
+                                      "fill": "$text-secondary",
+                                      "content": "MIHOMO",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "HMER2",
+                              "name": "message",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "inbound mixed://127.0.0.1:7890 accepted",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "TWNV8",
+                          "name": "INFO · SUBMERGE",
+                          "width": "fill_container",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": {
+                            "bottom": 1
+                          },
+                          "layout": "vertical",
+                          "gap": 6,
+                          "padding": [
+                            10,
+                            12
+                          ],
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Zcu5M",
+                              "name": "Meta",
+                              "width": "fill_container",
+                              "gap": 7,
+                              "alignItems": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "qSvzj",
+                                  "name": "time",
+                                  "fill": "$text-tertiary",
+                                  "content": "12:13:41",
+                                  "fontFamily": "$font-mono",
+                                  "fontSize": 10,
+                                  "fontWeight": "normal"
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "C6PosD",
+                                  "name": "level",
+                                  "height": 18,
+                                  "fill": "$status-online-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "eGLq8",
+                                      "name": "label",
+                                      "fill": "$status-online",
+                                      "content": "INFO",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "p84M5r",
+                                  "name": "source",
+                                  "height": 18,
+                                  "fill": "$accent-bg",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    0,
+                                    6
+                                  ],
+                                  "justifyContent": "center",
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "DHlJM",
+                                      "name": "label",
+                                      "fill": "$accent-text",
+                                      "content": "SUBMERGE",
+                                      "fontFamily": "$font-mono",
+                                      "fontSize": 9,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "text",
+                              "id": "ShvjC",
+                              "name": "message",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "submerge server listening · 127.0.0.1:3000",
+                              "lineHeight": 1.35,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 11,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "cdGLb",
+                  "name": "TabBar",
+                  "width": "fill_container",
+                  "fill": "$bg-surface",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "top": 1
+                  },
+                  "padding": [
+                    8,
+                    4,
+                    12,
+                    4
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "q7w1fg",
+                      "name": "Узлы",
+                      "width": "fill_container",
+                      "height": 48,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "YWUHW",
+                          "name": "i",
+                          "width": 21,
+                          "height": 21,
+                          "icon": "server",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "T16z1O",
+                          "name": "t",
+                          "fill": "$text-tertiary",
+                          "content": "Узлы",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 11,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "wkeBO",
+                      "name": "Трафик",
+                      "width": "fill_container",
+                      "height": 48,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "oDffE",
+                          "name": "i",
+                          "width": 21,
+                          "height": 21,
+                          "icon": "activity",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "JNf7O",
+                          "name": "t",
+                          "fill": "$text-tertiary",
+                          "content": "Трафик",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 11,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "v0xeN",
+                      "name": "Логи",
+                      "width": "fill_container",
+                      "height": 48,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "EKtFw",
+                          "name": "i",
+                          "width": 21,
+                          "height": 21,
+                          "icon": "square-terminal",
+                          "library": "lucide",
+                          "fill": "$accent-text"
+                        },
+                        {
+                          "type": "text",
+                          "id": "S3c4Qt",
+                          "name": "t",
+                          "fill": "$accent-text",
+                          "content": "Логи",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "xyeoh",
+                      "name": "Источники",
+                      "width": "fill_container",
+                      "height": 48,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "AgpKE",
+                          "name": "i",
+                          "width": 21,
+                          "height": 21,
+                          "icon": "layers",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "UAjXn",
+                          "name": "t",
+                          "fill": "$text-tertiary",
+                          "content": "Источники",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 11,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YcGSG",
+                      "name": "Ещё",
+                      "width": "fill_container",
+                      "height": 48,
+                      "layout": "vertical",
+                      "gap": 4,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "Osscp",
+                          "name": "i",
+                          "width": 21,
+                          "height": 21,
+                          "icon": "ellipsis",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "PzW9Y",
+                          "name": "t",
+                          "fill": "$text-tertiary",
+                          "content": "Ещё",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 11,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "syt3Q",
+                  "layoutPosition": "absolute",
+                  "x": 184,
+                  "y": 646,
+                  "name": "Меню действий · Telegram",
+                  "enabled": false,
+                  "width": 190,
+                  "fill": "$bg-elevated",
+                  "cornerRadius": "$radius-md",
+                  "stroke": "$border-default",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 2,
+                  "padding": 6,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "cYSnp",
+                      "name": "Пинг",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#00000000",
+                      "cornerRadius": "$radius-sm",
+                      "gap": 10,
+                      "padding": [
+                        0,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "a3nFgr",
+                          "name": "i",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "activity",
+                          "library": "lucide",
+                          "fill": "$text-primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "QWwHM",
+                          "name": "t",
+                          "fill": "$text-primary",
+                          "content": "Проверить пинг",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fFGVn",
+                      "name": "Скорость",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "#00000000",
+                      "cornerRadius": "$radius-sm",
+                      "gap": 10,
+                      "padding": [
+                        0,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "RwT7W",
+                          "name": "i",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "zap",
+                          "library": "lucide",
+                          "fill": "$text-primary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "i4rjP",
+                          "name": "t",
+                          "fill": "$text-primary",
+                          "content": "Замерить скорость",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "eg17I",
+                      "name": "Отключить",
+                      "width": "fill_container",
+                      "height": 40,
+                      "fill": "$status-timeout-bg",
+                      "cornerRadius": "$radius-sm",
+                      "gap": 10,
+                      "padding": [
+                        0,
+                        10
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "ezHg6",
+                          "name": "i",
+                          "width": 16,
+                          "height": 16,
+                          "icon": "ban",
+                          "library": "lucide",
+                          "fill": "$status-timeout"
+                        },
+                        {
+                          "type": "text",
+                          "id": "VqO0S",
+                          "name": "t",
+                          "fill": "$status-timeout",
+                          "content": "Отключить узел",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
               "id": "ce3MH",
               "name": "Источники · 390",
               "clip": true,
@@ -63879,6 +65672,2096 @@
                               "fontWeight": "600"
                             }
                           ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "mnDGi",
+      "x": 8180,
+      "y": 1064,
+      "name": "Логи · светлая",
+      "theme": {
+        "mode": "light"
+      },
+      "clip": true,
+      "width": 1440,
+      "height": 1024,
+      "fill": "$bg-base",
+      "children": [
+        {
+          "id": "uf51d",
+          "type": "ref",
+          "ref": "t0Wg2",
+          "name": "Sidebar",
+          "width": 248,
+          "height": "fill_container",
+          "descendants": {
+            "KCfEJ": {
+              "fill": "$accent-bg"
+            },
+            "r9hUd": {
+              "fill": "$accent-text"
+            },
+            "kpbNc": {
+              "fill": "$accent-text",
+              "fontWeight": "600"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "OcdLC",
+          "name": "Main",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "$bg-base",
+          "layout": "vertical",
+          "gap": 22,
+          "padding": [
+            26,
+            32,
+            32,
+            32
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "PyV3A",
+              "name": "Header",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "aKqsp",
+                  "name": "Title",
+                  "layout": "vertical",
+                  "gap": 5,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Y5Icp",
+                      "name": "H1",
+                      "fill": "$text-primary",
+                      "content": "Логи",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 24,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "qvc2a",
+                      "name": "Sub",
+                      "fill": "$text-secondary",
+                      "content": "События mihomo и submerge",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "GFBOo",
+                  "name": "Actions",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "id": "j4ttQ5",
+                      "type": "ref",
+                      "ref": "hRDqB",
+                      "name": "Пауза",
+                      "descendants": {
+                        "l7wot": {
+                          "icon": "pause"
+                        },
+                        "cso15": {
+                          "content": "Пауза"
+                        }
+                      }
+                    },
+                    {
+                      "id": "ScH0q",
+                      "type": "ref",
+                      "ref": "hRDqB",
+                      "name": "Очистить",
+                      "descendants": {
+                        "l7wot": {
+                          "icon": "trash-2"
+                        },
+                        "cso15": {
+                          "content": "Очистить"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "t8nZd",
+              "name": "Filter Bar",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "Vke0t",
+                  "name": "Фильтры",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "x1FqJI",
+                      "name": "Поиск в логах",
+                      "width": 280,
+                      "height": 36,
+                      "fill": "$bg-input",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-default",
+                      "strokeWidth": 1,
+                      "gap": 8,
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "Cme9M",
+                          "name": "i",
+                          "width": 15,
+                          "height": 15,
+                          "icon": "search",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        },
+                        {
+                          "type": "text",
+                          "id": "s4LpX6",
+                          "name": "p",
+                          "fill": "$text-tertiary",
+                          "content": "Поиск в логах",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "kN0Dr",
+                      "name": "Фильтр источника",
+                      "width": 174,
+                      "height": 36,
+                      "fill": "$bg-input",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-default",
+                      "strokeWidth": 1,
+                      "gap": 8,
+                      "padding": [
+                        9,
+                        12
+                      ],
+                      "justifyContent": "space_between",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "lQZlu",
+                          "name": "v",
+                          "fill": "$text-primary",
+                          "content": "Все источники",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "icon",
+                          "id": "flA92",
+                          "name": "chev",
+                          "width": 15,
+                          "height": 15,
+                          "icon": "chevron-down",
+                          "library": "lucide",
+                          "fill": "$text-tertiary"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "LC2wv",
+                      "name": "Фильтр уровня",
+                      "fill": "$bg-base",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": 1,
+                      "gap": 3,
+                      "padding": 3,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "bYPFs",
+                          "name": "Все",
+                          "fill": "$accent",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "YbBJf",
+                              "name": "t",
+                              "fill": "$accent-fg",
+                              "content": "Все",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "FSoOi",
+                          "name": "info",
+                          "fill": "#00000000",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Z4GFhD",
+                              "name": "t",
+                              "fill": "$text-secondary",
+                              "content": "INFO",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "INuW9",
+                          "name": "warn",
+                          "fill": "#00000000",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "FJI5h",
+                              "name": "t",
+                              "fill": "$text-secondary",
+                              "content": "WARN",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "J5cqLX",
+                          "name": "error",
+                          "fill": "#00000000",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            14
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "sN9vc",
+                              "name": "t",
+                              "fill": "$text-secondary",
+                              "content": "ERROR",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "B9HP0",
+                  "name": "Count",
+                  "fill": "$text-tertiary",
+                  "content": "12 из 500",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 12,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "MWEYR",
+              "name": "Log List",
+              "clip": true,
+              "width": "fill_container",
+              "height": "fill_container",
+              "fill": "$bg-surface",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$border-subtle",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "hdG6X",
+                  "name": "row0",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Yfeu5",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:24",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fp3nB",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "njeGc",
+                          "name": "t",
+                          "fill": "$text-secondary",
+                          "content": "INFO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "c2gfs",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "RPvym",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "O99f8m",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[TCP] 192.168.1.40 → discord.com:443 via nl-ams-01",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "lAbe4",
+                  "name": "row1",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "IYPfQ",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:22",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "I5XzG5",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "l5gZs",
+                          "name": "t",
+                          "fill": "$text-secondary",
+                          "content": "INFO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XQh8T",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "u2tL0",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "kSLIo",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[TCP] 192.168.1.47 → api.telegram.org:443 via nl-ams-01",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "EW1Bt",
+                  "name": "row2",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "WWZsG",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:20",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "mQt6i",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$status-slow-bg",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "v9GoXg",
+                          "name": "t",
+                          "fill": "$status-slow",
+                          "content": "WARN",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "RtJmf",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "rMu1E",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "H5r65",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[Pool] de-fra-02 задержка 386 ms выше допуска",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "MzNed",
+                  "name": "row3",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "l2RR6",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:19",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "r0iYyY",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "M8rwj",
+                          "name": "t",
+                          "fill": "$text-secondary",
+                          "content": "INFO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "rLaQT",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "PRFHA",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "pmcYk",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[TCP] 192.168.1.40 → github.com:443 via nl-ams-01",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "MdXNu",
+                  "name": "row4",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "j7ihFG",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:17",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "bpLTb",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-elevated",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "AydHm",
+                          "name": "t",
+                          "fill": "$text-tertiary",
+                          "content": "DEBUG",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "v244C",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "UZi0T",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "LnesF",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[DNS] resolve cloudflare.com → 104.16.132.229 (geosite)",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "T5fE1",
+                  "name": "row5",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "rnN9N",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:15",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lGBxB",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$status-slow-bg",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "aFf4V",
+                          "name": "t",
+                          "fill": "$status-slow",
+                          "content": "WARN",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Tia1F",
+                      "name": "Источник SUBMERGE",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "$accent-border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "E1Ir4v",
+                          "name": "Источник",
+                          "fill": "$accent-text",
+                          "content": "SUBMERGE",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "Sjg6H",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "mihomo live traffic failed · scope=traffic",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "Q1x0z",
+                  "name": "row6",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "jFCzl",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:12",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "PGtMc",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$status-timeout-bg",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "UaTeo",
+                          "name": "t",
+                          "fill": "$status-timeout",
+                          "content": "ERROR",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "a2b7g",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "TwxFO",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "nLg4j",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[TCP] tr-istanbul-vless-02 connect timeout — узел исключён",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "V57qC8",
+                  "name": "row7",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "V149nl",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:10",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "YZFFh",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zQfR8",
+                          "name": "t",
+                          "fill": "$text-secondary",
+                          "content": "INFO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "H5yOi",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "vuwxj",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "jaENA",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[TCP] 192.168.1.51 → youtube.com:443 via nl-ams-01",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "W4JR3",
+                  "name": "row8",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "hRrnV",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:08",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "pLkox",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$status-slow-bg",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "slQ4T",
+                          "name": "t",
+                          "fill": "$status-slow",
+                          "content": "WARN",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "C3L6B7",
+                      "name": "Источник SUBMERGE",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "$accent-border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "iE5Nj",
+                          "name": "Источник",
+                          "fill": "$accent-text",
+                          "content": "SUBMERGE",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "f0ZSW",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "config written but mihomo reload failed — applies on next reload",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "RTjfW",
+                  "name": "row9",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "cIEqG",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:05",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Tq9Jw",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Wzr3c",
+                          "name": "t",
+                          "fill": "$text-secondary",
+                          "content": "INFO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lsyeW",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ucMXQ",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "zW42R",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[UDP] 192.168.1.40 → 8.8.8.8:53 via DIRECT (geoip:private)",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "tRwnO",
+                  "name": "row10",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": {
+                    "bottom": 1
+                  },
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "sNUUC",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:03",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "bVNJQ",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-elevated",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "RzZ8t",
+                          "name": "t",
+                          "fill": "$text-tertiary",
+                          "content": "DEBUG",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "lAM1m",
+                      "name": "Источник MIHOMO",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "#00000000",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "R2DcgK",
+                          "name": "Источник",
+                          "fill": "$text-secondary",
+                          "content": "MIHOMO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "NP2qJ",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "[Rule] DOMAIN-SUFFIX,telegram.org → PROXY",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "IsNGz",
+                  "name": "row11",
+                  "width": "fill_container",
+                  "stroke": "$border-subtle",
+                  "gap": 14,
+                  "padding": [
+                    9,
+                    16
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "yXCfR",
+                      "name": "time",
+                      "fill": "$text-tertiary",
+                      "content": "15:33:01",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "wF0Vi",
+                      "name": "lvl",
+                      "width": 60,
+                      "fill": "$bg-hover",
+                      "cornerRadius": "$radius-sm",
+                      "padding": [
+                        3,
+                        0
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "c9bIW",
+                          "name": "t",
+                          "fill": "$text-secondary",
+                          "content": "INFO",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 10,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.5
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "HcNNC",
+                      "name": "Источник SUBMERGE",
+                      "width": 82,
+                      "height": 19,
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-sm",
+                      "stroke": "$accent-border",
+                      "strokeWidth": 1,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "Y92NdY",
+                          "name": "Источник",
+                          "fill": "$accent-text",
+                          "content": "SUBMERGE",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 9.5,
+                          "fontWeight": "600",
+                          "letterSpacing": 0.35
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "id": "KzE5o",
+                      "name": "msg",
+                      "fill": "$text-secondary",
+                      "content": "submerge server listening · 127.0.0.1:3000",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 12.5,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "rE094",
+      "x": 8500,
+      "y": 2128,
+      "name": "Логи · состояния",
+      "theme": {
+        "mode": "dark"
+      },
+      "clip": true,
+      "width": 1120,
+      "height": 720,
+      "fill": "$bg-base",
+      "stroke": "$border-default",
+      "strokeWidth": 1,
+      "layout": "vertical",
+      "gap": 20,
+      "padding": 32,
+      "children": [
+        {
+          "type": "frame",
+          "id": "PZkfH",
+          "name": "Header",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 4,
+          "children": [
+            {
+              "type": "text",
+              "id": "N027Ds",
+              "name": "Title",
+              "fill": "$text-primary",
+              "content": "Логи · состояния",
+              "fontFamily": "$font-sans",
+              "fontSize": 24,
+              "fontWeight": "600"
+            },
+            {
+              "type": "text",
+              "id": "iNQ5p",
+              "name": "Subtitle",
+              "fill": "$text-tertiary",
+              "content": "Поток, пустое состояние, пауза и восстановление соединения",
+              "fontFamily": "$font-sans",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "DeuXF",
+          "name": "Row 1",
+          "width": "fill_container",
+          "height": "fill_container",
+          "gap": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "eYIZQ",
+              "name": "Подключение",
+              "width": "fill_container",
+              "height": "fill_container",
+              "fill": "$bg-surface",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$border-subtle",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "gap": 10,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "text",
+                  "id": "p7cNzs",
+                  "name": "State",
+                  "fill": "$text-secondary",
+                  "content": "ПОДКЛЮЧЕНИЕ",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 10,
+                  "fontWeight": "600",
+                  "letterSpacing": 0.5
+                },
+                {
+                  "type": "frame",
+                  "id": "SNBcm",
+                  "name": "Body",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "$bg-elevated",
+                  "cornerRadius": "$radius-md",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "X3JBY",
+                      "name": "loader",
+                      "width": 24,
+                      "height": 24,
+                      "icon": "loader-circle",
+                      "library": "lucide",
+                      "fill": "$accent-text"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Q24t7v",
+                      "name": "Title",
+                      "fill": "$text-primary",
+                      "content": "Подключаем поток событий…",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "xb7fD",
+                      "name": "Hint",
+                      "fill": "$text-tertiary",
+                      "content": "История появится после получения снимка",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "w6BWv",
+              "name": "Событий пока нет",
+              "width": "fill_container",
+              "height": "fill_container",
+              "fill": "$bg-surface",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$border-subtle",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "gap": 10,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "piCwg",
+                  "name": "Top",
+                  "width": "fill_container",
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "a0I2V",
+                      "name": "State",
+                      "fill": "$status-online",
+                      "content": "ПОТОК АКТИВЕН",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 10,
+                      "fontWeight": "600",
+                      "letterSpacing": 0.5
+                    },
+                    {
+                      "type": "text",
+                      "id": "pneIH",
+                      "name": "Count",
+                      "fill": "$text-tertiary",
+                      "content": "0 из 500",
+                      "fontFamily": "$font-mono",
+                      "fontSize": 10,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "y4iXi",
+                  "name": "Body",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "$bg-elevated",
+                  "cornerRadius": "$radius-md",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "justifyContent": "center",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "dFAXo",
+                      "name": "terminal",
+                      "width": 24,
+                      "height": 24,
+                      "icon": "square-terminal",
+                      "library": "lucide",
+                      "fill": "$text-tertiary"
+                    },
+                    {
+                      "type": "text",
+                      "id": "xwfJH",
+                      "name": "Title",
+                      "fill": "$text-primary",
+                      "content": "Событий пока нет",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 14,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "gwiXx",
+                      "name": "Hint",
+                      "fill": "$text-tertiary",
+                      "content": "Новые события появятся здесь автоматически",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 12,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "R3ntFl",
+          "name": "Row 2",
+          "width": "fill_container",
+          "height": "fill_container",
+          "gap": 16,
+          "children": [
+            {
+              "type": "frame",
+              "id": "b52LJ1",
+              "name": "Пауза · 7 новых",
+              "width": "fill_container",
+              "height": "fill_container",
+              "fill": "$bg-surface",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$border-subtle",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "gap": 10,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "FIV5G",
+                  "name": "Top",
+                  "width": "fill_container",
+                  "height": 34,
+                  "justifyContent": "space_between",
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "i5b7ut",
+                      "name": "Status",
+                      "gap": 7,
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "ellipse",
+                          "id": "LjdCW",
+                          "name": "dot",
+                          "fill": "$status-slow",
+                          "width": 7,
+                          "height": 7
+                        },
+                        {
+                          "type": "text",
+                          "id": "i1XSm5",
+                          "name": "Label",
+                          "fill": "$status-slow",
+                          "content": "Пауза · 7 новых",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 12,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "fkaBT",
+                      "name": "Продолжить",
+                      "height": 34,
+                      "fill": "$accent-bg",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$accent-border",
+                      "strokeWidth": 1,
+                      "gap": 7,
+                      "padding": [
+                        0,
+                        12
+                      ],
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "eCJmk",
+                          "name": "play",
+                          "width": 14,
+                          "height": 14,
+                          "icon": "play",
+                          "library": "lucide",
+                          "fill": "$accent-text"
+                        },
+                        {
+                          "type": "text",
+                          "id": "YR1MS",
+                          "name": "Label",
+                          "fill": "$accent-text",
+                          "content": "Продолжить",
+                          "fontFamily": "$font-sans",
+                          "fontSize": 11,
+                          "fontWeight": "600"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "yYxMO",
+                  "name": "Frozen list",
+                  "clip": true,
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "$bg-elevated",
+                  "cornerRadius": "$radius-md",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "ZaHOM",
+                      "name": "INFO",
+                      "width": "fill_container",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "layout": "vertical",
+                      "gap": 6,
+                      "padding": [
+                        10,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "c4aCQ",
+                          "name": "Meta",
+                          "width": "fill_container",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "NnVfF",
+                              "name": "Time",
+                              "fill": "$text-tertiary",
+                              "content": "12:14:08",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "SS7qQ",
+                              "name": "Level",
+                              "fill": "$status-online",
+                              "content": "INFO",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 9,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "oEtVS",
+                              "name": "Source",
+                              "fill": "$text-secondary",
+                              "content": "MIHOMO",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 9,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "UnDOO",
+                          "name": "Message",
+                          "fill": "$text-primary",
+                          "content": "proxy group selected nl-ams-01",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "NgsbO",
+                      "name": "WARN",
+                      "width": "fill_container",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": {
+                        "bottom": 1
+                      },
+                      "layout": "vertical",
+                      "gap": 6,
+                      "padding": [
+                        10,
+                        12
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "oaDEU",
+                          "name": "Meta",
+                          "width": "fill_container",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Eqxfx",
+                              "name": "Time",
+                              "fill": "$text-tertiary",
+                              "content": "12:14:07",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "hhEPt",
+                              "name": "Level",
+                              "fill": "$status-slow",
+                              "content": "WARN",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 9,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "WpgLL",
+                              "name": "Source",
+                              "fill": "$accent-text",
+                              "content": "SUBMERGE",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 9,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "NCN9c",
+                          "name": "Message",
+                          "fill": "$text-primary",
+                          "content": "mihomo live traffic failed",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "RedUe",
+              "name": "Переподключение",
+              "width": "fill_container",
+              "height": "fill_container",
+              "fill": "$bg-surface",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$border-subtle",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "gap": 10,
+              "padding": 16,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ZZjRZ",
+                  "name": "Banner",
+                  "width": "fill_container",
+                  "height": 38,
+                  "fill": "$status-slow-bg",
+                  "cornerRadius": "$radius-md",
+                  "gap": 8,
+                  "padding": [
+                    0,
+                    11
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "icon",
+                      "id": "g3Ij0",
+                      "name": "wifi-off",
+                      "width": 15,
+                      "height": 15,
+                      "icon": "wifi-off",
+                      "library": "lucide",
+                      "fill": "$status-slow"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Wmle5",
+                      "name": "Message",
+                      "fill": "$status-slow",
+                      "content": "Соединение потеряно · повтор через 3 с",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 11,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "V6e5mp",
+                  "name": "Last events",
+                  "width": "fill_container",
+                  "height": "fill_container",
+                  "fill": "$bg-elevated",
+                  "cornerRadius": "$radius-md",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": 12,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "XA3XF",
+                      "name": "Title",
+                      "fill": "$text-primary",
+                      "content": "Последние события сохранены",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 12,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "bCthu",
+                      "name": "Hint",
+                      "fill": "$text-tertiary",
+                      "content": "Список не очищается, пока поток переподключается",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 11,
+                      "fontWeight": "normal"
+                    },
+                    {
+                      "type": "frame",
+                      "id": "glcKf",
+                      "name": "Row",
+                      "width": "fill_container",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": {
+                        "top": 1
+                      },
+                      "layout": "vertical",
+                      "gap": 6,
+                      "padding": [
+                        10,
+                        0,
+                        0,
+                        0
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "UsNKQ",
+                          "name": "Meta",
+                          "width": "fill_container",
+                          "gap": 8,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "ch4o9",
+                              "name": "Time",
+                              "fill": "$text-tertiary",
+                              "content": "12:13:59",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 10,
+                              "fontWeight": "normal"
+                            },
+                            {
+                              "type": "text",
+                              "id": "bjUgn",
+                              "name": "Level",
+                              "fill": "$status-timeout",
+                              "content": "ERROR",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 9,
+                              "fontWeight": "600"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZwruZ",
+                              "name": "Source",
+                              "fill": "$accent-text",
+                              "content": "SUBMERGE",
+                              "fontFamily": "$font-mono",
+                              "fontSize": 9,
+                              "fontWeight": "600"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "text",
+                          "id": "P90ar",
+                          "name": "Message",
+                          "fill": "$text-primary",
+                          "content": "config written but mihomo reload failed",
+                          "fontFamily": "$font-mono",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
                         }
                       ]
                     }

@@ -69,6 +69,9 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Трафик — mobile 390 | `Qocs1` | compact 2×2 metrics + stacked charts |
 | Трафик — состояния | `yjNoN` | loading / idle / reconnecting / no nodes |
 | Логи | `ZdPsU` | `MKvCg` |
+| Логи — светлая тема | `mnDGi` | unified mihomo + submerge stream |
+| Логи — mobile 390 | `zW719` | stacked metadata/message rows + compact filters |
+| Логи — состояния | `rE094` | connecting / live empty / paused / reconnecting |
 | Диагностика | `QoRoZ` | `AqDqR` |
 | Раздел в разработке (placeholder) | `fFpGe` | `gsI9Q` |
 | Sidebar (reusable) | `t0Wg2` | — |
