@@ -60,7 +60,7 @@ jobs:
       # Tags: :latest + :<sha> on master, a single :pr-<N> preview tag on pull requests.
       # `latest=false` disables the action's auto-latest so the tag set is exactly these.
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/gentslava/${{ matrix.image }}
           flavor: latest=false
