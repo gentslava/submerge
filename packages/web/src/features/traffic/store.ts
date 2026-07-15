@@ -11,6 +11,7 @@ export interface TrafficLatencySnapshot {
   node: string | null;
   current: number | null;
   samples: readonly number[];
+  sampleTimes: readonly (number | null)[];
 }
 
 export interface TrafficDashboardSnapshot {
@@ -55,6 +56,22 @@ function appendedHistoryValues<T>(previous: readonly T[], next: readonly T[]): T
   return previous.length === 0 ? [...next] : [next.at(-1) as T];
 }
 
+function parsedTimestamp(value: string): number | null {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function alignedHistoryTimes(
+  history: readonly number[],
+  timestamps: readonly string[] | undefined,
+  count: number,
+): (number | null)[] {
+  if (timestamps === undefined || timestamps.length !== history.length) {
+    return Array.from({ length: count }, () => null);
+  }
+  return timestamps.slice(-count).map(parsedTimestamp);
+}
+
 export function createTrafficDashboardStore(): TrafficDashboardStore {
   const listeners = new Set<() => void>();
   const monitoringStartedAt = Date.now();
@@ -66,6 +83,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
   let latencyNode: string | null = null;
   let latencyCurrent: number | null = null;
   let latencySamples: number[] = [];
+  let latencySampleTimes: (number | null)[] = [];
   let lastLatencyHistory: number[] = [];
   let lastLatencyHistoryTimestamps: string[] | null = null;
 
@@ -76,7 +94,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
     lastSampleAt: null,
     totals: null,
     sessionBytes: null,
-    latency: { node: null, current: null, samples: [] },
+    latency: { node: null, current: null, samples: [], sampleTimes: [] },
   };
 
   function publish(): void {
@@ -91,6 +109,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
         node: latencyNode,
         current: latencyCurrent,
         samples: [...latencySamples],
+        sampleTimes: [...latencySampleTimes],
       },
     };
     for (const listener of listeners) listener();
@@ -124,6 +143,13 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
         latencyNode = active;
         latencyCurrent = activeNode?.delay ?? null;
         latencySamples = activeNode?.history.slice(-LATENCY_WINDOW) ?? [];
+        latencySampleTimes = activeNode
+          ? alignedHistoryTimes(
+              activeNode.history,
+              activeNode.historyTimestamps,
+              latencySamples.length,
+            )
+          : [];
         lastLatencyHistory = activeNode ? [...activeNode.history] : [];
         lastLatencyHistoryTimestamps = activeNode?.historyTimestamps
           ? [...activeNode.historyTimestamps]
@@ -146,6 +172,12 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
             : appendedHistoryValues(lastLatencyHistory, activeNode.history);
           if (appended.length > 0) {
             latencySamples = [...latencySamples, ...appended].slice(-LATENCY_WINDOW);
+            const appendedTimes = alignedHistoryTimes(
+              activeNode.history,
+              nextTimestamps,
+              appended.length,
+            );
+            latencySampleTimes = [...latencySampleTimes, ...appendedTimes].slice(-LATENCY_WINDOW);
           }
           lastLatencyHistory = [...activeNode.history];
           lastLatencyHistoryTimestamps = nextTimestamps ? [...nextTimestamps] : null;
@@ -157,6 +189,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
       baseline = totals ? { ...totals } : null;
       samples = [];
       latencySamples = [];
+      latencySampleTimes = [];
       publish();
     },
   };

@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { TrafficBucketSample } from "./presentation";
 import { TrafficDashboardView, type TrafficDashboardViewProps } from "./TrafficScreen";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -20,9 +21,20 @@ function props(overrides: Partial<TrafficDashboardViewProps> = {}): TrafficDashb
     sessionBytes: 42 * 1024 * 1024,
     connectionsUnavailable: false,
     activeNode: "nl-ams-01",
-    trafficSamples: [{ up: 1.31 * 1024 * 1024, down: 9.4 * 1024 * 1024, at: 1_000 }],
+    trafficSamples: [
+      {
+        up: 1.31 * 1024 * 1024,
+        down: 9.4 * 1024 * 1024,
+        at: 3_000,
+        startedAt: 0,
+        endedAt: 3_000,
+        peak: 11 * 1024 * 1024,
+        sampleCount: 3,
+      } satisfies TrafficBucketSample,
+    ],
     latencyCurrent: 48,
     latencySamples: [45, 48],
+    latencySampleTimes: [1_000, 2_000],
     checkIntervalSec: 300,
     resetDisabled: false,
     onReset: vi.fn(),

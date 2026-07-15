@@ -15,7 +15,7 @@ import {
   ServerOff,
   WifiOff,
 } from "lucide-react";
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useLiveState } from "@/features/live/LiveProvider";
@@ -23,8 +23,8 @@ import { formatBytes, formatRate, realNodes } from "@/features/nodes/nodeView";
 import { pluralRu } from "@/lib/plural";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { type TrafficBucketSample, useTrafficPresentation } from "./presentation";
 import { connectionCountForMetric, type TrafficViewState, trafficViewState } from "./state";
-import type { TimedTrafficSample } from "./store";
 import { ThroughputChart, TrafficLatencyChart } from "./TrafficCharts";
 
 export interface TrafficDashboardViewProps {
@@ -35,9 +35,10 @@ export interface TrafficDashboardViewProps {
   sessionBytes: number | null;
   connectionsUnavailable: boolean;
   activeNode: string | null;
-  trafficSamples: readonly TimedTrafficSample[];
+  trafficSamples: readonly TrafficBucketSample[];
   latencyCurrent: number | null;
   latencySamples: readonly number[];
+  latencySampleTimes: readonly (number | null)[];
   checkIntervalSec: number;
   resetDisabled: boolean;
   onReset: () => void;
@@ -55,7 +56,6 @@ function useFreshnessClock(): number {
 export function TrafficScreen() {
   const trpc = useTRPC();
   const { traffic, mihomo } = useLiveState();
-  const snapshot = useSyncExternalStore(traffic.subscribe, traffic.getSnapshot);
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
   const channelQuery = useQuery(trpc.channels.get.queryOptions());
   const connectionsQuery = useQuery(
@@ -63,17 +63,20 @@ export function TrafficScreen() {
   );
   const now = useFreshnessClock();
 
+  const snapshot = traffic.getSnapshot();
   const latest = snapshot.currentSample;
   const view = nodesQuery.data;
   const connectionsUnavailable = connectionsQuery.isError;
-  const connectionCount = connectionCountForMetric(
+  const observedConnectionCount = connectionCountForMetric(
     connectionsQuery.data?.connections.length,
     connectionsUnavailable,
   );
+  const presentation = useTrafficPresentation(traffic, observedConnectionCount);
+  const connectionCount = connectionsUnavailable ? null : presentation.snapshot.connectionCount;
   const state = trafficViewState({
     nodesResolved: nodesQuery.data !== undefined || nodesQuery.isError,
     realNodeCount: view === undefined ? null : realNodes(view.all).length,
-    connectionCount,
+    connectionCount: observedConnectionCount,
     sample: latest,
     lastSampleAt: snapshot.lastSampleAt,
     monitoringStartedAt: snapshot.monitoringStartedAt,
@@ -89,21 +92,23 @@ export function TrafficScreen() {
     snapshot.latency.samples.length === 0;
   function resetSession(): void {
     traffic.reset();
+    presentation.reset();
     toast.success("Сессия сброшена");
   }
 
   return (
     <TrafficDashboardView
       state={state}
-      downloadRate={latest?.down ?? null}
-      uploadRate={latest?.up ?? null}
+      downloadRate={presentation.snapshot.currentBucket?.down ?? null}
+      uploadRate={presentation.snapshot.currentBucket?.up ?? null}
       connectionCount={connectionCount}
-      sessionBytes={snapshot.sessionBytes}
+      sessionBytes={presentation.snapshot.sessionBytes}
       connectionsUnavailable={connectionsUnavailable}
       activeNode={snapshot.latency.node}
-      trafficSamples={snapshot.samples}
+      trafficSamples={presentation.snapshot.buckets}
       latencyCurrent={snapshot.latency.current}
       latencySamples={snapshot.latency.samples}
+      latencySampleTimes={snapshot.latency.sampleTimes}
       checkIntervalSec={checkIntervalSec}
       resetDisabled={resetDisabled}
       onReset={resetSession}
@@ -204,6 +209,7 @@ export function TrafficDashboardView(props: TrafficDashboardViewProps) {
                 node={props.activeNode}
                 current={props.latencyCurrent}
                 samples={props.latencySamples}
+                sampleTimes={props.latencySampleTimes}
                 checkIntervalSec={props.checkIntervalSec}
               />
               <ThroughputChart samples={props.trafficSamples} />

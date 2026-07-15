@@ -469,7 +469,7 @@ Do not push. Update the spec/plan status only after the complete feature is gree
 - Modify: `packages/web/src/features/traffic/TrafficCharts.test.tsx`
 - Modify: `packages/web/e2e/traffic-layout.spec.ts`
 
-- [ ] **Step 1: Write failing three-second aggregation tests**
+- [x] **Step 1: Write failing three-second aggregation tests**
 
 Define `TRAFFIC_PRESENTATION_MS = 3_000`, a `TrafficBucketSample` carrying averaged
 `up`/`down`, `startedAt`, `endedAt`, and `peak`, and a pure
@@ -487,7 +487,7 @@ pnpm -F @submerge/web exec vitest run src/features/traffic/presentation.test.ts
 Expected: FAIL before `presentation.ts` exists, then PASS after the minimal pure
 implementation.
 
-- [ ] **Step 2: Commit one coherent Traffic presentation snapshot every three seconds**
+- [x] **Step 2: Commit one coherent Traffic presentation snapshot every three seconds**
 
 Add a small screen-level presentation hook that reads the persistent raw store only at the
 wall-clock bucket boundary. Its committed snapshot contains the latest completed bucket,
@@ -504,7 +504,7 @@ pnpm -F @submerge/web exec vitest run src/features/traffic/TrafficScreen.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 3: Preserve latency timestamps for honest tooltips**
+- [x] **Step 3: Preserve latency timestamps for honest tooltips**
 
 Extend `TrafficLatencySnapshot` with a parallel `sampleTimes: readonly (number | null)[]`.
 Seed and append it from `NodeItem.historyTimestamps`, keep it aligned through the 40-sample
@@ -519,10 +519,10 @@ pnpm -F @submerge/web exec vitest run src/features/traffic/store.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 4: Replace delayed native titles with a visible chart inspector**
+- [x] **Step 4: Replace delayed native titles with a visible chart inspector**
 
-Make the chart region keyboard focusable and keep bar shapes decorative. Pointer hover or
-focus selects a sample and freezes the rendered window; ArrowLeft/ArrowRight change the
+Add a dedicated keyboard inspector control and keep bar shapes decorative. Pointer hover or
+keyboard focus selects a sample and freezes the rendered window; ArrowLeft/ArrowRight change the
 selection, Enter or click/tap pins it, and Escape/outside press clears it. The throughput
 tooltip renders the bucket time range, averaged download/upload, and peak; latency renders
 the measurement time plus milliseconds or «таймаут». Key rendered columns by bucket/timestamp
@@ -537,11 +537,12 @@ pnpm -F @submerge/web exec vitest run src/features/traffic/TrafficCharts.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Verify browser behaviour and responsive layout**
+- [x] **Step 5: Verify browser behaviour and responsive layout**
 
-Extend the deterministic fixture with at least six traffic events. Assert that rate cards and
-the chart advance once per three-second bucket, hover exposes the matching tooltip, click
-pins it across the next bucket, Escape closes it, and reset stays immediate. Re-run the
+Extend the deterministic fixture with a complete three-sample presentation bucket. Assert that
+rate cards and the chart expose the same average, hover exposes the matching tooltip, click
+pins it, Escape closes it, and reset stays immediate. Component fake-timer coverage verifies
+the shared boundary and retention while new props arrive. Re-run the
 existing dark/light/mobile, state, overflow, and container-boundary coverage with one worker
 and zero retries.
 
@@ -552,7 +553,7 @@ pnpm -F @submerge/web exec playwright test e2e/traffic-layout.spec.ts e2e/layout
 
 Expected: all static gates and the focused Playwright suite pass.
 
-- [ ] **Step 6: Review, commit, and update PR #23**
+- [x] **Step 6: Review, commit, and update PR #23**
 
 Run the required incremental review on this behaviour slice, resolve findings, then run the
 final Traffic integration review and repeat Step 5. Commit with:
@@ -562,3 +563,12 @@ git commit -m "fix(traffic): stabilize live chart inspection" -m "Co-Authored-By
 ```
 
 Push `feature/traffic-screen`; do not merge the draft PR.
+
+**Completion evidence:**
+
+- independent Codex review completed; all six P2 findings were resolved with regression tests;
+- repository Biome, token drift, TypeScript, 634 unit tests, and production builds passed;
+- the post-review web suite passed 186/186 and the focused Traffic suite passed 29/29;
+- Playwright passed 14/14 for Traffic plus the layout contract and 7/7 after review fixes,
+  including dark/light 1440×1024, mobile 390, tooltip containment, states, reset, container
+  boundaries, and all supported widths with zero retries.

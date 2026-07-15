@@ -76,7 +76,12 @@ describe("useLive Traffic dashboard integration", () => {
       samples: [{ up: 12, down: 34 }],
       totals: { up: 1_000, down: 2_000 },
       sessionBytes: 0,
-      latency: { node: "Amsterdam", current: 42, samples: [40, 42] },
+      latency: {
+        node: "Amsterdam",
+        current: 42,
+        samples: [40, 42],
+        sampleTimes: [null, null],
+      },
     });
     expect(result.current.totals).toEqual({ up: 1_000, down: 2_000 });
     expect(result.current.latency).toEqual([40, 42]);

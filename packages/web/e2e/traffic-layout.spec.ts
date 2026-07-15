@@ -9,6 +9,9 @@ import {
 
 const activeNode = "Амстердам — основной маршрут";
 const nodeHistory = Array.from({ length: 40 }, (_, index) => 34 + ((index * 13) % 58));
+const nodeHistoryTimestamps = Array.from({ length: 40 }, (_, index) =>
+  new Date(Date.UTC(2026, 6, 15, 0, index * 5)).toISOString(),
+);
 const nodeView: NodeView = {
   now: "AUTO",
   autoNow: activeNode,
@@ -20,6 +23,7 @@ const nodeView: NodeView = {
       network: "tcp",
       security: "reality",
       history: nodeHistory,
+      historyTimestamps: nodeHistoryTimestamps,
     },
   ],
 };
@@ -40,17 +44,18 @@ const connections = {
 };
 
 function populatedEvents(): LiveEvent[] {
-  const samples: LiveEvent[] = Array.from({ length: 59 }, (_, index) => ({
+  const sample = {
     type: "traffic" as const,
-    up: 180_000 + ((index * 81_000) % 1_050_000),
-    down: 620_000 + ((index * 290_000) % 8_000_000),
-  }));
+    up: 1.31 * 1024 * 1024,
+    down: 9.4 * 1024 * 1024,
+  };
   return [
     { type: "health", mihomo: true },
     { type: "nodeUpdate", view: nodeView },
     { type: "totals", up: 10_000, down: 20_000 },
-    ...samples,
-    { type: "traffic", up: 1.31 * 1024 * 1024, down: 9.4 * 1024 * 1024 },
+    sample,
+    sample,
+    sample,
     { type: "totals", up: 10_000 + 16 * 1024 * 1024, down: 20_000 + 26 * 1024 * 1024 },
   ];
 }
@@ -135,8 +140,22 @@ test("populated dark desktop matches the Traffic data layout and reset contract"
   await expect(
     page.getByRole("link", { name: "12 соединений — открыть экран Соединения" }),
   ).toBeVisible();
+  await expect(page.getByTitle("9.4 МБ/с", { exact: true })).toBeVisible();
   await expect(page.getByText(/40 замеров за/)).toHaveClass(/sr-only/);
-  await expect(page.getByText(/60 замеров за/)).toHaveClass(/sr-only/);
+  await expect(page.getByText(/1 замер за 3 с/)).toHaveClass(/sr-only/);
+
+  const throughputSample = page
+    .locator('.traffic-chart-variant--wide [data-testid="traffic-throughput-sample"]')
+    .last();
+  await throughputSample.hover();
+  const tooltip = page.getByRole("tooltip");
+  await expect(tooltip).toContainText("↓ 9.4 МБ/с");
+  await expect(tooltip).toContainText("↑ 1.3 МБ/с");
+  await expect(tooltip).toContainText("пик");
+  await throughputSample.click();
+  await expect(tooltip).toContainText("закреплено");
+  await page.keyboard.press("Escape");
+  await expect(tooltip).toBeHidden();
   await page.screenshot({ path: "/tmp/traffic-dark-1440.png", fullPage: true });
 
   await page.getByRole("button", { name: "Сбросить" }).click();
@@ -155,7 +174,7 @@ test("light desktop uses the approved light latency history palette", async ({ p
   await openTraffic(page, { colorScheme: "light" });
 
   await expect(page.locator("html")).not.toHaveClass(/dark/);
-  const latencyBars = page.locator(".traffic-chart-variant--wide .traffic-latency-plot > span");
+  const latencyBars = page.locator(".traffic-chart-variant--wide .traffic-latency-plot > *");
   await expect(latencyBars.first().locator("span")).toHaveCSS(
     "background-color",
     "rgb(216, 218, 243)",
@@ -173,6 +192,7 @@ test("mobile keeps a 2x2 metric grid, compact reset, and reachable final chart",
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openTraffic(page);
+  await expect(page.getByTitle("9.4 МБ/с", { exact: true })).toBeVisible();
 
   expect(
     await page
@@ -188,7 +208,7 @@ test("mobile keeps a 2x2 metric grid, compact reset, and reachable final chart",
   );
   expect(
     await visibleChildren(page, ".traffic-chart-variant--compact .traffic-throughput-plot"),
-  ).toBe(18);
+  ).toBe(20);
 
   const headerBox = await page.locator(".traffic-header").boundingBox();
   const metricBox = await page.locator(".traffic-metric").first().boundingBox();
@@ -206,6 +226,17 @@ test("mobile keeps a 2x2 metric grid, compact reset, and reachable final chart",
   expect(latencyBox?.height).toBeCloseTo(161, 0);
   expect(throughputBox?.y).toBeCloseTo(395, 0);
   expect(throughputBox?.height).toBeCloseTo(155, 0);
+
+  await page
+    .locator('.traffic-chart-variant--compact [data-testid="traffic-throughput-sample"]')
+    .last()
+    .hover();
+  const tooltipBox = await page.getByRole("tooltip").boundingBox();
+  expect(tooltipBox?.x ?? -Infinity).toBeGreaterThanOrEqual(throughputBox?.x ?? Infinity);
+  expect((tooltipBox?.x ?? Infinity) + (tooltipBox?.width ?? 0)).toBeLessThanOrEqual(
+    (throughputBox?.x ?? -Infinity) + (throughputBox?.width ?? 0),
+  );
+  await page.mouse.move(0, 0);
 
   const lastChart = page.getByRole("region", { name: "Пропускная способность" });
   await lastChart.scrollIntoViewIfNeeded();

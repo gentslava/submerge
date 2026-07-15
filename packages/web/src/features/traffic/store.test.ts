@@ -99,6 +99,7 @@ describe("traffic dashboard store", () => {
       node: "Amsterdam",
       current: 45,
       samples: firstHistory.slice(-40),
+      sampleTimes: Array.from({ length: 40 }, () => null),
     });
 
     store.pushNodeView(view("AUTO", "Amsterdam", [node("Amsterdam", 45, firstHistory)]));
@@ -112,6 +113,7 @@ describe("traffic dashboard store", () => {
       node: "Madrid",
       current: 32,
       samples: [30, 32],
+      sampleTimes: [null, null],
     });
   });
 
@@ -129,6 +131,7 @@ describe("traffic dashboard store", () => {
     );
 
     expect(store.getSnapshot().latency.samples).toEqual([42]);
+    expect(store.getSnapshot().latency.sampleTimes).toEqual([Date.parse("2026-07-15T00:01:00Z")]);
   });
 
   it("resets only displayed session windows and preserves last-seen latency state", () => {
@@ -149,7 +152,7 @@ describe("traffic dashboard store", () => {
       lastSampleAt: 100,
       totals: { up: 1_100, down: 2_200 },
       sessionBytes: 0,
-      latency: { node: "Amsterdam", current: 42, samples: [] },
+      latency: { node: "Amsterdam", current: 42, samples: [], sampleTimes: [] },
     });
     expect(history).toEqual([41, 42]);
 
