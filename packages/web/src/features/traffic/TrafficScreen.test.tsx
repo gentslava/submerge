@@ -36,9 +36,9 @@ describe("TrafficDashboardView", () => {
 
     expect(screen.getByRole("heading", { name: "Трафик" })).toBeInTheDocument();
     expect(screen.getByText("Суммарный трафик всех каналов · mihomo")).toBeInTheDocument();
-    expect(screen.getByText("9.4 МБ/с")).toBeInTheDocument();
-    expect(screen.getByText("1.3 МБ/с")).toBeInTheDocument();
-    expect(screen.getByText("42.0 МБ")).toBeInTheDocument();
+    expect(screen.getByTitle("9.4 МБ/с")).toBeInTheDocument();
+    expect(screen.getByTitle("1.3 МБ/с")).toBeInTheDocument();
+    expect(screen.getByTitle("42.0 МБ")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "12 соединений — открыть экран Соединения" }),
     ).toHaveAttribute("href", "/connections");
@@ -61,6 +61,9 @@ describe("TrafficDashboardView", () => {
       within(screen.getByRole("region", { name: "Live-метрики трафика" })).getAllByText("—"),
     ).toHaveLength(4);
     expect(screen.queryByText("0 Б/с")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Соединения загружаются — открыть экран Соединения" }),
+    ).toBeInTheDocument();
 
     rerender(
       <TrafficDashboardView
@@ -73,14 +76,17 @@ describe("TrafficDashboardView", () => {
         })}
       />,
     );
-    expect(screen.getAllByText("0 Б/с")).toHaveLength(2);
-    expect(screen.getByText("0 Б")).toBeInTheDocument();
+    expect(screen.getAllByTitle("0 Б/с")).toHaveLength(2);
+    expect(screen.getByTitle("0 Б")).toBeInTheDocument();
 
     rerender(
       <TrafficDashboardView {...props({ connectionCount: null, connectionsUnavailable: true })} />,
     );
     expect(screen.getByText("Соединения недоступны")).toBeInTheDocument();
-    expect(screen.getByText("9.4 МБ/с")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Соединения недоступны — открыть экран Соединения" }),
+    ).toBeInTheDocument();
+    expect(screen.getByTitle("9.4 МБ/с")).toBeInTheDocument();
   });
 
   it("renders loading, idle, reconnecting, and no-node states with text", () => {
@@ -89,10 +95,15 @@ describe("TrafficDashboardView", () => {
 
     rerender(<TrafficDashboardView {...props({ state: "idle" })} />);
     expect(screen.getByText("Прокси подключён, трафика нет")).toBeInTheDocument();
+    expect(screen.getByText("Трафик появится после первого запроса")).toBeVisible();
+    expect(
+      screen.queryByRole("region", { name: "Пропускная способность" }),
+    ).not.toBeInTheDocument();
 
     rerender(<TrafficDashboardView {...props({ state: "reconnecting" })} />);
     expect(screen.getByText("Переподключаемся к mihomo")).toBeInTheDocument();
-    expect(screen.getByText("9.4 МБ/с")).toBeInTheDocument();
+    expect(screen.getByText("Нет новых данных · повторяем автоматически")).toBeInTheDocument();
+    expect(screen.getByTitle("9.4 МБ/с")).toBeInTheDocument();
 
     rerender(<TrafficDashboardView {...props({ state: "no-nodes" })} />);
     expect(screen.getByText("Добавьте первый источник")).toBeInTheDocument();
@@ -106,7 +117,10 @@ describe("TrafficDashboardView", () => {
     const activeNode = "very-long-active-node-name-that-must-not-be-lost";
     render(<TrafficDashboardView {...props({ activeNode })} />);
 
-    expect(screen.getByTitle(activeNode)).toHaveTextContent(activeNode);
+    expect(screen.getAllByTitle(activeNode)).toHaveLength(2);
+    expect(
+      screen.getByText(activeNode, { selector: ".traffic-latency-node-compact" }),
+    ).toBeInTheDocument();
   });
 
   it("exposes the local session reset as an accessible, disableable button", async () => {

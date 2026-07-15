@@ -2,8 +2,19 @@ import type { NodeItem, NodeView } from "@submerge/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTrafficDashboardStore } from "./store";
 
-function node(name: string, delay: number | null, history: number[]): NodeItem {
-  return { name, type: "vless", delay, history };
+function node(
+  name: string,
+  delay: number | null,
+  history: number[],
+  historyTimestamps?: string[],
+): NodeItem {
+  return {
+    name,
+    type: "vless",
+    delay,
+    history,
+    ...(historyTimestamps ? { historyTimestamps } : {}),
+  };
 }
 
 function view(now: string | null, autoNow: string | null, all: NodeItem[]): NodeView {
@@ -23,6 +34,7 @@ describe("traffic dashboard store", () => {
     store.subscribe(listener);
 
     const initial = store.getSnapshot();
+    expect(initial.monitoringStartedAt).toBe(Date.now());
     store.pushTraffic({ up: 10, down: 20 });
     const first = store.getSnapshot();
 
@@ -39,6 +51,7 @@ describe("traffic dashboard store", () => {
     expect(store.getSnapshot().samples).toHaveLength(60);
     expect(store.getSnapshot().samples[0]).toEqual({ up: 1, down: 2, at: Date.now() + 1 });
     expect(store.getSnapshot().lastSampleAt).toBe(Date.now() + 60);
+    expect(store.getSnapshot().monitoringStartedAt).toBe(initial.monitoringStartedAt);
     expect(listener).toHaveBeenCalledTimes(61);
   });
 
@@ -102,6 +115,22 @@ describe("traffic dashboard store", () => {
     });
   });
 
+  it("advances a full latency window when equal delays have distinct timestamps", () => {
+    const store = createTrafficDashboardStore();
+    const history = Array.from({ length: 40 }, () => 42);
+    const timestamps = Array.from({ length: 40 }, (_, index) => `2026-07-15T00:00:${index}Z`);
+
+    store.pushNodeView(view("Amsterdam", null, [node("Amsterdam", 42, history, timestamps)]));
+    store.reset();
+    store.pushNodeView(
+      view("Amsterdam", null, [
+        node("Amsterdam", 42, history, [...timestamps.slice(1), "2026-07-15T00:01:00Z"]),
+      ]),
+    );
+
+    expect(store.getSnapshot().latency.samples).toEqual([42]);
+  });
+
   it("resets only displayed session windows and preserves last-seen latency state", () => {
     const history = [41, 42];
     const store = createTrafficDashboardStore();
@@ -109,10 +138,12 @@ describe("traffic dashboard store", () => {
     store.pushTotals({ up: 1_000, down: 2_000 });
     store.pushTotals({ up: 1_100, down: 2_200 });
     store.pushNodeView(view("Amsterdam", null, [node("Amsterdam", 42, history)]));
+    const monitoringStartedAt = store.getSnapshot().monitoringStartedAt;
 
     store.reset();
 
     expect(store.getSnapshot()).toEqual({
+      monitoringStartedAt,
       samples: [],
       currentSample: { up: 10, down: 20, at: 100 },
       lastSampleAt: 100,
@@ -125,8 +156,11 @@ describe("traffic dashboard store", () => {
     store.pushNodeView(view("Amsterdam", null, [node("Amsterdam", 42, history)]));
     expect(store.getSnapshot().latency.samples).toEqual([]);
 
-    store.pushNodeView(view("Amsterdam", null, [node("Amsterdam", 43, [...history, 43])]));
-    expect(store.getSnapshot().latency.samples).toEqual([43]);
+    store.pushNodeView(view("Amsterdam", null, [node("Amsterdam", 42, [...history, 42])]));
+    expect(store.getSnapshot().latency.samples).toEqual([42]);
+
+    store.pushNodeView(view("Amsterdam", null, [node("Amsterdam", 43, [...history, 42, 43])]));
+    expect(store.getSnapshot().latency.samples).toEqual([42, 43]);
   });
 
   it("retains state across subscribers and stops notifying after unsubscribe", () => {

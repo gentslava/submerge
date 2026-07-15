@@ -81,6 +81,9 @@ export const nodeItemSchema = z.object({
   // mihomo's recorded delay history (ms, oldest → newest; timeouts kept as 0 so the
   // chart can render them as instability) — drives the live latency chart.
   history: z.array(z.number()).default([]),
+  // Parallel identities for `history`, present on policy-aware live views. Delays
+  // alone cannot distinguish two consecutive probes that both measured 42 ms.
+  historyTimestamps: z.array(z.string()).optional(),
   // Present only for a collapsed group node: its member servers.
   members: z.array(nodeMemberSchema).optional(),
   // Global deny-list flag: true = dropped from the engine config (never routed/pinged),

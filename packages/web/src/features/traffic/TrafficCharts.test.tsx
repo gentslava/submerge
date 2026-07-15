@@ -16,9 +16,31 @@ describe("TrafficLatencyChart", () => {
     expect(screen.getByTestId("traffic-latency-bars")).toHaveAttribute("aria-hidden", "true");
     expect(
       screen.getByText(
-        "Задержка основного канала через nl-ams-01: сейчас таймаут, минимум 48 ms, максимум 72 ms, 3 замера за 15 мин.",
+        "Задержка основного канала через nl-ams-01: сейчас таймаут, минимум 48 ms, максимум 72 ms, 3 замера за 10 мин.",
       ),
     ).toHaveClass("sr-only");
+  });
+
+  it("compresses the full latency window into the compact 24-slot plot", () => {
+    render(
+      <TrafficLatencyChart
+        node="nl-ams-01"
+        current={100}
+        samples={[1_000, ...Array.from({ length: 39 }, () => 100)]}
+        checkIntervalSec={1}
+      />,
+    );
+
+    expect(
+      screen.getByTestId("traffic-latency-bars").lastElementChild?.firstElementChild,
+    ).toHaveClass("h-[10%]");
+    expect(
+      screen.getByTestId("traffic-latency-bars-compact").lastElementChild?.firstElementChild,
+    ).toHaveClass("h-[10%]");
+    expect(
+      screen.getByTestId("traffic-latency-bars-compact").firstElementChild?.firstElementChild,
+    ).toHaveClass("h-full");
+    expect(screen.getByTestId("traffic-latency-bars-compact-axis")).toHaveTextContent("−39 с");
   });
 
   it("keeps an empty latency series honest", () => {
@@ -48,11 +70,37 @@ describe("ThroughputChart", () => {
 
     expect(screen.getByTestId("traffic-throughput-bars")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByText(/2 замера за 2 с/)).toHaveClass("sr-only");
+    expect(screen.getByText(/минимум 500 Б\/с, пик 1000 Б\/с/)).toHaveClass("sr-only");
+  });
+
+  it("compresses the full throughput window into the compact 18-slot plot", () => {
+    render(
+      <ThroughputChart
+        samples={[
+          { up: 0, down: 1_000, at: 1_000 },
+          ...Array.from({ length: 59 }, (_, index) => ({
+            up: 0,
+            down: 100,
+            at: 2_000 + index * 1_000,
+          })),
+        ]}
+      />,
+    );
+
+    expect(
+      screen.getByTestId("traffic-throughput-bars").lastElementChild?.firstElementChild,
+    ).toHaveClass("h-[10%]");
+    expect(
+      screen.getByTestId("traffic-throughput-bars-compact").lastElementChild?.firstElementChild,
+    ).toHaveClass("h-[10%]");
+    expect(
+      screen.getByTestId("traffic-throughput-bars-compact").firstElementChild?.firstElementChild,
+    ).toHaveClass("h-full");
   });
 
   it("renders a visible baseline for real zero samples", () => {
     render(<ThroughputChart samples={[{ up: 0, down: 0, at: 1_000 }]} />);
 
-    expect(screen.getByTestId("traffic-throughput-zero")).toBeInTheDocument();
+    expect(screen.getByTestId("traffic-throughput-bars-zero")).toBeInTheDocument();
   });
 });

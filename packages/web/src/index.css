@@ -111,6 +111,10 @@
      text-sm/xs/lg/2xl remain available — nothing here removes them. */
   --text-h1: 24px;
   --text-h1--font-weight: 600;
+  --text-page-title-compact: 22px;
+  --text-page-title-compact--font-weight: 600;
+  --text-metric: 26px;
+  --text-metric--font-weight: 600;
   --text-section: 18px;
   --text-section--font-weight: 600;
   --text-cardtitle: 15px;
@@ -127,6 +131,7 @@
      style (600 + tracking); fine is its regular-weight counterpart. */
   --text-fine: 11px;
   --text-micro: 10px;
+  --text-axis: 9px;
 }
 
 /* Uses role vars directly: @layer base runs before @theme inline utilities exist. */

@@ -16,6 +16,7 @@ function input(overrides: Partial<TrafficViewStateInput> = {}): TrafficViewState
     connectionCount: 0,
     sample: { up: 0, down: 0, at: NOW },
     lastSampleAt: NOW,
+    monitoringStartedAt: NOW,
     mihomo: true,
     now: NOW,
     ...overrides,
@@ -26,6 +27,17 @@ describe("trafficViewState", () => {
   it("loads only while neither nodes nor a live sample have resolved", () => {
     expect(
       trafficViewState(input({ nodesResolved: false, sample: null, lastSampleAt: null })),
+    ).toBe("loading");
+    expect(
+      trafficViewState(
+        input({
+          nodesResolved: false,
+          sample: null,
+          lastSampleAt: null,
+          monitoringStartedAt: NOW - 5_001,
+          mihomo: false,
+        }),
+      ),
     ).toBe("loading");
     expect(trafficViewState(input({ nodesResolved: false }))).toBe("idle");
   });
@@ -42,6 +54,32 @@ describe("trafficViewState", () => {
         }),
       ),
     ).toBe("no-nodes");
+
+    expect(
+      trafficViewState(
+        input({
+          realNodeCount: 0,
+          connectionCount: null,
+          sample: null,
+          lastSampleAt: null,
+        }),
+      ),
+    ).toBe("loading");
+  });
+
+  it("does not mistake an unavailable node list for a successful empty result", () => {
+    expect(
+      trafficViewState(
+        input({
+          nodesResolved: true,
+          realNodeCount: null,
+          connectionCount: 0,
+          sample: null,
+          lastSampleAt: null,
+          mihomo: false,
+        }),
+      ),
+    ).toBe("reconnecting");
   });
 
   it("marks explicit health failure or a sample older than five seconds as reconnecting", () => {
@@ -50,9 +88,30 @@ describe("trafficViewState", () => {
     expect(trafficViewState(input({ lastSampleAt: NOW - 5_000 }))).toBe("idle");
   });
 
+  it("marks a stream without its first sample as stale after five seconds", () => {
+    expect(
+      trafficViewState(
+        input({
+          sample: null,
+          lastSampleAt: null,
+          monitoringStartedAt: NOW - 5_000,
+        }),
+      ),
+    ).toBe("loading");
+    expect(
+      trafficViewState(
+        input({
+          sample: null,
+          lastSampleAt: null,
+          monitoringStartedAt: NOW - 5_001,
+        }),
+      ),
+    ).toBe("reconnecting");
+  });
+
   it("treats a fresh zero sample with no connections as honest idle", () => {
     expect(trafficViewState(input())).toBe("idle");
-    expect(trafficViewState(input({ connectionCount: null }))).toBe("idle");
+    expect(trafficViewState(input({ connectionCount: null }))).toBe("populated");
   });
 
   it("treats positive traffic or an active connection as populated", () => {

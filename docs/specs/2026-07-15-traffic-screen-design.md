@@ -72,8 +72,10 @@ State precedence is deterministic:
    current traffic. Show «Добавьте первый источник» with a `/sources` action.
 3. **Reconnecting** — tRPC live subscription failed, mihomo health is false, or the
    traffic stream has produced no sample for more than five seconds. Keep the last
-   known values visible at reduced emphasis, label them stale, and show the next
-   automatic retry. Do not replace them with zeroes.
+   known values visible at reduced emphasis, label them stale, and say that retry is
+   automatic. Do not replace them with zeroes. The browser `EventSource` used by
+   `httpSubscriptionLink` does not expose its internal retry deadline, so the UI must
+   not invent the illustrative countdown shown in the Pencil state.
 4. **Live idle** — fresh samples are arriving with zero rates and zero active
    connections. Show valid zero values and «Трафик появится после первого запроса».
 5. **Live populated** — render the normal dashboard.
@@ -104,6 +106,8 @@ No new module or persisted telemetry is required.
   Traffic-specific session view (baseline, chart windows, and reset action). Keep
   the existing shared `LiveState.latency` series intact for the Nodes screen. Do not
   route per-second samples through broad React context state.
+- Preserve mihomo latency-history timestamps in `NodeView` so repeated equal-delay
+  checks still advance the bounded chart; numeric delay values are not identities.
 - Reuse the existing latency-bar visual language and byte/rate formatters. The
   throughput chart is a bounded 60-slot CSS bar chart; it does not require a new
   charting dependency.
@@ -116,7 +120,7 @@ Follow the named `app-page` container contract rather than viewport breakpoints.
 
 | Container | Layout |
 |---|---|
-| **compact `<42rem`** | Header action becomes an icon button with an accessible name; metrics stay in a 2×2 `minmax(0, 1fr)` grid; charts stack and use compact heights. |
+| **compact `<42rem`** | Header action becomes an icon button with an accessible name; metrics stay in a 2×2 `minmax(0, 1fr)` grid; charts stack, use compact heights, and aggregate the full 40/60-sample windows into fewer visual slots. |
 | **inline `≥42rem`** | Header title/action share a row; metric cards retain a balanced two-column arrangement while space is constrained. |
 | **data `≥48rem`** | Four metrics appear in one row; both charts use the full desktop width and the Pencil plot height. |
 

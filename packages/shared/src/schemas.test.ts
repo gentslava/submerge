@@ -78,6 +78,15 @@ describe("nodeView + tRPC input schemas", () => {
     expect(v.all[0]?.delay).toBeNull();
     expect(v.all[0]?.history).toEqual([120, 0, 95]);
   });
+  it("preserves optional latency history timestamps", () => {
+    const historyTimestamps = ["2026-07-15T00:00:00.000Z", "2026-07-15T00:05:00.000Z"];
+    const v = nodeViewSchema.parse({
+      now: "n1",
+      autoNow: null,
+      all: [{ name: "n1", type: "vless", delay: 42, history: [41, 42], historyTimestamps }],
+    });
+    expect(v.all[0]?.historyTimestamps).toEqual(historyTimestamps);
+  });
   it("validates select + reorder inputs", () => {
     expect(selectNodeInput.parse({ group: "PROXY", name: "n1" }).group).toBe("PROXY");
     expect(reorderInput.parse({ ids: [3, 1, 2] }).ids).toHaveLength(3);

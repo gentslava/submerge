@@ -14,6 +14,7 @@ export interface TrafficLatencySnapshot {
 }
 
 export interface TrafficDashboardSnapshot {
+  monitoringStartedAt: number;
   samples: readonly TimedTrafficSample[];
   currentSample: TimedTrafficSample | null;
   lastSampleAt: number | null;
@@ -39,8 +40,24 @@ function sessionDelta(
   return Math.max(0, totals.up - baseline.up + totals.down - baseline.down);
 }
 
+function appendedHistoryValues<T>(previous: readonly T[], next: readonly T[]): T[] {
+  if (next.length === 0) return [];
+
+  for (let overlap = Math.min(previous.length, next.length); overlap > 0; overlap -= 1) {
+    const previousOffset = previous.length - overlap;
+    const matches = Array.from(
+      { length: overlap },
+      (_, index) => previous[previousOffset + index] === next[index],
+    ).every(Boolean);
+    if (matches) return next.slice(overlap);
+  }
+
+  return previous.length === 0 ? [...next] : [next.at(-1) as T];
+}
+
 export function createTrafficDashboardStore(): TrafficDashboardStore {
   const listeners = new Set<() => void>();
+  const monitoringStartedAt = Date.now();
   let samples: TimedTrafficSample[] = [];
   let currentSample: TimedTrafficSample | null = null;
   let lastSampleAt: number | null = null;
@@ -49,9 +66,11 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
   let latencyNode: string | null = null;
   let latencyCurrent: number | null = null;
   let latencySamples: number[] = [];
-  let lastLatencyValue: number | undefined;
+  let lastLatencyHistory: number[] = [];
+  let lastLatencyHistoryTimestamps: string[] | null = null;
 
   let snapshot: TrafficDashboardSnapshot = {
+    monitoringStartedAt,
     samples: [],
     currentSample: null,
     lastSampleAt: null,
@@ -62,6 +81,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
 
   function publish(): void {
     snapshot = {
+      monitoringStartedAt,
       samples: [...samples],
       currentSample: currentSample ? { ...currentSample } : null,
       lastSampleAt,
@@ -104,13 +124,31 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
         latencyNode = active;
         latencyCurrent = activeNode?.delay ?? null;
         latencySamples = activeNode?.history.slice(-LATENCY_WINDOW) ?? [];
-        lastLatencyValue = activeNode?.history.at(-1);
+        lastLatencyHistory = activeNode ? [...activeNode.history] : [];
+        lastLatencyHistoryTimestamps = activeNode?.historyTimestamps
+          ? [...activeNode.historyTimestamps]
+          : null;
       } else {
         latencyCurrent = activeNode?.delay ?? null;
-        const latest = activeNode?.history.at(-1);
-        if (latest !== undefined && latest !== lastLatencyValue) {
-          latencySamples = [...latencySamples, latest].slice(-LATENCY_WINDOW);
-          lastLatencyValue = latest;
+        if (activeNode) {
+          const nextTimestamps = activeNode.historyTimestamps;
+          const timestampIdentityAvailable =
+            lastLatencyHistoryTimestamps !== null &&
+            nextTimestamps !== undefined &&
+            nextTimestamps.length === activeNode.history.length;
+          const appendedTimestampCount = timestampIdentityAvailable
+            ? appendedHistoryValues(lastLatencyHistoryTimestamps ?? [], nextTimestamps ?? []).length
+            : 0;
+          const appended = timestampIdentityAvailable
+            ? appendedTimestampCount > 0
+              ? activeNode.history.slice(-appendedTimestampCount)
+              : []
+            : appendedHistoryValues(lastLatencyHistory, activeNode.history);
+          if (appended.length > 0) {
+            latencySamples = [...latencySamples, ...appended].slice(-LATENCY_WINDOW);
+          }
+          lastLatencyHistory = [...activeNode.history];
+          lastLatencyHistoryTimestamps = nextTimestamps ? [...nextTimestamps] : null;
         }
       }
       publish();

@@ -65,7 +65,6 @@ export function TrafficScreen() {
 
   const latest = snapshot.currentSample;
   const view = nodesQuery.data;
-  const activeNode = view ? (view.now === "AUTO" ? view.autoNow : view.now) : snapshot.latency.node;
   const connectionsUnavailable = connectionsQuery.isError;
   const connectionCount = connectionCountForMetric(
     connectionsQuery.data?.connections.length,
@@ -73,10 +72,11 @@ export function TrafficScreen() {
   );
   const state = trafficViewState({
     nodesResolved: nodesQuery.data !== undefined || nodesQuery.isError,
-    realNodeCount: realNodes(view?.all ?? []).length,
+    realNodeCount: view === undefined ? null : realNodes(view.all).length,
     connectionCount,
     sample: latest,
     lastSampleAt: snapshot.lastSampleAt,
+    monitoringStartedAt: snapshot.monitoringStartedAt,
     mihomo,
     now,
   });
@@ -87,7 +87,6 @@ export function TrafficScreen() {
     snapshot.totals === null &&
     snapshot.samples.length === 0 &&
     snapshot.latency.samples.length === 0;
-
   function resetSession(): void {
     traffic.reset();
     toast.success("Сессия сброшена");
@@ -101,7 +100,7 @@ export function TrafficScreen() {
       connectionCount={connectionCount}
       sessionBytes={snapshot.sessionBytes}
       connectionsUnavailable={connectionsUnavailable}
-      activeNode={activeNode}
+      activeNode={snapshot.latency.node}
       trafficSamples={snapshot.samples}
       latencyCurrent={snapshot.latency.current}
       latencySamples={snapshot.latency.samples}
@@ -114,11 +113,16 @@ export function TrafficScreen() {
 
 export function TrafficDashboardView(props: TrafficDashboardViewProps) {
   return (
-    <div className="responsive-page responsive-page--traffic page-content flex min-w-0 flex-col gap-[22px] px-4 pt-5 pb-8">
+    <div className="responsive-page responsive-page--traffic page-content flex min-w-0 flex-col gap-[22px] px-4 pt-1 pb-8">
       <header className="traffic-header flex min-w-0 items-center justify-between gap-4">
         <div className="min-w-0 flex flex-col gap-[5px]">
-          <h1 className="text-2xl font-semibold text-text-primary">Трафик</h1>
-          <p className="text-sub text-text-secondary">Суммарный трафик всех каналов · mihomo</p>
+          <h1 className="traffic-title text-page-title-compact text-text-primary">Трафик</h1>
+          <p className="traffic-subtitle text-sub text-text-secondary">
+            <span className="traffic-subtitle-compact">Все каналы · последние 60 секунд</span>
+            <span className="traffic-subtitle-inline hidden">
+              Суммарный трафик всех каналов · mihomo
+            </span>
+          </p>
         </div>
         <Button
           type="button"
@@ -162,14 +166,16 @@ export function TrafficDashboardView(props: TrafficDashboardViewProps) {
               to="/connections"
               aria-label={
                 props.connectionCount === null
-                  ? "Соединения недоступны — открыть экран Соединения"
+                  ? props.connectionsUnavailable
+                    ? "Соединения недоступны — открыть экран Соединения"
+                    : "Соединения загружаются — открыть экран Соединения"
                   : `${props.connectionCount} ${pluralRu(props.connectionCount, [
                       "соединение",
                       "соединения",
                       "соединений",
                     ])} — открыть экран Соединения`
               }
-              className="min-w-0 rounded-[10px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
+              className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
             >
               <MetricCard
                 icon={<Cable size={18} />}
@@ -185,20 +191,24 @@ export function TrafficDashboardView(props: TrafficDashboardViewProps) {
               value={props.sessionBytes === null ? "—" : formatBytes(props.sessionBytes)}
             />
           </section>
-          <div
-            className={cn(
-              "traffic-charts flex min-w-0 flex-col gap-[22px]",
-              props.state === "reconnecting" && "opacity-60",
-            )}
-          >
-            <TrafficLatencyChart
-              node={props.activeNode}
-              current={props.latencyCurrent}
-              samples={props.latencySamples}
-              checkIntervalSec={props.checkIntervalSec}
-            />
-            <ThroughputChart samples={props.trafficSamples} />
-          </div>
+          {props.state === "idle" ? (
+            <IdleTrafficState />
+          ) : (
+            <div
+              className={cn(
+                "traffic-charts flex min-w-0 flex-col gap-[22px]",
+                props.state === "reconnecting" && "opacity-60",
+              )}
+            >
+              <TrafficLatencyChart
+                node={props.activeNode}
+                current={props.latencyCurrent}
+                samples={props.latencySamples}
+                checkIntervalSec={props.checkIntervalSec}
+              />
+              <ThroughputChart samples={props.trafficSamples} />
+            </div>
+          )}
         </>
       )}
     </div>
@@ -223,7 +233,7 @@ function MetricCard({
   return (
     <div
       className={cn(
-        "traffic-metric flex h-full min-w-0 items-center gap-3.5 rounded-[10px] border border-border-subtle bg-surface p-3",
+        "traffic-metric flex h-full min-w-0 items-center gap-3.5 rounded-lg border border-border-subtle bg-surface p-3",
         interactive && "transition-colors hover:border-border-default hover:bg-hover",
       )}
     >
@@ -237,13 +247,40 @@ function MetricCard({
         {icon}
       </span>
       <span className="min-w-0 flex flex-col gap-1.5">
-        <span className="text-[10px] font-semibold tracking-[0.035em] text-text-tertiary">
+        <span className="traffic-metric-label flex min-w-0 items-center gap-1.5 text-micro font-semibold tracking-[0.035em] text-text-tertiary">
+          <span
+            aria-hidden="true"
+            className={cn(
+              "traffic-metric-compact-icon inline-flex h-3 w-3 shrink-0 items-center justify-center [&_svg]:h-3 [&_svg]:w-3",
+              accent && "text-accent-text",
+            )}
+          >
+            {icon}
+          </span>
           {label}
         </span>
-        <span className="truncate font-mono text-lg font-semibold text-text-primary">{value}</span>
+        <MetricValue value={value} />
         {detail ? <span className="text-fine text-timeout">{detail}</span> : null}
       </span>
     </div>
+  );
+}
+
+function MetricValue({ value }: { value: string }) {
+  const separator = value.lastIndexOf(" ");
+  const hasUnit = separator > 0;
+  return (
+    <span
+      title={value}
+      className="traffic-metric-value flex min-w-0 items-end gap-1.5 truncate font-mono text-lg font-semibold text-text-primary"
+    >
+      <span className="traffic-metric-number truncate">
+        {hasUnit ? value.slice(0, separator) : value}
+      </span>
+      {hasUnit ? (
+        <span className="traffic-metric-unit shrink-0">{value.slice(separator + 1)}</span>
+      ) : null}
+    </span>
   );
 }
 
@@ -263,6 +300,10 @@ function StateNotice({ state }: { state: TrafficViewState }) {
         <span>
           <strong className="font-medium">Переподключаемся к mihomo</strong>
           <span> · показываем последние данные</span>
+          {/* httpSubscriptionLink delegates reconnect timing to the browser's
+              EventSource and exposes no retry deadline. Keep this honest instead
+              of inventing the illustrative countdown from the Pencil state. */}
+          <span className="block text-fine">Нет новых данных · повторяем автоматически</span>
         </span>
       </div>
     );
@@ -273,9 +314,23 @@ function StateNotice({ state }: { state: TrafficViewState }) {
   return null;
 }
 
+function IdleTrafficState() {
+  return (
+    <section
+      aria-label="Нет активности"
+      className="traffic-idle-chart flex h-[126px] flex-col items-center justify-center gap-2 rounded-lg border border-border-subtle bg-surface text-center"
+    >
+      <Activity aria-hidden="true" size={20} className="text-text-tertiary" />
+      <p className="text-sub font-medium text-text-secondary">
+        Трафик появится после первого запроса
+      </p>
+    </section>
+  );
+}
+
 function NoNodesState() {
   return (
-    <section className="flex min-h-[280px] flex-col items-center justify-center gap-2.5 rounded-[10px] border border-border-subtle bg-surface p-7 text-center">
+    <section className="flex min-h-[280px] flex-col items-center justify-center gap-2.5 rounded-lg border border-border-subtle bg-surface p-7 text-center">
       <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent-bg text-accent-text">
         <ServerOff aria-hidden="true" size={21} />
       </span>

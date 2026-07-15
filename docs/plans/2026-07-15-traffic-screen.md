@@ -227,7 +227,9 @@ const trafficRoute = createRoute({
 - keep valid traffic/session metrics when Connections fails, showing `—` only in that card;
 - make the Connections card a keyboard-reachable `<Link to="/connections">`;
 - show «Добавьте первый источник» linking to `/sources` for `no-nodes`;
-- show stale copy and last values for `reconnecting` rather than replacing them with zero.
+- show stale copy and last values for `reconnecting` rather than replacing them with zero;
+- state that retry is automatic without fabricating a countdown: browser EventSource
+  does not expose the actual reconnect deadline.
 
 Use existing `formatRate`, `formatBytes`, `realNodes`, `Button`, `Skeleton`, and role tokens. Do not create duplicate formatters.
 
@@ -350,7 +352,7 @@ git commit -m "feat(traffic): add session charts and reset" -m "Co-Authored-By: 
 - Modify if review finds a defect: `packages/web/src/features/traffic/TrafficScreen.tsx`
 - Modify if review finds a defect: `packages/web/src/features/traffic/TrafficCharts.tsx`
 
-- [ ] **Step 1: Add deterministic SSE fixture support**
+- [x] **Step 1: Add deterministic SSE fixture support**
 
 Extend `installTrpcFixture` with an optional third argument so all upcoming stream screens share one fixture boundary:
 
@@ -377,18 +379,18 @@ const body = [
 
 The `event` value is the tracked subscription payload. Traffic passes `{subscriptions: {"live.stream": {events: [...]}}}`, so fixtures can send `nodeUpdate`, `totals`, `traffic`, and `health` without a production-only test hook. Normal fixtures end with tRPC's `return` event so the client does not report a false failure; reconnecting fixtures use `end: "disconnect"`. Existing callers remain source-compatible because both new arguments default to empty objects.
 
-- [ ] **Step 2: Implement semantic container-query layouts**
+- [x] **Step 2: Implement semantic container-query layouts**
 
 Add `.responsive-page--traffic` rules under the existing `app-page` container:
 
-- compact `<42rem`: stacked header, icon-sized reset affordance where Pencil requires it, 2×2 `minmax(0, 1fr)` metrics, stacked compact charts;
+- compact `<42rem`: stacked header, icon-sized reset affordance where Pencil requires it, 2×2 `minmax(0, 1fr)` metrics, stacked compact charts that aggregate the complete bounded history into fewer slots;
 - inline `≥42rem`: title/action row and balanced two-column metrics;
 - data `≥48rem`: four metrics in one row and full-width desktop chart heights;
 - every grid child uses `min-width: 0`; page remains the only scroll owner.
 
 Do not use viewport breakpoints for page content.
 
-- [ ] **Step 3: Add populated and fallback browser tests**
+- [x] **Step 3: Add populated and fallback browser tests**
 
 `traffic-layout.spec.ts` must cover:
 
@@ -413,13 +415,36 @@ pnpm verify:static
 
 Expected: PASS.
 
-- [ ] **Step 4: Capture visual evidence and run the final review**
+- [x] **Step 4: Capture visual evidence and run the final review**
 
 At 1440×1024 compare dark against `YED5Y` and light against `eLeqx`; at 390 compare against `Qocs1`; compare fallback states against `yjNoN`. Inspect exact geometry/computed styles, internal scroll ownership, and long-value clipping. Record frame, viewport/theme, risky states, reviewer, and resolved findings in the active plan.
 
 Invoke `/code-review` on the whole Traffic feature, including all previous Traffic commits and the current Task 4 diff. Resolve every finding, then rerun both commands from Step 3.
 
-- [ ] **Step 5: Commit the final Traffic slice**
+### Final evidence
+
+- **Pencil / visual:** `YED5Y` dark 1440×1024, `eLeqx` light 1440×1024,
+  `Qocs1` dark 390×844, and `yjNoN` fallback states. Captures:
+  `/tmp/traffic-dark-1440.png`, `/tmp/traffic-light-1440.png`,
+  `/tmp/traffic-mobile-390.png`.
+- **Responsive:** viewports 320/390/425/768/1024/1440 and app-page inline sizes
+  288/448/608/671/672/767/768; the app page remains the only scroll owner.
+- **States:** populated, loading, live idle, real disconnect with retained stale
+  values, no nodes, Connections partial error, and local session reset.
+- **Independent reviewer:** Codex wide review over `363cfcd..HEAD` plus the final
+  diff. Resolved its two final findings: compact layouts visibly name the active
+  latency node; Traffic typography and radii use design-system tokens. Earlier
+  incremental findings resolved honesty of node/Connections errors, first-sample
+  freshness, no-node precedence, latency snapshot identity/window math, pending
+  Connections, stale retry wording, compact full-window aggregation, unknown
+  connection count, persistent monitoring ownership, throughput screen-reader
+  minimum, loading precedence, and non-replaying disconnect fixtures.
+- **Intentional Pencil deviation:** no reconnect countdown. tRPC/EventSource exposes
+  no real retry deadline, so the UI truthfully says that retry is automatic.
+- **Verification:** `pnpm verify:static` green; focused Playwright suite 14/14 with
+  one worker and zero retries.
+
+- [x] **Step 5: Commit the final Traffic slice**
 
 ```bash
 git add packages/web/src/styles/responsive.css packages/web/e2e/fixtures.ts packages/web/e2e/traffic-layout.spec.ts packages/web/e2e/layout-contract.spec.ts packages/web/src/features/traffic/TrafficScreen.tsx packages/web/src/features/traffic/TrafficCharts.tsx
