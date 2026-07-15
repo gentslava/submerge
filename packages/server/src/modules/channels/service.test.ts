@@ -49,9 +49,15 @@ describe("ensureDefaultChannel", () => {
 
   it("is idempotent", () => {
     ensureDefaultChannel(db);
-    setChannelPolicy(db, "default", { ...DEFAULT_SPEED_POLICY, intervalSec: 42 });
+    const initial = readDefaultPolicy(db);
+    expect(initial.kind).toBe("speed");
+    if (initial.kind !== "speed") throw new Error("expected the default speed policy");
+    setChannelPolicy(db, "default", { ...initial, intervalSec: 42 });
     ensureDefaultChannel(db); // must NOT overwrite an existing row
-    expect(readDefaultPolicy(db).intervalSec).toBe(42);
+    const persisted = readDefaultPolicy(db);
+    expect(persisted.kind).toBe("speed");
+    if (persisted.kind !== "speed") throw new Error("expected the persisted speed policy");
+    expect(persisted.intervalSec).toBe(42);
   });
 
   it("migrates legacy auto* settings into the default speed policy", () => {
@@ -409,7 +415,9 @@ describe("channel CRUD", () => {
     const updated = readChannel(db, created.id);
     expect(updated?.name).toBe("Streaming EU");
     expect(updated?.enabled).toBe(false);
-    expect(updated?.policy).toEqual(manualPolicy); // untouched
+    expect(updated?.target).toBe("proxy");
+    if (updated?.target !== "proxy") throw new Error("expected a proxy channel");
+    expect(updated.policy).toEqual(manualPolicy); // untouched
   });
 
   it("deleteChannel refuses to delete the Default channel", () => {
@@ -530,7 +538,12 @@ describe("updateChannel matcher persistence + config regeneration", () => {
     const created = createChannel(db, { name: "Media", policy: manualPolicy });
 
     updateChannel(db, created.id, {
-      matcher: { presets: ["youtube"], domains: ["ex.com"], cidrs: ["10.0.0.0/8"] },
+      matcher: {
+        ...emptyChannelMatcher(),
+        presets: ["youtube"],
+        domains: ["ex.com"],
+        cidrs: ["10.0.0.0/8"],
+      },
     });
 
     // The row itself reflects the new matcher — updateChannel persisted it.

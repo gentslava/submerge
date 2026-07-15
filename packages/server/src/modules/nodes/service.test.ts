@@ -293,7 +293,7 @@ describe("applyConfig", () => {
     const ch = createChannel(db, {
       name: "Media",
       policy: speedPolicy,
-      matcher: { presets: [], domains: ["youtube.com"] },
+      matcher: { ...emptyChannelMatcher(), domains: ["youtube.com"] },
     });
     updateChannel(db, ch.id, { enabled: false });
 
@@ -366,7 +366,7 @@ describe("applyConfig", () => {
     const ch = createChannel(db, {
       name: "Media",
       policy: speedPolicy,
-      matcher: { presets: ["youtube"], domains: [] },
+      matcher: { ...emptyChannelMatcher(), presets: ["youtube"] },
     });
 
     const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
