@@ -18,7 +18,7 @@ export function Segmented({ options, value, onChange, "aria-label": ariaLabel }:
     <div
       role="group"
       aria-label={ariaLabel}
-      className="flex w-full flex-wrap gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px] md:inline-flex md:w-auto md:flex-nowrap"
+      className="segmented-control flex w-full flex-wrap gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]"
     >
       {options.map((opt) => {
         const active = opt.value === value;

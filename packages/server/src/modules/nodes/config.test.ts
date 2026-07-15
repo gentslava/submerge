@@ -1,7 +1,8 @@
 import type { ChannelPolicy, Proxy as ProxyConfig } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { buildConfig, dedupeNames, groupProxies } from "./config.js";
+import { dedupeNames, groupProxies } from "./config.js";
+import { buildDefaultConfig } from "./config.test-support.js";
 
 const proxy = (name: string): ProxyConfig => ({
   name,
@@ -44,6 +45,34 @@ const px = (name: string, server = "ex.com", port = 443): ProxyConfig => ({
   uuid: "u",
 });
 
+type ParsedConfigGroup = {
+  name: string;
+  type?: string;
+  proxies?: string[];
+  lazy?: boolean;
+  tolerance?: number;
+  url?: string;
+  interval?: number;
+};
+
+type ParsedConfig = {
+  "mixed-port": number;
+  secret: string;
+  "proxy-groups": ParsedConfigGroup[];
+  rules: string[];
+  proxies: Array<{ name: string }>;
+};
+
+function parseConfig(raw: string): ParsedConfig {
+  return yaml.load(raw) as ParsedConfig;
+}
+
+function groupNamed(config: ParsedConfig, name: string): ParsedConfigGroup {
+  const group = config["proxy-groups"].find((candidate) => candidate.name === name);
+  if (!group) throw new Error(`missing ${name} group`);
+  return group;
+}
+
 describe("groupProxies", () => {
   it("keeps unique names as singles, order preserved", () => {
     const r = groupProxies([px("A"), px("B")]);
@@ -68,51 +97,39 @@ describe("groupProxies", () => {
   });
 });
 
-describe("buildConfig", () => {
+describe("buildDefaultConfig", () => {
   it("emits PROXY + AUTO groups and a MATCH rule for a populated config", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(buildConfig([proxy("A"), proxy("B")])) as Record<string, any>;
+    const cfg = parseConfig(buildDefaultConfig([proxy("A"), proxy("B")]));
     expect(cfg["mixed-port"]).toBe(7890);
     expect(cfg.secret).toBe("");
-    const groups = cfg["proxy-groups"];
-    expect(groups[0].name).toBe("PROXY");
-    expect(groups[0].proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
-    expect(groups[1].name).toBe("AUTO");
-    expect(groups[1].proxies).toEqual(["A", "B"]);
+    expect(groupNamed(cfg, "PROXY").proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
+    expect(groupNamed(cfg, "AUTO").proxies).toEqual(["A", "B"]);
     expect(cfg.rules).toEqual(["DOMAIN,speed.cloudflare.com,PROBE", "MATCH,PROXY"]);
   });
   it("falls back to DIRECT when there are no proxies", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(buildConfig([])) as Record<string, any>;
-    expect(cfg["proxy-groups"][0].proxies).toEqual(["AUTO", "DIRECT"]);
-    expect(cfg["proxy-groups"][1].proxies).toEqual(["DIRECT"]);
+    const cfg = parseConfig(buildDefaultConfig([]));
+    expect(groupNamed(cfg, "PROXY").proxies).toEqual(["AUTO", "DIRECT"]);
+    expect(groupNamed(cfg, "AUTO").proxies).toEqual(["DIRECT"]);
     expect(cfg.rules).toEqual(["MATCH,DIRECT"]);
   });
 });
 
-describe("buildConfig collapses same-named nodes", () => {
+describe("buildDefaultConfig collapses same-named nodes", () => {
   it("emits a url-test subgroup and references it from PROXY/AUTO", () => {
-    const raw = buildConfig([px("A", "1.1.1.1"), px("A", "2.2.2.2"), px("B")]);
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(raw) as Record<string, any>;
-    const groups = cfg["proxy-groups"];
-    expect(groups[0].proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
-    expect(groups[1].name).toBe("AUTO");
-    expect(groups[1].proxies).toEqual(["A", "B"]);
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const sub = groups.find((g: any) => g.name === "A");
+    const raw = buildDefaultConfig([px("A", "1.1.1.1"), px("A", "2.2.2.2"), px("B")]);
+    const cfg = parseConfig(raw);
+    expect(groupNamed(cfg, "PROXY").proxies).toEqual(["AUTO", "A", "B", "DIRECT"]);
+    expect(groupNamed(cfg, "AUTO").proxies).toEqual(["A", "B"]);
+    const sub = groupNamed(cfg, "A");
     expect(sub.type).toBe("url-test");
     expect(sub.proxies).toEqual(["A #1", "A #2"]);
     // real servers carry the member names, base name is a group only
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    expect(cfg.proxies.map((p: any) => p.name)).toEqual(["A #1", "A #2", "B"]);
+    expect(cfg.proxies.map((proxy) => proxy.name)).toEqual(["A #1", "A #2", "B"]);
   });
   it("renames a group that collides with a reserved name", () => {
-    const raw = buildConfig([px("AUTO", "1.1.1.1"), px("AUTO", "2.2.2.2")]);
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(raw) as Record<string, any>;
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const names = cfg["proxy-groups"].map((g: any) => g.name);
+    const raw = buildDefaultConfig([px("AUTO", "1.1.1.1"), px("AUTO", "2.2.2.2")]);
+    const cfg = parseConfig(raw);
+    const names = cfg["proxy-groups"].map((group) => group.name);
     expect(names).toContain("AUTO-2"); // the collapsed provider group, guarded
     expect(names[1]).toBe("AUTO"); // the system AUTO group is untouched
   });
@@ -127,11 +144,10 @@ const speed = (over: Partial<Extract<ChannelPolicy, { kind: "speed" }>> = {}): C
   ...over,
 });
 
-describe("buildConfig policy mapping", () => {
+describe("buildDefaultConfig policy mapping", () => {
   it("maps speed.reevaluateWhileHealthy=true to AUTO lazy=false + tolerance", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(buildConfig([proxy("A")], speed())) as Record<string, any>;
-    const auto = cfg["proxy-groups"].find((g: { name: string }) => g.name === "AUTO");
+    const cfg = parseConfig(buildDefaultConfig([proxy("A")], speed()));
+    const auto = groupNamed(cfg, "AUTO");
     expect(auto.type).toBe("url-test");
     expect(auto.lazy).toBe(false);
     expect(auto.tolerance).toBe(50);
@@ -148,9 +164,8 @@ describe("buildConfig policy mapping", () => {
       maxHoldHours: null,
       initialCriterion: "fastest",
     };
-    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(buildConfig([proxy("A"), proxy("B")], sticky)) as Record<string, any>;
-    const auto = cfg["proxy-groups"].find((g: { name: string }) => g.name === "AUTO");
+    const cfg = parseConfig(buildDefaultConfig([proxy("A"), proxy("B")], sticky));
+    const auto = groupNamed(cfg, "AUTO");
     expect(auto.type).toBe("select");
     expect(auto.proxies).toEqual(["A", "B"]);
     expect(auto.tolerance).toBeUndefined();

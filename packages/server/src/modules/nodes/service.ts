@@ -7,6 +7,7 @@ import {
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { asc, eq } from "drizzle-orm";
 import type { MihomoProxy, ProxiesResponse } from "../../clients/mihomo.js";
 import {
@@ -116,27 +117,42 @@ export async function applyConfig(
   // no DOMAIN-SUFFIX rules — until re-enabled. The Default is the catch-all and
   // stays active regardless of its own `enabled` flag.
   const inputs: ChannelConfigInput[] = listChannels(db)
-    .filter((ch) => ch.isDefault || ch.enabled)
-    .map((ch) => {
-      const pool = keep(resolveChannelProxies(db, ch, allProxies));
+    .filter((ch) => (ch.target === "proxy" && ch.isDefault) || ch.enabled)
+    .map((ch): ChannelConfigInput => {
       const base = {
+        target: ch.target,
         id: ch.id,
-        groupName: groupNameFor(ch),
         isDefault: ch.isDefault,
-        policy: ch.policy,
         domains: resolveMatcherDomains(ch.matcher),
         keywords: ch.matcher.keywords,
         ruleProviders: ch.matcher.ruleProviders,
         geosite: ch.matcher.geosite,
         geoip: ch.matcher.geoip,
+        cidrs: ch.matcher.cidrs,
+      };
+      if (ch.target === "direct") {
+        return {
+          ...base,
+          target: "direct",
+          id: "direct",
+          isDefault: false,
+          directPresets: ch.directPresets,
+        };
+      }
+      const pool = keep(resolveChannelProxies(db, ch, allProxies));
+      const proxyBase = {
+        ...base,
+        target: "proxy" as const,
+        groupName: groupNameFor(ch),
+        policy: ch.policy,
       };
       // The Default channel DEFINES the whole (non-excluded) inventory — every node is
       // written to the config, pinged by the prober, and manually selectable via PROXY
       // — while its AUTO group RACES only the pool. Other channels define + race their
       // pool. Excluded nodes are already filtered out of both `inventory` and `pool`.
       return ch.isDefault
-        ? { ...base, proxies: inventory, race: pool }
-        : { ...base, proxies: pool };
+        ? { ...proxyBase, proxies: inventory, race: pool }
+        : { ...proxyBase, proxies: pool };
     });
   const content = buildMultiConfig(inputs, readMihomoSecret(db));
   // Unchanged config → skip the write + the destructive reload so mihomo keeps its
@@ -200,8 +216,13 @@ export function toNodeView(
   // The delay series to surface for a node: the per-URL history for the active
   // policy when mihomo has one, else the shared history (fallback — a fresh node
   // or one right after a reload has no per-URL entry yet).
-  const delaysOf = (info: MihomoProxy | undefined): number[] =>
-    historyForUrl(info, testUrl).map((h) => h.delay);
+  const historyOf = (info: MihomoProxy | undefined) => historyForUrl(info, testUrl);
+  const delaysOf = (info: MihomoProxy | undefined): number[] => historyOf(info).map((h) => h.delay);
+  const timestampFields = (info: MihomoProxy | undefined) => {
+    if (testUrl === undefined) return {};
+    const history = historyOf(info);
+    return history.length > 0 ? { historyTimestamps: history.map((entry) => entry.time) } : {};
+  };
   // A recorded measurement wins, INCLUDING a timeout (0) → UI shows "таймаут";
   // null ("— ms") means genuinely unmeasured (empty history / after a reload).
   const lastDelay = (ds: number[]): number | null =>
@@ -229,6 +250,7 @@ export function toNodeView(
         type: info.type,
         delay: lastDelay(aDelays),
         history: aDelays,
+        ...timestampFields(active),
         members,
       };
     }
@@ -240,6 +262,7 @@ export function toNodeView(
       type: info?.type ?? "unknown",
       delay: lastDelay(history),
       history,
+      ...timestampFields(info),
     };
     if (info?.udp !== undefined) item.udp = info.udp;
     const pm = meta?.get(name);
@@ -325,16 +348,29 @@ export async function listNodes(db: Db): Promise<NodeView> {
   return view;
 }
 
-export async function testDelay(name: string, url?: string): Promise<number | null> {
+export async function testDelay(name: string, url?: string): Promise<number> {
   try {
     const { delay } = await getDelay(name, url);
-    return delay > 0 ? delay : null;
+    return delay;
   } catch {
-    return null; // timeout / unreachable node → no delay
+    return 0; // timeout / unreachable node; the UI renders 0 as timeout immediately
   }
 }
 
-export async function selectNode(group: string, name: string): Promise<void> {
+export async function selectNode(db: Db, group: string, name: string): Promise<void> {
+  if (group !== "PROXY") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Группа недоступна для выбора" });
+  }
+  if (name !== "AUTO" && name !== "DIRECT") {
+    const selectable = new Set(
+      groupProxies(collectProxies(db)).map((entry) =>
+        entry.kind === "single" ? entry.proxy.name : entry.base,
+      ),
+    );
+    if (!selectable.has(name) || getExcludedSet(db).has(name)) {
+      throw new TRPCError({ code: "CONFLICT", message: "Узел недоступен для выбора" });
+    }
+  }
   await selectProxy(group, name);
 }
 

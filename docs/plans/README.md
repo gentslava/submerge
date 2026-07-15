@@ -21,4 +21,9 @@ for their status. Mark a plan **done** here when its feature is merged to master
 | [Multi-channel routing — phase 3a (mechanics)](2026-07-01-multi-routing-phase3a.md) | done |
 | [Routing UI + domain presets — phase 3b](2026-07-05-routing-ui-phase3b.md) | done |
 | [Preset expansion — domains, services, categories](2026-07-08-preset-expansion.md) | done |
-| [Routing Phase 4 — rule-providers · keyword/geo · speed test](2026-07-07-routing-phase4.md) | proposed |
+| [Routing Phase 4 — rule-providers · keyword/geo · speed test](2026-07-07-routing-phase4.md) | done |
+| [Adaptive layout system](2026-07-12-adaptive-layout-system.md) | done |
+| [System Direct channel](2026-07-13-system-direct-channel.md) | done |
+| [Traffic screen](2026-07-15-traffic-screen.md) | ready (implementation order 1/3) |
+| [Logs screen](2026-07-15-logs-screen.md) | ready (implementation order 2/3) |
+| [Diagnostics screen](2026-07-15-diagnostics-screen.md) | ready (implementation order 3/3) |

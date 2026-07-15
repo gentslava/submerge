@@ -1,15 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Copy, Power, RotateCw } from "lucide-react";
+import { Power } from "lucide-react";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
-import { useLiveState } from "@/features/live/LiveProvider";
-import { liveIndicator } from "@/features/live/status";
-import { useActiveNode } from "@/features/nodes/useActiveNode";
-import { useReloadCore } from "@/features/settings/useReloadCore";
-import { copyToClipboard } from "@/lib/clipboard";
-import { PROXY_ENDPOINT } from "@/lib/constants";
-import { useTRPC } from "@/lib/trpc";
 import { NAV_ENTRIES, type NavEntry } from "./nav";
+import { ProxyStatusCard } from "./ProxyStatusCard";
 
 export function Sidebar() {
   return (
@@ -24,7 +17,7 @@ export function Sidebar() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <ProxyCard />
+        <ProxyStatusCard />
         <LogoutRow />
       </div>
     </aside>
@@ -102,53 +95,6 @@ function NavRow({ entry }: { entry: NavEntry }) {
       <span className="rounded-full bg-hover px-[7px] py-0.5 text-[9px] font-semibold tracking-[0.4px] text-text-secondary">
         СКОРО
       </span>
-    </div>
-  );
-}
-
-function ProxyCard() {
-  const { mihomo } = useLiveState();
-  const activeNode = useActiveNode();
-  const trpc = useTRPC();
-  const { data } = useQuery(trpc.settings.get.queryOptions());
-  const proxy = data?.proxyEndpoint ?? PROXY_ENDPOINT;
-  const reload = useReloadCore();
-
-  const status = liveIndicator(mihomo, { idle: "Проверка", ok: "Подключено", down: "Отключено" });
-
-  const copyAddress = () => void copyToClipboard(proxy);
-
-  return (
-    <div className="flex flex-col gap-[9px] rounded-lg border border-border-subtle bg-elevated p-[13px]">
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 shrink-0 rounded-full ${status.dot}`} />
-        <span className="text-meta text-text-secondary">{status.label}</span>
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="font-mono text-sub font-medium text-text-primary">{proxy}</span>
-        <button
-          type="button"
-          onClick={copyAddress}
-          aria-label="Скопировать адрес"
-          className="text-text-tertiary hover:text-text-secondary"
-        >
-          <Copy size={13} />
-        </button>
-      </div>
-      <span className="font-mono text-fine text-text-tertiary">
-        Активный узел · {activeNode ?? "—"}
-      </span>
-      {/* Engine action lives with the connection status — reloading the config is a
-          property of this connection block, not a standalone toggle. */}
-      <button
-        type="button"
-        onClick={() => reload.mutate()}
-        disabled={reload.isPending}
-        className="mt-0.5 flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-border-default bg-hover text-meta text-text-primary disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <RotateCw size={14} className={reload.isPending ? "animate-spin" : undefined} />
-        Перезагрузить конфиг
-      </button>
     </div>
   );
 }

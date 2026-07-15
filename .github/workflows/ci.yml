@@ -16,8 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
-        with:
-          version: 11
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -28,3 +26,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm -r test
       - run: pnpm -F @submerge/web build
+      - name: Install Playwright Chromium
+        run: pnpm -F @submerge/web exec playwright install --with-deps chromium
+      - name: Run web E2E tests
+        run: pnpm -F @submerge/web test:e2e

@@ -10,9 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   dotColors,
   formatRate,
+  groupNodes,
   isPseudo,
   type LatencyClass,
   latencyClass,
+  realNodes,
 } from "@/features/nodes/nodeView";
 import { formatElapsed } from "@/lib/duration";
 import { pluralRu } from "@/lib/plural";
@@ -27,14 +29,15 @@ type Filter = "all" | "tcp" | "udp";
 interface NodeInfo {
   display: string;
   lc: LatencyClass;
+  title: string;
 }
-type NodeIndex = Map<string, { display: string; delay: number | null }>;
+type NodeIndex = Map<string, { display: string; delay: number | null; title: string }>;
 function resolveNode(index: NodeIndex, name: string): NodeInfo {
-  if (!name) return { display: "—", lc: "idle" };
+  if (!name) return { display: "—", lc: "idle", title: "—" };
   const hit = index.get(name);
   return hit
-    ? { display: hit.display, lc: latencyClass(hit.delay) }
-    : { display: name, lc: "idle" };
+    ? { display: hit.display, lc: latencyClass(hit.delay), title: hit.title }
+    : { display: name, lc: "idle", title: name };
 }
 const EMPTY: ConnectionItem[] = [];
 const ZERO: Rate = { up: 0, down: 0 };
@@ -55,15 +58,27 @@ export function ConnectionsScreen() {
   // to its display name + status. Members map to their collapsed group's name so a
   // deduped chain name ("nl-ams-01-2") shows as the clean node it belongs to.
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
+  const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
   const nodeIndex = useMemo<NodeIndex>(() => {
     const map: NodeIndex = new Map();
-    for (const n of nodesQuery.data?.all ?? []) {
+    const nodes = nodesQuery.data?.all ?? [];
+    const sourceByNode = new Map<string, string>();
+    for (const group of groupNodes(realNodes(nodes), sourcesQuery.data ?? [])) {
+      if (!group.source) continue;
+      for (const node of group.nodes) {
+        sourceByNode.set(node.name, group.label);
+        for (const member of node.members ?? []) sourceByNode.set(member.name, group.label);
+      }
+    }
+    for (const n of nodes) {
       if (isPseudo(n.name)) continue;
-      map.set(n.name, { display: n.name, delay: n.delay });
-      for (const m of n.members ?? []) map.set(m.name, { display: n.name, delay: m.delay });
+      const source = sourceByNode.get(n.name);
+      const title = source ? `${source} — ${n.name}` : n.name;
+      map.set(n.name, { display: n.name, delay: n.delay, title });
+      for (const m of n.members ?? []) map.set(m.name, { display: n.name, delay: m.delay, title });
     }
     return map;
-  }, [nodesQuery.data]);
+  }, [nodesQuery.data, sourcesQuery.data]);
 
   // Per-connection speed: diff cumulative bytes against the previous poll (see speed.ts).
   const [rates, setRates] = useState<Map<string, Rate>>(() => new Map());
@@ -119,9 +134,9 @@ export function ConnectionsScreen() {
   }
 
   return (
-    <div className="flex flex-col gap-5 px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-[5px]">
+    <div className="responsive-page responsive-page--connections page-content connections-screen flex min-w-0 flex-col gap-5 px-4 pt-5 pb-8">
+      <header className="connections-header flex flex-wrap items-center justify-between gap-4">
+        <div className="shrink-0 flex flex-col gap-[5px]">
           <h1 className="text-2xl font-semibold text-text-primary">Соединения</h1>
           <p className="text-sm text-text-secondary">
             {showError
@@ -131,8 +146,8 @@ export function ConnectionsScreen() {
                 : "Нет активных соединений"}
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-full items-center gap-2 rounded-lg border border-border-default bg-input px-3 md:w-60">
+        <div className="connections-toolbar flex flex-wrap items-center gap-2.5">
+          <div className="connections-search flex h-10 items-center gap-2 rounded-lg border border-border-default bg-input px-3">
             <Search size={15} className="shrink-0 text-text-tertiary" />
             <input
               value={search}
@@ -146,7 +161,7 @@ export function ConnectionsScreen() {
             variant="destructive"
             disabled={count === 0 || closeAllMut.isPending}
             onClick={() => setConfirmOpen(true)}
-            className="shrink-0 whitespace-nowrap"
+            className="connections-close-all w-auto shrink-0 whitespace-nowrap"
           >
             <Unplug size={15} />
             Разорвать все
@@ -154,8 +169,8 @@ export function ConnectionsScreen() {
         </div>
       </header>
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-[18px]">
+      <div className="connections-summary flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2">
           <SummaryChip
             icon={<ArrowDown size={15} className="text-online" />}
             text={formatRate(totalDown)}
@@ -181,7 +196,7 @@ export function ConnectionsScreen() {
         />
       </div>
 
-      <div className="overflow-x-auto rounded-[10px] border border-border-subtle bg-surface">
+      <div className="connections-table-desktop hidden overflow-x-auto rounded-[10px] border border-border-subtle bg-surface">
         <div className="min-w-[760px]">
           <ColumnsHeader />
           {isPending ? (
@@ -202,6 +217,28 @@ export function ConnectionsScreen() {
             ))
           )}
         </div>
+      </div>
+
+      <div className="connections-table-mobile flex flex-col gap-3">
+        {isPending ? (
+          [0, 1, 2].map((i) => <Skeleton key={i} className="h-[132px] w-full rounded-xl" />)
+        ) : showError ? (
+          <MobileMessage>Движок недоступен — не удалось получить соединения</MobileMessage>
+        ) : filtered.length === 0 ? (
+          <MobileMessage>
+            {count > 0 ? "Ничего не найдено" : "Нет активных соединений"}
+          </MobileMessage>
+        ) : (
+          filtered.map((c) => (
+            <MobileConnectionCard
+              key={c.id}
+              c={c}
+              rate={rates.get(c.id) ?? ZERO}
+              node={resolveNode(nodeIndex, c.node)}
+              onClose={() => closeMut.mutate({ id: c.id })}
+            />
+          ))
+        )}
       </div>
 
       <ConfirmDialog
@@ -267,7 +304,9 @@ function ConnectionRow({
         <span className="truncate text-sm font-medium text-text-primary">{c.source}</span>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate font-mono text-sub font-medium text-text-primary">{dest}</span>
+        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+          {dest}
+        </span>
         {showIp && (
           <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
         )}
@@ -277,7 +316,9 @@ function ConnectionRow({
       </span>
       <div className="flex w-[150px] shrink-0 items-center gap-[7px]">
         <span className={cn("h-[7px] w-[7px] shrink-0 rounded-full", dotColors[node.lc])} />
-        <span className="truncate font-mono text-sub text-text-primary">{node.display}</span>
+        <span title={node.title} className="truncate font-mono text-sub text-text-primary">
+          {node.display}
+        </span>
       </div>
       <span className="w-[140px] shrink-0 text-right font-mono text-sub font-medium text-text-primary">
         ↓ {toMbps(rate.down)} ↑ {toMbps(rate.up)}
@@ -295,6 +336,82 @@ function ConnectionRow({
           <X size={16} />
         </button>
       </div>
+    </div>
+  );
+}
+
+function MobileConnectionCard({
+  c,
+  rate,
+  node,
+  onClose,
+}: {
+  c: ConnectionItem;
+  rate: Rate;
+  node: NodeInfo;
+  onClose: () => void;
+}) {
+  const dest = c.port ? `${c.host}:${c.port}` : c.host;
+  const showIp = c.destIp && c.destIp !== c.host;
+  return (
+    <article className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3.5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-elevated font-mono text-sub font-semibold text-text-secondary">
+          {initial(c.source)}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-label text-text-primary">{c.source}</span>
+        <span className="rounded-full bg-hover px-2 py-0.5 font-mono text-fine uppercase text-text-secondary">
+          {c.network}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Разорвать соединение"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-hover hover:text-timeout"
+        >
+          <X size={16} />
+        </button>
+      </div>
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+          {dest}
+        </span>
+        {showIp && (
+          <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-3 border-t border-border-subtle pt-3">
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="text-micro text-text-tertiary">УЗЕЛ</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotColors[node.lc])}
+            />
+            <span title={node.title} className="truncate font-mono text-fine text-text-primary">
+              {node.display}
+            </span>
+          </span>
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="text-micro text-text-tertiary">СКОРОСТЬ</span>
+          <span className="truncate font-mono text-fine text-text-primary">
+            ↓ {toMbps(rate.down)} ↑ {toMbps(rate.up)}
+          </span>
+        </span>
+        <span className="flex min-w-0 flex-col gap-1">
+          <span className="text-micro text-text-tertiary">ВРЕМЯ</span>
+          <span className="font-mono text-fine text-text-primary">{formatElapsed(c.start)}</span>
+        </span>
+      </div>
+    </article>
+  );
+}
+
+function MobileMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-border-subtle bg-surface px-4 py-12 text-center text-sm text-text-tertiary">
+      {children}
     </div>
   );
 }

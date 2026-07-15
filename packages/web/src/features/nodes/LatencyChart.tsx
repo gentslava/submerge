@@ -7,7 +7,6 @@ interface LatencyChartProps {
   checkInterval: number;
 }
 
-const TRACK_HEIGHT = 92;
 const MIN_BAR = 4; // px, so a tiny value still shows a sliver
 const RECENT = 4; // most-recent successful bars rendered in accent
 const CAP = 40; // most recent N samples shown
@@ -41,8 +40,8 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
   const spanLabel = agoLabel(windowSeconds);
 
   return (
-    <div className="flex w-full flex-col gap-2.5 lg:w-[400px] lg:shrink-0">
-      <div className="flex items-center justify-end">
+    <div data-testid="latency-chart" className="latency-chart flex w-full flex-col gap-2.5">
+      <div className="latency-chart-peak hidden items-center justify-end">
         <span className="font-mono text-fine text-text-tertiary">
           {peak > 0 ? `пик ${peak} ms` : "нет данных"}
         </span>
@@ -52,13 +51,12 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
         <div
           role="img"
           aria-label="Нет данных о задержке"
-          className="w-full rounded-sm bg-chart-track"
-          style={{ height: TRACK_HEIGHT }}
+          className="latency-chart-track w-full rounded-sm bg-chart-track"
         />
       ) : (
         // Always CAP fixed-width columns: data is right-anchored (newest at the
         // right) and fills leftward as history grows — bar width never changes.
-        <div className="flex items-stretch gap-[3px]" style={{ height: TRACK_HEIGHT }}>
+        <div className="latency-chart-track flex items-stretch gap-[3px]">
           {Array.from({ length: CAP }, (_, slot) => {
             const idx = slot - (CAP - bars.length);
             const v = idx >= 0 ? bars[idx] : undefined;
@@ -73,7 +71,7 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
               );
             }
             const timeout = v <= 0;
-            const height = timeout ? TRACK_HEIGHT : Math.max(MIN_BAR, (v / max) * TRACK_HEIGHT);
+            const height = timeout ? "100%" : `max(${MIN_BAR}px, ${(v / max) * 100}%)`;
             const color = timeout
               ? "bg-timeout"
               : idx >= firstAccent
@@ -92,7 +90,7 @@ export function LatencyChart({ history, checkInterval }: LatencyChartProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="latency-chart-axis hidden items-center justify-between">
         <span className="font-mono text-micro text-text-tertiary">{spanLabel}</span>
         <span className="font-mono text-micro text-text-tertiary">сейчас</span>
       </div>

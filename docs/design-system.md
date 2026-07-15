@@ -61,17 +61,48 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Источники | `gm1vM` | `cF8xX` |
 | Настройки | `w6qeY` | `L5XjCf` |
 | Соединения | `g5hb4` | `DxayN` |
-| Маршрутизация · Populated (dark) | `lYrng` | `R47Ya`; matcher editor holds Домены + **Ключевые слова** + **Списки правил** (Phase 4a) |
-| Маршрутизация · Состояния (create / disabled / mobile 390) | `HXRTv` | — |
-| Маршрутизация · Populated — светлая | `CUEoq` | `eHlsq` |
+| Соединения — светлая тема | `t9XUT` | production-style populated table |
+| Соединения — mobile 390 | `H3itWn` | compact connection cards + «Ещё» navigation |
+| Маршрутизация · Populated (dark) | `lYrng` | `R47Ya`; expanded system Direct card is the complete desktop editor reference |
+| Маршрутизация · Состояния (create / disabled / mobile 390) | `HXRTv` | Disabled Direct and expanded 390 px Direct states |
+| Маршрутизация · Populated — светлая | `CUEoq` | `eHlsq`; collapsed enabled Direct card is the light-theme reference |
 | Трафик | `YED5Y` | `ZH6Id` |
+| Трафик — светлая тема | `eLeqx` | cloned light-theme reference |
+| Трафик — mobile 390 | `Qocs1` | compact 2×2 metrics + stacked charts |
+| Трафик — состояния | `yjNoN` | loading / idle / reconnecting / no nodes |
 | Логи | `ZdPsU` | `MKvCg` |
+| Логи — светлая тема | `mnDGi` | unified mihomo + submerge stream |
+| Логи — mobile 390 | `zW719` | stacked metadata/message rows + compact filters |
+| Логи — состояния | `rE094` | connecting / live empty / paused / reconnecting |
 | Диагностика | `QoRoZ` | `AqDqR` |
+| Диагностика — светлая тема | `h9q7E` | full light-theme reference |
+| Диагностика — mobile 390 | `BNOEr` | one-column cards + compact route rows |
+| Диагностика — состояния | `pi7pQ` | running / partial / component and network failures |
 | Раздел в разработке (placeholder) | `fFpGe` | `gsI9Q` |
 | Sidebar (reusable) | `t0Wg2` | — |
 | Button (reusable) | `hRDqB` | — |
 | Badge (reusable) | `J7jxJ` | — |
 | Design‑system reference | `cLCpW` | — |
+
+### Routing / system Direct contract
+
+- Direct is a system-owned channel in the normal sortable list. Desktop uses the existing
+  grip; mobile uses the existing up/down controls. Default remains separate and terminal.
+- The collapsed card always shows `Direct`, the `Системный` and mono `DIRECT` labels, an
+  enabled switch, matcher-summary chips with the existing complete-chip `+N` behavior, and
+  an expand control. Disabling the channel dims the whole card without hiding its saved
+  matcher summary.
+- Expanding Direct keeps the header on `bg-surface`; expansion is communicated by the
+  editor and chevron, not by recoloring the header.
+- The expanded Direct editor contains the independent `Частные сети` and `Локальные
+  домены` preset switches followed by every shared custom matcher editor: preset domains,
+  custom domains, domain keywords, rule-providers, GEOSITE, GEOIP, and IPv4/IPv6 CIDR.
+- Direct never exposes a name editor, node pool, selection policy, active-node status, or
+  delete action. Those controls remain exclusive to proxy-backed channels.
+- `lYrng` is the dark expanded desktop reference, `CUEoq` is the light collapsed reference,
+  and `HXRTv` contains the disabled desktop and expanded 390 px references. At 390 px all
+  identity, summary, provider, and CIDR chips/controls stay complete within the card; no
+  horizontal clipping or scrolling is permitted.
 
 ## Tokens
 
@@ -119,10 +150,11 @@ under `:root` (light) / `.dark` (dark), exposed as Tailwind utilities via `@them
 
 ### Typography scale (role → size/weight)
 
-`h1 24/600 · section 18/600 · cardtitle 15/600 · label 14/500 · sub 13/400 ·
-meta 12/500 · caption 11/600 (ls .5) · fine 11/400 · micro 10`. Baked into `text-*`
-utilities in `@theme` (`text-h1`, `text-section`, …). `caption` is the 11px LABEL
-style; `fine` is its regular-weight body counterpart — never hand-write `text-[11px]`.
+`h1 24/600 · page-title-compact 22/600 · section 18/600 · cardtitle 15/600 ·
+label 14/500 · sub 13/400 · meta 12/500 · caption 11/600 (ls .5) · fine 11/400 ·
+micro 10 · axis 9 · metric 26/600`. Baked into `text-*` utilities in `@theme`
+(`text-h1`, `text-section`, …). `caption` is the 11px LABEL style; `fine` is its
+regular-weight body counterpart — never hand-write `text-[11px]`.
 
 ## Component specs (measured from the mockup)
 

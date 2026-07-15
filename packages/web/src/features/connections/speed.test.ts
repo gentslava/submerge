@@ -51,4 +51,9 @@ describe("toMbps", () => {
     expect(toMbps(5_557_452)).toBe("5.30");
     expect(toMbps(0)).toBe("0.00");
   });
+
+  it("does not round a positive rate down to zero", () => {
+    expect(toMbps(1)).toBe("<0.01");
+    expect(toMbps(5_000)).toBe("<0.01");
+  });
 });

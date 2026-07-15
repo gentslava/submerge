@@ -1,4 +1,4 @@
-import type { Channel, DecisionEntry } from "@submerge/shared";
+import type { Channel, DecisionEntry, ProxyChannel } from "@submerge/shared";
 import type { ProxiesResponse } from "../../clients/mihomo.js";
 import { ChannelController, toGroupView } from "./controller.js";
 import { groupNameFor } from "./pool.js";
@@ -20,7 +20,7 @@ export interface RegistryDeps {
 // — recreating would drop its transient state (failures/heldSince/lastCheck) and
 // break throttling/hold-window behavior across polls.
 interface ChannelBox {
-  current: Channel;
+  current: ProxyChannel;
 }
 
 // Ticks one ChannelController per channel, every poll. Each channel gets its own
@@ -33,7 +33,7 @@ export class ControllerRegistry {
 
   constructor(private deps: RegistryDeps) {}
 
-  private controllerFor(channel: Channel): ChannelController {
+  private controllerFor(channel: ProxyChannel): ChannelController {
     const box = this.boxes.get(channel.id);
     if (box) box.current = channel;
     else this.boxes.set(channel.id, { current: channel });
@@ -41,7 +41,7 @@ export class ControllerRegistry {
     const existing = this.controllers.get(channel.id);
     if (existing) return existing;
 
-    const readChannel = (): Channel => this.boxes.get(channel.id)?.current ?? channel;
+    const readChannel = (): ProxyChannel => this.boxes.get(channel.id)?.current ?? channel;
     const ctrl = new ChannelController({
       readChannel,
       group: groupNameFor(channel),
@@ -61,7 +61,14 @@ export class ControllerRegistry {
     // A disabled non-default channel is excluded from control entirely — it must
     // not be ticked/pinned. The Default always runs regardless of its own
     // `enabled` flag (it's the permanent catch-all).
-    const active = chs.filter((ch) => ch.isDefault || ch.enabled);
+    const active = chs
+      .filter((ch): ch is ProxyChannel => ch.target === "proxy")
+      .filter((ch) => ch.isDefault || ch.enabled);
+    if (active.length === 0) {
+      this.controllers.clear();
+      this.boxes.clear();
+      return;
+    }
     const px = (await this.deps.fetchProxies()).proxies;
     for (const ch of active) {
       const ctrl = this.controllerFor(ch);

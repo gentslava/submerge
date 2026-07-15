@@ -4,11 +4,8 @@ import {
   DEFAULT_AUTO_TEST_INTERVAL,
   DEFAULT_AUTO_TEST_URL,
   DEFAULT_AUTO_TOLERANCE,
-  DEFAULT_SPEED_POLICY,
   type Proxy as ProxyConfig,
 } from "@submerge/shared";
-import { env } from "../../config/env.js";
-import { buildMultiConfig } from "./multiConfig.js";
 
 export type TopLevelEntry =
   | { kind: "single"; proxy: ProxyConfig }
@@ -88,18 +85,4 @@ export function urlTestTuning(policy: ChannelPolicy): UrlTestTuning {
   // (lazy = false) so members stay freshly measured for ranking + the charts.
   const lazy = policy.kind === "speed" ? !policy.reevaluateWhileHealthy : false;
   return { url, interval, tolerance, lazy };
-}
-
-// Thin wrapper over the multi-channel generator: a single Default channel keeps
-// the "AUTO" group and no domain rules, reproducing the original single-pool
-// config byte-for-byte (see multiConfig.ts + config.test.ts, the byte-identity gate).
-export function buildConfig(
-  proxies: ProxyConfig[],
-  policy: ChannelPolicy = DEFAULT_SPEED_POLICY,
-  secret: string = env.MIHOMO_SECRET,
-): string {
-  return buildMultiConfig(
-    [{ id: "default", groupName: "AUTO", isDefault: true, policy, domains: [], proxies }],
-    secret,
-  );
 }

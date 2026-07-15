@@ -3,9 +3,10 @@ import {
   DEFAULT_AUTO_TEST_URL,
   DEFAULT_AUTO_TOLERANCE,
 } from "@submerge/shared";
-import { type ReactNode, useRef } from "react";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import { LabeledControlRow as Row } from "@/components/ui/labeled-control-row";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -182,7 +183,7 @@ export function PolicyEditor({
                 const v = e.target.value.trim();
                 if (v.length > 0) updateSticky({ testUrl: v });
               }}
-              className="w-full font-mono text-sub md:w-[360px]"
+              className="policy-url-input w-full font-mono text-sub"
             />
           </Row>
           <Row label="Интервал проверки, с" sub="Как часто переизмерять задержку">
@@ -258,7 +259,7 @@ export function PolicyEditor({
               aria-label="Приоритетный узел"
               value={policy.pinnedNode}
               onChange={(e) => updateManual({ pinnedNode: e.target.value })}
-              className="w-full md:w-[280px]"
+              className="policy-node-select w-full"
             >
               {/* Keep the current pin present even if it's momentarily absent from the live list. */}
               {(nodeNames.includes(policy.pinnedNode)
@@ -298,7 +299,7 @@ export function PolicyEditor({
                 const v = e.target.value.trim();
                 if (v.length > 0) updateOptimal({ testUrl: v });
               }}
-              className="w-full font-mono text-sub md:w-[360px]"
+              className="policy-url-input w-full font-mono text-sub"
             />
           </Row>
           <Row
@@ -328,7 +329,7 @@ export function PolicyEditor({
                 const v = e.target.value.trim();
                 if (v.length > 0) updateSpeed({ testUrl: v });
               }}
-              className="w-full font-mono text-sub md:w-[360px]"
+              className="policy-url-input w-full font-mono text-sub"
             />
           </Row>
           <Row label="Интервал проверки" sub="Как часто переизмерять задержку">
@@ -369,21 +370,5 @@ export function PolicyEditor({
         </>
       )}
     </>
-  );
-}
-
-// Identical copy of SettingsScreen's local `Row` (label + sub + control row). Kept as
-// an internal, unexported duplicate rather than importing from features/settings to
-// avoid a cross-feature/circular dependency (Settings imports PolicyEditor; the
-// upcoming Routing screen will too) — it's a trivial, stable layout primitive.
-function Row({ label, sub, children }: { label: string; sub: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2 border-b border-border-subtle px-[18px] py-4 last:border-0 md:flex-row md:items-center md:justify-between md:gap-6">
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="text-sm font-medium text-text-primary">{label}</span>
-        <span className="text-xs text-text-tertiary">{sub}</span>
-      </div>
-      <div className="flex w-full items-center gap-2.5 md:w-auto md:shrink-0">{children}</div>
-    </div>
   );
 }

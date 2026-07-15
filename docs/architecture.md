@@ -20,7 +20,7 @@ Overview for agents and developers. Full design: [docs/specs/2026-06-29-submerge
 
 - **shared** — the single contract: domain Zod schemas (Source, Proxy, Settings, Channel/ChannelPolicy, NodeView, LiveEvent, auth) and inferred types. Imported by both server and web.
 - **server** — control plane. Feature modules (`sources`, `nodes`, `channels`, `settings`): `router.ts` (validation + dispatch) + `service.ts` (logic + Drizzle). `live/` holds the SSE hub, `auth/` the session auth (top-level, not a module). External services go through `clients/` only (mihomo, happ-decoder) with timeouts and Zod-validated responses. tRPC exports types to web without codegen.
-- **web** — React SPA. tRPC client + TanStack Query (server state), uPlot (live metrics), shadcn/ui.
+- **web** — React SPA. tRPC client + TanStack Query (server state), dependency-free live metrics, shadcn/ui.
 - **happ-decoder** (Python) and **mihomo** (Go) — external processes, reused from PoC unchanged.
 
 ## Data flows

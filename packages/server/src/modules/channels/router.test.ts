@@ -1,6 +1,9 @@
+import { type DirectChannel, emptyChannelMatcher } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCallerFactory, router } from "../../trpc/trpc.js";
 import { applyConfig } from "../nodes/service.js";
+import * as pool from "./pool.js";
 import { channelsRouter } from "./router.js";
 import * as service from "./service.js";
 
@@ -19,6 +22,7 @@ vi.mock("./service.js", () => ({
   readDefaultChannel: vi.fn(() => ({})),
   reorderChannels: vi.fn(),
   setChannelPolicy: vi.fn(),
+  updateDirect: vi.fn(),
   updateChannel: vi.fn(),
 }));
 vi.mock("./pool.js", () => ({
@@ -96,6 +100,78 @@ describe("channels router — engine-apply status on every config mutation", () 
   it("reports applied: true when the reload succeeds", async () => {
     const res = await caller.channels.update({ id: "c1", name: "Renamed" });
     expect(res).toEqual({ ok: true, applied: true });
+  });
+
+  it("updates Direct atomically and regenerates only after the service commits", async () => {
+    const calls: string[] = [];
+    const direct: DirectChannel = {
+      id: "direct",
+      name: "Direct",
+      target: "direct" as const,
+      priority: 0,
+      enabled: false,
+      isDefault: false as const,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    };
+    vi.mocked(service.updateDirect).mockImplementation(() => {
+      calls.push("service");
+      return direct;
+    });
+    applyConfigMock.mockImplementationOnce(async () => {
+      calls.push("apply");
+      return { nodes: 0, applied: true };
+    });
+
+    const result = await caller.channels.updateDirect({ enabled: false });
+
+    expect(service.updateDirect).toHaveBeenCalledWith(expect.anything(), { enabled: false });
+    expect(applyConfigMock).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(["service", "apply"]);
+    expect(result).toEqual({ channel: direct, applied: true });
+  });
+
+  it("does not regenerate when a guarded proxy mutation rejects Direct", async () => {
+    vi.mocked(service.updateChannel).mockImplementationOnce(() => {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "Direct channel cannot use proxy update",
+      });
+    });
+
+    await expect(caller.channels.update({ id: "direct", enabled: false })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    expect(applyConfigMock).not.toHaveBeenCalled();
+  });
+
+  it("does not regenerate when delete, policy, or pool guards reject Direct", async () => {
+    const reject = (message: string): never => {
+      throw new TRPCError({ code: "BAD_REQUEST", message });
+    };
+
+    vi.mocked(service.deleteChannel).mockImplementationOnce(() =>
+      reject("Direct channel cannot be deleted"),
+    );
+    await expect(caller.channels.remove({ id: "direct" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+
+    vi.mocked(service.setChannelPolicy).mockImplementationOnce(() =>
+      reject("Direct channel cannot use policy"),
+    );
+    await expect(
+      caller.channels.setPolicy({ id: "direct", policy: manualPolicy }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    vi.mocked(pool.setPool).mockImplementationOnce(() =>
+      reject("Direct channel cannot use a pool"),
+    );
+    await expect(caller.channels.setPool({ id: "direct", members: [] })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+
+    expect(applyConfigMock).not.toHaveBeenCalled();
   });
 });
 

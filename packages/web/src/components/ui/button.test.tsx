@@ -1,8 +1,16 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Button } from "./button";
 
 describe("Button", () => {
+  it("forwards its ref to the native button", () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(<Button ref={ref}>Действия</Button>);
+
+    expect(ref.current).toBe(screen.getByRole("button", { name: "Действия" }));
+  });
+
   it("renders its label and primary variant classes", () => {
     render(<Button>Пинг всех</Button>);
     const btn = screen.getByRole("button", { name: "Пинг всех" });

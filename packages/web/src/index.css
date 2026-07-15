@@ -1,7 +1,7 @@
 @import "tailwindcss";
+@import "./styles/responsive.css";
 
 /* Dark is the default; light activates when .dark is removed from <html> (theme toggle wired in a later task). */
-@custom-variant dark (&:where(.dark, .dark *));
 
 /* @generated design tokens — sync from pencil/web-ui.pen via `pnpm -F @submerge/web design:tokens`. Do not edit by hand. */
 :root {
@@ -63,6 +63,10 @@
 }
 /* @end generated design tokens */
 
+:root {
+  --mobile-bottom-nav-height: calc(4rem + max(0.75rem, env(safe-area-inset-bottom)) + 1px);
+}
+
 /* Expose roles as Tailwind utilities (bg-base, text-primary, border-default, …) */
 @theme inline {
   --color-canvas: var(--bg-base);
@@ -107,6 +111,10 @@
      text-sm/xs/lg/2xl remain available — nothing here removes them. */
   --text-h1: 24px;
   --text-h1--font-weight: 600;
+  --text-page-title-compact: 22px;
+  --text-page-title-compact--font-weight: 600;
+  --text-metric: 26px;
+  --text-metric--font-weight: 600;
   --text-section: 18px;
   --text-section--font-weight: 600;
   --text-cardtitle: 15px;
@@ -123,6 +131,7 @@
      style (600 + tracking); fine is its regular-weight counterpart. */
   --text-fine: 11px;
   --text-micro: 10px;
+  --text-axis: 9px;
 }
 
 /* Uses role vars directly: @layer base runs before @theme inline utilities exist. */

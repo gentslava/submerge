@@ -65,7 +65,7 @@ export function historyForUrl(
   return perUrl && perUrl.length > 0 ? perUrl : (info?.history ?? []);
 }
 
-const delayResponseSchema = z.object({ delay: z.number() });
+const delayResponseSchema = z.object({ delay: z.number().nonnegative() });
 export type DelayResponse = z.infer<typeof delayResponseSchema>;
 
 // /connections carries cumulative byte counters (plus a large connections array we
@@ -99,7 +99,12 @@ const connectionSchema = z.looseObject({
 });
 export type MihomoConnection = z.infer<typeof connectionSchema>;
 const connectionsResponseSchema = z.object({
-  connections: z.array(connectionSchema).default([]),
+  // mihomo serializes an idle connection list as `null` (Go nil slice), not `[]`.
+  // Treat that as an empty snapshot; HTTP/errors still represent engine failures.
+  connections: z
+    .array(connectionSchema)
+    .nullish()
+    .transform((value) => value ?? []),
 });
 
 function call(path: string, init: RequestInit = {}): Promise<Response> {

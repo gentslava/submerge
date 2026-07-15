@@ -147,11 +147,20 @@ Node 24 LTS · pnpm workspaces · strict TypeScript · Biome · Vitest.
 
 ```bash
 pnpm install
-pnpm -F @submerge/server dev    # dev server (serves web + API)
+pnpm dev:infra                  # isolated mihomo :7890/:9090 + decoder :8080
+pnpm dev:server                 # TypeScript API on the default :3000
+pnpm dev:web                    # Vite/HMR on :5173; /trpc → :3000
 pnpm test                       # vitest
 pnpm typecheck                  # tsc -b --noEmit
 pnpm lint                       # biome ci .
 ```
+
+Run the three development commands in separate terminals. The development sidecars use
+their own Compose project and `.local-run/mihomo` directory; the standard ports make a
+conflicting stack fail loudly instead of connecting to the wrong controller. The server
+keeps its normal `:3000` default; override both processes when needed, for example
+`PORT=3100 pnpm dev:server` and
+`VITE_PROXY_TARGET=http://127.0.0.1:3100 pnpm dev:web`.
 
 Monorepo layout: [`packages/shared`](packages/shared) (Zod domain schemas — the single
 front↔back contract), [`packages/server`](packages/server) (tRPC, Drizzle + SQLite, SSE,

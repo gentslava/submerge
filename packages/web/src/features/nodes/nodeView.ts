@@ -14,11 +14,8 @@ export function isPseudo(name: string): boolean {
   return PSEUDO_NODE_SET.has(name);
 }
 
-export function splitNodes(all: NodeItem[]): { modes: NodeItem[]; nodes: NodeItem[] } {
-  const modes: NodeItem[] = [];
-  const nodes: NodeItem[] = [];
-  for (const n of all) (PSEUDO_NODE_SET.has(n.name) ? modes : nodes).push(n);
-  return { modes, nodes };
+export function realNodes(all: NodeItem[]): NodeItem[] {
+  return all.filter((node) => !PSEUDO_NODE_SET.has(node.name));
 }
 
 export function latencyLabel(delay: number | null): string {
@@ -84,13 +81,14 @@ export function serverCountLabel(n: number): string {
   return `${n} ${pluralRu(n, ["сервер", "сервера", "серверов"])}`;
 }
 
-// A subscription group: the source's label + the real nodes whose name matches its
-// proxies[], plus a synthetic trailing group for nodes not owned by any source.
+// A subscription group: an enabled source's label + its unclaimed real nodes. Source
+// order assigns a same-named node to its first matching source, then orphans trail.
 export interface NodeGroup {
   key: string;
   label: string;
   kind: Source["kind"] | "other";
   hwid: boolean;
+  source?: Source;
   nodes: NodeItem[];
 }
 
@@ -98,12 +96,15 @@ export interface NodeGroup {
 // Pseudo modes (AUTO/DIRECT/…) are excluded — they render in their own section.
 export function groupNodes(nodes: NodeItem[], sources: Source[]): NodeGroup[] {
   const claimed = new Set<string>();
-  const ordered = [...sources].sort((a, b) => a.sortOrder - b.sortOrder);
+  const ownedByAnySource = new Set(sources.flatMap((source) => source.proxies.map((p) => p.name)));
+  const ordered = sources
+    .filter((source) => source.enabled)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
   const groups: NodeGroup[] = [];
 
   for (const src of ordered) {
     const owned = new Set(src.proxies.map((p) => p.name));
-    const members = nodes.filter((n) => owned.has(n.name));
+    const members = nodes.filter((n) => owned.has(n.name) && !claimed.has(n.name));
     for (const m of members) claimed.add(m.name);
     if (members.length > 0) {
       groups.push({
@@ -111,12 +112,15 @@ export function groupNodes(nodes: NodeItem[], sources: Source[]): NodeGroup[] {
         label: src.label,
         kind: src.kind,
         hwid: src.hwid,
+        source: src,
         nodes: members,
       });
     }
   }
 
-  const orphans = nodes.filter((n) => !claimed.has(n.name));
+  const orphans = nodes.filter(
+    (node) => !claimed.has(node.name) && !ownedByAnySource.has(node.name),
+  );
   if (orphans.length > 0) {
     groups.push({ key: "other", label: "Прочие", kind: "other", hwid: false, nodes: orphans });
   }

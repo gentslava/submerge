@@ -10,6 +10,7 @@ import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LabeledControlRow as Row } from "@/components/ui/labeled-control-row";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
@@ -102,7 +103,7 @@ export function SettingsScreen() {
   );
 
   return (
-    <div className="flex flex-col gap-[26px] px-4 pt-5 pb-10 md:px-8 md:pt-[26px]">
+    <div className="responsive-page responsive-page--settings page-content flex flex-col gap-[26px] px-4 pt-5 pb-10">
       <header className="flex flex-col gap-[5px]">
         <h1 className="text-h1 text-text-primary">Настройки</h1>
         <p className="text-sub text-text-secondary">
@@ -195,13 +196,13 @@ export function SettingsScreen() {
               />
             </Row>
             <Row label="Адрес прокси" sub="Локальный SOCKS / HTTP — адрес для клиентов">
-              <div className="flex w-full items-center gap-2.5 md:w-auto">
+              <div className="settings-proxy-field flex w-full items-center gap-2.5">
                 <Input
                   key={proxyEndpoint}
                   aria-label="Адрес прокси"
                   defaultValue={proxyEndpoint}
                   onBlur={(e) => persistText("proxyEndpoint", e.target.value)}
-                  className="w-full font-mono text-sub md:w-[260px]"
+                  className="settings-field-260 w-full font-mono text-sub"
                 />
                 <IconButton
                   onClick={() => copyToClipboard(proxyEndpoint)}
@@ -218,7 +219,7 @@ export function SettingsScreen() {
               {hwid ? (
                 <ReadonlyCopyField
                   value={hwid}
-                  widthClass="w-full md:w-[260px]"
+                  widthClass="settings-field-260 w-full"
                   copyLabel="Скопировать HWID"
                 />
               ) : (
@@ -253,24 +254,12 @@ function Section({ title, desc, children }: { title: string; desc: string; child
     <section className="flex flex-col gap-3.5">
       <div className="flex flex-col gap-1">
         <h2 className="text-cardtitle text-text-primary">{title}</h2>
-        <p className="text-sub text-text-secondary">{desc}</p>
+        <p className="settings-section-description hidden text-sub text-text-secondary">{desc}</p>
       </div>
       <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
         {children}
       </div>
     </section>
-  );
-}
-
-function Row({ label, sub, children }: { label: string; sub: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-2 border-b border-border-subtle px-[18px] py-4 last:border-0 md:flex-row md:items-center md:justify-between md:gap-6">
-      <div className="flex min-w-0 flex-col gap-1">
-        <span className="text-sm font-medium text-text-primary">{label}</span>
-        <span className="text-xs text-text-tertiary">{sub}</span>
-      </div>
-      <div className="flex w-full items-center gap-2.5 md:w-auto md:shrink-0">{children}</div>
-    </div>
   );
 }
 
@@ -339,7 +328,7 @@ function ReadonlyCopyField({
 function SecretField({ value, onSave }: { value: string; onSave(v: string): void }) {
   const [reveal, setReveal] = useState(false);
   return (
-    <FieldBox className="w-full md:w-[320px]">
+    <FieldBox className="settings-secret-field w-full">
       <input
         key={value}
         type={reveal ? "text" : "password"}

@@ -1,4 +1,4 @@
-import { type NodeItem, PSEUDO_NODE_SET } from "@submerge/shared";
+import { type NodeItem, type ProxyChannel, PSEUDO_NODE_SET } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, KeyRound, Layers } from "lucide-react";
 import { useState } from "react";
@@ -80,7 +80,10 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
   }
 
   const sources = sourcesQuery.data ?? [];
-  const excludedGroupNames = channelGroupNames(channelsQuery.data ?? []);
+  const proxyChannels = (channelsQuery.data ?? []).filter(
+    (channel): channel is ProxyChannel => channel.target === "proxy",
+  );
+  const excludedGroupNames = channelGroupNames(proxyChannels);
   const nodes = (nodesQuery.data?.all ?? []).filter(
     (n) => !PSEUDO_NODE_SET.has(n.name) && !excludedGroupNames.has(n.name),
   );

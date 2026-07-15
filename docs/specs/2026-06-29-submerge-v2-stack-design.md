@@ -22,7 +22,7 @@ Scale: **self-hosted product**, single-admin (optional password), DB persistence
 
 **server:** tRPC v11 · Drizzle ORM + SQLite (better-sqlite3, WAL) · Zod 4 · pino · session auth (@node-rs/argon2) · SSE hub for real-time.
 
-**web:** Vite · React 19 · shadcn/ui (Radix) · Tailwind CSS v4 · TanStack Query v5 · TanStack Router v1 · react-hook-form + Zod · uPlot (live charts) · lucide-react · sonner · dark theme.
+**web:** Vite · React 19 · shadcn/ui (Radix) · Tailwind CSS v4 · TanStack Query v5 · TanStack Router v1 · react-hook-form + Zod · lucide-react · sonner · dark theme. Add a charting dependency only when a concrete visualisation needs it.
 
 **Deploy:** Docker multi-stage (node:24-bookworm → slim, non-root), multiarch (amd64/arm64) buildx, single image `ghcr.io/gentslava/submerge`. GitHub Actions CI.
 
@@ -92,7 +92,7 @@ Inputs/outputs are Zod schemas from `shared`; the frontend gets types via tRPC i
 
 ## 7. Real-time data flow
 
-The server holds a single **SSE hub**: it periodically polls mihomo (`/proxies`, `/connections`), normalizes the data, and fans out to tRPC `live` subscribers. Web: subscription → `queryClient.setQueryData` with a targeted patch per node name (no full table re-render). High-frequency traffic/ping metrics go directly to uPlot via a throttle buffer (~300 ms), bypassing the Query cache. State is in-process memory (single admin; no Redis needed). Metrics window is bounded (windowing) to prevent memory leaks on long uptimes.
+The server holds a single **SSE hub**: it periodically polls mihomo (`/proxies`, `/connections`), normalizes the data, and fans out to tRPC `live` subscribers. Web: subscription → `queryClient.setQueryData` with a targeted patch per node name (no full table re-render). High-frequency traffic/ping metrics are throttled before rendering, bypassing the Query cache; add a charting dependency only when a concrete chart requires one. State is in-process memory (single admin; no Redis needed). Metrics window is bounded (windowing) to prevent memory leaks on long uptimes.
 
 ## 8. Migrating PoC logic (nothing is lost)
 

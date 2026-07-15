@@ -129,7 +129,7 @@ export function NodesScreen() {
   };
 
   return (
-    <div className="flex flex-col gap-[22px] px-4 pt-5 pb-8 md:px-8 md:pt-[26px]">
+    <div className="responsive-page responsive-page--nodes page-content flex flex-col gap-[22px] px-4 pt-5 pb-8">
       <NodesHeader
         nodeCount={realCount}
         checkIntervalSec={headerCheckIntervalSec}
@@ -233,8 +233,8 @@ function Body({
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">
-        <h2 className="text-cardtitle text-text-primary">Все узлы</h2>
-        <span className="flex items-center gap-1.5 text-xs text-text-tertiary">
+        <h2 className="nodes-list-title text-section text-text-primary">Все узлы</h2>
+        <span className="nodes-list-grouping-hint hidden items-center gap-1.5 text-xs text-text-tertiary">
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
           сгруппировано по подпискам
         </span>

@@ -10,7 +10,7 @@ import { db } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
 import { log } from "./log.js";
-import { ensureDefaultChannel } from "./modules/channels/service.js";
+import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
 import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
@@ -47,6 +47,7 @@ runMigrations();
 
 // Seed the Default channel on first boot (idempotent — no-op if already present).
 ensureDefaultChannel(db);
+ensureDirectChannel(db);
 
 // Backfill sub_url for pre-migration sub/deep-link rows so dedup covers them.
 backfillSubUrls(db);
@@ -99,7 +100,9 @@ const server = createServer((req, res) => {
   res.end("not found");
 });
 
-server.listen(env.PORT, () => log.info(`submerge server on :${env.PORT}`));
+server.listen(env.PORT, env.HOST, () =>
+  log.info({ host: env.HOST, port: env.PORT }, "submerge server listening"),
+);
 
 // Graceful shutdown: stop the hub, then stop accepting new connections and exit
 const shutdown = () => {

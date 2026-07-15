@@ -150,6 +150,7 @@ const stickyPolicy = (
 const channel = (policy: ChannelPolicy): Channel => ({
   id: "default",
   name: "Default",
+  target: "proxy",
   priority: 0,
   enabled: true,
   isDefault: true,

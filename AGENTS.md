@@ -42,7 +42,9 @@ A server module = thin `router.ts` (validation + call) + `service.ts` (logic + D
 
 ```bash
 pnpm install                            # install
-pnpm -F @submerge/server dev            # dev server
+pnpm dev:infra                          # isolated mihomo + happ-decoder sidecars
+pnpm dev:server                         # host API, loopback :3000 by default
+pnpm dev:web                            # Vite :5173, proxies /trpc to :3000
 pnpm test                               # all tests (vitest)
 pnpm typecheck                          # tsc -b (server/shared) + tsc --noEmit (web)
 pnpm lint                               # biome ci .
@@ -83,17 +85,27 @@ The approved UI is the **Indigo Console** design in [`pencil/web-ui.pen`](pencil
 
 Every change moves through these stages. Gates marked **⛔** are mandatory and **block progression** — do not advance (or offer to) until the current gate is green. Trivial, mechanical edits (typo, one-line fix, rename) may skip to *Implement*; anything that adds or changes behavior runs the whole flow.
 
+### Executable UI evidence
+
+- Browser tests use populated fixtures and cover relevant empty/error/collapsed states.
+- Responsive tests inspect `html`, `.app-main`, and `.responsive-page` at
+  320/390/425/768/1024/1440 plus any changed container-query boundary.
+- Popup tests cover both placements, hidden chrome, outside press, Escape, focus return,
+  and separation between the trigger and destructive actions.
+- Browser gates run with zero retries. Record the Pencil frame, viewport/theme,
+  screenshot, risky states, reviewer, and resolved findings in the active plan.
+
 **Review runs at two scales — both required, they see different things.** The *incremental* review (2c) looks **narrow and deep** at one slice while the context is fresh; the *final* review (stage 3) looks **wide** across the whole feature for integration and coherence. Trees vs. forest — neither replaces the other.
 
 1. **Spec / design** — for a new feature or behavior change, agree the approach first (no code without a spec). Specs live in `docs/specs/`, phased plans in `docs/plans/`. Check current library APIs via **Context7 MCP** (Zod 4, tRPC v11, Drizzle, React 19) — versions are latest, the API may have shifted.
 
 2. **Implement — the slice loop.** Build in small vertical slices; repeat per slice:
    - **a. TDD** — failing test first, then the minimal code to pass. Cover parsing/ingest logic with unit tests. Follow the conventions and design-system gates above (tokens-in-config, measure don't invent).
-   - **b. ⛔ Self-verify** — `./node_modules/.bin/biome ci packages/ && pnpm typecheck && pnpm test` green. Use **raw biome** (the rtk hook masks `pnpm lint`'s exit code — it can read green while failing). **Green gates ≠ correct**: they don't see layout/visual/responsive/behavior — check those yourself for the slice.
+   - **b. ⛔ Self-verify** — `pnpm verify:static` plus focused browser evidence is green. The script invokes raw repository-wide Biome (the rtk hook can mask `pnpm lint`'s exit code), token drift checks, typecheck, tests, and production builds. **Green gates ≠ correct**: they don't see layout/visual/responsive/behavior — check those yourself for the slice.
    - **c. ⛔ Incremental review** — run `/code-review` on *this slice's* diff (narrow, deep; lighter effort is fine here): correctness, and does it fit the conventions + design system. Cheap and early — catches issues before they compound across later slices. An author self-read is **not** this gate — actually invoke the review.
    - **d. Commit** — atomic, conventional (`feat:`, `fix:`, `chore:`, `docs:`), body ending `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. Keep slices small so each review stays narrow.
 
-3. ⛔ **Final review** — once the feature is complete, review the **whole change as one** (wide scope): integration between slices, cross-cutting concerns, coherence, regressions one slice introduced against another, plus the full UI sweep — mockup viewport (1440×1024, dark) **and** the breakpoint boundaries (390 up through the sm/md edges), checking horizontal overflow and clipped/misaligned controls; for logic, the risky states (empty / error / collapsed), not just the happy path. Run `/code-review` (an independent adversarial pass — actually invoke the skill, don't substitute an author read) and resolve findings **before offering to ship, before committing the finished feature, and before any push**. This is a gate you run **yourself, unprompted** — it is never something the user has to ask for ("ты ревью запускал?" means the gate was already missed). If the user ever has to ask, the process failed.
+3. ⛔ **Final review** — once the feature is complete, review the **whole change as one** (wide scope): integration between slices, cross-cutting concerns, coherence, regressions one slice introduced against another, plus the full UI sweep — mockup viewport (1440×1024, dark) **and** 320/390/425/768/1024/container-boundary widths, checking internal scroll owners, horizontal overflow, and clipped/misaligned controls; for logic, the risky states (populated / empty / error / collapsed), not just the happy path. Run `/code-review` (an independent adversarial pass — actually invoke the skill, don't substitute an author read) and resolve findings **before offering to ship, before committing the finished feature, and before any push**. This is a gate you run **yourself, unprompted** — it is never something the user has to ask for ("ты ревью запускал?" means the gate was already missed). If the user ever has to ask, the process failed.
 
 4. ⛔ **Ship** — **a push to `master` is a production deploy**: it triggers GHA (`.github/workflows/docker.yml`) → multiarch images → Dokploy pulls the fresh `:latest`. **Precondition: the stage-3 `/code-review` has run and its findings are resolved.** Pushing before review — or running only a self-review instead of the skill — is a gate violation, not a shortcut. Commit/push only when the user asks — this is a shared, deploy-triggering repo.
 

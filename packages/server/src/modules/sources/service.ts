@@ -4,6 +4,7 @@ import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
+import { isExactIdPermutation } from "../../lib/ids.js";
 import { applyConfig } from "../nodes/service.js";
 import { getOrCreateHwid } from "../settings/service.js";
 import { ingestSource } from "./ingest.js";
@@ -157,6 +158,13 @@ export async function reorderSources(
   ids: number[],
   configPath: string = env.MIHOMO_CONFIG_PATH,
 ): Promise<{ applied: boolean }> {
+  const expectedIds = db
+    .select({ id: sources.id })
+    .from(sources)
+    .all()
+    .map((source) => source.id);
+  if (!isExactIdPermutation(ids, expectedIds)) throw new Error("complete source order is required");
+
   db.transaction((tx) => {
     ids.forEach((id, index) => {
       tx.update(sources).set({ sortOrder: index }).where(eq(sources.id, id)).run();

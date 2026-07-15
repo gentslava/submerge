@@ -6,9 +6,9 @@ import {
   groupNodes,
   latencyClass,
   latencyLabel,
+  realNodes,
   securityBadge,
   serverCountLabel,
-  splitNodes,
   transportBadge,
   typeBadges,
 } from "./nodeView";
@@ -46,13 +46,12 @@ describe("nodeView", () => {
     expect(latencyLabel(0)).toBe("timeout");
     expect(latencyLabel(330)).toBe("330 ms");
   });
-  it("separates pseudo modes from real nodes", () => {
-    const { modes, nodes } = splitNodes([
+  it("filters pseudo modes from real nodes", () => {
+    const nodes = realNodes([
       { name: "AUTO", type: "URLTest", delay: null, history: [] },
       { name: "NL-1", type: "vless", delay: 47, history: [] },
       { name: "DIRECT", type: "Direct", delay: null, history: [] },
     ]);
-    expect(modes.map((m) => m.name)).toEqual(["AUTO", "DIRECT"]);
     expect(nodes.map((n) => n.name)).toEqual(["NL-1"]);
   });
 
@@ -90,6 +89,73 @@ describe("nodeView", () => {
     ];
     const groups = groupNodes([node("nl-1")], sources);
     expect(groups.map((g) => g.label)).toEqual(["Real"]);
+  });
+
+  it("omits a disabled source when its nodes also belong to an enabled source", () => {
+    const sources: Source[] = [
+      src({
+        id: 1,
+        label: "Enabled Remnawave",
+        enabled: true,
+        sortOrder: 0,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+      src({
+        id: 2,
+        label: "Disabled Remnawave",
+        enabled: false,
+        sortOrder: 1,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+    ];
+
+    const groups = groupNodes([node("nl-1")], sources);
+
+    expect(groups.map((g) => g.label)).toEqual(["Enabled Remnawave"]);
+  });
+
+  it("does not expose a stale live node owned only by a disabled source as Прочие", () => {
+    const sources: Source[] = [
+      src({
+        id: 1,
+        label: "Disabled Remnawave",
+        enabled: false,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+    ];
+
+    expect(groupNodes([node("nl-1")], sources)).toEqual([]);
+  });
+
+  it("keeps a genuinely unknown live node under Прочие", () => {
+    const groups = groupNodes([node("external")], [src({ enabled: false, proxies: [] })]);
+
+    expect(groups.map((group) => group.label)).toEqual(["Прочие"]);
+    expect(groups[0]?.nodes.map((item) => item.name)).toEqual(["external"]);
+  });
+
+  it("does not assign a shared node to two enabled sources", () => {
+    const sources: Source[] = [
+      src({
+        id: 1,
+        label: "First source",
+        sortOrder: 0,
+        proxies: [{ name: "nl-1", type: "vless", server: "s", port: 1 }],
+      }),
+      src({
+        id: 2,
+        label: "Second source",
+        sortOrder: 1,
+        proxies: [
+          { name: "nl-1", type: "vless", server: "s", port: 1 },
+          { name: "de-1", type: "vless", server: "s", port: 1 },
+        ],
+      }),
+    ];
+
+    const groups = groupNodes([node("nl-1"), node("de-1")], sources);
+
+    expect(groups.map((g) => g.nodes.map((n) => n.name))).toEqual([["nl-1"], ["de-1"]]);
   });
 
   it("derives the transport badge, defaulting to TCP when network is omitted", () => {

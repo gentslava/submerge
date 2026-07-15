@@ -1,7 +1,18 @@
 import type { NodeItem } from "@submerge/shared";
-import { Ban, Check, ChevronDown, Gauge, Loader2, Undo2, Zap } from "lucide-react";
+import {
+  Activity,
+  Ban,
+  Check,
+  ChevronDown,
+  Ellipsis,
+  Gauge,
+  Loader2,
+  Undo2,
+  Zap,
+} from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { useDismissiblePopup } from "@/hooks/use-dismissible-popup";
 import { cn } from "@/lib/utils";
 import {
   dotColors,
@@ -78,9 +89,26 @@ export function NodeRow({
 
   return (
     <>
+      <MobileNodeRow
+        item={item}
+        isActive={isActive}
+        pinging={pinging}
+        testing={testing}
+        canSpeedTest={canSpeedTest}
+        isExcluded={isExcluded}
+        sub={sub}
+        isGroup={isGroup}
+        expanded={expanded}
+        onToggleExpanded={() => setExpanded((value) => !value)}
+        onSelect={onSelect}
+        onPing={onPing}
+        onSpeedTest={() => speedTest?.request(item.name)}
+        onToggleExcluded={onToggleExcluded}
+      />
+
       <div
         className={cn(
-          "flex items-center gap-2 border-b border-border-subtle px-4 py-[13px] last:border-b-0 md:gap-4",
+          "node-row-desktop hidden items-center gap-4 border-b border-border-subtle px-4 py-[13px] last:border-b-0",
           isActive && "bg-accent-bg",
           isExcluded && "opacity-60",
         )}
@@ -103,7 +131,7 @@ export function NodeRow({
         )}
 
         {/* Ping value — a spinner stands in while this node is being pinged */}
-        <div className="flex w-16 shrink-0 items-center justify-end md:w-24">
+        <div className="node-row-ping-cell flex w-16 shrink-0 items-center justify-end">
           {pinging ? (
             <Loader2 className="h-4 w-4 animate-spin text-text-tertiary" aria-label="Опрос…" />
           ) : (
@@ -171,14 +199,14 @@ export function NodeRow({
         </div>
 
         {/* Action cell */}
-        <div className="flex w-auto shrink-0 justify-end md:w-[120px]">
+        <div className="node-row-action-cell flex w-auto shrink-0 justify-end">
           {isActive ? (
             // Solid accent (not opacity-dimmed) — the active node reads as "on", not disabled.
             <Button
               variant="primary"
               size="sm"
               disabled
-              className="w-[92px] disabled:opacity-100 md:w-[112px]"
+              className="node-row-action-button w-[92px] disabled:opacity-100"
             >
               <Check className="h-4 w-4" aria-hidden="true" />
               Активен
@@ -187,7 +215,7 @@ export function NodeRow({
             <Button
               variant="secondary"
               size="sm"
-              className="w-[92px] md:w-[112px]"
+              className="node-row-action-button w-[92px]"
               disabled={isExcluded}
               onClick={onSelect}
             >
@@ -199,34 +227,252 @@ export function NodeRow({
 
       {expanded &&
         members.map((m) => (
-          <div
-            key={m.name}
-            className="flex items-center gap-2 border-b border-border-subtle bg-elevated px-4 py-2.5 pl-11 last:border-b-0 md:gap-4"
-          >
-            <div className="flex min-w-0 flex-1 items-center gap-3">
-              <span
-                aria-hidden="true"
-                className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[latencyClass(m.delay)])}
-              />
-              <span className="truncate text-sm text-text-secondary">
-                {m.active ? `${m.name} · активен` : m.name}
+          <div key={m.name}>
+            <div className="node-member-mobile flex items-center justify-between gap-3 border-b border-border-subtle bg-elevated px-4 py-3">
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span
+                  aria-hidden="true"
+                  className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[latencyClass(m.delay)])}
+                />
+                <span className="truncate text-sub text-text-secondary">
+                  {m.active ? `${m.name} · активен` : m.name}
+                </span>
               </span>
-            </div>
-            <div className="flex w-16 shrink-0 items-center justify-end md:w-24">
-              <span className={cn("font-mono text-sm", latencyTextColors[latencyClass(m.delay)])}>
+              <span
+                className={cn(
+                  "shrink-0 font-mono text-sub",
+                  latencyTextColors[latencyClass(m.delay)],
+                )}
+              >
                 {latencyLabel(m.delay)}
               </span>
             </div>
-            {/* Mirror the parent's ping / speed-test / exclude cells so member
-                delay values line up. */}
-            <span aria-hidden="true" className="w-12 shrink-0" />
-            <span aria-hidden="true" className="w-12 shrink-0" />
-            <span aria-hidden="true" className="w-10 shrink-0" />
-            {/* Match the parent row's action column so member delay values line up:
-                ~92px (the mobile button width) then the desktop w-[120px]. */}
-            <span aria-hidden="true" className="w-[92px] shrink-0 md:w-[120px]" />
+            <div className="node-member-desktop hidden items-center gap-4 border-b border-border-subtle bg-elevated px-4 py-2.5 pl-11 last:border-b-0">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[latencyClass(m.delay)])}
+                />
+                <span className="truncate text-sm text-text-secondary">
+                  {m.active ? `${m.name} · активен` : m.name}
+                </span>
+              </div>
+              <div className="flex w-24 shrink-0 items-center justify-end">
+                <span className={cn("font-mono text-sm", latencyTextColors[latencyClass(m.delay)])}>
+                  {latencyLabel(m.delay)}
+                </span>
+              </div>
+              {/* Mirror the parent's ping / speed-test / exclude cells so member
+                  delay values line up. */}
+              <span aria-hidden="true" className="w-12 shrink-0" />
+              <span aria-hidden="true" className="w-12 shrink-0" />
+              <span aria-hidden="true" className="w-10 shrink-0" />
+              <span aria-hidden="true" className="w-[120px] shrink-0" />
+            </div>
           </div>
         ))}
     </>
+  );
+}
+
+interface MobileNodeRowProps {
+  item: NodeItem;
+  isActive: boolean;
+  pinging: boolean;
+  testing: boolean;
+  canSpeedTest: boolean;
+  isExcluded: boolean;
+  sub: string;
+  isGroup: boolean;
+  expanded: boolean;
+  onToggleExpanded(): void;
+  onSelect(): void;
+  onPing(): void;
+  onSpeedTest(): void;
+  onToggleExcluded(excluded: boolean): void;
+}
+
+function MobileNodeRow({
+  item,
+  isActive,
+  pinging,
+  testing,
+  canSpeedTest,
+  isExcluded,
+  sub,
+  isGroup,
+  expanded,
+  onToggleExpanded,
+  onSelect,
+  onPing,
+  onSpeedTest,
+  onToggleExcluded,
+}: MobileNodeRowProps) {
+  const menu = useDismissiblePopup({ preferredPlacement: "above" });
+  const lClass = latencyClass(item.delay);
+
+  return (
+    <div
+      className={cn(
+        "node-row-mobile relative flex flex-col gap-2.5 border-b border-border-subtle px-3.5 py-3 last:border-b-0",
+        isActive && "bg-accent-bg",
+        isExcluded && "opacity-60",
+      )}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        {isGroup ? (
+          <button
+            type="button"
+            onClick={onToggleExpanded}
+            aria-expanded={expanded}
+            aria-label={`Показать серверы ${item.name}`}
+            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          >
+            <span
+              aria-hidden="true"
+              className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])}
+            />
+            <span className="truncate text-cardtitle text-text-primary">{item.name}</span>
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "h-4 w-4 shrink-0 text-text-tertiary transition-transform",
+                !expanded && "-rotate-90",
+              )}
+            />
+          </button>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span
+              aria-hidden="true"
+              className={cn("h-2 w-2 shrink-0 rounded-full", dotColors[lClass])}
+            />
+            <span className="truncate text-cardtitle text-text-primary">{item.name}</span>
+          </div>
+        )}
+        <span
+          className={cn(
+            "shrink-0 rounded-full bg-hover px-2.5 py-1 font-mono text-sub font-medium",
+            latencyTextColors[lClass],
+          )}
+        >
+          {pinging ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-label="Опрос…" />
+          ) : (
+            latencyLabel(item.delay)
+          )}
+        </span>
+      </div>
+
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-xs text-text-tertiary">{sub}</span>
+        <div className="flex shrink-0 items-center gap-2">
+          {isActive ? (
+            <Button
+              variant="primary"
+              size="md"
+              disabled
+              className="h-11 min-w-[114px] disabled:opacity-100"
+            >
+              <Check className="h-4 w-4" aria-hidden="true" />
+              Активен
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              size="md"
+              className="h-11 min-w-[114px]"
+              disabled={isExcluded}
+              onClick={onSelect}
+            >
+              Выбрать
+            </Button>
+          )}
+          <div className="relative">
+            <button
+              ref={menu.triggerRef}
+              type="button"
+              onClick={menu.toggle}
+              aria-label={`Действия для ${item.name}`}
+              aria-expanded={menu.open}
+              className="flex h-11 w-11 items-center justify-center rounded-md border border-accent-border bg-accent-bg text-accent-text transition-colors hover:bg-hover"
+            >
+              <Ellipsis className="h-[18px] w-[18px]" aria-hidden="true" />
+            </button>
+
+            {menu.open && (
+              <div
+                ref={menu.popupRef}
+                className={cn(
+                  "absolute right-0 z-20 flex w-[210px] flex-col gap-0.5 rounded-md border border-border-default bg-elevated p-1.5",
+                  menu.placement === "above"
+                    ? "bottom-[calc(100%+0.5rem)]"
+                    : "top-[calc(100%+0.5rem)]",
+                )}
+              >
+                <MenuItem
+                  label="Проверить пинг"
+                  icon={Activity}
+                  disabled={pinging || isExcluded}
+                  onClick={() => {
+                    menu.closeAndRestoreFocus();
+                    onPing();
+                  }}
+                />
+                {canSpeedTest && (
+                  <MenuItem
+                    label="Замерить скорость"
+                    icon={Zap}
+                    disabled={testing || isExcluded}
+                    onClick={() => {
+                      menu.closeAndRestoreFocus();
+                      onSpeedTest();
+                    }}
+                  />
+                )}
+                <MenuItem
+                  label={isExcluded ? "Вернуть узел" : "Отключить узел"}
+                  icon={isExcluded ? Undo2 : Ban}
+                  danger={!isExcluded}
+                  onClick={() => {
+                    menu.closeAndRestoreFocus();
+                    onToggleExcluded(!isExcluded);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MenuItem({
+  label,
+  icon: Icon,
+  onClick,
+  disabled = false,
+  danger = false,
+}: {
+  label: string;
+  icon: typeof Activity;
+  onClick(): void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "flex h-10 items-center gap-2.5 whitespace-nowrap rounded-sm px-2.5 text-sub font-medium text-text-primary transition-colors hover:bg-hover disabled:pointer-events-none disabled:opacity-50",
+        danger && "bg-timeout-bg text-timeout hover:bg-timeout-bg",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {label}
+    </button>
   );
 }

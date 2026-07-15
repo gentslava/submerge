@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { emptyChannelMatcher } from "./defaults.js";
+import { DEFAULT_SPEED_POLICY, emptyChannelMatcher } from "./defaults.js";
 import {
+  channelGroupName,
   channelMatcherInputSchema,
   channelMatcherSchema,
   channelPolicySchema,
   channelPoolMemberSchema,
   channelSchema,
   channelWithPoolSchema,
+  cidrVersion,
   createChannelInput,
   deleteChannelInput,
+  directChannelSchema,
+  directPresetSettingsSchema,
+  isValidCidr,
   isValidDomain,
   nodeItemSchema,
   nodeViewSchema,
+  proxyChannelSchema,
   proxySchema,
   reorderChannelsInput,
   reorderInput,
@@ -22,6 +28,7 @@ import {
   setChannelPoolInput,
   sourceKindSchema,
   updateChannelInput,
+  updateDirectInput,
 } from "./schemas.js";
 
 describe("schemas", () => {
@@ -40,6 +47,15 @@ describe("schemas", () => {
       uuid: "u",
     });
     expect(p.name).toBe("n1");
+  });
+});
+
+describe("channelGroupName", () => {
+  it("keeps the Default group as AUTO and namespaces other channels by id", () => {
+    expect(channelGroupName({ id: "default", isDefault: true, target: "proxy" })).toBe("AUTO");
+    expect(channelGroupName({ id: "streaming", isDefault: false, target: "proxy" })).toBe(
+      "ch-streaming",
+    );
   });
 });
 
@@ -62,12 +78,24 @@ describe("nodeView + tRPC input schemas", () => {
     expect(v.all[0]?.delay).toBeNull();
     expect(v.all[0]?.history).toEqual([120, 0, 95]);
   });
+  it("preserves optional latency history timestamps", () => {
+    const historyTimestamps = ["2026-07-15T00:00:00.000Z", "2026-07-15T00:05:00.000Z"];
+    const v = nodeViewSchema.parse({
+      now: "n1",
+      autoNow: null,
+      all: [{ name: "n1", type: "vless", delay: 42, history: [41, 42], historyTimestamps }],
+    });
+    expect(v.all[0]?.historyTimestamps).toEqual(historyTimestamps);
+  });
   it("validates select + reorder inputs", () => {
     expect(selectNodeInput.parse({ group: "PROXY", name: "n1" }).group).toBe("PROXY");
     expect(reorderInput.parse({ ids: [3, 1, 2] }).ids).toHaveLength(3);
   });
   it("rejects an empty group", () => {
     expect(() => selectNodeInput.parse({ group: "", name: "n1" })).toThrow();
+  });
+  it("accepts only the public PROXY selection group", () => {
+    expect(() => selectNodeInput.parse({ group: "AUTO", name: "n1" })).toThrow();
   });
 });
 
@@ -186,6 +214,53 @@ describe("channelMatcherSchema (read model stays permissive)", () => {
     expect(m.keywords).toEqual([]);
     expect(m.ruleProviders).toEqual([]);
   });
+
+  it("defaults CIDRs to empty while retaining malformed legacy values", () => {
+    expect(channelMatcherSchema.parse({ presets: [], domains: [] }).cidrs).toEqual([]);
+    expect(
+      channelMatcherSchema.parse({ presets: [], domains: [], cidrs: ["not-a-cidr"] }).cidrs,
+    ).toEqual(["not-a-cidr"]);
+  });
+});
+
+describe("CIDR matcher fields", () => {
+  it("trims and accepts IPv4 and IPv6 CIDRs at the write boundary", () => {
+    const matcher = channelMatcherInputSchema.parse({
+      presets: [],
+      domains: [],
+      cidrs: [" 10.0.0.0/8 ", " 2001:db8::/32 "],
+    });
+    expect(matcher.cidrs).toEqual(["10.0.0.0/8", "2001:db8::/32"]);
+  });
+
+  it("rejects bare IPs, invalid prefixes, delimiters, newlines, and blanks", () => {
+    for (const cidr of [
+      "192.168.1.1",
+      "2001:db8::1",
+      "10.0.0.0/33",
+      "2001:db8::/129",
+      "10.0.0.0/8,192.168.0.0/16",
+      "10.0.0.0/8\n192.168.0.0/16",
+      " ",
+    ]) {
+      expect(
+        channelMatcherInputSchema.safeParse({ presets: [], domains: [], cidrs: [cidr] }).success,
+      ).toBe(false);
+    }
+  });
+
+  it("validates and identifies CIDR families through the shared contract", () => {
+    expect(isValidCidr(" 10.0.0.0/8 ")).toBe(true);
+    expect(isValidCidr("2001:db8::/32")).toBe(true);
+    expect(isValidCidr("10.0.0.0/33")).toBe(false);
+    expect(cidrVersion(" 10.0.0.0/8 ")).toBe(4);
+    expect(cidrVersion("2001:db8::/32")).toBe(6);
+    expect(cidrVersion("not-a-cidr")).toBeNull();
+  });
+
+  it("includes CIDRs in a fresh empty matcher", () => {
+    expect(emptyChannelMatcher().cidrs).toEqual([]);
+  });
 });
 
 describe("ruleProviderFormat (derived from the URL extension)", () => {
@@ -225,6 +300,9 @@ describe("ruleProviderRefSchema (format is derived from the URL, not chosen)", (
     expect(() =>
       ruleProviderRefSchema.parse({ url: "ftp://example.com/x.yaml", behavior: "domain" }),
     ).toThrow();
+  });
+  it("keeps a legacy http(s) prefix readable even when the host is invalid", () => {
+    expect(ruleProviderRefSchema.parse({ url: "http://", behavior: "domain" }).url).toBe("http://");
   });
   it("rejects an unknown behavior", () => {
     expect(() =>
@@ -318,6 +396,13 @@ describe("channelMatcherInputSchema (Phase-4a: keywords + ruleProviders)", () =>
         ruleProviders: [{ url: "not-a-url", behavior: "domain" }],
       }),
     ).toThrow();
+    expect(() =>
+      channelMatcherInputSchema.parse({
+        presets: [],
+        domains: [],
+        ruleProviders: [{ url: "http://", behavior: "domain" }],
+      }),
+    ).toThrow();
   });
 });
 
@@ -326,6 +411,7 @@ describe("channelSchema", () => {
     const c = channelSchema.parse({
       id: "default",
       name: "Default",
+      target: "proxy",
       priority: 0,
       enabled: true,
       isDefault: true,
@@ -341,6 +427,106 @@ describe("channelSchema", () => {
       lastReasonAt: null,
     });
     expect(c.isDefault).toBe(true);
+    expect(c).toHaveProperty("target", "proxy");
+  });
+
+  it("requires the explicit proxy target and rejects unknown fields", () => {
+    const row = {
+      id: "default",
+      name: "Default",
+      priority: 0,
+      enabled: true,
+      isDefault: true,
+      policy: {
+        kind: "speed" as const,
+        testUrl: "u",
+        intervalSec: 300,
+        toleranceMs: 50,
+        reevaluateWhileHealthy: true,
+      },
+      matcher: emptyChannelMatcher(),
+      lastReason: null,
+      lastReasonAt: null,
+    };
+
+    expect(() => channelSchema.parse(row)).toThrow();
+    expect(() => channelSchema.parse({ ...row, target: "direct" })).toThrow();
+    expect(() => channelSchema.parse({ ...row, target: "proxy", directPresets: null })).toThrow();
+  });
+
+  it("parses the strict Direct variant with its literal system identity", () => {
+    const direct = channelSchema.parse({
+      id: "direct",
+      name: "Direct",
+      target: "direct",
+      priority: 0,
+      enabled: true,
+      isDefault: false,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    });
+
+    expect(direct).toEqual({
+      id: "direct",
+      name: "Direct",
+      target: "direct",
+      priority: 0,
+      enabled: true,
+      isDefault: false,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    });
+  });
+
+  it("keeps both target variants strict and rejects proxy-only fields on Direct", () => {
+    const direct = {
+      id: "direct",
+      name: "Direct",
+      target: "direct" as const,
+      priority: 0,
+      enabled: true,
+      isDefault: false,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    };
+    expect(() => channelSchema.parse({ ...direct, policy: DEFAULT_SPEED_POLICY })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, lastReason: null })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, id: "other" })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, name: "Bypass" })).toThrow();
+    expect(() => channelSchema.parse({ ...direct, isDefault: true })).toThrow();
+  });
+
+  it("exports distinct strict target schemas", () => {
+    expect(proxyChannelSchema).not.toBe(channelSchema);
+    expect(() =>
+      directChannelSchema.parse({
+        id: "direct",
+        name: "Direct",
+        target: "direct",
+        priority: 0,
+        enabled: true,
+        isDefault: false,
+        matcher: emptyChannelMatcher(),
+        directPresets: { privateNetworks: true, localDomains: true },
+        unknown: true,
+      }),
+    ).toThrow();
+  });
+});
+
+describe("directPresetSettingsSchema", () => {
+  it("requires exactly both system-preset booleans", () => {
+    expect(
+      directPresetSettingsSchema.safeParse({ privateNetworks: true, localDomains: false }).success,
+    ).toBe(true);
+    expect(directPresetSettingsSchema.safeParse({ privateNetworks: true }).success).toBe(false);
+    expect(
+      directPresetSettingsSchema.safeParse({
+        privateNetworks: true,
+        localDomains: false,
+        extra: true,
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -440,6 +626,34 @@ describe("updateChannelInput", () => {
   });
 });
 
+describe("updateDirectInput", () => {
+  it("accepts only non-empty atomic Direct patches", () => {
+    expect(updateDirectInput.safeParse({ enabled: false }).success).toBe(true);
+    expect(
+      updateDirectInput.safeParse({
+        matcher: { presets: [], domains: [], cidrs: ["10.0.0.0/8"] },
+        directPresets: { privateNetworks: false, localDomains: true },
+      }).success,
+    ).toBe(true);
+    expect(updateDirectInput.safeParse({}).success).toBe(false);
+  });
+
+  it("rejects every proxy-only and unknown field instead of stripping it", () => {
+    for (const forbidden of [
+      { id: "direct" },
+      { name: "Direct" },
+      { policy: DEFAULT_SPEED_POLICY },
+      { pool: [] },
+      { isDefault: false },
+      { target: "direct" },
+      { lastReason: null },
+      { unknown: true },
+    ]) {
+      expect(updateDirectInput.safeParse({ enabled: true, ...forbidden }).success).toBe(false);
+    }
+  });
+});
+
 describe("deleteChannelInput", () => {
   it("requires a non-empty id", () => {
     expect(deleteChannelInput.parse({ id: "c1" }).id).toBe("c1");
@@ -479,6 +693,7 @@ describe("channelWithPoolSchema", () => {
     const c = channelWithPoolSchema.parse({
       id: "default",
       name: "Default",
+      target: "proxy",
       priority: 0,
       enabled: true,
       isDefault: true,

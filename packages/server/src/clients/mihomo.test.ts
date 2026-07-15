@@ -43,6 +43,11 @@ describe("mihomo client", () => {
     expect(await getDelay("A")).toEqual({ delay: 123 });
   });
 
+  it("rejects a negative delay response", async () => {
+    mockFetch(() => json({ delay: -1 }));
+    await expect(getDelay("A")).rejects.toThrow();
+  });
+
   it("maps /connections totals to { up, down } and ignores the rest", async () => {
     mockFetch((url) => {
       expect(url).toContain("/connections");
@@ -74,6 +79,14 @@ describe("mihomo client", () => {
     expect(conns[0]?.id).toBe("c1");
     expect(conns[0]?.chains[0]).toBe("nl-ams-01");
     expect(conns[0]?.metadata.process).toBe(""); // defaulted
+  });
+
+  it("normalizes an idle /connections null list to an empty snapshot", async () => {
+    mockFetch((url) => {
+      expect(url).toContain("/connections");
+      return json({ downloadTotal: 0, uploadTotal: 0, connections: null });
+    });
+    await expect(getConnections()).resolves.toEqual([]);
   });
 
   it("closes a connection via DELETE and tolerates a 404", async () => {

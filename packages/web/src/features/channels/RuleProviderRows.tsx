@@ -83,7 +83,7 @@ export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
           !ruleProviderRefSchema.safeParse({ url: trimmed, behavior: row.behavior }).success;
         const mrs = ruleProviderFormat(row.url) === "mrs";
         return (
-          <div key={row.id} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div key={row.id} className="rule-provider-row flex flex-col gap-2">
             <Input
               value={row.url}
               onChange={(e) =>
@@ -96,11 +96,11 @@ export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
               aria-label={`URL списка правил ${index + 1}`}
               aria-invalid={invalid}
               className={cn(
-                "font-mono text-sub sm:min-w-0 sm:flex-1",
+                "rule-provider-input font-mono text-sub",
                 invalid && "border-timeout focus-visible:ring-timeout",
               )}
             />
-            <div className="flex items-center gap-2 sm:shrink-0">
+            <div className="rule-provider-actions flex items-center gap-2">
               <Select
                 value={row.behavior}
                 onChange={(e) =>
