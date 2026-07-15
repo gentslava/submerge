@@ -58,9 +58,26 @@ the local «Сбросить» action are never delayed by the presentation cade
 visible history and session bytes immediately while preserving the last committed rate cards
 until the next completed bucket.
 
-Existing chart columns keep sample identity when a bucket is appended; only the newest
-column may animate. The scale may grow immediately for a new peak but must not repeatedly
-shrink between bucket commits.
+### Append animation
+
+Both charts use the same append motion while keeping their existing data cadence. When the
+same series receives one new visible sample, the existing columns move left by exactly one
+slot while the new rightmost column grows from the baseline. The two motions run
+simultaneously for 280 ms with a calm ease-out curve. Throughput triggers this only for a
+completed three-second presentation bucket; latency triggers it only for a newly appended
+history measurement.
+
+The motion uses fixed slot geometry and the browser Web Animations API; it does not add a
+charting or motion dependency. Existing column wrappers translate horizontally. Only the new
+rightmost fill scales vertically with its transform origin at the bottom. The scale may grow
+immediately for a new peak but must not repeatedly shrink between bucket commits.
+
+Do not animate initial history hydration, local reset, active-node replacement, responsive
+variant changes, or an accumulated catch-up after inspection. While hover, keyboard focus,
+or a pinned tooltip freezes a chart, raw collection continues and no append animation is
+queued. Releasing inspection commits the latest visible window once without replaying missed
+motion; the next ordinary sample animates normally. Under `prefers-reduced-motion: reduce`,
+all append changes render immediately.
 
 Hovering or focusing a chart freezes its visible window while collection continues. A visible
 tooltip appears without the browser-native delay. Throughput shows the three-second time
@@ -181,6 +198,9 @@ themes use tokens only; the approved references are `YED5Y` and `eLeqx`.
   download/upload values while connection/session gauges use the same commit boundary.
 - Hover/focus inspection freezes the window, click/tap pins it, and Escape/outside press
   closes it without losing samples collected in the background.
+- A single appended throughput bucket and latency measurement shift existing visual slots
+  left and grow only the new rightmost fill; initial/reset/node-switch/catch-up paths and
+  reduced-motion mode do not animate.
 
 ### Browser
 
