@@ -434,9 +434,16 @@ describe("listNodes", () => {
     const view = await listNodes(freshDb());
     expect(view.now).toBe("A");
     expect(view.all).toEqual([
-      { name: "A", type: "vless", delay: 50, udp: true, history: [50] },
+      {
+        name: "A",
+        type: "vless",
+        delay: 50,
+        udp: true,
+        history: [50],
+        historyTimestamps: ["t"],
+      },
       { name: "B", type: "vless", delay: null, history: [] },
-      { name: "C", type: "vless", delay: 0, history: [0] },
+      { name: "C", type: "vless", delay: 0, history: [0], historyTimestamps: ["t"] },
     ]);
   });
 
@@ -498,7 +505,11 @@ describe("toNodeView per-URL latency (extra)", () => {
 
   it("uses the policy URL's history for delay/history when extra has it", () => {
     const view = toNodeView(resp, undefined, "https://policy.example");
-    expect(view.all.find((n) => n.name === "A")).toMatchObject({ delay: 50, history: [50] });
+    expect(view.all.find((n) => n.name === "A")).toMatchObject({
+      delay: 50,
+      history: [50],
+      historyTimestamps: ["t"],
+    });
   });
 
   it("falls back to the shared history when extra lacks the policy URL", () => {

@@ -216,8 +216,13 @@ export function toNodeView(
   // The delay series to surface for a node: the per-URL history for the active
   // policy when mihomo has one, else the shared history (fallback — a fresh node
   // or one right after a reload has no per-URL entry yet).
-  const delaysOf = (info: MihomoProxy | undefined): number[] =>
-    historyForUrl(info, testUrl).map((h) => h.delay);
+  const historyOf = (info: MihomoProxy | undefined) => historyForUrl(info, testUrl);
+  const delaysOf = (info: MihomoProxy | undefined): number[] => historyOf(info).map((h) => h.delay);
+  const timestampFields = (info: MihomoProxy | undefined) => {
+    if (testUrl === undefined) return {};
+    const history = historyOf(info);
+    return history.length > 0 ? { historyTimestamps: history.map((entry) => entry.time) } : {};
+  };
   // A recorded measurement wins, INCLUDING a timeout (0) → UI shows "таймаут";
   // null ("— ms") means genuinely unmeasured (empty history / after a reload).
   const lastDelay = (ds: number[]): number | null =>
@@ -245,6 +250,7 @@ export function toNodeView(
         type: info.type,
         delay: lastDelay(aDelays),
         history: aDelays,
+        ...timestampFields(active),
         members,
       };
     }
@@ -256,6 +262,7 @@ export function toNodeView(
       type: info?.type ?? "unknown",
       delay: lastDelay(history),
       history,
+      ...timestampFields(info),
     };
     if (info?.udp !== undefined) item.udp = info.udp;
     const pm = meta?.get(name);

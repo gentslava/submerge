@@ -35,15 +35,55 @@ model. Aggregate rates belong to the whole engine, not to one active node.
 
 | Surface | Source | Behaviour |
 |---|---|---|
-| **СКОРОСТЬ ↓** | latest live `traffic.down` | Adaptive `Б/с` → `КБ/с` → `МБ/с` formatting. |
-| **СКОРОСТЬ ↑** | latest live `traffic.up` | Same formatting; never hard-code MB/s. |
-| **СОЕДИНЕНИЯ** | mounted `connections.list` query | `connections.length`; card links to `/connections`; query failure renders `—`. |
-| **ЗА СЕССИЮ** | `(totals.up + totals.down) − session baseline` | Combined bytes since the browser session baseline. Clamp at zero. |
+| **СКОРОСТЬ ↓** | three-second presentation bucket | Average `traffic.down` for the latest completed bucket; adaptive `Б/с` → `КБ/с` → `МБ/с` formatting. |
+| **СКОРОСТЬ ↑** | three-second presentation bucket | Average `traffic.up` for the same completed bucket; never hard-code MB/s. |
+| **СОЕДИНЕНИЯ** | mounted `connections.list` query | Latest observed `connections.length` sampled on the same three-second boundary; card links to `/connections`; query failure renders `—` immediately. |
+| **ЗА СЕССИЮ** | `(totals.up + totals.down) − session baseline` | Latest accumulated value sampled on the same three-second boundary. Clamp at zero. |
 | **ЗАДЕРЖКА · ОСНОВНОЙ КАНАЛ · {node}** | existing Default-channel latency series | Reset the history when the active node changes; the current value remains textual. |
-| **ПРОПУСКНАЯ СПОСОБНОСТЬ** | last 60 live traffic samples | Download and upload are separately identified by label and colour. |
+| **ПРОПУСКНАЯ СПОСОБНОСТЬ** | 20 completed three-second buckets | One minute of averaged download/upload values. Each bucket also retains its raw peak for inspection. |
 
 The header subtitle is «Суммарный трафик всех каналов · mihomo». The mock data
 (`nl-ams-01`, `9.4 МБ/с`, and similar values) is illustrative only.
+
+## Presentation cadence and inspection
+
+Mihomo traffic samples continue to arrive and be retained approximately once per second,
+but ordinary numeric presentation commits only on a shared three-second boundary. The two
+rate cards use the same averaged values as the newest completed throughput bucket;
+Connections and session bytes use their latest observed values at that boundary. This keeps
+the metric row and chart in one calm, coherent rhythm.
+
+Operational state changes remain immediate: live-stream failure/recovery, query errors, and
+the local «Сбросить» action are never delayed by the presentation cadence. Reset clears the
+visible history and session bytes immediately while preserving the last committed rate cards
+until the next completed bucket.
+
+### Append animation
+
+Both charts use the same append motion while keeping their existing data cadence. When the
+same series receives one new visible sample, the existing columns move left by exactly one
+slot while the new rightmost column grows from the baseline. The two motions run
+simultaneously for 280 ms with a calm ease-out curve. Throughput triggers this only for a
+completed three-second presentation bucket; latency triggers it only for a newly appended
+history measurement.
+
+The motion uses fixed slot geometry and the browser Web Animations API; it does not add a
+charting or motion dependency. Existing column wrappers translate horizontally. Only the new
+rightmost fill scales vertically with its transform origin at the bottom. The scale may grow
+immediately for a new peak but must not repeatedly shrink between bucket commits.
+
+Do not animate initial history hydration, local reset, active-node replacement, responsive
+variant changes, or an accumulated catch-up after inspection. While hover, keyboard focus,
+or a pinned tooltip freezes a chart, raw collection continues and no append animation is
+queued. Releasing inspection commits the latest visible window once without replaying missed
+motion; the next ordinary sample animates normally. Under `prefers-reduced-motion: reduce`,
+all append changes render immediately.
+
+Hovering or focusing a chart freezes its visible window while collection continues. A visible
+tooltip appears without the browser-native delay. Throughput shows the three-second time
+range, averaged download/upload values, and the raw peak inside the bucket. Latency shows the
+measurement time and value or «таймаут». Click/tap pins the tooltip; outside press or Escape
+closes it. Leaving an unpinned chart resumes at the latest completed window.
 
 ## Browser-session semantics
 
@@ -72,8 +112,10 @@ State precedence is deterministic:
    current traffic. Show «Добавьте первый источник» with a `/sources` action.
 3. **Reconnecting** — tRPC live subscription failed, mihomo health is false, or the
    traffic stream has produced no sample for more than five seconds. Keep the last
-   known values visible at reduced emphasis, label them stale, and show the next
-   automatic retry. Do not replace them with zeroes.
+   known values visible at reduced emphasis, label them stale, and say that retry is
+   automatic. Do not replace them with zeroes. The browser `EventSource` used by
+   `httpSubscriptionLink` does not expose its internal retry deadline, so the UI must
+   not invent the illustrative countdown shown in the Pencil state.
 4. **Live idle** — fresh samples are arriving with zero rates and zero active
    connections. Show valid zero values and «Трафик появится после первого запроса».
 5. **Live populated** — render the normal dashboard.
@@ -97,15 +139,17 @@ No new module or persisted telemetry is required.
 ### Web
 
 - Add `/traffic` and activate the desktop/sidebar and phone-tab navigation entry.
-- `TrafficScreen` consumes `useLiveState()` and subscribes to the existing external
-  traffic store with `useSyncExternalStore`, so per-second samples rerender only
-  this telemetry surface.
+- `TrafficScreen` consumes `useLiveState()` but samples the external traffic store into a
+  local presentation snapshot only on three-second boundaries. Per-second source samples
+  remain available for freshness and bucket peaks without producing a visible numeric tick.
 - Extend the traffic store/live state with last-sample freshness and a persistent,
   Traffic-specific session view (baseline, chart windows, and reset action). Keep
   the existing shared `LiveState.latency` series intact for the Nodes screen. Do not
   route per-second samples through broad React context state.
-- Reuse the existing latency-bar visual language and byte/rate formatters. The
-  throughput chart is a bounded 60-slot CSS bar chart; it does not require a new
+- Preserve mihomo latency-history timestamps in `NodeView` so repeated equal-delay
+  checks still advance the bounded chart; numeric delay values are not identities.
+- Reuse the existing latency-bar visual language and byte/rate formatters. The throughput
+  chart is a bounded 20-bucket CSS bar chart; interactive inspection does not require a new
   charting dependency.
 - Keep the page as the only vertical scroll owner. Charts do not create nested
   horizontal or vertical scrolling.
@@ -116,7 +160,7 @@ Follow the named `app-page` container contract rather than viewport breakpoints.
 
 | Container | Layout |
 |---|---|
-| **compact `<42rem`** | Header action becomes an icon button with an accessible name; metrics stay in a 2×2 `minmax(0, 1fr)` grid; charts stack and use compact heights. |
+| **compact `<42rem`** | Header action becomes an icon button with an accessible name; metrics stay in a 2×2 `minmax(0, 1fr)` grid; charts stack, use compact heights, and aggregate the full 40/60-sample windows into fewer visual slots. |
 | **inline `≥42rem`** | Header title/action share a row; metric cards retain a balanced two-column arrangement while space is constrained. |
 | **data `≥48rem`** | Four metrics appear in one row; both charts use the full desktop width and the Pencil plot height. |
 
@@ -130,8 +174,9 @@ themes use tokens only; the approved references are `YED5Y` and `eLeqx`.
   name in compact icon-only mode.
 - The Connections metric is a real link, keyboard reachable, and announces both
   the current count and destination.
-- Charts expose a concise text summary (`current`, `minimum`, `maximum`, time
-  window) while decorative bars are hidden from the accessibility tree.
+- Charts expose a concise text summary (`current`, `minimum`, `maximum`, time window) and a
+  keyboard-operable inspector. Arrow keys move between samples, Enter pins, and Escape
+  closes the tooltip; decorative bar shapes remain hidden from the accessibility tree.
 - Status is never conveyed by colour or opacity alone: loading, stale, idle, and
   error states all include text.
 - Live samples are not placed in an assertive `aria-live` region; this would cause
@@ -149,6 +194,13 @@ themes use tokens only; the approved references are `YED5Y` and `eLeqx`.
 - Active-node switch resets the latency history label and window.
 - Connection query error leaves other metrics visible.
 - Connections card navigation and compact button accessible names.
+- Three one-second samples produce one averaged presentation bucket; rate cards equal its
+  download/upload values while connection/session gauges use the same commit boundary.
+- Hover/focus inspection freezes the window, click/tap pins it, and Escape/outside press
+  closes it without losing samples collected in the background.
+- A single appended throughput bucket and latency measurement shift existing visual slots
+  left and grow only the new rightmost fill; initial/reset/node-switch/catch-up paths and
+  reduced-motion mode do not animate.
 
 ### Browser
 
@@ -174,6 +226,8 @@ themes use tokens only; the approved references are `YED5Y` and `eLeqx`.
 1. Implementation order begins with Traffic, then Logs, then Diagnostics.
 2. Rates and session bytes are aggregate engine telemetry; only latency names the
    primary channel/node.
+3. Raw telemetry remains one-second resolution, while all four metric cards and the
+   throughput chart present one shared three-second snapshot cadence.
 3. «Сбросить» is local and non-destructive.
 4. The first release uses a 60-s in-memory window and existing endpoints only.
 5. Responsive, light, and fallback-state Pencil references are required before code.
