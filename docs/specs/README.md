@@ -18,3 +18,4 @@ quick map. Update both when a spec ships.
 | [2026-07-13 system Direct channel](2026-07-13-direct-channel-design.md) | implemented |
 | [2026-07-15 Traffic screen](2026-07-15-traffic-screen-design.md) | proposed |
 | [2026-07-15 Logs screen](2026-07-15-logs-screen-design.md) | proposed |
+| [2026-07-15 Diagnostics screen](2026-07-15-diagnostics-screen-design.md) | proposed |

@@ -61,6 +61,8 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Источники | `gm1vM` | `cF8xX` |
 | Настройки | `w6qeY` | `L5XjCf` |
 | Соединения | `g5hb4` | `DxayN` |
+| Соединения — светлая тема | `t9XUT` | production-style populated table |
+| Соединения — mobile 390 | `H3itWn` | compact connection cards + «Ещё» navigation |
 | Маршрутизация · Populated (dark) | `lYrng` | `R47Ya`; expanded system Direct card is the complete desktop editor reference |
 | Маршрутизация · Состояния (create / disabled / mobile 390) | `HXRTv` | Disabled Direct and expanded 390 px Direct states |
 | Маршрутизация · Populated — светлая | `CUEoq` | `eHlsq`; collapsed enabled Direct card is the light-theme reference |
@@ -73,6 +75,9 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Логи — mobile 390 | `zW719` | stacked metadata/message rows + compact filters |
 | Логи — состояния | `rE094` | connecting / live empty / paused / reconnecting |
 | Диагностика | `QoRoZ` | `AqDqR` |
+| Диагностика — светлая тема | `h9q7E` | full light-theme reference |
+| Диагностика — mobile 390 | `BNOEr` | one-column cards + compact route rows |
+| Диагностика — состояния | `pi7pQ` | running / partial / component and network failures |
 | Раздел в разработке (placeholder) | `fFpGe` | `gsI9Q` |
 | Sidebar (reusable) | `t0Wg2` | — |
 | Button (reusable) | `hRDqB` | — |
