@@ -12,6 +12,27 @@ export interface TrafficViewStateInput {
   now: number;
 }
 
+export interface ChartSummary {
+  current: number | null;
+  min: number | null;
+  max: number | null;
+  count: number;
+}
+
+export function chartSummary(values: readonly number[]): ChartSummary {
+  const successful = values.filter((value) => value > 0);
+  return {
+    current: values.at(-1) ?? null,
+    min: successful.length > 0 ? Math.min(...successful) : null,
+    max: successful.length > 0 ? Math.max(...successful) : null,
+    count: values.length,
+  };
+}
+
+export function throughputPeak(samples: readonly TimedTrafficSample[]): number {
+  return samples.reduce((peak, sample) => Math.max(peak, sample.up + sample.down), 0);
+}
+
 export function connectionCountForMetric(
   cachedCount: number | undefined,
   queryFailed: boolean,

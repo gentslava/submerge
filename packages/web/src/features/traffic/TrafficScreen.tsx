@@ -1,13 +1,31 @@
+import {
+  type ChannelPolicy,
+  DEFAULT_AUTO_TEST_INTERVAL,
+  DEFAULT_SPEED_POLICY,
+} from "@submerge/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Activity, ArrowDown, ArrowUp, Cable, Database, ServerOff, WifiOff } from "lucide-react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  Cable,
+  Database,
+  RotateCcw,
+  ServerOff,
+  WifiOff,
+} from "lucide-react";
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { useLiveState } from "@/features/live/LiveProvider";
 import { formatBytes, formatRate, realNodes } from "@/features/nodes/nodeView";
 import { pluralRu } from "@/lib/plural";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { connectionCountForMetric, type TrafficViewState, trafficViewState } from "./state";
+import type { TimedTrafficSample } from "./store";
+import { ThroughputChart, TrafficLatencyChart } from "./TrafficCharts";
 
 export interface TrafficDashboardViewProps {
   state: TrafficViewState;
@@ -17,6 +35,12 @@ export interface TrafficDashboardViewProps {
   sessionBytes: number | null;
   connectionsUnavailable: boolean;
   activeNode: string | null;
+  trafficSamples: readonly TimedTrafficSample[];
+  latencyCurrent: number | null;
+  latencySamples: readonly number[];
+  checkIntervalSec: number;
+  resetDisabled: boolean;
+  onReset: () => void;
 }
 
 function useFreshnessClock(): number {
@@ -33,15 +57,13 @@ export function TrafficScreen() {
   const { traffic, mihomo } = useLiveState();
   const snapshot = useSyncExternalStore(traffic.subscribe, traffic.getSnapshot);
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
-  // The next slice uses policy cadence in the latency chart. Mount it with the
-  // route now so query ownership stays local to the screen from the start.
-  useQuery(trpc.channels.get.queryOptions());
+  const channelQuery = useQuery(trpc.channels.get.queryOptions());
   const connectionsQuery = useQuery(
     trpc.connections.list.queryOptions(undefined, { refetchInterval: 1_500 }),
   );
   const now = useFreshnessClock();
 
-  const latest = snapshot.samples.at(-1) ?? null;
+  const latest = snapshot.currentSample;
   const view = nodesQuery.data;
   const activeNode = view ? (view.now === "AUTO" ? view.autoNow : view.now) : snapshot.latency.node;
   const connectionsUnavailable = connectionsQuery.isError;
@@ -58,6 +80,18 @@ export function TrafficScreen() {
     mihomo,
     now,
   });
+  const policy: ChannelPolicy = channelQuery.data?.policy ?? DEFAULT_SPEED_POLICY;
+  const checkIntervalSec =
+    policy.kind === "manual" ? DEFAULT_AUTO_TEST_INTERVAL : Math.max(1, policy.intervalSec);
+  const resetDisabled =
+    snapshot.totals === null &&
+    snapshot.samples.length === 0 &&
+    snapshot.latency.samples.length === 0;
+
+  function resetSession(): void {
+    traffic.reset();
+    toast.success("Сессия сброшена");
+  }
 
   return (
     <TrafficDashboardView
@@ -68,6 +102,12 @@ export function TrafficScreen() {
       sessionBytes={snapshot.sessionBytes}
       connectionsUnavailable={connectionsUnavailable}
       activeNode={activeNode}
+      trafficSamples={snapshot.samples}
+      latencyCurrent={snapshot.latency.current}
+      latencySamples={snapshot.latency.samples}
+      checkIntervalSec={checkIntervalSec}
+      resetDisabled={resetDisabled}
+      onReset={resetSession}
     />
   );
 }
@@ -80,6 +120,18 @@ export function TrafficDashboardView(props: TrafficDashboardViewProps) {
           <h1 className="text-2xl font-semibold text-text-primary">Трафик</h1>
           <p className="text-sub text-text-secondary">Суммарный трафик всех каналов · mihomo</p>
         </div>
+        <Button
+          type="button"
+          variant="secondary"
+          size="md"
+          aria-label="Сбросить"
+          disabled={props.resetDisabled}
+          onClick={props.onReset}
+          className="traffic-reset shrink-0"
+        >
+          <RotateCcw aria-hidden="true" size={16} />
+          <span className="traffic-reset-label">Сбросить</span>
+        </Button>
       </header>
 
       {props.state === "no-nodes" ? (
@@ -133,7 +185,20 @@ export function TrafficDashboardView(props: TrafficDashboardViewProps) {
               value={props.sessionBytes === null ? "—" : formatBytes(props.sessionBytes)}
             />
           </section>
-          <ChartPlaceholder state={props.state} activeNode={props.activeNode} />
+          <div
+            className={cn(
+              "traffic-charts flex min-w-0 flex-col gap-[22px]",
+              props.state === "reconnecting" && "opacity-60",
+            )}
+          >
+            <TrafficLatencyChart
+              node={props.activeNode}
+              current={props.latencyCurrent}
+              samples={props.latencySamples}
+              checkIntervalSec={props.checkIntervalSec}
+            />
+            <ThroughputChart samples={props.trafficSamples} />
+          </div>
         </>
       )}
     </div>
@@ -206,37 +271,6 @@ function StateNotice({ state }: { state: TrafficViewState }) {
     return <p className="text-sub text-text-secondary">Прокси подключён, трафика нет</p>;
   }
   return null;
-}
-
-function ChartPlaceholder({
-  state,
-  activeNode,
-}: {
-  state: TrafficViewState;
-  activeNode: string | null;
-}) {
-  return (
-    <section className="overflow-hidden rounded-[10px] border border-border-subtle bg-surface">
-      <header className="flex min-w-0 items-center justify-between gap-3 border-b border-border-subtle px-4 py-3.5">
-        <span className="min-w-0 truncate text-caption font-semibold tracking-[0.04em] text-text-secondary">
-          ЗАДЕРЖКА · ОСНОВНОЙ КАНАЛ
-        </span>
-        <span
-          title={activeNode ?? undefined}
-          className="min-w-0 max-w-[50%] truncate font-mono text-meta text-text-tertiary"
-        >
-          {activeNode ?? "—"}
-        </span>
-      </header>
-      <div className="flex min-h-28 items-center justify-center px-4 py-6 text-center text-sub text-text-tertiary">
-        {state === "loading"
-          ? "Ожидаем первый snapshot"
-          : state === "idle"
-            ? "Трафик появится после первого запроса"
-            : "История задержки загружена"}
-      </div>
-    </section>
-  );
 }
 
 function NoNodesState() {

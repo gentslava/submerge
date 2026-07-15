@@ -28,6 +28,7 @@ describe("traffic dashboard store", () => {
 
     expect(first).not.toBe(initial);
     expect(first.samples).toEqual([{ up: 10, down: 20, at: Date.now() }]);
+    expect(first.currentSample).toEqual({ up: 10, down: 20, at: Date.now() });
     expect(first.lastSampleAt).toBe(Date.now());
     expect(listener).toHaveBeenCalledTimes(1);
 
@@ -113,7 +114,8 @@ describe("traffic dashboard store", () => {
 
     expect(store.getSnapshot()).toEqual({
       samples: [],
-      lastSampleAt: null,
+      currentSample: { up: 10, down: 20, at: 100 },
+      lastSampleAt: 100,
       totals: { up: 1_100, down: 2_200 },
       sessionBytes: 0,
       latency: { node: "Amsterdam", current: 42, samples: [] },

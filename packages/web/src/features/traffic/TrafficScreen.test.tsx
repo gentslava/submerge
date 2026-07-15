@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { TrafficDashboardView, type TrafficDashboardViewProps } from "./TrafficScreen";
 
@@ -19,6 +20,12 @@ function props(overrides: Partial<TrafficDashboardViewProps> = {}): TrafficDashb
     sessionBytes: 42 * 1024 * 1024,
     connectionsUnavailable: false,
     activeNode: "nl-ams-01",
+    trafficSamples: [{ up: 1.31 * 1024 * 1024, down: 9.4 * 1024 * 1024, at: 1_000 }],
+    latencyCurrent: 48,
+    latencySamples: [45, 48],
+    checkIntervalSec: 300,
+    resetDisabled: false,
+    onReset: vi.fn(),
     ...overrides,
   };
 }
@@ -100,5 +107,17 @@ describe("TrafficDashboardView", () => {
     render(<TrafficDashboardView {...props({ activeNode })} />);
 
     expect(screen.getByTitle(activeNode)).toHaveTextContent(activeNode);
+  });
+
+  it("exposes the local session reset as an accessible, disableable button", async () => {
+    const user = userEvent.setup();
+    const onReset = vi.fn();
+    const { rerender } = render(<TrafficDashboardView {...props({ onReset })} />);
+
+    await user.click(screen.getByRole("button", { name: "Сбросить" }));
+    expect(onReset).toHaveBeenCalledOnce();
+
+    rerender(<TrafficDashboardView {...props({ onReset, resetDisabled: true })} />);
+    expect(screen.getByRole("button", { name: "Сбросить" })).toBeDisabled();
   });
 });

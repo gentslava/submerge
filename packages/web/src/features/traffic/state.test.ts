@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { connectionCountForMetric, type TrafficViewStateInput, trafficViewState } from "./state";
+import {
+  chartSummary,
+  connectionCountForMetric,
+  type TrafficViewStateInput,
+  throughputPeak,
+  trafficViewState,
+} from "./state";
 
 const NOW = 10_000;
 
@@ -73,5 +79,30 @@ describe("connectionCountForMetric", () => {
     expect(connectionCountForMetric(12, true)).toBeNull();
     expect(connectionCountForMetric(12, false)).toBe(12);
     expect(connectionCountForMetric(undefined, false)).toBeNull();
+  });
+});
+
+describe("traffic chart models", () => {
+  it("summarizes successful latency values without treating timeouts as zero latency", () => {
+    expect(chartSummary([])).toEqual({ current: null, min: null, max: null, count: 0 });
+    expect(chartSummary([0, 0])).toEqual({ current: 0, min: null, max: null, count: 2 });
+    expect(chartSummary([48, 0, 72, 51])).toEqual({
+      current: 51,
+      min: 48,
+      max: 72,
+      count: 4,
+    });
+    expect(chartSummary([48, 72, 0])).toEqual({ current: 0, min: 48, max: 72, count: 3 });
+  });
+
+  it("finds the largest combined throughput sample", () => {
+    expect(throughputPeak([])).toBe(0);
+    expect(
+      throughputPeak([
+        { up: 0, down: 0, at: 1 },
+        { up: 20, down: 30, at: 2 },
+        { up: 45, down: 4, at: 3 },
+      ]),
+    ).toBe(50);
   });
 });

@@ -15,6 +15,7 @@ export interface TrafficLatencySnapshot {
 
 export interface TrafficDashboardSnapshot {
   samples: readonly TimedTrafficSample[];
+  currentSample: TimedTrafficSample | null;
   lastSampleAt: number | null;
   totals: { up: number; down: number } | null;
   sessionBytes: number | null;
@@ -41,6 +42,7 @@ function sessionDelta(
 export function createTrafficDashboardStore(): TrafficDashboardStore {
   const listeners = new Set<() => void>();
   let samples: TimedTrafficSample[] = [];
+  let currentSample: TimedTrafficSample | null = null;
   let lastSampleAt: number | null = null;
   let totals: { up: number; down: number } | null = null;
   let baseline: { up: number; down: number } | null = null;
@@ -51,6 +53,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
 
   let snapshot: TrafficDashboardSnapshot = {
     samples: [],
+    currentSample: null,
     lastSampleAt: null,
     totals: null,
     sessionBytes: null,
@@ -60,6 +63,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
   function publish(): void {
     snapshot = {
       samples: [...samples],
+      currentSample: currentSample ? { ...currentSample } : null,
       lastSampleAt,
       totals: totals ? { ...totals } : null,
       sessionBytes: sessionDelta(totals, baseline),
@@ -81,6 +85,7 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
     pushTraffic(sample, at = Date.now()) {
       const timedSample = { ...sample, at };
       samples = [...samples, timedSample].slice(-TRAFFIC_WINDOW);
+      currentSample = timedSample;
       lastSampleAt = at;
       publish();
     },
@@ -113,7 +118,6 @@ export function createTrafficDashboardStore(): TrafficDashboardStore {
     reset() {
       baseline = totals ? { ...totals } : null;
       samples = [];
-      lastSampleAt = null;
       latencySamples = [];
       publish();
     },
