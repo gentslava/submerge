@@ -43,6 +43,11 @@ describe("mihomo client", () => {
     expect(await getDelay("A")).toEqual({ delay: 123 });
   });
 
+  it("rejects a negative delay response", async () => {
+    mockFetch(() => json({ delay: -1 }));
+    await expect(getDelay("A")).rejects.toThrow();
+  });
+
   it("maps /connections totals to { up, down } and ignores the rest", async () => {
     mockFetch((url) => {
       expect(url).toContain("/connections");

@@ -589,19 +589,19 @@ describe("testDelay", () => {
     );
     expect(await testDelay("A")).toBe(50);
   });
-  it("returns null when delay is zero", async () => {
+  it("returns zero when mihomo reports a timeout", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => json({ delay: 0 })),
     );
-    expect(await testDelay("A")).toBeNull();
+    expect(await testDelay("A")).toBe(0);
   });
-  it("returns null when the delay request fails", async () => {
+  it("returns zero when the delay request fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Response("err", { status: 503 })),
     );
-    expect(await testDelay("A")).toBeNull();
+    expect(await testDelay("A")).toBe(0);
   });
 });
 

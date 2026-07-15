@@ -341,12 +341,12 @@ export async function listNodes(db: Db): Promise<NodeView> {
   return view;
 }
 
-export async function testDelay(name: string, url?: string): Promise<number | null> {
+export async function testDelay(name: string, url?: string): Promise<number> {
   try {
     const { delay } = await getDelay(name, url);
-    return delay > 0 ? delay : null;
+    return delay;
   } catch {
-    return null; // timeout / unreachable node → no delay
+    return 0; // timeout / unreachable node; the UI renders 0 as timeout immediately
   }
 }
 
