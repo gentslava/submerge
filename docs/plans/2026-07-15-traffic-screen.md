@@ -572,3 +572,237 @@ Push `feature/traffic-screen`; do not merge the draft PR.
 - Playwright passed 14/14 for Traffic plus the layout contract and 7/7 after review fixes,
   including dark/light 1440×1024, mobile 390, tooltip containment, states, reset, container
   boundaries, and all supported widths with zero retries.
+
+---
+
+## Task 6: Animate appended chart columns
+
+**Files:**
+
+- Create: `packages/web/src/features/traffic/chart-motion.ts`
+- Create: `packages/web/src/features/traffic/chart-motion.test.tsx`
+- Modify: `packages/web/src/features/traffic/TrafficCharts.tsx`
+- Modify: `packages/web/e2e/traffic-layout.spec.ts`
+
+- [ ] **Step 1: Write failing append-classification and motion tests**
+
+Cover partial and full rolling windows, initial hydration/replacement, inspection catch-up,
+series replacement, and reduced motion. Use a tiny harness whose real columns carry
+`data-chart-column` and whose fill carries `data-chart-fill`:
+
+```tsx
+function MotionHarness({
+  identities,
+  series = "default",
+  enabled = true,
+}: {
+  identities: string[];
+  series?: string;
+  enabled?: boolean;
+}) {
+  const ref = useChartAppendMotion({ identities, series, enabled, gapPx: 3 });
+  return (
+    <div ref={ref}>
+      {identities.map((identity) => (
+        <span data-chart-column key={identity}>
+          <span data-chart-fill />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+expect(isSingleAppend(["a", "b"], ["a", "b", "c"])).toBe(true);
+expect(isSingleAppend(["a", "b"], ["b", "c"])).toBe(true);
+expect(isSingleAppend([], ["a", "b"])).toBe(false);
+expect(isSingleAppend(["a"], ["x"])).toBe(false);
+```
+
+Mock `Element.prototype.animate`, append `c`, and assert that two existing columns animate
+from `translateX(calc(100% + 3px))` to zero while only the newest fill animates from
+`scaleY(0)` to `scaleY(1)`. While `enabled=false`, advance identities and then re-enable with
+the same identities; assert no queued call. Stub reduced motion and assert no call.
+
+- [ ] **Step 2: Run the new test and verify the red state**
+
+```bash
+pnpm -F @submerge/web exec vitest run src/features/traffic/chart-motion.test.tsx
+```
+
+Expected: FAIL because `chart-motion.ts` does not exist.
+
+- [ ] **Step 3: Implement the bounded Web Animations helper**
+
+Create `chart-motion.ts` with no dependency beyond React:
+
+```ts
+import { useLayoutEffect, useRef } from "react";
+
+export const CHART_APPEND_DURATION_MS = 280;
+const CHART_APPEND_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+
+export function isSingleAppend(previous: readonly string[], next: readonly string[]): boolean {
+  if (next.length === 0) return false;
+  if (previous.length === 0) return next.length === 1;
+  if (next.length === previous.length + 1) {
+    return previous.every((identity, index) => identity === next[index]);
+  }
+  if (previous.length > 1 && next.length === previous.length) {
+    return previous.slice(1).every((identity, index) => identity === next[index]);
+  }
+  return false;
+}
+
+export function useChartAppendMotion({
+  identities,
+  series,
+  enabled,
+  gapPx,
+}: {
+  identities: readonly string[];
+  series: string;
+  enabled: boolean;
+  gapPx: number;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const previousRef = useRef<{ series: string; identities: string[] } | null>(null);
+  const signature = identities.join("\u0000");
+
+  useLayoutEffect(() => {
+    const next = signature === "" ? [] : signature.split("\u0000");
+    const previous = previousRef.current;
+    previousRef.current = { series, identities: next };
+    if (
+      !enabled ||
+      previous === null ||
+      previous.series !== series ||
+      !isSingleAppend(previous.identities, next) ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+
+    const columns = Array.from(
+      rootRef.current?.querySelectorAll<HTMLElement>("[data-chart-column]") ?? [],
+    );
+    const animations: Animation[] = [];
+    for (const column of columns.slice(0, -1)) {
+      animations.push(
+        column.animate(
+          [
+            { transform: `translateX(calc(100% + ${gapPx}px))` },
+            { transform: "translateX(0)" },
+          ],
+          { duration: CHART_APPEND_DURATION_MS, easing: CHART_APPEND_EASING },
+        ),
+      );
+    }
+    for (const fill of columns.at(-1)?.querySelectorAll<HTMLElement>("[data-chart-fill]") ?? []) {
+      animations.push(
+        fill.animate(
+          [
+            { transform: "scaleY(0)", transformOrigin: "bottom" },
+            { transform: "scaleY(1)", transformOrigin: "bottom" },
+          ],
+          { duration: CHART_APPEND_DURATION_MS, easing: CHART_APPEND_EASING },
+        ),
+      );
+    }
+    return () => animations.forEach((animation) => animation.cancel());
+  }, [enabled, gapPx, series, signature]);
+
+  return rootRef;
+}
+```
+
+- [ ] **Step 4: Wire the same motion contract into both chart variants**
+
+In `LatencyWindow` and `ThroughputWindow`, call the hook with the raw source identities,
+series identity, inspector state, and the existing slot gap. Attach the returned ref to the
+plot and mark only real columns/fills:
+
+```tsx
+const motionRef = useChartAppendMotion({
+  identities: motionIdentities,
+  series: motionSeries,
+  enabled: motionEnabled,
+  gapPx: 3,
+});
+
+<div ref={motionRef} className="traffic-throughput-plot ...">
+  <button data-chart-column type="button" ...>
+    <span data-chart-fill className="... bg-online" />
+    <span data-chart-fill className="... bg-accent" />
+  </button>
+</div>;
+```
+
+Pass throughput bucket `at` values as identities and a constant `throughput` series. Pass
+latency sample keys as identities and the active node as the series. Set `motionEnabled` only
+while the inspector has no selected sample. Use `gapPx: 2` for latency and `gapPx: 3` for
+throughput. Do not mark placeholder slots.
+
+- [ ] **Step 5: Run focused component tests**
+
+```bash
+pnpm -F @submerge/web exec vitest run \
+  src/features/traffic/chart-motion.test.tsx \
+  src/features/traffic/TrafficCharts.test.tsx
+```
+
+Expected: PASS; existing tooltip, pin/freeze, keyboard, and responsive-slot tests remain green.
+
+- [ ] **Step 6: Add browser evidence for the first animated bucket**
+
+In the populated desktop test, install a pre-navigation wrapper around
+`Element.prototype.animate` that records keyframes only for elements inside
+`.traffic-throughput-plot` or `.traffic-latency-plot`. After the first completed bucket appears,
+assert that at least one recorded keyframe contains `scaleY(0)`. Keep the real browser
+animation running by delegating to the original method.
+
+```ts
+await page.addInitScript(() => {
+  const records: string[] = [];
+  Object.defineProperty(window, "__trafficChartAnimations", { value: records });
+  const originalAnimate = Element.prototype.animate;
+  Element.prototype.animate = function animate(keyframes, options) {
+    if (this.closest(".traffic-throughput-plot, .traffic-latency-plot")) {
+      records.push(JSON.stringify(keyframes));
+    }
+    return originalAnimate.call(this, keyframes, options);
+  };
+});
+
+const animationFrames = await page.evaluate(
+  () =>
+    (
+      window as typeof window & {
+        __trafficChartAnimations: string[];
+      }
+    ).__trafficChartAnimations,
+);
+expect(animationFrames.some((frames) => frames.includes("scaleY(0)"))).toBe(true);
+```
+
+Run:
+
+```bash
+pnpm -F @submerge/web exec playwright test e2e/traffic-layout.spec.ts \
+  --workers=1 --reporter=line
+```
+
+Expected: 7/7 PASS with zero retries and unchanged dark/light/mobile geometry.
+
+- [ ] **Step 7: Run gates, review, commit, and update PR #23**
+
+```bash
+pnpm verify:static
+pnpm -F @submerge/web exec playwright test \
+  e2e/traffic-layout.spec.ts e2e/layout-contract.spec.ts \
+  --workers=1 --reporter=line
+git commit -m "feat(traffic): animate appended chart columns" \
+  -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+git push origin feature/traffic-screen
+```
+
+Run the required incremental and final reviews before commit/push. Do not merge PR #23.
