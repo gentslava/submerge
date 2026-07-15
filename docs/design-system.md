@@ -65,6 +65,9 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Маршрутизация · Состояния (create / disabled / mobile 390) | `HXRTv` | Disabled Direct and expanded 390 px Direct states |
 | Маршрутизация · Populated — светлая | `CUEoq` | `eHlsq`; collapsed enabled Direct card is the light-theme reference |
 | Трафик | `YED5Y` | `ZH6Id` |
+| Трафик — светлая тема | `eLeqx` | cloned light-theme reference |
+| Трафик — mobile 390 | `Qocs1` | compact 2×2 metrics + stacked charts |
+| Трафик — состояния | `yjNoN` | loading / idle / reconnecting / no nodes |
 | Логи | `ZdPsU` | `MKvCg` |
 | Диагностика | `QoRoZ` | `AqDqR` |
 | Раздел в разработке (placeholder) | `fFpGe` | `gsI9Q` |
