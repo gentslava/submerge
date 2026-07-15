@@ -452,3 +452,113 @@ git commit -m "test(traffic): verify responsive live states" -m "Co-Authored-By:
 ```
 
 Do not push. Update the spec/plan status only after the complete feature is green and the user asks to ship.
+
+---
+
+## Task 5: Stabilize the presentation cadence and add chart inspection
+
+**Files:**
+
+- Create: `packages/web/src/features/traffic/presentation.ts`
+- Create: `packages/web/src/features/traffic/presentation.test.ts`
+- Modify: `packages/web/src/features/traffic/store.ts`
+- Modify: `packages/web/src/features/traffic/store.test.ts`
+- Modify: `packages/web/src/features/traffic/TrafficScreen.tsx`
+- Modify: `packages/web/src/features/traffic/TrafficScreen.test.tsx`
+- Modify: `packages/web/src/features/traffic/TrafficCharts.tsx`
+- Modify: `packages/web/src/features/traffic/TrafficCharts.test.tsx`
+- Modify: `packages/web/e2e/traffic-layout.spec.ts`
+
+- [ ] **Step 1: Write failing three-second aggregation tests**
+
+Define `TRAFFIC_PRESENTATION_MS = 3_000`, a `TrafficBucketSample` carrying averaged
+`up`/`down`, `startedAt`, `endedAt`, and `peak`, and a pure
+`aggregateTrafficBuckets(samples, boundaryAt)` function. Test that samples at 0/1/2 seconds
+produce exactly one completed bucket at 3 seconds, averages are rounded deterministically,
+the raw total peak is retained, the open bucket is excluded, and only the latest 20 buckets
+remain.
+
+Run:
+
+```bash
+pnpm -F @submerge/web exec vitest run src/features/traffic/presentation.test.ts
+```
+
+Expected: FAIL before `presentation.ts` exists, then PASS after the minimal pure
+implementation.
+
+- [ ] **Step 2: Commit one coherent Traffic presentation snapshot every three seconds**
+
+Add a small screen-level presentation hook that reads the persistent raw store only at the
+wall-clock bucket boundary. Its committed snapshot contains the latest completed bucket,
+the 20-bucket chart window, session bytes, and the latest Connections count. Keep raw
+freshness/state evaluation immediate. Reset must immediately clear the visible bucket window
+and session bytes while retaining the last committed rates until the next bucket.
+
+Write a fake-timer component test proving the four metrics and newest bar remain unchanged at
+1 and 2 seconds, then update together at 3 seconds. Run:
+
+```bash
+pnpm -F @submerge/web exec vitest run src/features/traffic/TrafficScreen.test.tsx
+```
+
+Expected: PASS.
+
+- [ ] **Step 3: Preserve latency timestamps for honest tooltips**
+
+Extend `TrafficLatencySnapshot` with a parallel `sampleTimes: readonly (number | null)[]`.
+Seed and append it from `NodeItem.historyTimestamps`, keep it aligned through the 40-sample
+cap, and clear it with the Traffic-only reset. Test repeated equal delays with distinct
+timestamps and missing-timestamp fallback.
+
+Run:
+
+```bash
+pnpm -F @submerge/web exec vitest run src/features/traffic/store.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 4: Replace delayed native titles with a visible chart inspector**
+
+Make the chart region keyboard focusable and keep bar shapes decorative. Pointer hover or
+focus selects a sample and freezes the rendered window; ArrowLeft/ArrowRight change the
+selection, Enter or click/tap pins it, and Escape/outside press clears it. The throughput
+tooltip renders the bucket time range, averaged download/upload, and peak; latency renders
+the measurement time plus milliseconds or «таймаут». Key rendered columns by bucket/timestamp
+identity and animate only the newest column.
+
+Component tests must cover immediate hover content, pin/unpin, keyboard traversal, Escape,
+outside press, and retained frozen values while new props arrive. Run:
+
+```bash
+pnpm -F @submerge/web exec vitest run src/features/traffic/TrafficCharts.test.tsx
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Verify browser behaviour and responsive layout**
+
+Extend the deterministic fixture with at least six traffic events. Assert that rate cards and
+the chart advance once per three-second bucket, hover exposes the matching tooltip, click
+pins it across the next bucket, Escape closes it, and reset stays immediate. Re-run the
+existing dark/light/mobile, state, overflow, and container-boundary coverage with one worker
+and zero retries.
+
+```bash
+pnpm verify:static
+pnpm -F @submerge/web exec playwright test e2e/traffic-layout.spec.ts e2e/layout-contract.spec.ts --workers=1 --reporter=line
+```
+
+Expected: all static gates and the focused Playwright suite pass.
+
+- [ ] **Step 6: Review, commit, and update PR #23**
+
+Run the required incremental review on this behaviour slice, resolve findings, then run the
+final Traffic integration review and repeat Step 5. Commit with:
+
+```bash
+git commit -m "fix(traffic): stabilize live chart inspection" -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+Push `feature/traffic-screen`; do not merge the draft PR.
