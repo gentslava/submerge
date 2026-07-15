@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import type { DirectChannel, ProxyChannel } from "@submerge/shared";
 
 const defaultPolicy = {
   kind: "speed",
@@ -8,14 +9,42 @@ const defaultPolicy = {
   reevaluateWhileHealthy: true,
 };
 
-const defaultChannel = {
+export const directChannelFixture: DirectChannel = {
+  id: "direct",
+  name: "Direct",
+  target: "direct",
+  priority: 0,
+  enabled: true,
+  isDefault: false,
+  directPresets: { privateNetworks: true, localDomains: true },
+  matcher: {
+    presets: ["telegram"],
+    domains: ["internal.example.test"],
+    keywords: ["intranet"],
+    ruleProviders: [{ url: "https://rules.example.test/direct.yaml", behavior: "classical" }],
+    geosite: ["private"],
+    geoip: ["PRIVATE"],
+    cidrs: ["100.64.0.0/10"],
+  },
+};
+
+export const defaultChannelFixture: ProxyChannel = {
   id: "default",
   name: "Default",
-  priority: 0,
+  target: "proxy",
+  priority: 1,
   enabled: true,
   isDefault: true,
   policy: defaultPolicy,
-  matcher: { presets: [], domains: [], keywords: [], ruleProviders: [], geosite: [], geoip: [] },
+  matcher: {
+    presets: [],
+    domains: [],
+    keywords: [],
+    ruleProviders: [],
+    geosite: [],
+    geoip: [],
+    cidrs: [],
+  },
   lastReason: null,
   lastReasonAt: null,
 };
@@ -45,8 +74,10 @@ const responses: Record<string, unknown> = {
     ],
   },
   "sources.list": [],
-  "channels.get": defaultChannel,
-  "channels.list": [defaultChannel],
+  "channels.get": defaultChannelFixture,
+  "channels.list": [directChannelFixture, defaultChannelFixture],
+  "channels.reorder": { ok: true, applied: true },
+  "channels.updateDirect": { channel: directChannelFixture, applied: true },
   "settings.get": { hwid: "fixture-hwid", mihomoSecret: "", proxyEndpoint: "127.0.0.1:7890" },
   "nodes.bandwidth": [],
   "nodes.health": { connected: true },
@@ -55,6 +86,10 @@ const responses: Record<string, unknown> = {
 };
 
 export type FixtureOverrides = Record<string, unknown>;
+
+export interface TrpcFixtureOptions {
+  subscriptions?: Record<string, { events: readonly unknown[]; end?: "return" | "disconnect" }>;
+}
 
 interface TrpcFixtureError {
   fixtureError: true;
@@ -85,13 +120,34 @@ function responseFor(procedure: string, overrides: FixtureOverrides): unknown {
 export async function installTrpcFixture(
   page: Page,
   overrides: FixtureOverrides = {},
+  options: TrpcFixtureOptions = {},
 ): Promise<void> {
   await page.unroute("**/trpc/**");
+  const deliveredDisconnects = new Set<string>();
   await page.route("**/trpc/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^\/trpc\//, "");
     if (path === "live.stream") {
-      await route.abort("blockedbyclient");
+      const subscription = options.subscriptions?.[path];
+      if (!subscription) {
+        await route.abort("blockedbyclient");
+        return;
+      }
+
+      const replayEvents = subscription.end !== "disconnect" || !deliveredDisconnects.has(path);
+      if (subscription.end === "disconnect") deliveredDisconnects.add(path);
+      const events = replayEvents ? subscription.events : [];
+      const body = [
+        "event: connected\ndata: {}\n\n",
+        ...events.map((event, index) => `id: ${index + 1}\ndata: ${JSON.stringify(event)}\n\n`),
+        subscription.end === "disconnect" ? "" : "event: return\ndata:\n\n",
+      ].join("");
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        headers: { "cache-control": "no-cache", connection: "keep-alive" },
+        body,
+      });
       return;
     }
 

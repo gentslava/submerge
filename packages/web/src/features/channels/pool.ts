@@ -1,4 +1,4 @@
-import { type Channel, type ChannelPoolMember, channelGroupName } from "@submerge/shared";
+import { type ChannelPoolMember, channelGroupName, type ProxyChannel } from "@submerge/shared";
 
 // Pure pool-editing logic for the PoolPicker, kept apart from the component so it's
 // unit-testable without a tRPC/query-client harness (mirrors sources/reorder.ts).
@@ -16,7 +16,7 @@ import { type Channel, type ChannelPoolMember, channelGroupName } from "@submerg
 // picks real nodes/sources, never another channel's group. Derived from the
 // actual channel ids rather than a `startsWith("ch-")` string match, since a real
 // node could legitimately be named "ch-...".
-export function channelGroupNames(channels: Channel[]): Set<string> {
+export function channelGroupNames(channels: ProxyChannel[]): Set<string> {
   return new Set(channels.map(channelGroupName));
 }
 

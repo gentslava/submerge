@@ -1,11 +1,16 @@
-import type { Channel, ChannelMatcher, ChannelPolicy } from "@submerge/shared";
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import type {
+  ChannelMatcher,
+  ChannelPolicy,
+  DirectChannel,
+  ProxyChannel,
+  UpdateDirectInput,
+} from "@submerge/shared";
+import { ChevronDown, ChevronUp, LockKeyhole, Trash2 } from "lucide-react";
 import {
   type CSSProperties,
   forwardRef,
   type ReactNode,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -16,24 +21,38 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
+import { DirectChannelEditor } from "./DirectChannelEditor";
 import { DomainTags } from "./DomainTags";
 import { GeoIpTags, GeoSiteTags } from "./GeoTags";
 import { KeywordTags } from "./KeywordTags";
-import { fitMatcherItems, matcherSummaryItems } from "./matcher-summary";
+import {
+  directMatcherSummaryItems,
+  fitMatcherItems,
+  type MatcherSummaryItem,
+  matcherSummaryItems,
+} from "./matcher-summary";
 import { PolicyEditor } from "./PolicyEditor";
 import { PoolPicker } from "./PoolPicker";
 import { PresetChips } from "./PresetChips";
 import { RuleProviderRows } from "./RuleProviderRows";
 
-const POLICY_LABEL: Record<Channel["policy"]["kind"], string> = {
+const POLICY_LABEL: Record<ChannelPolicy["kind"], string> = {
   speed: "По задержке",
   optimal: "Оптимальный",
   sticky: "Стабильный IP",
   manual: "Приоритетный узел",
 };
 
-interface ChannelCardProps {
-  channel: Channel;
+interface ChannelCardBaseProps {
+  busy?: boolean;
+  initiallyExpanded?: boolean;
+  reorderControl?: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}
+
+interface ProxyChannelCardProps extends ChannelCardBaseProps {
+  channel: ProxyChannel;
   // Real (pinnable) exit nodes for the policy editor's manual-pin dropdown — same
   // pseudo-filtered derivation as the Settings screen (nodesQuery.all minus
   // PSEUDO_NODE_SET), passed down so both screens share one implementation.
@@ -43,19 +62,25 @@ interface ChannelCardProps {
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
   onUpdatePolicy: (policy: ChannelPolicy) => void;
   onRemove: () => void;
-  busy?: boolean;
   // Opens the card already expanded on first mount — used right after `channels.create`
   // so the admin lands straight in the editor instead of a second click. Only affects
   // the initial `useState` value, so it's safe even though the prop itself never changes.
-  initiallyExpanded?: boolean;
   // The reorder affordance (drag-handle grip on desktop, ↑↓ arrows on mobile), built by
   // the caller so this component stays dnd-kit-agnostic. Omitted for the Default row,
   // which can never be reordered (see RoutingScreen/reorder.ts).
-  reorderControl?: ReactNode;
   // Sortable transform (ref/style) + drag-in-flight styling, forwarded from the
   // `useSortable` wrapper in RoutingScreen — mirrors `SourceRowShell`'s forwardRef.
-  className?: string;
-  style?: CSSProperties;
+}
+
+interface DirectChannelCardProps extends ChannelCardBaseProps {
+  channel: DirectChannel;
+  onUpdateDirect: (patch: UpdateDirectInput) => void;
+}
+
+export type ChannelCardProps = ProxyChannelCardProps | DirectChannelCardProps;
+
+function isDirectChannelCardProps(props: ChannelCardProps): props is DirectChannelCardProps {
+  return props.channel.target === "direct";
 }
 
 /**
@@ -65,67 +90,82 @@ interface ChannelCardProps {
  * `HXRTv`. Expanding is a real toggle (click the chevron or anywhere on the header).
  * The reorder control (grip/arrows) is supplied by the caller — see `reorderControl`.
  */
-export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(function ChannelCard(
-  {
-    channel,
-    nodeNames,
-    onToggleEnabled,
-    onUpdateName,
-    onUpdateMatcher,
-    onUpdatePolicy,
-    onRemove,
-    busy = false,
-    initiallyExpanded = false,
-    reorderControl,
-    className,
-    style,
-  },
-  ref,
-) {
-  const [expanded, setExpanded] = useState(initiallyExpanded);
-  const toggleExpanded = () => setExpanded((e) => !e);
+export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(
+  function ChannelCard(props, ref) {
+    const {
+      channel,
+      busy = false,
+      initiallyExpanded = false,
+      reorderControl,
+      className,
+      style,
+    } = props;
+    const [expanded, setExpanded] = useState(initiallyExpanded);
+    const toggleExpanded = () => setExpanded((e) => !e);
 
-  return (
-    <div
-      ref={ref}
-      style={style}
-      className={cn(
-        "overflow-hidden rounded-lg border bg-surface",
-        // Default always carries the accent border; a regular card gets it only
-        // while expanded/editing (mockup `Z7zRtE`) — collapsed stays border-subtle.
-        channel.isDefault || expanded ? "border-accent-border" : "border-border-subtle",
-        !channel.isDefault && !channel.enabled && "opacity-50",
-        className,
-      )}
-    >
-      {channel.isDefault ? (
-        <DefaultRow channel={channel} expanded={expanded} onToggleExpanded={toggleExpanded} />
-      ) : (
-        <RegularRow
-          channel={channel}
-          onToggleEnabled={onToggleEnabled}
-          busy={busy}
-          expanded={expanded}
-          onToggleExpanded={toggleExpanded}
-          reorderControl={reorderControl}
-        />
-      )}
-      {expanded && (
-        <>
-          <div className="h-px w-full bg-border-subtle" aria-hidden="true" />
-          <ChannelEditor
-            channel={channel}
-            nodeNames={nodeNames}
-            onUpdateName={onUpdateName}
-            onUpdateMatcher={onUpdateMatcher}
-            onUpdatePolicy={onUpdatePolicy}
-            onRemove={onRemove}
+    return (
+      <div
+        ref={ref}
+        style={style}
+        className={cn(
+          "overflow-hidden rounded-lg border bg-surface",
+          // Default always carries the accent border; a regular card gets it only
+          // while expanded/editing (mockup `Z7zRtE`) — collapsed stays border-subtle.
+          channel.isDefault || expanded ? "border-accent-border" : "border-border-subtle",
+          !channel.isDefault && !channel.enabled && "opacity-50",
+          className,
+        )}
+      >
+        {isDirectChannelCardProps(props) ? (
+          <DirectRow
+            channel={props.channel}
+            onUpdateDirect={props.onUpdateDirect}
+            busy={busy}
+            expanded={expanded}
+            onToggleExpanded={toggleExpanded}
+            reorderControl={reorderControl}
           />
-        </>
-      )}
-    </div>
-  );
-});
+        ) : props.channel.isDefault ? (
+          <DefaultRow
+            channel={props.channel}
+            expanded={expanded}
+            onToggleExpanded={toggleExpanded}
+          />
+        ) : (
+          <RegularRow
+            channel={props.channel}
+            onToggleEnabled={props.onToggleEnabled}
+            busy={busy}
+            expanded={expanded}
+            onToggleExpanded={toggleExpanded}
+            reorderControl={reorderControl}
+          />
+        )}
+        {expanded && (
+          <>
+            <div className="h-px w-full bg-border-subtle" aria-hidden="true" />
+            {isDirectChannelCardProps(props) ? (
+              <DirectChannelEditor
+                channel={props.channel}
+                onChange={props.onUpdateDirect}
+                disabled={busy}
+              />
+            ) : (
+              <ChannelEditor
+                channel={props.channel}
+                nodeNames={props.nodeNames}
+                onUpdateName={props.onUpdateName}
+                onUpdateMatcher={props.onUpdateMatcher}
+                onUpdatePolicy={props.onUpdatePolicy}
+                onRemove={props.onRemove}
+              />
+            )}
+          </>
+        )}
+      </div>
+    );
+  },
+);
 
 // The header toggles the editor on click. The enabled Switch is a real <button>
 // (role="switch"), and the reorder control is a real drag-handle/arrow <button> too —
@@ -144,7 +184,7 @@ function RegularRow({
   onToggleExpanded,
   reorderControl,
 }: {
-  channel: Channel;
+  channel: ProxyChannel;
   onToggleEnabled: (enabled: boolean) => void;
   busy: boolean;
   expanded: boolean;
@@ -171,7 +211,7 @@ function RegularRow({
         <span className="absolute inset-0" aria-hidden="true" />
         <span className="shrink-0 text-cardtitle text-text-primary">{channel.name}</span>
         <PolicyBadge kind={channel.policy.kind} />
-        <MatcherSummary matcher={channel.matcher} />
+        <MatcherSummary items={matcherSummaryItems(channel.matcher)} />
       </button>
       <div className="relative z-10 flex shrink-0 items-center gap-3.5">
         {/* Honest disabled marker — we know `enabled` for certain, unlike a live
@@ -193,6 +233,71 @@ function RegularRow({
   );
 }
 
+function DirectRow({
+  channel,
+  onUpdateDirect,
+  busy,
+  expanded,
+  onToggleExpanded,
+  reorderControl,
+}: {
+  channel: DirectChannel;
+  onUpdateDirect: (patch: UpdateDirectInput) => void;
+  busy: boolean;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  reorderControl?: ReactNode;
+}) {
+  const Chevron = expanded ? ChevronUp : ChevronDown;
+  const toggleLabel = `${expanded ? "Свернуть" : "Развернуть"} канал «Direct»`;
+  return (
+    <div className="direct-channel-header relative flex w-full flex-col gap-2.5 bg-surface px-3.5 py-3 @min-[42rem]/app-page:flex-row @min-[42rem]/app-page:items-center @min-[42rem]/app-page:gap-3 @min-[42rem]/app-page:px-4 @min-[42rem]/app-page:py-3.5">
+      <div className="direct-channel-identity-controls flex w-full min-w-0 items-center gap-2 @min-[42rem]/app-page:contents">
+        {reorderControl && (
+          <span className="relative z-10 order-0 flex shrink-0 items-center">{reorderControl}</span>
+        )}
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          aria-expanded={expanded}
+          aria-label={toggleLabel}
+          className="channel-card-toggle order-1 flex min-w-0 flex-1 items-center gap-2 text-left @min-[42rem]/app-page:flex-none @min-[42rem]/app-page:gap-3"
+        >
+          <span className="absolute inset-0" aria-hidden="true" />
+          <span className="shrink-0 text-cardtitle text-text-primary">Direct</span>
+          <span className="flex shrink-0 items-center gap-1 rounded-full bg-hover px-[7px] py-[3px] text-micro font-semibold text-text-secondary @min-[42rem]/app-page:gap-1.5 @min-[42rem]/app-page:px-2 @min-[42rem]/app-page:text-fine">
+            <LockKeyhole
+              className="h-[11px] w-[11px] @min-[42rem]/app-page:h-3 @min-[42rem]/app-page:w-3"
+              aria-hidden="true"
+            />
+            Системный
+          </span>
+          <span className="shrink-0 rounded-full border border-accent-border bg-accent-bg px-[7px] py-[3px] font-mono text-micro font-semibold text-accent-text @min-[42rem]/app-page:px-[9px] @min-[42rem]/app-page:text-fine">
+            DIRECT
+          </span>
+        </button>
+        <div className="relative z-10 order-3 flex shrink-0 items-center gap-2 @min-[42rem]/app-page:gap-3.5">
+          {!channel.enabled && (
+            <span className="hidden shrink-0 font-mono text-xs text-text-tertiary @min-[42rem]/app-page:inline">
+              выключен
+            </span>
+          )}
+          <Switch
+            checked={channel.enabled}
+            onCheckedChange={(enabled) => onUpdateDirect({ enabled })}
+            disabled={busy}
+            aria-label="Включить канал «Direct»"
+          />
+          <button type="button" onClick={onToggleExpanded} aria-label={toggleLabel}>
+            <Chevron className="h-[18px] w-[18px] text-text-tertiary" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+      <MatcherSummary items={directMatcherSummaryItems(channel)} direct />
+    </div>
+  );
+}
+
 // Default has no drag handle (can't be reordered) and no policy badge (the
 // mockup shows a "catch-all" caption in its place — Default's routing role,
 // not its auto-select policy) and its enabled switch is permanently on: it
@@ -204,7 +309,7 @@ function DefaultRow({
   expanded,
   onToggleExpanded,
 }: {
-  channel: Channel;
+  channel: ProxyChannel;
   expanded: boolean;
   onToggleExpanded: () => void;
 }) {
@@ -259,7 +364,7 @@ function ChannelEditor({
   onUpdatePolicy,
   onRemove,
 }: {
-  channel: Channel;
+  channel: ProxyChannel;
   nodeNames: string[];
   onUpdateName: (name: string) => void;
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
@@ -385,7 +490,7 @@ function EditorRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
-function PolicyBadge({ kind }: { kind: Channel["policy"]["kind"] }) {
+function PolicyBadge({ kind }: { kind: ChannelPolicy["kind"] }) {
   return (
     <Badge variant="accent" className="shrink-0 border border-accent-border font-semibold">
       <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
@@ -397,8 +502,13 @@ function PolicyBadge({ kind }: { kind: Channel["policy"]["kind"] }) {
 // The collapsed card deliberately summarizes only matcher data it owns. PoolPicker
 // loads pool data lazily for the expanded card, so claiming "Все узлы" here would
 // invent state for restricted pools.
-function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
-  const items = useMemo(() => matcherSummaryItems(matcher), [matcher]);
+function MatcherSummary({
+  items,
+  direct = false,
+}: {
+  items: MatcherSummaryItem[];
+  direct?: boolean;
+}) {
   const summaryRef = useRef<HTMLDivElement>(null);
   const itemMeasureRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const counterMeasureRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -435,7 +545,13 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
         counterWidths,
         gap,
       });
-      setVisibleCount((current) => (current === nextVisibleCount ? current : nextVisibleCount));
+      const configuredLimit = Number.parseInt(styles.getPropertyValue("--matcher-max-visible"), 10);
+      const limitedVisibleCount = Number.isFinite(configuredLimit)
+        ? Math.min(nextVisibleCount, configuredLimit)
+        : nextVisibleCount;
+      setVisibleCount((current) =>
+        current === limitedVisibleCount ? current : limitedVisibleCount,
+      );
     };
 
     recalculate();
@@ -457,14 +573,23 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
     <>
       <div
         ref={summaryRef}
-        className="matcher-summary relative flex w-full min-w-0 items-center gap-2 px-1"
+        className={cn(
+          "matcher-summary relative flex w-full min-w-0 items-center gap-2 px-1",
+          direct &&
+            "pointer-events-none order-2 px-0 [--matcher-max-visible:2] @min-[42rem]/app-page:w-auto @min-[42rem]/app-page:flex-1 @min-[42rem]/app-page:px-1 @min-[42rem]/app-page:[--matcher-max-visible:999]",
+        )}
       >
         {items.length > 0 ? (
           items.slice(0, displayedCount).map((item) => (
             <Badge
               key={item.key}
               variant="idle"
-              className={cn("shrink-0", item.monospace && "font-mono")}
+              className={cn(
+                "shrink-0",
+                direct &&
+                  "px-[7px] text-micro font-normal @min-[42rem]/app-page:px-2 @min-[42rem]/app-page:text-fine",
+                item.monospace && "font-mono",
+              )}
             >
               {item.value}
             </Badge>
@@ -473,7 +598,14 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
           <span className="text-xs text-text-tertiary">Правила не заданы</span>
         )}
         {remainingCount > 0 && (
-          <Badge variant="neutral" className="shrink-0">
+          <Badge
+            variant="neutral"
+            className={cn(
+              "shrink-0",
+              direct &&
+                "px-[7px] text-micro font-semibold @min-[42rem]/app-page:px-2 @min-[42rem]/app-page:text-fine",
+            )}
+          >
             <span aria-hidden="true">+{remainingCount}</span>
             <span className="sr-only">
               Ещё {remainingCount} {pluralRu(remainingCount, ["правило", "правила", "правил"])}{" "}
@@ -493,7 +625,14 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
               itemMeasureRefs.current[index] = element;
             }}
           >
-            <Badge variant="idle" className={cn(item.monospace && "font-mono")}>
+            <Badge
+              variant="idle"
+              className={cn(
+                direct &&
+                  "px-[7px] text-micro font-normal @min-[42rem]/app-page:px-2 @min-[42rem]/app-page:text-fine",
+                item.monospace && "font-mono",
+              )}
+            >
               {item.value}
             </Badge>
           </span>
@@ -507,7 +646,15 @@ function MatcherSummary({ matcher }: { matcher: ChannelMatcher }) {
                 counterMeasureRefs.current[count] = element;
               }}
             >
-              <Badge variant="neutral">+{count}</Badge>
+              <Badge
+                variant="neutral"
+                className={cn(
+                  direct &&
+                    "px-[7px] text-micro font-semibold @min-[42rem]/app-page:px-2 @min-[42rem]/app-page:text-fine",
+                )}
+              >
+                +{count}
+              </Badge>
             </span>
           );
         })}

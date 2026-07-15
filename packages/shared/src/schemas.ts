@@ -81,6 +81,9 @@ export const nodeItemSchema = z.object({
   // mihomo's recorded delay history (ms, oldest → newest; timeouts kept as 0 so the
   // chart can render them as instability) — drives the live latency chart.
   history: z.array(z.number()).default([]),
+  // Parallel identities for `history`, present on policy-aware live views. Delays
+  // alone cannot distinguish two consecutive probes that both measured 42 ms.
+  historyTimestamps: z.array(z.string()).optional(),
   // Present only for a collapsed group node: its member servers.
   members: z.array(nodeMemberSchema).optional(),
   // Global deny-list flag: true = dropped from the engine config (never routed/pinged),
@@ -266,6 +269,9 @@ export const channelMatcherSchema = z.object({
   // in the read model (like domains/keywords); the write boundary is strict.
   geosite: z.array(z.string()).default([]),
   geoip: z.array(z.string()).default([]),
+  // General IPv4/IPv6 CIDR matchers. The read model stays permissive so a
+  // malformed legacy value does not make the whole channel unreadable.
+  cidrs: z.array(z.string()).default([]),
 });
 export type ChannelMatcher = z.infer<typeof channelMatcherSchema>;
 
@@ -280,6 +286,23 @@ const DOMAIN_RE = /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-
 export const domainSchema = z.string().trim().min(1).max(253).regex(DOMAIN_RE, "invalid domain");
 export function isValidDomain(value: string): boolean {
   return domainSchema.safeParse(value).success;
+}
+
+// IPv4/IPv6 networks routed with mihomo IP-CIDR/IP-CIDR6 rules. The strict
+// write boundary trims each value and requires an explicit, valid prefix.
+const cidrV4Schema = z.cidrv4();
+const cidrV6Schema = z.cidrv6();
+const cidrSchema = z
+  .string()
+  .trim()
+  .pipe(z.union([cidrV4Schema, cidrV6Schema]));
+export function isValidCidr(value: string): boolean {
+  return cidrSchema.safeParse(value).success;
+}
+export function cidrVersion(value: string): 4 | 6 | null {
+  const result = cidrSchema.safeParse(value);
+  if (!result.success) return null;
+  return cidrV4Schema.safeParse(result.data).success ? 4 : 6;
 }
 
 // A DOMAIN-KEYWORD token (Phase 4a): a substring matched against the request
@@ -327,24 +350,58 @@ export const channelMatcherInputSchema = z.object({
   ruleProviders: z.array(ruleProviderRefInputSchema).default([]),
   geosite: z.array(geoCategorySchema).default([]),
   geoip: z.array(geoCountrySchema).default([]),
+  cidrs: z.array(cidrSchema).default([]),
 });
 
-export const channelSchema = z.object({
+export const directPresetSettingsSchema = z
+  .object({
+    privateNetworks: z.boolean(),
+    localDomains: z.boolean(),
+  })
+  .strict();
+export type DirectPresetSettings = z.infer<typeof directPresetSettingsSchema>;
+
+const channelBaseSchema = z.object({
   id: z.string().min(1),
   name: z.string(),
   priority: z.number().int(),
   enabled: z.boolean(),
-  isDefault: z.boolean(),
-  policy: channelPolicySchema,
   matcher: channelMatcherSchema,
-  lastReason: z.string().nullable(),
-  lastReasonAt: z.number().nullable(), // epoch ms of the last controller decision
 });
+
+export const proxyChannelSchema = channelBaseSchema
+  .extend({
+    target: z.literal("proxy"),
+    isDefault: z.boolean(),
+    policy: channelPolicySchema,
+    lastReason: z.string().nullable(),
+    lastReasonAt: z.number().nullable(), // epoch ms of the last controller decision
+  })
+  .strict();
+export type ProxyChannel = z.infer<typeof proxyChannelSchema>;
+
+export const directChannelSchema = channelBaseSchema
+  .extend({
+    id: z.literal("direct"),
+    name: z.literal("Direct"),
+    target: z.literal("direct"),
+    isDefault: z.literal(false),
+    directPresets: directPresetSettingsSchema,
+  })
+  .strict();
+export type DirectChannel = z.infer<typeof directChannelSchema>;
+
+export const channelSchema = z.discriminatedUnion("target", [
+  proxyChannelSchema,
+  directChannelSchema,
+]);
 export type Channel = z.infer<typeof channelSchema>;
 
 // Mihomo group names are a cross-package contract: the server emits these groups
 // while the web excludes them from the pool picker as non-exit nodes.
-export function channelGroupName(channel: Pick<Channel, "id" | "isDefault">): string {
+export function channelGroupName(
+  channel: Pick<ProxyChannel, "id" | "isDefault" | "target">,
+): string {
   return channel.isDefault ? "AUTO" : `ch-${channel.id}`;
 }
 
@@ -365,7 +422,7 @@ export const channelPoolMemberSchema = z.object({
 export type ChannelPoolMember = z.infer<typeof channelPoolMemberSchema>;
 
 export const createChannelInput = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   policy: channelPolicySchema,
   matcher: channelMatcherInputSchema.optional(),
 });
@@ -373,11 +430,23 @@ export type CreateChannelInput = z.infer<typeof createChannelInput>;
 
 export const updateChannelInput = z.object({
   id: z.string().min(1),
-  name: z.string().min(1).optional(),
+  name: z.string().trim().min(1).optional(),
   enabled: z.boolean().optional(),
   matcher: channelMatcherInputSchema.optional(),
 });
 export type UpdateChannelInput = z.infer<typeof updateChannelInput>;
+
+export const updateDirectInput = z
+  .object({
+    enabled: z.boolean().optional(),
+    matcher: channelMatcherInputSchema.optional(),
+    directPresets: directPresetSettingsSchema.optional(),
+  })
+  .strict()
+  .refine((patch) => Object.keys(patch).length > 0, {
+    message: "at least one Direct field is required",
+  });
+export type UpdateDirectInput = z.infer<typeof updateDirectInput>;
 
 // Shared "just an id" input, reused by deleteChannelInput and by getPool (which
 // isn't a delete — see router.ts).
@@ -398,7 +467,7 @@ export const setChannelPoolInput = z.object({
 });
 export type SetChannelPoolInput = z.infer<typeof setChannelPoolInput>;
 
-export const channelWithPoolSchema = channelSchema.extend({
+export const channelWithPoolSchema = proxyChannelSchema.extend({
   pool: z.array(channelPoolMemberSchema),
 });
 export type ChannelWithPool = z.infer<typeof channelWithPoolSchema>;

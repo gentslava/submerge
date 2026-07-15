@@ -11,7 +11,18 @@ export function buildDefaultConfig(
   secret = "",
 ): string {
   return buildMultiConfig(
-    [{ id: "default", groupName: "AUTO", isDefault: true, policy, domains: [], proxies }],
+    [
+      {
+        target: "proxy",
+        id: "default",
+        groupName: "AUTO",
+        isDefault: true,
+        policy,
+        domains: [],
+        cidrs: [],
+        proxies,
+      },
+    ],
     secret,
   );
 }

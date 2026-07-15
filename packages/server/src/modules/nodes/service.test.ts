@@ -4,14 +4,16 @@ import { join } from "node:path";
 import {
   type ChannelPolicy,
   DEFAULT_AUTO_TEST_URL,
+  emptyChannelMatcher,
   type NodeView,
   type Proxy as ProxyConfig,
 } from "@submerge/shared";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
-import { sources } from "../../db/schema.js";
+import { channels, sources } from "../../db/schema.js";
 import { setPool } from "../channels/pool.js";
 import {
   createChannel,
@@ -291,7 +293,7 @@ describe("applyConfig", () => {
     const ch = createChannel(db, {
       name: "Media",
       policy: speedPolicy,
-      matcher: { presets: [], domains: ["youtube.com"] },
+      matcher: { ...emptyChannelMatcher(), domains: ["youtube.com"] },
     });
     updateChannel(db, ch.id, { enabled: false });
 
@@ -319,6 +321,43 @@ describe("applyConfig", () => {
     expect(cfg.rules).toContain("MATCH,AUTO");
   });
 
+  it("filters disabled Direct before generation and keeps enabled empty Direct a no-op", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    db.insert(channels)
+      .values({
+        id: "direct",
+        name: "Direct",
+        target: "direct",
+        priority: 0,
+        enabled: false,
+        isDefault: false,
+        policy: null,
+        matcher: { ...emptyChannelMatcher(), domains: ["private.example"] },
+        directPresets: { privateNetworks: false, localDomains: false },
+      })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    let cfg = readGeneratedConfig(configPath);
+    expect(cfg.rules).toEqual(["DOMAIN,speed.cloudflare.com,PROBE", "MATCH,PROXY"]);
+
+    db.update(channels)
+      .set({ enabled: true, matcher: emptyChannelMatcher() })
+      .where(eq(channels.id, "direct"))
+      .run();
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+    cfg = readGeneratedConfig(configPath);
+    expect(cfg.rules).toEqual(["DOMAIN,speed.cloudflare.com,PROBE", "MATCH,PROXY"]);
+  });
+
   it("expands a channel's preset ids into DOMAIN-SUFFIX rules for every preset domain", async () => {
     const db = freshDb();
     db.insert(sources)
@@ -327,7 +366,7 @@ describe("applyConfig", () => {
     const ch = createChannel(db, {
       name: "Media",
       policy: speedPolicy,
-      matcher: { presets: ["youtube"], domains: [] },
+      matcher: { ...emptyChannelMatcher(), presets: ["youtube"] },
     });
 
     const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
@@ -339,6 +378,38 @@ describe("applyConfig", () => {
     const cfg = readGeneratedConfig(configPath);
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${ch.id}`);
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,googlevideo.com,ch-${ch.id}`);
+  });
+
+  it("expands Direct preset matchers and targets every generated domain at DIRECT", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    db.insert(channels)
+      .values({
+        id: "direct",
+        name: "Direct",
+        target: "direct",
+        priority: 0,
+        enabled: true,
+        isDefault: false,
+        policy: null,
+        matcher: { ...emptyChannelMatcher(), presets: ["youtube"] },
+        directPresets: { privateNetworks: false, localDomains: false },
+      })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+
+    const cfg = readGeneratedConfig(configPath);
+    expect(cfg.rules).toContain("DOMAIN-SUFFIX,youtube.com,DIRECT");
+    expect(cfg.rules).toContain("DOMAIN-SUFFIX,googlevideo.com,DIRECT");
+    expect(cfg.rules).not.toContain("DOMAIN-SUFFIX,youtube.com,ch-direct");
   });
 });
 
@@ -363,9 +434,16 @@ describe("listNodes", () => {
     const view = await listNodes(freshDb());
     expect(view.now).toBe("A");
     expect(view.all).toEqual([
-      { name: "A", type: "vless", delay: 50, udp: true, history: [50] },
+      {
+        name: "A",
+        type: "vless",
+        delay: 50,
+        udp: true,
+        history: [50],
+        historyTimestamps: ["t"],
+      },
       { name: "B", type: "vless", delay: null, history: [] },
-      { name: "C", type: "vless", delay: 0, history: [0] },
+      { name: "C", type: "vless", delay: 0, history: [0], historyTimestamps: ["t"] },
     ]);
   });
 
@@ -427,7 +505,11 @@ describe("toNodeView per-URL latency (extra)", () => {
 
   it("uses the policy URL's history for delay/history when extra has it", () => {
     const view = toNodeView(resp, undefined, "https://policy.example");
-    expect(view.all.find((n) => n.name === "A")).toMatchObject({ delay: 50, history: [50] });
+    expect(view.all.find((n) => n.name === "A")).toMatchObject({
+      delay: 50,
+      history: [50],
+      historyTimestamps: ["t"],
+    });
   });
 
   it("falls back to the shared history when extra lacks the policy URL", () => {
@@ -518,19 +600,19 @@ describe("testDelay", () => {
     );
     expect(await testDelay("A")).toBe(50);
   });
-  it("returns null when delay is zero", async () => {
+  it("returns zero when mihomo reports a timeout", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => json({ delay: 0 })),
     );
-    expect(await testDelay("A")).toBeNull();
+    expect(await testDelay("A")).toBe(0);
   });
-  it("returns null when the delay request fails", async () => {
+  it("returns zero when the delay request fails", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() => new Response("err", { status: 503 })),
     );
-    expect(await testDelay("A")).toBeNull();
+    expect(await testDelay("A")).toBe(0);
   });
 });
 

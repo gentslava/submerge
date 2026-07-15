@@ -30,7 +30,9 @@ export function deriveSpeeds(
   return out;
 }
 
-// Fixed МБ/с with two decimals, matching the mockup's "↓ 5.30  ↑ 0.04".
+// МБ/с with two-decimal precision; preserve positive sub-cent values as "<0.01".
 export function toMbps(bytesPerSec: number): string {
-  return (bytesPerSec / 1_048_576).toFixed(2);
+  if (bytesPerSec <= 0) return "0.00";
+  const mbps = bytesPerSec / 1_048_576;
+  return mbps < 0.01 ? "<0.01" : mbps.toFixed(2);
 }

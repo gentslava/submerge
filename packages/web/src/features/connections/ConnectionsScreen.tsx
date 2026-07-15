@@ -10,9 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   dotColors,
   formatRate,
+  groupNodes,
   isPseudo,
   type LatencyClass,
   latencyClass,
+  realNodes,
 } from "@/features/nodes/nodeView";
 import { formatElapsed } from "@/lib/duration";
 import { pluralRu } from "@/lib/plural";
@@ -27,14 +29,15 @@ type Filter = "all" | "tcp" | "udp";
 interface NodeInfo {
   display: string;
   lc: LatencyClass;
+  title: string;
 }
-type NodeIndex = Map<string, { display: string; delay: number | null }>;
+type NodeIndex = Map<string, { display: string; delay: number | null; title: string }>;
 function resolveNode(index: NodeIndex, name: string): NodeInfo {
-  if (!name) return { display: "—", lc: "idle" };
+  if (!name) return { display: "—", lc: "idle", title: "—" };
   const hit = index.get(name);
   return hit
-    ? { display: hit.display, lc: latencyClass(hit.delay) }
-    : { display: name, lc: "idle" };
+    ? { display: hit.display, lc: latencyClass(hit.delay), title: hit.title }
+    : { display: name, lc: "idle", title: name };
 }
 const EMPTY: ConnectionItem[] = [];
 const ZERO: Rate = { up: 0, down: 0 };
@@ -55,15 +58,27 @@ export function ConnectionsScreen() {
   // to its display name + status. Members map to their collapsed group's name so a
   // deduped chain name ("nl-ams-01-2") shows as the clean node it belongs to.
   const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
+  const sourcesQuery = useQuery(trpc.sources.list.queryOptions());
   const nodeIndex = useMemo<NodeIndex>(() => {
     const map: NodeIndex = new Map();
-    for (const n of nodesQuery.data?.all ?? []) {
+    const nodes = nodesQuery.data?.all ?? [];
+    const sourceByNode = new Map<string, string>();
+    for (const group of groupNodes(realNodes(nodes), sourcesQuery.data ?? [])) {
+      if (!group.source) continue;
+      for (const node of group.nodes) {
+        sourceByNode.set(node.name, group.label);
+        for (const member of node.members ?? []) sourceByNode.set(member.name, group.label);
+      }
+    }
+    for (const n of nodes) {
       if (isPseudo(n.name)) continue;
-      map.set(n.name, { display: n.name, delay: n.delay });
-      for (const m of n.members ?? []) map.set(m.name, { display: n.name, delay: m.delay });
+      const source = sourceByNode.get(n.name);
+      const title = source ? `${source} — ${n.name}` : n.name;
+      map.set(n.name, { display: n.name, delay: n.delay, title });
+      for (const m of n.members ?? []) map.set(m.name, { display: n.name, delay: m.delay, title });
     }
     return map;
-  }, [nodesQuery.data]);
+  }, [nodesQuery.data, sourcesQuery.data]);
 
   // Per-connection speed: diff cumulative bytes against the previous poll (see speed.ts).
   const [rates, setRates] = useState<Map<string, Rate>>(() => new Map());
@@ -289,7 +304,9 @@ function ConnectionRow({
         <span className="truncate text-sm font-medium text-text-primary">{c.source}</span>
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate font-mono text-sub font-medium text-text-primary">{dest}</span>
+        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+          {dest}
+        </span>
         {showIp && (
           <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
         )}
@@ -299,7 +316,9 @@ function ConnectionRow({
       </span>
       <div className="flex w-[150px] shrink-0 items-center gap-[7px]">
         <span className={cn("h-[7px] w-[7px] shrink-0 rounded-full", dotColors[node.lc])} />
-        <span className="truncate font-mono text-sub text-text-primary">{node.display}</span>
+        <span title={node.title} className="truncate font-mono text-sub text-text-primary">
+          {node.display}
+        </span>
       </div>
       <span className="w-[140px] shrink-0 text-right font-mono text-sub font-medium text-text-primary">
         ↓ {toMbps(rate.down)} ↑ {toMbps(rate.up)}
@@ -354,7 +373,9 @@ function MobileConnectionCard({
         </button>
       </div>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-mono text-sub font-medium text-text-primary">{dest}</span>
+        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+          {dest}
+        </span>
         {showIp && (
           <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
         )}
@@ -367,7 +388,9 @@ function MobileConnectionCard({
               aria-hidden="true"
               className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotColors[node.lc])}
             />
-            <span className="truncate font-mono text-fine text-text-primary">{node.display}</span>
+            <span title={node.title} className="truncate font-mono text-fine text-text-primary">
+              {node.display}
+            </span>
           </span>
         </span>
         <span className="flex min-w-0 flex-col gap-1">

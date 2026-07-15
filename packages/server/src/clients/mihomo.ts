@@ -65,7 +65,7 @@ export function historyForUrl(
   return perUrl && perUrl.length > 0 ? perUrl : (info?.history ?? []);
 }
 
-const delayResponseSchema = z.object({ delay: z.number() });
+const delayResponseSchema = z.object({ delay: z.number().nonnegative() });
 export type DelayResponse = z.infer<typeof delayResponseSchema>;
 
 // /connections carries cumulative byte counters (plus a large connections array we

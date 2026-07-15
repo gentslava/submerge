@@ -31,6 +31,59 @@
   height: var(--latency-chart-height);
 }
 
+/* Traffic starts from the 390px Pencil contract. Wider variants are selected by
+   the page container below, so a docked sidebar/DevTools cannot force the wrong
+   layout just because the browser viewport itself is large. */
+.responsive-page--traffic {
+  gap: 0.75rem;
+}
+
+.traffic-charts {
+  gap: 0.75rem;
+}
+
+.traffic-reset {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding-inline: 0;
+}
+
+.traffic-reset-label {
+  display: none;
+}
+
+.traffic-title {
+  line-height: 1.2;
+}
+
+.traffic-subtitle {
+  line-height: 1.25;
+}
+
+.traffic-metric-label,
+.traffic-metric-number,
+.traffic-metric-unit,
+.traffic-chart-title,
+.traffic-chart-legend,
+.traffic-latency-current,
+.traffic-latency-axis {
+  line-height: normal;
+}
+
+.traffic-chart,
+.traffic-metric,
+.traffic-metric > span:last-child {
+  min-width: 0;
+}
+
+.traffic-metric {
+  min-height: 4.3125rem;
+}
+
+.traffic-chart-body {
+  padding-block: 0.6875rem;
+}
+
 .nodes-auto-param-content {
   display: grid;
   grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
@@ -49,6 +102,117 @@
 }
 
 @container app-page (min-width: 42rem) {
+  .traffic-chart-variant--compact {
+    display: none;
+  }
+
+  .traffic-chart-variant--wide {
+    display: flex;
+  }
+
+  /* The query container cannot style itself. Add 10px to its 12px flex gap on
+     each following child to reach the 22px desktop rhythm from Pencil. */
+  .responsive-page--traffic > :not(:first-child) {
+    margin-block-start: 0.625rem;
+  }
+
+  .traffic-charts {
+    gap: 1.375rem;
+  }
+
+  .traffic-title {
+    font-size: var(--text-h1);
+  }
+
+  .traffic-subtitle-compact,
+  .traffic-metric-compact-icon {
+    display: none;
+  }
+
+  .traffic-subtitle-inline {
+    display: inline;
+  }
+
+  .traffic-metric-icon {
+    display: flex;
+  }
+
+  .traffic-reset {
+    width: auto;
+    height: 2.5rem;
+    padding-inline: 0.875rem;
+  }
+
+  .traffic-reset-label {
+    display: inline;
+  }
+
+  .traffic-metric {
+    gap: 0.875rem;
+    min-height: 0;
+    padding: 1.125rem;
+  }
+
+  .traffic-metric-number {
+    font-size: var(--text-metric);
+    line-height: 2rem;
+  }
+
+  .traffic-metric-label {
+    font-size: var(--text-caption);
+    letter-spacing: var(--text-caption--letter-spacing);
+    line-height: 0.8125rem;
+  }
+
+  .traffic-metric-unit {
+    padding-bottom: 0.125rem;
+    font-family: var(--font-sans);
+    font-size: var(--text-meta);
+    font-weight: 500;
+    line-height: 0.9375rem;
+    color: var(--text-tertiary);
+  }
+
+  .traffic-chart-header {
+    padding: 0.875rem 1rem;
+  }
+
+  .traffic-chart-title {
+    font-size: var(--text-caption);
+    letter-spacing: 0.03125rem;
+    line-height: 0.8125rem;
+  }
+
+  .traffic-chart-body {
+    gap: 0.625rem;
+    padding: 1rem;
+  }
+
+  .traffic-throughput-body {
+    padding-block: 0.9375rem;
+  }
+
+  .traffic-latency-node,
+  .traffic-chart-swatch {
+    display: inline-block;
+  }
+
+  .traffic-chart-legend {
+    gap: 0.875rem;
+    font-size: var(--text-fine);
+    line-height: 0.8125rem;
+    color: var(--text-tertiary);
+  }
+
+  .traffic-latency-axis {
+    font-size: var(--text-micro);
+    line-height: 0.75rem;
+  }
+
+  .traffic-latency-node-compact {
+    display: none;
+  }
+
   .nodes-header-compact,
   .nodes-active-heading-compact {
     display: none;
@@ -223,6 +387,16 @@
 }
 
 @container app-page (min-width: 48rem) {
+  .traffic-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .traffic-latency-plot,
+  .traffic-throughput-plot {
+    height: 9.375rem;
+  }
+
   .sources-list {
     gap: 0;
     overflow: hidden;

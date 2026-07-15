@@ -6,6 +6,7 @@ import {
   setChannelPolicyInput,
   setChannelPoolInput,
   updateChannelInput,
+  updateDirectInput,
 } from "@submerge/shared";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
@@ -20,6 +21,7 @@ import {
   reorderChannels,
   setChannelPolicy,
   updateChannel,
+  updateDirect,
 } from "./service.js";
 
 export const channelsRouter = router({
@@ -40,6 +42,11 @@ export const channelsRouter = router({
     // until re-enabled. The Default always stays active regardless.
     const { applied } = await applyConfig(db);
     return { ok: true as const, applied };
+  }),
+  updateDirect: protectedProcedure.input(updateDirectInput).mutation(async ({ input }) => {
+    const channel = updateDirect(db, input);
+    const { applied } = await applyConfig(db);
+    return { channel, applied };
   }),
   remove: protectedProcedure.input(deleteChannelInput).mutation(async ({ input }) => {
     // Throws for the Default channel — surfaces as a tRPC error, which is correct:

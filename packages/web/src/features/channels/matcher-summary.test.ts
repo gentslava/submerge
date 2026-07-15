@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitMatcherItems, matcherSummaryItems } from "./matcher-summary";
+import { directMatcherSummaryItems, fitMatcherItems, matcherSummaryItems } from "./matcher-summary";
 
 describe("matcherSummaryItems", () => {
   it("summarizes every matcher family", () => {
@@ -11,6 +11,7 @@ describe("matcherSummaryItems", () => {
         ruleProviders: [{ url: "https://rules.example.com/list.yaml", behavior: "classical" }],
         geosite: ["category-ai"],
         geoip: ["US"],
+        cidrs: ["10.0.0.0/8", "2001:db8::/32"],
       }).map(({ value }) => value),
     ).toEqual([
       "OpenAI",
@@ -19,6 +20,25 @@ describe("matcherSummaryItems", () => {
       "список:rules.example.com",
       "geosite:category-ai",
       "geoip:US",
+      "10.0.0.0/8",
+      "2001:db8::/32",
+    ]);
+  });
+
+  it("renders CIDRs as monospace summary items", () => {
+    const items = matcherSummaryItems({
+      presets: [],
+      domains: [],
+      keywords: [],
+      ruleProviders: [],
+      geosite: [],
+      geoip: [],
+      cidrs: ["10.0.0.0/8", "2001:db8::/32"],
+    });
+
+    expect(items).toEqual([
+      { key: "cidr-10.0.0.0/8-0", value: "10.0.0.0/8", monospace: true },
+      { key: "cidr-2001:db8::/32-1", value: "2001:db8::/32", monospace: true },
     ]);
   });
 
@@ -31,6 +51,7 @@ describe("matcherSummaryItems", () => {
         ruleProviders: [],
         geosite: [],
         geoip: [],
+        cidrs: [],
       }),
     ).toEqual([
       {
@@ -49,9 +70,46 @@ describe("matcherSummaryItems", () => {
       ruleProviders: [{ url: "http://", behavior: "domain" }],
       geosite: [],
       geoip: [],
+      cidrs: [],
     });
 
     expect(items[0]?.value).toBe("список:http://");
+  });
+});
+
+describe("directMatcherSummaryItems", () => {
+  it("counts enabled system presets before custom matchers", () => {
+    expect(
+      directMatcherSummaryItems({
+        directPresets: { privateNetworks: true, localDomains: false },
+        matcher: {
+          presets: [],
+          domains: ["router.home.arpa"],
+          keywords: [],
+          ruleProviders: [],
+          geosite: [],
+          geoip: [],
+          cidrs: ["192.168.50.0/24"],
+        },
+      }).map(({ value }) => value),
+    ).toEqual(["Локальная сеть", "router.home.arpa", "192.168.50.0/24"]);
+  });
+
+  it("omits disabled system presets from the summary", () => {
+    expect(
+      directMatcherSummaryItems({
+        directPresets: { privateNetworks: false, localDomains: false },
+        matcher: {
+          presets: [],
+          domains: [],
+          keywords: [],
+          ruleProviders: [],
+          geosite: [],
+          geoip: [],
+          cidrs: [],
+        },
+      }),
+    ).toEqual([]);
   });
 });
 

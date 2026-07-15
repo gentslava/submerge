@@ -23,6 +23,7 @@ const channel = (
 ): Channel => ({
   id,
   name: id,
+  target: "proxy",
   priority: isDefault ? 1 : 0,
   enabled,
   isDefault,
@@ -91,6 +92,44 @@ function setGroup(h: Harness, group: string, members: string[], now: string | nu
 }
 
 describe("ControllerRegistry", () => {
+  it("never fetches, probes, selects, or caches Direct", async () => {
+    let fetched = 0;
+    let probed = 0;
+    let selected = 0;
+    const direct: Channel = {
+      id: "direct",
+      name: "Direct",
+      target: "direct",
+      priority: 0,
+      enabled: true,
+      isDefault: false,
+      matcher: emptyChannelMatcher(),
+      directPresets: { privateNetworks: true, localDomains: true },
+    };
+    const registry = new ControllerRegistry({
+      listChannels: () => [direct],
+      fetchProxies: async () => {
+        fetched++;
+        return { proxies: {} };
+      },
+      probe: async () => {
+        probed++;
+        return 10;
+      },
+      select: async () => {
+        selected++;
+      },
+      clearFixed: async () => undefined,
+      persistReason: () => undefined,
+      now: () => 0,
+    });
+
+    await expect(registry.runOnce()).resolves.toBeUndefined();
+    expect({ fetched, probed, selected }).toEqual({ fetched: 0, probed: 0, selected: 0 });
+    expect(registry.recent()).toEqual([]);
+    expect(() => registry.reset("direct")).not.toThrow();
+  });
+
   it("ticks each channel with its own group view and pins into its own group", async () => {
     const h = harness();
     setChannels(h, [

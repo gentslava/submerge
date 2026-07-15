@@ -6,6 +6,7 @@ import { rootRoute } from "./root";
 import { RoutingRoute } from "./routing";
 import { SettingsRoute } from "./settings";
 import { SourcesRoute } from "./sources";
+import { TrafficRoute } from "./traffic";
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -32,6 +33,11 @@ const routingRoute = createRoute({
   path: "/routing",
   component: RoutingRoute,
 });
+const trafficRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/traffic",
+  component: TrafficRoute,
+});
 const moreRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/more",
@@ -40,6 +46,7 @@ const moreRoute = createRoute({
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  trafficRoute,
   sourcesRoute,
   connectionsRoute,
   routingRoute,
