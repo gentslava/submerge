@@ -31,7 +31,7 @@ export function NodeGroup({
     used != null && total ? Math.min(100, Math.round((used / total) * 100)) : null;
 
   return (
-    <div className="node-group rounded-xl border border-border-subtle bg-surface">
+    <div className="node-group rounded-lg border border-border-subtle bg-surface">
       <button
         type="button"
         onClick={() => setCollapsed((c) => !c)}

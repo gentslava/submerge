@@ -57,4 +57,8 @@ describe("appRouter", () => {
     const all = await caller().settings.get();
     expect(all.__router_test__).toBe("dark");
   });
+
+  it("registers the logs router", async () => {
+    await expect(caller().logs.clear()).resolves.toEqual({ ok: true });
+  });
 });

@@ -19,6 +19,7 @@ const button = cva(
         sm: "h-8 px-[14px] text-sub",
         md: "h-10 px-[14px]",
         icon: "h-9 w-9 p-0",
+        headerIcon: "h-[var(--mobile-header-action-size)] w-[var(--mobile-header-action-size)] p-0",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },

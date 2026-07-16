@@ -10,14 +10,101 @@
   min-inline-size: 0;
 }
 
+.page-content {
+  padding: 1.25rem 1rem 1rem;
+}
+
+.page-stack {
+  gap: 0.75rem;
+}
+
+.page-stack--logs {
+  gap: 0.625rem;
+  padding-bottom: 0.75rem;
+}
+
+.page-stack--settings {
+  gap: 1rem;
+}
+
+.page-stack--more {
+  gap: 0.875rem;
+}
+
+.page-stack--routing {
+  padding-bottom: 1.25rem;
+}
+
+.page-header-subtitle--fine {
+  font-size: var(--text-fine);
+}
+
+.page-header-title {
+  line-height: 1.2;
+}
+
+.page-header-subtitle {
+  line-height: 1.25;
+}
+
+.page-header-action {
+  width: var(--mobile-header-action-size);
+  height: var(--mobile-header-action-size);
+  padding-inline: 0;
+  border-color: var(--border-subtle);
+}
+
+.settings-loading-stack {
+  gap: 1rem;
+}
+
 @container app-main (min-width: 42rem) {
   .page-content {
     padding-top: 1.625rem;
     padding-inline: 2rem;
+    padding-bottom: 2rem;
   }
 
-  .page-content--more {
-    padding-bottom: 2rem;
+  .page-stack {
+    gap: 1.375rem;
+  }
+
+  .page-stack--settings {
+    gap: 1.625rem;
+  }
+
+  .page-stack--connections,
+  .page-stack--routing {
+    gap: 1.25rem;
+  }
+
+  .settings-loading-stack {
+    gap: 1.625rem;
+  }
+
+  .page-stack--more {
+    gap: 1rem;
+  }
+
+  .page-header-copy {
+    gap: 0.3125rem;
+  }
+
+  .page-header-title {
+    font-size: var(--text-h1);
+  }
+
+  .page-header-subtitle,
+  .page-header-subtitle--fine {
+    font-size: var(--text-sub);
+    color: var(--text-secondary);
+  }
+
+  .page-header-action {
+    width: auto;
+    height: 2.5rem;
+    padding-inline: 0.875rem;
+    border-color: var(--border-default);
   }
 }
 
@@ -34,18 +121,8 @@
 /* Traffic starts from the 390px Pencil contract. Wider variants are selected by
    the page container below, so a docked sidebar/DevTools cannot force the wrong
    layout just because the browser viewport itself is large. */
-.responsive-page--traffic {
-  gap: 0.75rem;
-}
-
 .traffic-charts {
   gap: 0.75rem;
-}
-
-.traffic-reset {
-  width: 2.75rem;
-  height: 2.75rem;
-  padding-inline: 0;
 }
 
 .traffic-reset-label {
@@ -84,6 +161,107 @@
   padding-block: 0.6875rem;
 }
 
+/* Logs follow the compact 390px Pencil frame by default. The page itself owns
+   the available height so the timeline, rather than the whole application,
+   remains the scroll owner while its controls stay reachable. */
+.logs-action-label {
+  display: none;
+}
+
+.logs-filter-bar,
+.logs-filters {
+  width: 100%;
+}
+
+.logs-filters {
+  display: grid;
+  grid-template-columns: 8.875rem minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.logs-search {
+  grid-column: 1 / -1;
+  width: 100%;
+  border-color: var(--border-subtle);
+  background-color: var(--bg-surface);
+}
+
+.logs-source-select {
+  width: 8.875rem;
+  height: 2.125rem;
+  border-color: var(--border-subtle);
+  background-color: var(--bg-surface);
+}
+
+.logs-severity,
+.logs-severity .segmented-control {
+  width: 100%;
+}
+
+.logs-severity .segmented-control {
+  height: 2.125rem;
+  flex-wrap: nowrap;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+  background-color: var(--bg-surface);
+}
+
+.logs-severity .segmented-control > button {
+  min-width: 0;
+  height: 1.75rem;
+  flex: 1 1 0;
+  padding: 0;
+  font-size: var(--text-micro);
+}
+
+.logs-count {
+  width: 100%;
+  justify-content: space-between;
+  font-size: var(--text-fine);
+}
+
+.logs-stream-state-label {
+  display: inline-flex;
+}
+
+.logs-list {
+  overscroll-behavior: contain;
+}
+
+.logs-row {
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 0.375rem 0.4375rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.logs-row .logs-time {
+  width: auto;
+}
+
+.logs-row .logs-source-badge,
+.logs-row > span:nth-child(2) {
+  width: auto;
+  padding-inline: 0.375rem;
+}
+
+.logs-message {
+  grid-column: 1 / -1;
+  font-size: var(--text-fine);
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.logs-time {
+  font-size: var(--text-micro);
+  font-weight: 400;
+}
+
+.logs-source-badge,
+.logs-level-badge {
+  font-size: var(--text-axis);
+}
+
 .nodes-auto-param-content {
   display: grid;
   grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
@@ -102,6 +280,82 @@
 }
 
 @container app-page (min-width: 42rem) {
+  .logs-action-label {
+    display: inline;
+  }
+
+  .logs-filter-bar {
+    width: auto;
+    flex-wrap: nowrap;
+  }
+
+  .logs-filters {
+    display: flex;
+    width: auto;
+  }
+
+  .logs-search {
+    width: 17.5rem;
+    border-color: var(--border-default);
+    background-color: var(--bg-input);
+  }
+
+  .logs-source-select {
+    width: 10.875rem;
+    height: 2.25rem;
+    border-color: var(--border-default);
+    background-color: var(--bg-input);
+  }
+
+  .logs-severity,
+  .logs-severity .segmented-control {
+    width: auto;
+  }
+
+  .logs-severity .segmented-control {
+    height: auto;
+    gap: 0.1875rem;
+    padding: 0.1875rem;
+    background-color: var(--bg-base);
+  }
+
+  .logs-severity .segmented-control > button {
+    height: auto;
+    flex: none;
+    padding: 0.4375rem 0.8125rem;
+    font-size: var(--text-sub);
+  }
+
+  .logs-count {
+    width: auto;
+    justify-content: flex-start;
+    font-size: var(--text-meta);
+  }
+
+  .logs-stream-state-label {
+    display: none;
+  }
+
+  .logs-row {
+    grid-template-columns: 4.375rem 3.75rem 5.125rem minmax(0, 1fr);
+    grid-template-rows: auto;
+    gap: 0.875rem;
+    padding: 0.5625rem 1rem;
+  }
+
+  .logs-row .logs-source-badge,
+  .logs-row > span:nth-child(2) {
+    width: 100%;
+    padding-inline: 0;
+  }
+
+  .logs-message {
+    grid-column: auto;
+    font-size: 12.5px;
+    line-height: normal;
+    color: var(--text-secondary);
+  }
+
   .traffic-chart-variant--compact {
     display: none;
   }
@@ -110,18 +364,8 @@
     display: flex;
   }
 
-  /* The query container cannot style itself. Add 10px to its 12px flex gap on
-     each following child to reach the 22px desktop rhythm from Pencil. */
-  .responsive-page--traffic > :not(:first-child) {
-    margin-block-start: 0.625rem;
-  }
-
   .traffic-charts {
     gap: 1.375rem;
-  }
-
-  .traffic-title {
-    font-size: var(--text-h1);
   }
 
   .traffic-subtitle-compact,
@@ -135,12 +379,6 @@
 
   .traffic-metric-icon {
     display: flex;
-  }
-
-  .traffic-reset {
-    width: auto;
-    height: 2.5rem;
-    padding-inline: 0.875rem;
   }
 
   .traffic-reset-label {
@@ -372,6 +610,14 @@
     font-size: 23px;
   }
 
+  .nodes-active-latency-value {
+    font-size: 30px;
+  }
+
+  .nodes-active-throughput-value {
+    font-size: 18px;
+  }
+
   .nodes-list-title {
     font-size: var(--text-cardtitle);
     font-weight: var(--text-cardtitle--font-weight);
@@ -562,11 +808,14 @@
 .connections-toolbar {
   flex: 0 1 auto;
   min-width: min(22rem, 100%);
+  gap: 0.75rem;
 }
 
 .connections-search {
   width: 15rem;
   flex: 0 1 15rem;
+  border-color: var(--border-subtle);
+  background-color: var(--bg-surface);
 }
 
 /* Compact panes intentionally favour a clear vertical action block. The decision
@@ -595,6 +844,15 @@
 }
 
 @container app-page (min-width: 48rem) {
+  .connections-toolbar {
+    gap: 0.625rem;
+  }
+
+  .connections-search {
+    border-color: var(--border-default);
+    background-color: var(--bg-input);
+  }
+
   .connections-table-desktop {
     display: block;
   }

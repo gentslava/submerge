@@ -1,7 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { expectNoDocumentOverflow, installTrpcFixture } from "./fixtures";
 
-const paths = ["/", "/traffic", "/connections", "/routing", "/sources", "/settings", "/more"];
+const paths = [
+  "/",
+  "/traffic",
+  "/connections",
+  "/routing",
+  "/logs",
+  "/sources",
+  "/settings",
+  "/more",
+];
 
 for (const width of [320, 390, 425, 768, 1024, 1440]) {
   test(`all page roots fit their application scroll container at ${width}px`, async ({ page }) => {

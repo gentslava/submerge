@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Cable, Search, Unplug, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Segmented } from "@/components/ui/segmented";
@@ -134,40 +135,43 @@ export function ConnectionsScreen() {
   }
 
   return (
-    <div className="responsive-page responsive-page--connections page-content connections-screen flex min-w-0 flex-col gap-5 px-4 pt-5 pb-8">
-      <header className="connections-header flex flex-wrap items-center justify-between gap-4">
-        <div className="shrink-0 flex flex-col gap-[5px]">
-          <h1 className="text-2xl font-semibold text-text-primary">Соединения</h1>
-          <p className="text-sm text-text-secondary">
-            {showError
-              ? "Движок недоступен"
-              : count > 0
-                ? `${count} ${pluralRu(count, ["активное", "активных", "активных"])}`
-                : "Нет активных соединений"}
-          </p>
-        </div>
-        <div className="connections-toolbar flex flex-wrap items-center gap-2.5">
-          <div className="connections-search flex h-10 items-center gap-2 rounded-lg border border-border-default bg-input px-3">
-            <Search size={15} className="shrink-0 text-text-tertiary" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Поиск по домену"
-              aria-label="Поиск по домену"
-              className="min-w-0 flex-1 bg-transparent text-sub text-text-primary outline-none placeholder:text-text-tertiary"
-            />
-          </div>
-          <Button
-            variant="destructive"
-            disabled={count === 0 || closeAllMut.isPending}
-            onClick={() => setConfirmOpen(true)}
-            className="connections-close-all w-auto shrink-0 whitespace-nowrap"
-          >
-            <Unplug size={15} />
-            Разорвать все
-          </Button>
-        </div>
-      </header>
+    <div className="responsive-page responsive-page--connections page-content page-stack page-stack--connections connections-screen flex min-w-0 flex-col">
+      <PageHeader
+        className="connections-header flex-wrap"
+        title="Соединения"
+        subtitleClassName="page-header-subtitle--fine"
+        subtitle={
+          showError
+            ? "Движок недоступен"
+            : count > 0
+              ? `${count} ${pluralRu(count, ["активное", "активных", "активных"])}`
+              : "Нет активных соединений"
+        }
+        actionsClassName="connections-toolbar flex-wrap"
+        actions={
+          <>
+            <div className="connections-search flex h-10 items-center gap-2 rounded-md border border-border-default bg-input px-3">
+              <Search size={15} className="shrink-0 text-text-tertiary" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск по домену"
+                aria-label="Поиск по домену"
+                className="min-w-0 flex-1 bg-transparent text-sub text-text-primary outline-none placeholder:text-text-tertiary"
+              />
+            </div>
+            <Button
+              variant="destructive"
+              disabled={count === 0 || closeAllMut.isPending}
+              onClick={() => setConfirmOpen(true)}
+              className="connections-close-all w-auto shrink-0 whitespace-nowrap"
+            >
+              <Unplug size={15} />
+              Разорвать все
+            </Button>
+          </>
+        }
+      />
 
       <div className="connections-summary flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2">
@@ -221,7 +225,7 @@ export function ConnectionsScreen() {
 
       <div className="connections-table-mobile flex flex-col gap-3">
         {isPending ? (
-          [0, 1, 2].map((i) => <Skeleton key={i} className="h-[132px] w-full rounded-xl" />)
+          [0, 1, 2].map((i) => <Skeleton key={i} className="h-[132px] w-full rounded-lg" />)
         ) : showError ? (
           <MobileMessage>Движок недоступен — не удалось получить соединения</MobileMessage>
         ) : filtered.length === 0 ? (
@@ -354,13 +358,15 @@ function MobileConnectionCard({
   const dest = c.port ? `${c.host}:${c.port}` : c.host;
   const showIp = c.destIp && c.destIp !== c.host;
   return (
-    <article className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3.5">
+    <article className="flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-3.5">
       <div className="flex items-center gap-2.5">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-elevated font-mono text-sub font-semibold text-text-secondary">
           {initial(c.source)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-label text-text-primary">{c.source}</span>
-        <span className="rounded-full bg-hover px-2 py-0.5 font-mono text-fine uppercase text-text-secondary">
+        <span className="min-w-0 flex-1 truncate text-sub font-medium text-text-primary">
+          {c.source}
+        </span>
+        <span className="rounded-full bg-hover px-2 py-0.5 font-mono text-micro font-medium uppercase text-text-secondary">
           {c.network}
         </span>
         <button
@@ -373,35 +379,35 @@ function MobileConnectionCard({
         </button>
       </div>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+        <span title={dest} className="truncate font-mono text-xs font-medium text-text-primary">
           {dest}
         </span>
         {showIp && (
-          <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
+          <span className="truncate font-mono text-micro text-text-tertiary">{c.destIp}</span>
         )}
       </div>
       <div className="grid grid-cols-3 gap-3 border-t border-border-subtle pt-3">
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-micro text-text-tertiary">УЗЕЛ</span>
+          <span className="text-axis font-medium text-text-tertiary">УЗЕЛ</span>
           <span className="flex min-w-0 items-center gap-1.5">
             <span
               aria-hidden="true"
               className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotColors[node.lc])}
             />
-            <span title={node.title} className="truncate font-mono text-fine text-text-primary">
+            <span title={node.title} className="truncate font-mono text-micro text-text-primary">
               {node.display}
             </span>
           </span>
         </span>
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-micro text-text-tertiary">СКОРОСТЬ</span>
-          <span className="truncate font-mono text-fine text-text-primary">
+          <span className="text-axis font-medium text-text-tertiary">СКОРОСТЬ</span>
+          <span className="truncate font-mono text-micro text-text-primary">
             ↓ {toMbps(rate.down)} ↑ {toMbps(rate.up)}
           </span>
         </span>
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-micro text-text-tertiary">ВРЕМЯ</span>
-          <span className="font-mono text-fine text-text-primary">{formatElapsed(c.start)}</span>
+          <span className="text-axis font-medium text-text-tertiary">ВРЕМЯ</span>
+          <span className="font-mono text-micro text-text-primary">{formatElapsed(c.start)}</span>
         </span>
       </div>
     </article>
@@ -410,7 +416,7 @@ function MobileConnectionCard({
 
 function MobileMessage({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-border-subtle bg-surface px-4 py-12 text-center text-sm text-text-tertiary">
+    <div className="rounded-lg border border-border-subtle bg-surface px-4 py-12 text-center text-sm text-text-tertiary">
       {children}
     </div>
   );

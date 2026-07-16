@@ -19,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GripVertical } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { warnIfNotApplied } from "@/lib/apply-toast";
@@ -111,19 +112,19 @@ export function SourcesScreen() {
   ]);
 
   return (
-    <div className="responsive-page responsive-page--sources page-content flex flex-col gap-[22px] px-4 pt-5 pb-8">
-      <header className="flex flex-col gap-[5px]">
-        <h1 className="text-h1 text-text-primary">Источники</h1>
-        <p className="text-sub text-text-secondary">
-          Подписки и одиночные ссылки, из которых собираются узлы
-        </p>
-      </header>
+    <div className="responsive-page responsive-page--sources page-content page-stack flex flex-col">
+      <PageHeader
+        title="Источники"
+        subtitle="Подписки и одиночные ссылки, из которых собираются узлы"
+      />
 
       <SourceForm />
 
       <section className="sources-list flex flex-col gap-3">
         <div className="sources-list-header flex items-center justify-between px-0 py-1">
-          <span className="sources-list-title text-section text-text-primary">Источники</span>
+          <span className="sources-list-title text-label font-semibold text-text-primary">
+            Источники
+          </span>
           {count > 0 && (
             <span className="text-xs text-text-tertiary">
               {count} {pluralRu(count, ["источник", "источника", "источников"])}
@@ -137,14 +138,14 @@ export function SourcesScreen() {
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="sources-list-skeleton-row rounded-xl border border-border-subtle bg-surface p-3.5"
+                className="sources-list-skeleton-row rounded-lg border border-border-subtle bg-surface p-3.5"
               >
                 <Skeleton className="h-10 w-full rounded-md" />
               </div>
             ))}
           </div>
         ) : sourcesQuery.isError ? (
-          <div className="sources-list-state flex flex-col items-center gap-3 rounded-xl border border-border-subtle bg-surface p-8 text-center text-text-secondary">
+          <div className="sources-list-state flex flex-col items-center gap-3 rounded-lg border border-border-subtle bg-surface p-8 text-center text-text-secondary">
             <span>Не удалось загрузить источники.</span>
             <Button variant="secondary" size="sm" onClick={() => sourcesQuery.refetch()}>
               Повторить
@@ -192,7 +193,7 @@ export function SourcesScreen() {
             </DragOverlay>
           </DndContext>
         ) : (
-          <div className="sources-list-state flex flex-col items-center gap-3 rounded-xl border border-border-subtle bg-surface p-10 text-center text-text-secondary">
+          <div className="sources-list-state flex flex-col items-center gap-3 rounded-lg border border-border-subtle bg-surface p-10 text-center text-text-secondary">
             <span>Пока нет источников — вставьте ссылку в форму выше.</span>
             <Button
               variant="secondary"

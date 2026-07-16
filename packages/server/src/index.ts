@@ -9,8 +9,9 @@ import { env } from "./config/env.js";
 import { db } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
-import { log } from "./log.js";
+import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
+import { logHub } from "./modules/logs/singleton.js";
 import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
@@ -59,6 +60,13 @@ pruneExpiredSessions(db);
 // Use the panel-set mihomo secret (if any) before talking to the engine.
 setMihomoSecret(readMihomoSecret(db));
 
+// Only explicitly curated operational events enter the browser-visible ring.
+setUiEventSink((draft) => logHub.push(draft));
+
+// Capture the engine stream from boot rather than from the first /logs page visit.
+// This preserves useful events that happen before an administrator opens the UI.
+logHub.start();
+
 // Regenerate + reload the mihomo config from the current DB state on boot. Without
 // this, a restart leaves the engine on whatever config is on disk, which can drift
 // from the DB (the UI's source of truth): channels/rules show in the panel while the
@@ -66,7 +74,7 @@ setMihomoSecret(readMihomoSecret(db));
 // in the running config. The config file is written synchronously here (so mihomo
 // reads the fresh file on its own start); the reload is best-effort and fire-and-forget
 // so a not-yet-ready engine can't block or crash boot — the live loop keeps it in sync.
-void applyConfig(db).catch((err) => log.warn({ err }, "boot config apply failed"));
+void applyConfig(db).catch((err) => operationalLog("boot-config-apply-failed", {}, err));
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
 liveHub.start();
@@ -100,12 +108,13 @@ const server = createServer((req, res) => {
   res.end("not found");
 });
 
-server.listen(env.PORT, env.HOST, () =>
-  log.info({ host: env.HOST, port: env.PORT }, "submerge server listening"),
-);
+server.listen(env.PORT, env.HOST, () => {
+  operationalLog("server-listening", { host: env.HOST, port: env.PORT });
+});
 
 // Graceful shutdown: stop the hub, then stop accepting new connections and exit
 const shutdown = () => {
+  logHub.stop();
   liveHub.stop();
   server.close(() => process.exit(0));
 };

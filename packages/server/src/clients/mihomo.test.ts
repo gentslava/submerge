@@ -6,8 +6,10 @@ import {
   getDelay,
   getProxies,
   getTotals,
+  openLogStream,
   reloadConfig,
   selectProxy,
+  setMihomoSecret,
   streamTraffic,
 } from "./mihomo.js";
 
@@ -21,7 +23,23 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     ...init,
   });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setMihomoSecret("");
+});
+
+function ndjsonResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      },
+    }),
+    { status: 200 },
+  );
+}
 
 describe("mihomo client", () => {
   it("parses /proxies and sends the auth header", async () => {
@@ -212,5 +230,193 @@ describe("mihomo client", () => {
       { up: 10, down: 20 },
       { up: 5, down: 7 },
     ]);
+  });
+
+  describe("structured log stream", () => {
+    it("opens the info structured endpoint with the current secret and reconstructs split frames", async () => {
+      setMihomoSecret("rotated-secret");
+      mockFetch((url, init) => {
+        expect(url).toMatch(/\/logs\?level=info&format=structured$/);
+        expect(new Headers(init?.headers).get("authorization")).toBe("Bearer rotated-secret");
+        return ndjsonResponse([
+          '{"time":"15:33:24","level":"info","message":"connected","fields":[',
+          '{"key":"host","value":"example.com"},{"key":"port","value":443},',
+          '{"key":"authorization","value":"Bearer should-not-leak"},',
+          '{"key":"nested","value":{"secret":true}}]}\n',
+        ]);
+      });
+
+      const stream = await openLogStream(new AbortController().signal);
+      const frames = [];
+      for await (const frame of stream) frames.push(frame);
+
+      expect(frames).toEqual([
+        {
+          level: "info",
+          message: "connected",
+          fields: { host: "example.com", port: 443 },
+        },
+      ]);
+      expect(JSON.stringify(frames)).not.toContain("should-not-leak");
+      expect(JSON.stringify(frames)).not.toContain("secret");
+    });
+
+    it.each(["warn", "warning"])("normalizes mihomo %s to warning", async (level) => {
+      mockFetch(() =>
+        ndjsonResponse([
+          `${JSON.stringify({ time: "15:33:20", level, message: "slow", fields: [] })}\n`,
+        ]),
+      );
+      const stream = await openLogStream(new AbortController().signal);
+      const frames = [];
+      for await (const frame of stream) frames.push(frame);
+      expect(frames).toEqual([{ level: "warning", message: "slow", fields: {} }]);
+    });
+
+    it("redacts credentials and secret-bearing links from browser-visible messages", async () => {
+      mockFetch(() =>
+        ndjsonResponse([
+          `${JSON.stringify({
+            time: "15:33:20",
+            level: "warning",
+            message:
+              "provider https://user:pass@example.com/sub/token?key=value Authorization=Bearer abc.def.ghi Proxy-Authorization: Basic dXNlcjpwYXNz secret=raw-secret vless://uuid@example.com:443#node",
+            fields: [],
+          })}\n`,
+        ]),
+      );
+      const stream = await openLogStream(new AbortController().signal);
+      const frames = [];
+      for await (const frame of stream) frames.push(frame);
+
+      const serialized = JSON.stringify(frames);
+      expect(serialized).toContain("provider https://example.com/…");
+      expect(serialized).not.toContain("user:pass");
+      expect(serialized).not.toContain("/sub/token");
+      expect(serialized).not.toContain("key=value");
+      expect(serialized).not.toContain("abc.def.ghi");
+      expect(serialized).not.toContain("dXNlcjpwYXNz");
+      expect(serialized).not.toContain("raw-secret");
+      expect(serialized).not.toContain("uuid@example.com");
+    });
+
+    it("keeps ordinary routing messages readable", async () => {
+      const message = "[TCP] 192.168.1.40 → discord.com:443 via nl-ams-01";
+      mockFetch(() =>
+        ndjsonResponse([
+          `${JSON.stringify({ time: "15:33:20", level: "info", message, fields: [] })}\n`,
+        ]),
+      );
+      const stream = await openLogStream(new AbortController().signal);
+      const frames = [];
+      for await (const frame of stream) frames.push(frame);
+      expect(frames[0]?.message).toBe(message);
+    });
+
+    it("skips isolated malformed structured frames", async () => {
+      mockFetch(() =>
+        ndjsonResponse([
+          "not-json\n",
+          '{"time":"15:33:21","level":"fatal","message":"wrong level","fields":[]}\n',
+          '{"time":"15:33:22","level":"error","message":"timeout","fields":[]}\n',
+        ]),
+      );
+      const stream = await openLogStream(new AbortController().signal);
+      const frames = [];
+      for await (const frame of stream) frames.push(frame);
+      expect(frames).toEqual([{ level: "error", message: "timeout", fields: {} }]);
+    });
+
+    it("throws after 30 consecutive malformed structured frames", async () => {
+      mockFetch(() => ndjsonResponse(Array.from({ length: 30 }, () => '{"level":"info"}\n')));
+      const stream = await openLogStream(new AbortController().signal);
+      const drain = async () => {
+        for await (const _ of stream) {
+          /* no valid frames expected */
+        }
+      };
+      await expect(drain()).rejects.toThrow(/30 consecutive unparseable frames/i);
+    });
+
+    it.each([
+      ["HTTP failure", new Response("boom", { status: 503 }), /HTTP 503/],
+      ["missing body", new Response(null, { status: 200 }), /readable body/i],
+    ])("rejects %s before returning a generator", async (_name, response, message) => {
+      mockFetch(() => response);
+      await expect(openLogStream(new AbortController().signal)).rejects.toThrow(message);
+    });
+
+    it("rejects cleanly when aborted before response headers", async () => {
+      const controller = new AbortController();
+      mockFetch(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+              once: true,
+            });
+          }),
+      );
+
+      const opening = openLogStream(controller.signal);
+      controller.abort();
+      await expect(opening).rejects.toMatchObject({ name: "AbortError" });
+    });
+
+    it("ends cleanly when aborted while waiting for a frame", async () => {
+      const controller = new AbortController();
+      mockFetch(
+        (_url, init) =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(streamController) {
+                init?.signal?.addEventListener(
+                  "abort",
+                  () => streamController.error(init.signal?.reason),
+                  { once: true },
+                );
+              },
+            }),
+            { status: 200 },
+          ),
+      );
+
+      const stream = await openLogStream(controller.signal);
+      const next = stream.next();
+      controller.abort();
+      await expect(next).resolves.toEqual({ done: true, value: undefined });
+    });
+
+    it("ends cleanly when aborted between frames", async () => {
+      const controller = new AbortController();
+      const encoder = new TextEncoder();
+      mockFetch(
+        (_url, init) =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              start(streamController) {
+                streamController.enqueue(
+                  encoder.encode(
+                    '{"time":"15:33:24","level":"info","message":"one","fields":[]}\n',
+                  ),
+                );
+                init?.signal?.addEventListener(
+                  "abort",
+                  () => streamController.error(init.signal?.reason),
+                  { once: true },
+                );
+              },
+            }),
+            { status: 200 },
+          ),
+      );
+
+      const stream = await openLogStream(controller.signal);
+      await expect(stream.next()).resolves.toEqual({
+        done: false,
+        value: { level: "info", message: "one", fields: {} },
+      });
+      controller.abort();
+      await expect(stream.next()).resolves.toEqual({ done: true, value: undefined });
+    });
   });
 });

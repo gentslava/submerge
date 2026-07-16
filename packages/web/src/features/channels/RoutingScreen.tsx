@@ -30,6 +30,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, GripVertical, Info, Plus } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { warnIfNotApplied } from "@/lib/apply-toast";
@@ -194,30 +195,33 @@ export function RoutingScreen() {
   }
 
   return (
-    <div className="responsive-page responsive-page--routing page-content flex flex-col gap-5 px-4 pt-5 pb-8">
-      <header className="routing-header flex w-full items-center justify-between gap-3">
-        <div className="flex flex-col gap-[5px]">
-          <h1 className="text-h1 text-text-primary">Маршрутизация</h1>
-          <p className="text-sub text-text-secondary">Какие сайты через какие узлы</p>
-        </div>
-        <Button
-          size="icon"
-          onClick={handleCreate}
-          disabled={createMutation.isPending}
-          className="routing-create-compact"
-          aria-label="Новый канал"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-        </Button>
-        <Button
-          onClick={handleCreate}
-          disabled={createMutation.isPending}
-          className="routing-create-inline hidden"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Новый канал
-        </Button>
-      </header>
+    <div className="responsive-page responsive-page--routing page-content page-stack page-stack--routing flex flex-col">
+      <PageHeader
+        className="routing-header"
+        title="Маршрутизация"
+        subtitle="Какие сайты через какие узлы"
+        actions={
+          <>
+            <Button
+              size="headerIcon"
+              onClick={handleCreate}
+              disabled={createMutation.isPending}
+              className="routing-create-compact"
+              aria-label="Новый канал"
+            >
+              <Plus className="h-5 w-5" aria-hidden="true" />
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={createMutation.isPending}
+              className="routing-create-inline hidden"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Новый канал
+            </Button>
+          </>
+        }
+      />
 
       {channelsQuery.isLoading ? (
         <div className="flex flex-col gap-3">

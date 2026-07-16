@@ -523,6 +523,28 @@ Compare dark 1440×1024 to `ZdPsU`, light to `mnDGi`, mobile 390 to `zW719`, and
 
 Invoke `/code-review` on the entire Logs feature across server/shared/web. Require explicit review of ring hand-off, reconnect cleanup, clear semantics, pino curation/redaction, pause behavior, and responsive visual fidelity. Resolve findings and rerun Step 3.
 
+### Implementation evidence — 2026-07-16
+
+- **Pencil frames:** dark `ZdPsU` at 1440×1024, light `mnDGi` at 1440×1024,
+  mobile `zW719` at 390×900, and states `rE094`. Pencil MCP was retried before
+  and after browser verification but returned `Transport closed`; exact geometry
+  was read from the tracked plain-JSON `pencil/web-ui.pen` source of truth.
+- **Screenshots:** `/tmp/logs-dark-1440.png`, `/tmp/logs-light-1440.png`,
+  `/tmp/logs-mobile-390.png`, and `/tmp/logs-paused-390.png`.
+- **Risky states:** populated, first-load empty, filtered-empty, paused, upstream
+  reconnect with retained rows, light theme, and compact/wide filter layouts.
+- **Responsive sweep:** 320, 390, 425, 768, 983/984 container boundary, 1024,
+  and 1440; document, `.app-main`, and `.responsive-page` remained overflow-free,
+  and the timeline stayed the internal scroll owner above mobile navigation.
+- **Browser gate:** 62 Playwright tests passed with zero retries; the Logs desktop
+  fixture additionally asserted a clean browser console.
+- **Review:** full branch review covered ring hand-off, monotonic cursors, clear and
+  pause semantics, pump cleanup/backoff, protected tRPC procedures, curated pino
+  fields, responsive fidelity, and accessible control names. Resolved findings:
+  raw mihomo message URLs/credentials now pass through defense-in-depth redaction;
+  mobile rows use stacked metadata/message layout; only paused unseen counts use a
+  live region, avoiding announcements on every incoming event.
+
 - [ ] **Step 5: Commit the final Logs slice**
 
 ```bash

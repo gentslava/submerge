@@ -1,7 +1,7 @@
 import { setSettingInput } from "@submerge/shared";
 import { setMihomoSecret } from "../../clients/mihomo.js";
 import { db } from "../../db/client.js";
-import { log } from "../../log.js";
+import { operationalLog } from "../../log.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import { applyConfig } from "../nodes/service.js";
 import { getSettingsView, setSetting } from "./service.js";
@@ -23,7 +23,7 @@ export const settingsRouter = router({
         // broken mount can't block the client re-point below.
         ({ applied } = await applyConfig(db));
       } catch (err) {
-        log.warn({ err }, "config write after secret rotation failed");
+        operationalLog("secret-rotation-write-failed", {}, err);
         applied = false;
       } finally {
         setMihomoSecret(input.value);

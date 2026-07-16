@@ -13,7 +13,7 @@ import {
 /** A nav entry that routes to a real screen (functional <Link>). */
 export interface NavLink {
   kind: "link";
-  to: "/" | "/traffic" | "/sources" | "/connections" | "/routing" | "/settings";
+  to: "/" | "/traffic" | "/sources" | "/connections" | "/routing" | "/logs" | "/settings";
   label: string;
   icon: LucideIcon;
   // Mobile only: `secondary` links live under "Ещё" instead of the bottom bar
@@ -43,7 +43,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/traffic", label: "Трафик", icon: Activity },
   { kind: "link", to: "/connections", label: "Соединения", icon: Cable, secondary: true },
   { kind: "link", to: "/routing", label: "Маршрутизация", icon: Route },
-  { kind: "placeholder", label: "Логи", icon: SquareTerminal },
+  { kind: "link", to: "/logs", label: "Логи", icon: SquareTerminal },
   { kind: "link", to: "/sources", label: "Источники", icon: Layers },
   { kind: "placeholder", label: "Диагностика", icon: Stethoscope },
   { kind: "link", to: "/settings", label: "Настройки", icon: Settings },

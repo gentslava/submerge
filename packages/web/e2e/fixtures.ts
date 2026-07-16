@@ -83,6 +83,7 @@ const responses: Record<string, unknown> = {
   "nodes.health": { connected: true },
   "channels.recentDecisions": [],
   "connections.list": { connections: [] },
+  "logs.clear": { ok: true },
 };
 
 export type FixtureOverrides = Record<string, unknown>;
@@ -127,7 +128,7 @@ export async function installTrpcFixture(
   await page.route("**/trpc/**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^\/trpc\//, "");
-    if (path === "live.stream") {
+    if (path.endsWith(".stream")) {
       const subscription = options.subscriptions?.[path];
       if (!subscription) {
         await route.abort("blockedbyclient");

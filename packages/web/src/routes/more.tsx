@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ChevronRight, Power, RotateCw } from "lucide-react";
 import { NAV_MOBILE_MORE } from "@/components/nav";
+import { PageHeader } from "@/components/PageHeader";
 import { ProxyStatusCard } from "@/components/ProxyStatusCard";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { useReloadCore } from "@/features/settings/useReloadCore";
@@ -11,15 +12,12 @@ export function MoreRoute() {
   const logout = useLogout();
 
   return (
-    <div className="responsive-page responsive-page--more page-content page-content--more mx-auto flex max-w-4xl flex-col gap-4 px-4 pt-5 pb-8">
-      <header className="flex flex-col gap-0.5">
-        <h1 className="text-h1 text-text-primary">Ещё</h1>
-        <p className="text-sub text-text-secondary">Остальные разделы и управление сервером</p>
-      </header>
+    <div className="responsive-page responsive-page--more page-content page-stack page-stack--more mx-auto flex max-w-4xl flex-col">
+      <PageHeader title="Ещё" subtitle="Остальные разделы и управление сервером" />
 
       <section className="flex flex-col gap-2">
         <h2 className="text-caption text-text-tertiary">РАЗДЕЛЫ</h2>
-        <div className="flex flex-col rounded-xl border border-border-subtle bg-surface">
+        <div className="flex flex-col rounded-lg border border-border-subtle bg-surface">
           {NAV_MOBILE_MORE.map((entry) => {
             const { label, icon: Icon } = entry;
             if (entry.kind === "placeholder") {
@@ -54,7 +52,7 @@ export function MoreRoute() {
 
       <section className="flex flex-col gap-2">
         <h2 className="text-caption text-text-tertiary">СЕРВЕР</h2>
-        <div className="rounded-xl border border-border-subtle bg-surface">
+        <div className="rounded-lg border border-border-subtle bg-surface">
           <button
             type="button"
             onClick={() => reload.mutate()}
@@ -85,7 +83,7 @@ export function MoreRoute() {
           type="button"
           onClick={() => logout.mutate()}
           disabled={logout.isPending}
-          className="flex items-center gap-3 rounded-xl border border-border-subtle bg-surface px-3.5 py-3.5 text-text-tertiary transition-colors hover:bg-hover hover:text-text-secondary disabled:opacity-50"
+          className="flex items-center gap-3 rounded-lg border border-border-subtle bg-surface px-3.5 py-3.5 text-text-tertiary transition-colors hover:bg-hover hover:text-text-secondary disabled:opacity-50"
         >
           <Power size={20} />
           <span className="text-label">Выйти</span>
