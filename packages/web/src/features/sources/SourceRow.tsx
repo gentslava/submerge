@@ -74,7 +74,7 @@ function SourceMeta({ meta }: { meta: SubscriptionMeta }) {
               />
             </span>
           )}
-          <span className="truncate font-mono text-xs text-text-secondary">
+          <span className="truncate font-mono text-fine text-text-secondary">
             {used != null ? formatBytes(used) : "—"}
             {total != null ? ` / ${formatBytes(total)}` : ""}
           </span>
@@ -163,7 +163,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
       ref={ref}
       style={style}
       className={cn(
-        "source-row relative flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-3.5",
+        "source-row relative flex flex-col gap-3 rounded-lg border border-border-subtle bg-surface p-3.5",
         !source.enabled && "opacity-50",
         overlay && "rounded-lg border bg-surface opacity-100 shadow-lg",
         className,
@@ -181,7 +181,7 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
 
         {/* Name + badges (fills) */}
         <div className="flex min-w-0 flex-1 flex-col gap-[7px]">
-          <span className="truncate text-sm font-medium text-text-primary" title={source.value}>
+          <span className="truncate text-cardtitle text-text-primary" title={source.value}>
             {source.label || source.value}
           </span>
           <div className="flex flex-wrap items-center gap-1.5">

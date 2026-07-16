@@ -13,7 +13,7 @@ const variantClasses: Record<BadgeVariant, string> = {
   slow: "bg-slow-bg text-slow",
   timeout: "bg-timeout-bg text-timeout",
   accent: "bg-accent-bg text-accent-text",
-  mono: "bg-hover text-text-secondary font-mono text-fine",
+  mono: "bg-hover text-text-secondary font-mono",
 };
 
 interface BadgeProps {
@@ -26,7 +26,7 @@ export function Badge({ variant = "neutral", children, className }: BadgeProps) 
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-[3px] text-fine font-semibold",
         variantClasses[variant],
         className,
       )}

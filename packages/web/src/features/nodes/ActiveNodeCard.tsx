@@ -38,13 +38,13 @@ export function ActiveNodeCard({
   const badges = active && !isPseudo(active.name) ? typeBadges(active) : [];
 
   return (
-    <section className="nodes-active-card flex flex-col gap-4 rounded-xl border border-border-subtle bg-surface p-4">
+    <section className="nodes-active-card flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface p-4">
       <div className="nodes-active-content flex flex-1 flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="nodes-active-heading-wide hidden text-caption tracking-[0.6px] text-text-tertiary">
             {isAuto ? "АКТИВНЫЙ УЗЕЛ · ВЫБРАН АВТОМАТИЧЕСКИ" : "АКТИВНЫЙ УЗЕЛ"}
           </span>
-          <span className="nodes-active-heading-compact text-caption tracking-[0.6px] text-text-tertiary">
+          <span className="nodes-active-heading-compact text-micro font-semibold tracking-[0.6px] text-text-tertiary">
             АКТИВНЫЙ УЗЕЛ
           </span>
           {active != null && (
@@ -59,7 +59,7 @@ export function ActiveNodeCard({
             </span>
           )}
           {isAuto && (
-            <span className="inline-flex items-center gap-[5px] rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-fine font-semibold tracking-[0.3px] text-accent-text">
+            <span className="inline-flex items-center gap-[5px] rounded-full border border-accent-border bg-accent-bg px-2 py-[3px] text-micro font-semibold tracking-[0.3px] text-accent-text">
               <Sparkles className="h-3 w-3" aria-hidden="true" />
               АВТО
             </span>
@@ -93,7 +93,7 @@ export function ActiveNodeCard({
               />
               <span
                 className={cn(
-                  "font-mono text-[30px] font-semibold leading-none",
+                  "nodes-active-latency-value font-mono text-metric font-semibold leading-none",
                   latencyTextColors[dClass],
                 )}
               >
@@ -105,7 +105,7 @@ export function ActiveNodeCard({
 
           {/* Cumulative received / sent since mihomo started (from /connections). */}
           <div className="flex flex-col gap-1">
-            <span className="flex items-center gap-1 font-mono text-[18px] font-medium leading-none text-text-primary">
+            <span className="nodes-active-throughput-value flex items-center gap-1 font-mono text-label font-medium leading-none text-text-primary">
               <ArrowDown className="h-4 w-4" aria-hidden="true" />
               {totals ? formatBytes(totals.down) : "—"}
             </span>
@@ -113,7 +113,7 @@ export function ActiveNodeCard({
           </div>
 
           <div className="flex flex-col gap-1">
-            <span className="flex items-center gap-1 font-mono text-[18px] font-medium leading-none text-text-primary">
+            <span className="nodes-active-throughput-value flex items-center gap-1 font-mono text-label font-medium leading-none text-text-primary">
               <ArrowUp className="h-4 w-4" aria-hidden="true" />
               {totals ? formatBytes(totals.up) : "—"}
             </span>

@@ -3,8 +3,8 @@
 //
 // `pencil/web-ui.pen` (plain JSON, tracked in git) is the visual source of truth;
 // its `variables` are the design tokens. This script regenerates the :root (light)
-// / .dark (dark) color role-vars in `src/index.css`, between the @generated markers,
-// so values can't silently drift by hand (the bug that bleached the buttons).
+// / .dark (dark) role-vars in `src/index.css`, between the @generated markers,
+// so colors, radii, and fonts can't silently drift by hand.
 //
 //   pnpm -F @submerge/web design:tokens          # rewrite index.css in place
 //   pnpm -F @submerge/web design:tokens:check    # fail if out of sync (CI)
@@ -51,21 +51,43 @@ const TOKENS = [
   ["chart-track", "chart-track"],
 ];
 
+const SHARED_TOKENS = [
+  ["font-sans", "design-font-sans", "font"],
+  ["font-mono", "design-font-mono", "font"],
+  ["radius-sm", "design-radius-sm", "px"],
+  ["radius-md", "design-radius-md", "px"],
+  ["radius-lg", "design-radius-lg", "px"],
+  ["radius-xl", "design-radius-xl", "px"],
+  ["radius-full", "design-radius-full", "px"],
+];
+
 function valueFor(variable, mode) {
   const v = variable.value;
-  if (typeof v === "string") return v;
+  if (typeof v === "string" || typeof v === "number") return v;
   if (Array.isArray(v)) return (v.find((e) => e.theme?.mode === mode) ?? v[0])?.value;
   return undefined;
 }
 
-function block(selector, vars, mode) {
+function sharedTokenLines(vars) {
+  return SHARED_TOKENS.map(([pen, css, kind]) => {
+    const variable = vars[pen];
+    if (!variable) throw new Error(`token "${pen}" missing from web-ui.pen variables`);
+    const val = valueFor(variable, "light");
+    if (val == null) throw new Error(`token "${pen}" has no value`);
+    const formatted = kind === "font" ? JSON.stringify(String(val)) : `${Number(val)}px`;
+    return `  --${css}: ${formatted};`;
+  });
+}
+
+function block(selector, vars, mode, includeShared = false) {
   const lines = TOKENS.map(([pen, css]) => {
     const variable = vars[pen];
     if (!variable) throw new Error(`token "${pen}" missing from web-ui.pen variables`);
     const val = valueFor(variable, mode);
-    if (!val) throw new Error(`token "${pen}" has no ${mode} value`);
+    if (val == null) throw new Error(`token "${pen}" has no ${mode} value`);
     return `  --${css}: ${String(val).toLowerCase()};`;
   });
+  if (includeShared) lines.push(...sharedTokenLines(vars));
   return `${selector} {\n${lines.join("\n")}\n}`;
 }
 
@@ -73,7 +95,7 @@ const pen = JSON.parse(readFileSync(PEN, "utf8"));
 const vars = pen.variables ?? {};
 const generated = [
   `${START} — sync from pencil/web-ui.pen via \`pnpm -F @submerge/web design:tokens\`. Do not edit by hand. */`,
-  block(":root", vars, "light"),
+  block(":root", vars, "light", true),
   "",
   block(".dark", vars, "dark"),
   END,

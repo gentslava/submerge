@@ -56,10 +56,13 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Screen / component | Frame | Main child |
 | --- | --- | --- |
 | Узлы | `I4hmn` | `iuZcj` |
+| Узлы — mobile 390 | `wYsep` | shared mobile app bar + active node card |
 | Узлы — состояния (empty / loading) | `bY6uv` | — |
 | Детали узла — drawer | `IgEPe` | `Un6TO` (Panel) |
 | Источники | `gm1vM` | `cF8xX` |
+| Источники — mobile 390 | `ce3MH` | compact source cards |
 | Настройки | `w6qeY` | `L5XjCf` |
+| Настройки — mobile 390 | `r1RQ0O` | one-column settings cards |
 | Соединения | `g5hb4` | `DxayN` |
 | Соединения — светлая тема | `t9XUT` | production-style populated table |
 | Соединения — mobile 390 | `H3itWn` | compact connection cards + «Ещё» navigation |
@@ -79,6 +82,7 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Диагностика — mobile 390 | `BNOEr` | one-column cards + compact route rows |
 | Диагностика — состояния | `pi7pQ` | running / partial / component and network failures |
 | Раздел в разработке (placeholder) | `fFpGe` | `gsI9Q` |
+| Ещё — mobile 390 | `IF4Bk` | compact secondary navigation |
 | Sidebar (reusable) | `t0Wg2` | — |
 | Button (reusable) | `hRDqB` | — |
 | Badge (reusable) | `J7jxJ` | — |
@@ -165,6 +169,20 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
   - `secondary`: fill `bg-elevated`, border `border-default`, **label `text-primary`
     (bright), icon `text-secondary` (muted)**. A fully‑muted label reads as *disabled* —
     that was the "bleached buttons" bug.
+  - Mobile app-bar actions are **44×44**, radius 8, icon 18, `bg-elevated` +
+    `border-subtle`; the Routing primary action keeps the same 44×44 box with a 20px icon.
+- **Mobile page shell** (all `· 390` frames): content inset 16, title 22/600,
+  subtitle 12/400 `text-tertiary`, title/subtitle gap 2. App-bar actions use an 8px gap.
+  Content uses a 12px vertical gap and 16px bottom inset; intentional exceptions are
+  Logs 10/12, Settings 16/16, More 14/16, and Routing 12/20.
+  At the wide app-main boundary the common page gap is 22px; Connections and Routing
+  retain their measured 20px gap, Settings 26px, and More 16px.
+- **Mobile tab bar:** `bg-surface` + top `border-subtle`; 8px top / 12px bottom inset;
+  each item is 48px high with a 21px icon, 4px icon/label gap and 11px label
+  (`text-tertiary` 500, active `accent-text` 600).
+- **Regular mobile cards:** radius 10 (`radius-lg`), `bg-surface`,
+  `border-subtle`. Radius 14 (`radius-xl`) is reserved for the emphasized active-node
+  card; fields and segmented controls use radius 8 (`radius-md`).
 - **Switch:** track **40×22**, knob 16, inset 3, radius full. ON = `accent`, OFF =
   `bg-hover`. (A 36×20 track left too little accent visible and looked washed‑out.)
 - **Badge** (`J7jxJ`): padding `3 8`, radius full, 11/600. Accent variant = `accent-bg`
@@ -191,7 +209,8 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
 
 The contract is enforced the same way the data layer is (Zod + `db:generate`):
 
-- **Token sync (implemented).** The color role variables in `index.css` (the `:root` /
+- **Token sync (implemented).** The color role variables, fonts, and radii in `index.css`
+  (the `:root` /
   `.dark` blocks between the `@generated design tokens` markers) are generated from the
   mockup's `variables` by [`scripts/sync-design-tokens.mjs`](../packages/web/scripts/sync-design-tokens.mjs)
   (curated allow‑list `.pen` name → role var, ignoring `c-*`/`s2-*`). Do not hand‑edit
@@ -199,8 +218,9 @@ The contract is enforced the same way the data layer is (Zod + `db:generate`):
   - `pnpm -F @submerge/web design:tokens` — rewrite in place after the mockup changes.
   - `pnpm -F @submerge/web design:tokens:check` — fails if out of sync; runs in CI.
   - First run already corrected six light‑theme drifts (accent‑hover, accent‑border,
-    text‑disabled, idle, online‑bg, timeout‑bg). Radii / fonts / type‑scale still live in
-    `@theme` (they change rarely).
+    text‑disabled, idle, online‑bg, timeout‑bg). Fonts and radii are now generated too;
+    the semantic type scale remains maintained in `@theme` and consumed through shared
+    roles/components.
 
 Still worth adding:
 

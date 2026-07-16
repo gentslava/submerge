@@ -129,7 +129,7 @@ export function NodesScreen() {
   };
 
   return (
-    <div className="responsive-page responsive-page--nodes page-content flex flex-col gap-[22px] px-4 pt-5 pb-8">
+    <div className="responsive-page responsive-page--nodes page-content page-stack flex flex-col">
       <NodesHeader
         nodeCount={realCount}
         checkIntervalSec={headerCheckIntervalSec}
@@ -233,7 +233,7 @@ function Body({
       />
 
       <div className="flex items-center justify-between px-0.5 pt-1">
-        <h2 className="nodes-list-title text-section text-text-primary">Все узлы</h2>
+        <h2 className="nodes-list-title text-label font-semibold text-text-primary">Все узлы</h2>
         <span className="nodes-list-grouping-hint hidden items-center gap-1.5 text-xs text-text-tertiary">
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
           сгруппировано по подпискам
@@ -269,7 +269,7 @@ function LoadingState() {
 
 function ErrorState({ onRetry }: { onRetry(): void }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-border-subtle bg-surface p-10 text-center text-text-secondary">
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-border-subtle bg-surface p-10 text-center text-text-secondary">
       <span>Не удалось получить узлы от mihomo.</span>
       <Button variant="secondary" size="sm" onClick={onRetry}>
         Повторить

@@ -29,6 +29,16 @@ describe("Button", () => {
     expect(cls).toContain("bg-transparent");
     expect(cls).not.toContain("border-border-default");
   });
+  it("provides the shared mobile header action size", () => {
+    render(
+      <Button size="headerIcon" aria-label="Обновить">
+        X
+      </Button>,
+    );
+    const cls = screen.getByRole("button", { name: "Обновить" }).className;
+    expect(cls).toContain("h-[var(--mobile-header-action-size)]");
+    expect(cls).toContain("w-[var(--mobile-header-action-size)]");
+  });
   it("fires onClick", () => {
     const onClick = vi.fn();
     render(<Button onClick={onClick}>Добавить</Button>);

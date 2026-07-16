@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LabeledControlRow as Row } from "@/components/ui/labeled-control-row";
@@ -103,16 +104,11 @@ export function SettingsScreen() {
   );
 
   return (
-    <div className="responsive-page responsive-page--settings page-content flex flex-col gap-[26px] px-4 pt-5 pb-10">
-      <header className="flex flex-col gap-[5px]">
-        <h1 className="text-h1 text-text-primary">Настройки</h1>
-        <p className="text-sub text-text-secondary">
-          Локальная конфигурация панели и движка mihomo
-        </p>
-      </header>
+    <div className="responsive-page responsive-page--settings page-content page-stack page-stack--settings flex flex-col">
+      <PageHeader title="Настройки" subtitle="Локальная конфигурация панели и движка mihomo" />
 
       {settingsQuery.isLoading ? (
-        <div className="flex flex-col gap-[26px]">
+        <div className="settings-loading-stack flex flex-col">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-[120px] w-full rounded-lg" />
           ))}

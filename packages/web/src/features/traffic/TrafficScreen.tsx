@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useLiveState } from "@/features/live/LiveProvider";
 import { formatBytes, formatRate, realNodes } from "@/features/nodes/nodeView";
@@ -118,30 +119,34 @@ export function TrafficScreen() {
 
 export function TrafficDashboardView(props: TrafficDashboardViewProps) {
   return (
-    <div className="responsive-page responsive-page--traffic page-content flex min-w-0 flex-col gap-[22px] px-4 pt-5 pb-8">
-      <header className="traffic-header flex min-w-0 items-center justify-between gap-4">
-        <div className="min-w-0 flex flex-col gap-[5px]">
-          <h1 className="traffic-title text-page-title-compact text-text-primary">Трафик</h1>
-          <p className="traffic-subtitle text-sub text-text-secondary">
+    <div className="responsive-page responsive-page--traffic page-content page-stack flex min-w-0 flex-col">
+      <PageHeader
+        className="traffic-header"
+        title="Трафик"
+        subtitleClassName="traffic-subtitle"
+        subtitle={
+          <>
             <span className="traffic-subtitle-compact">Все каналы · последние 60 секунд</span>
             <span className="traffic-subtitle-inline hidden">
               Суммарный трафик всех каналов · mihomo
             </span>
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="secondary"
-          size="md"
-          aria-label="Сбросить"
-          disabled={props.resetDisabled}
-          onClick={props.onReset}
-          className="traffic-reset shrink-0"
-        >
-          <RotateCcw aria-hidden="true" size={16} />
-          <span className="traffic-reset-label">Сбросить</span>
-        </Button>
-      </header>
+          </>
+        }
+        actions={
+          <Button
+            type="button"
+            variant="secondary"
+            size="headerIcon"
+            aria-label="Сбросить"
+            disabled={props.resetDisabled}
+            onClick={props.onReset}
+            className="page-header-action traffic-reset"
+          >
+            <RotateCcw aria-hidden="true" size={18} />
+            <span className="traffic-reset-label">Сбросить</span>
+          </Button>
+        }
+      />
 
       {props.state === "no-nodes" ? (
         <NoNodesState />

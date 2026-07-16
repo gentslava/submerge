@@ -31,6 +31,13 @@
   --timeout-bg: #c81e1e1f;
   --idle: #9aa0ac;
   --chart-track: #d8daf3;
+  --design-font-sans: "Inter";
+  --design-font-mono: "JetBrains Mono";
+  --design-radius-sm: 6px;
+  --design-radius-md: 8px;
+  --design-radius-lg: 10px;
+  --design-radius-xl: 14px;
+  --design-radius-full: 999px;
 }
 
 .dark {
@@ -64,7 +71,10 @@
 /* @end generated design tokens */
 
 :root {
-  --mobile-bottom-nav-height: calc(4rem + max(0.75rem, env(safe-area-inset-bottom)) + 1px);
+  --mobile-header-action-size: 2.75rem;
+  --mobile-bottom-nav-height: calc(
+    3.5rem + max(0.75rem, env(safe-area-inset-bottom)) + 1px
+  );
 }
 
 /* Expose roles as Tailwind utilities (bg-base, text-primary, border-default, …) */
@@ -99,12 +109,13 @@
   --color-switch-thumb: #ffffff;
   /* Modal backdrop scrim — same dim in both themes (no mockup dialog frame yet). */
   --color-scrim: rgb(0 0 0 / 50%);
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  --font-sans: var(--design-font-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--design-font-mono), ui-monospace, monospace;
+  --radius-sm: var(--design-radius-sm);
+  --radius-md: var(--design-radius-md);
+  --radius-lg: var(--design-radius-lg);
+  --radius-xl: var(--design-radius-xl);
+  --radius-full: var(--design-radius-full);
   /* Typography scale (Indigo Console roles — "Типографика" reference).
      Each role bakes its size and, where set, weight/letter-spacing into the
      generated text-* utility (text-h1, text-section, …). Tailwind's default

@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Pause, Play, Search, Trash2, WifiOff } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useReducer, useState } from "react";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
@@ -53,42 +54,44 @@ export function LogsScreen() {
   const emptyState = classifyLogEmpty(visible, filtered, filters);
 
   return (
-    <div className="responsive-page responsive-page--logs page-content logs-screen flex h-full min-h-0 min-w-0 flex-col px-4 pt-5 pb-8">
-      <header className="logs-header flex min-w-0 items-center justify-between gap-4">
-        <div className="min-w-0 flex flex-col gap-[5px]">
-          <h1 className="logs-title text-page-title-compact text-text-primary">Логи</h1>
-          <p className="text-sub text-text-secondary">События mihomo и submerge</p>
-        </div>
-        <div className="logs-actions flex shrink-0 items-center gap-2.5">
-          <Button
-            type="button"
-            variant="secondary"
-            size="md"
-            aria-label={state.paused ? "Продолжить" : "Пауза"}
-            onClick={() => dispatch({ type: state.paused ? "continue" : "pause" })}
-            className="logs-action"
-          >
-            {state.paused ? (
-              <Play aria-hidden="true" size={16} />
-            ) : (
-              <Pause aria-hidden="true" size={16} />
-            )}
-            <span className="logs-action-label">{state.paused ? "Продолжить" : "Пауза"}</span>
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="md"
-            aria-label="Очистить"
-            disabled={clearMutation.isPending}
-            onClick={() => clearMutation.mutate()}
-            className="logs-action"
-          >
-            <Trash2 aria-hidden="true" size={16} />
-            <span className="logs-action-label">Очистить</span>
-          </Button>
-        </div>
-      </header>
+    <div className="responsive-page responsive-page--logs page-content page-stack page-stack--logs logs-screen flex h-full min-h-0 min-w-0 flex-col">
+      <PageHeader
+        className="logs-header"
+        title="Логи"
+        subtitle="События mihomo и submerge"
+        actionsClassName="logs-actions gap-2.5"
+        actions={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              size="headerIcon"
+              aria-label={state.paused ? "Продолжить" : "Пауза"}
+              onClick={() => dispatch({ type: state.paused ? "continue" : "pause" })}
+              className="page-header-action logs-action"
+            >
+              {state.paused ? (
+                <Play aria-hidden="true" size={18} />
+              ) : (
+                <Pause aria-hidden="true" size={18} />
+              )}
+              <span className="logs-action-label">{state.paused ? "Продолжить" : "Пауза"}</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="headerIcon"
+              aria-label="Очистить"
+              disabled={clearMutation.isPending}
+              onClick={() => clearMutation.mutate()}
+              className="page-header-action logs-action"
+            >
+              <Trash2 aria-hidden="true" size={18} />
+              <span className="logs-action-label">Очистить</span>
+            </Button>
+          </>
+        }
+      />
 
       <div className="logs-filter-bar flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="logs-filters flex min-w-0 flex-wrap items-center gap-2.5">
@@ -140,7 +143,7 @@ export function LogsScreen() {
             />
           </div>
         </div>
-        <div className="logs-count flex shrink-0 items-center gap-2 font-mono text-meta text-text-tertiary">
+        <div className="logs-count flex shrink-0 items-center gap-2 font-sans font-normal text-text-tertiary">
           <span className="logs-stream-state-label items-center gap-1.5">
             <span
               aria-hidden="true"
@@ -231,7 +234,7 @@ function LogMessageState({ children }: { children: ReactNode }) {
 function LogRow({ event }: { event: LogEvent }) {
   return (
     <li className="logs-row grid min-w-0 grid-cols-[70px_60px_82px_minmax(0,1fr)] items-center gap-3.5 border-b border-border-subtle px-4 py-[9px] last:border-b-0">
-      <time dateTime={event.time} className="logs-time font-mono text-meta text-text-tertiary">
+      <time dateTime={event.time} className="logs-time font-mono text-text-tertiary">
         {formatTime(event.time)}
       </time>
       <LevelBadge level={event.level} />
@@ -255,7 +258,7 @@ function LevelBadge({ level }: { level: LogLevel }) {
   return (
     <span
       className={cn(
-        "inline-flex w-[60px] items-center justify-center rounded-sm bg-hover px-0 py-[3px] font-mono text-micro font-semibold",
+        "logs-level-badge inline-flex w-[60px] items-center justify-center rounded-sm bg-hover px-0 py-[3px] font-mono font-semibold",
         level === "error" && "bg-timeout-bg text-timeout",
         level === "warning" && "bg-slow-bg text-slow",
         level === "info" && "text-accent-text",

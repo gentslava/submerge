@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { NAV_MOBILE_PRIMARY } from "./nav";
 
 const linkClass =
-  "flex h-14 w-1/5 shrink-0 flex-col items-center justify-center gap-0.5 px-0.5 text-micro text-text-secondary [&.active]:text-accent-text";
+  "flex h-12 w-1/5 shrink-0 flex-col items-center justify-center gap-1 px-0.5 text-fine font-medium text-text-tertiary [&.active]:font-semibold [&.active]:text-accent-text";
 
 export function BottomNav() {
   return (
