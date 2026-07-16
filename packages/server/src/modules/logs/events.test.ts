@@ -53,13 +53,12 @@ describe("operational event registry", () => {
     });
   });
 
-  it.each([
-    "boot-config-apply-failed",
-    "config-reload-failed",
-    "secret-rotation-write-failed",
-  ])("does not expose context fields for %s", (key) => {
-    expect(makeOperationalEvent(key, toxicFields).draft.fields).toBeUndefined();
-  });
+  it.each(["boot-config-apply-failed", "config-reload-failed", "secret-rotation-write-failed"])(
+    "does not expose context fields for %s",
+    (key) => {
+      expect(makeOperationalEvent(key, toxicFields).draft.fields).toBeUndefined();
+    },
+  );
 
   it("allows only the finite mihomo live scope enum", () => {
     expect(makeOperationalEvent("mihomo-live-failed", toxicFields).draft.fields).toEqual({
