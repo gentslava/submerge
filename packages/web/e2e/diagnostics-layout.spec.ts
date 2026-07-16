@@ -200,10 +200,10 @@ test("manual refresh retains the old snapshot, prevents duplicates, then replace
 });
 
 test("mobile preserves the approved block order and compact route list", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 1_500 });
+  await page.setViewportSize({ width: 414, height: 736 });
   await openDiagnostics(page);
 
-  await expect(page.getByRole("button", { name: "Проверить снова" })).toHaveCSS("width", "358px");
+  await expect(page.getByRole("button", { name: "Проверить снова" })).toHaveCSS("width", "382px");
   await expect(page.locator(".diagnostics-refresh-label")).toBeVisible();
   await expect(page.getByRole("link", { name: "Ещё" })).toHaveClass(/active/);
   await expect(page.getByRole("table", { name: "Маршруты" })).toBeHidden();
@@ -215,8 +215,6 @@ test("mobile preserves the approved block order and compact route list", async (
   expect(routesBox?.y ?? Infinity).toBeLessThan(servicesBox?.y ?? -Infinity);
   expect(servicesBox?.y ?? Infinity).toBeLessThan(configInitialBox?.y ?? -Infinity);
 
-  await page.screenshot({ path: "/tmp/diagnostics-mobile-390.png", fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.getByLabel("Конфигурация mihomo").scrollIntoViewIfNeeded();
   await expect(page.getByLabel("Конфигурация mihomo")).toBeVisible();
   const configVisibleBox = await page.getByLabel("Конфигурация mihomo").boundingBox();
@@ -224,6 +222,50 @@ test("mobile preserves the approved block order and compact route list", async (
   expect((configVisibleBox?.y ?? Infinity) + (configVisibleBox?.height ?? 0)).toBeLessThanOrEqual(
     navBox?.y ?? -Infinity,
   );
+  const beforeOverscroll = await page.evaluate(() => {
+    const main = document.querySelector<HTMLElement>(".app-main");
+    const config = document.querySelector<HTMLElement>(".diagnostics-config-card");
+    const nav = document.querySelector<HTMLElement>("nav.fixed");
+    if (!main || !config || !nav) throw new Error("missing mobile scroll node");
+    main.scrollTop = main.scrollHeight;
+    return {
+      mainClientHeight: main.clientHeight,
+      mainScrollHeight: main.scrollHeight,
+      mainScrollTop: main.scrollTop,
+      overscrollBehaviorY: getComputedStyle(main).overscrollBehaviorY,
+      configBottom: config.getBoundingClientRect().bottom,
+      navTop: nav.getBoundingClientRect().top,
+      documentClientHeight: document.documentElement.clientHeight,
+      documentScrollHeight: document.documentElement.scrollHeight,
+    };
+  });
+  await page.mouse.move(200, 500);
+  await page.mouse.wheel(0, 800);
+  const afterOverscroll = await page.evaluate(() => {
+    const main = document.querySelector<HTMLElement>(".app-main");
+    const config = document.querySelector<HTMLElement>(".diagnostics-config-card");
+    const nav = document.querySelector<HTMLElement>("nav.fixed");
+    return {
+      mainScrollTop: main?.scrollTop ?? -1,
+      documentScrollTop: document.scrollingElement?.scrollTop ?? -1,
+      configBottom: config?.getBoundingClientRect().bottom ?? -1,
+      navTop: nav?.getBoundingClientRect().top ?? -1,
+    };
+  });
+
+  expect(beforeOverscroll.documentScrollHeight).toBeLessThanOrEqual(
+    beforeOverscroll.documentClientHeight + 1,
+  );
+  expect(beforeOverscroll.mainScrollTop).toBe(
+    beforeOverscroll.mainScrollHeight - beforeOverscroll.mainClientHeight,
+  );
+  expect(beforeOverscroll.overscrollBehaviorY).toBe("none");
+  expect(beforeOverscroll.configBottom).toBeGreaterThanOrEqual(beforeOverscroll.navTop - 20);
+  expect(beforeOverscroll.configBottom).toBeLessThanOrEqual(beforeOverscroll.navTop);
+  expect(afterOverscroll.mainScrollTop).toBe(beforeOverscroll.mainScrollTop);
+  expect(afterOverscroll.documentScrollTop).toBe(0);
+  expect(afterOverscroll.configBottom).toBeGreaterThanOrEqual(afterOverscroll.navTop - 20);
+  expect(afterOverscroll.configBottom).toBeLessThanOrEqual(afterOverscroll.navTop);
   await expectNoDocumentOverflow(page);
 });
 

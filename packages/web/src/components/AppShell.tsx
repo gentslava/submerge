@@ -4,9 +4,9 @@ import { Sidebar } from "./Sidebar";
 
 export function AppShell() {
   return (
-    <div className="flex h-dvh bg-canvas text-text-primary">
+    <div className="flex h-dvh overflow-hidden bg-canvas text-text-primary">
       <Sidebar />
-      <main className="app-main flex-1 overflow-y-auto bg-canvas pb-[var(--mobile-bottom-nav-height)] md:pb-0">
+      <main className="app-main relative min-h-0 flex-1 overscroll-y-none overflow-y-auto bg-canvas pb-[var(--mobile-bottom-nav-height)] md:pb-0">
         <Outlet />
       </main>
       <BottomNav />
