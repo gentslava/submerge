@@ -190,8 +190,8 @@ export async function getRuntimeConfig(signal?: AbortSignal): Promise<MihomoRunt
   return runtimeConfigResponseSchema.parse(await r.json());
 }
 
-export async function getProxies(): Promise<ProxiesResponse> {
-  const r = await call("/proxies");
+export async function getProxies(signal?: AbortSignal): Promise<ProxiesResponse> {
+  const r = await call("/proxies", {}, signal);
   if (!r.ok) throw new Error(`mihomo /proxies returned HTTP ${r.status}`);
   return proxiesResponseSchema.parse(await r.json());
 }
@@ -244,6 +244,7 @@ async function requestThroughProxy(
   signal?: AbortSignal,
 ): Promise<{
   statusCode: number;
+  location: string | null;
   body: ProxyBody;
   signal: AbortSignal;
   destroy: () => Promise<void>;
@@ -251,6 +252,9 @@ async function requestThroughProxy(
   const parsed = new URL(url);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("diagnostic proxy requests require HTTP(S)");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("diagnostic proxy requests cannot contain credentials");
   }
   const agent = new ProxyAgent(env.MIHOMO_PROXY);
   const requestSignal = boundedSignal(signal);
@@ -262,6 +266,9 @@ async function requestThroughProxy(
     });
     return {
       statusCode: response.statusCode,
+      location: Array.isArray(response.headers?.location)
+        ? (response.headers.location[0] ?? null)
+        : (response.headers?.location ?? null),
       body: response.body,
       signal: requestSignal,
       destroy: () => agent.destroy(),
@@ -306,12 +313,20 @@ export async function probeThroughProxy(
   url: string,
   signal?: AbortSignal,
 ): Promise<ProxyHttpProbe> {
-  const response = await requestThroughProxy(url, signal);
-  try {
-    await response.body.dump({ limit: DIAGNOSTIC_BODY_MAX_BYTES, signal: response.signal });
-    return { status: response.statusCode };
-  } finally {
-    await response.destroy();
+  const probeSignal = boundedSignal(signal);
+  let current = url;
+  for (let redirects = 0; ; redirects++) {
+    const response = await requestThroughProxy(current, probeSignal);
+    try {
+      await response.body.dump({ limit: DIAGNOSTIC_BODY_MAX_BYTES, signal: response.signal });
+      const isRedirect = [301, 302, 303, 307, 308].includes(response.statusCode);
+      if (!isRedirect || !response.location || redirects >= 3) {
+        return { status: response.statusCode };
+      }
+      current = new URL(response.location, current).toString();
+    } finally {
+      await response.destroy();
+    }
   }
 }
 

@@ -208,6 +208,53 @@ describe("mihomo client", () => {
     expect(destroyAgentMock).toHaveBeenCalledOnce();
   });
 
+  it("follows at most three redirects within one bounded probe and returns the final status", async () => {
+    const dumps = Array.from({ length: 4 }, () => vi.fn(async () => undefined));
+    requestMock
+      .mockResolvedValueOnce({
+        statusCode: 302,
+        headers: { location: "/step-1" },
+        body: proxyBody([], dumps[0]),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 301,
+        headers: { location: "https://example.com/step-2" },
+        body: proxyBody([], dumps[1]),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 307,
+        headers: { location: "/step-3" },
+        body: proxyBody([], dumps[2]),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 204,
+        headers: {},
+        body: proxyBody([], dumps[3]),
+      });
+
+    await expect(probeThroughProxy("https://example.com/start")).resolves.toEqual({ status: 204 });
+    expect(requestMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://example.com/start",
+      "https://example.com/step-1",
+      "https://example.com/step-2",
+      "https://example.com/step-3",
+    ]);
+    expect(dumps.every((dump) => dump.mock.calls.length === 1)).toBe(true);
+    expect(destroyAgentMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops after three redirects and reports the remaining redirect status", async () => {
+    requestMock.mockResolvedValue({
+      statusCode: 302,
+      headers: { location: "/again" },
+      body: proxyBody([]),
+    });
+
+    await expect(probeThroughProxy("https://example.com/start")).resolves.toEqual({ status: 302 });
+    expect(requestMock).toHaveBeenCalledTimes(4);
+    expect(destroyAgentMock).toHaveBeenCalledTimes(4);
+  });
+
   it("propagates a caller abort to a routed probe and destroys the proxy agent", async () => {
     const controller = new AbortController();
     requestMock.mockImplementation(
