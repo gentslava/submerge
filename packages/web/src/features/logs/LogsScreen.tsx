@@ -15,6 +15,7 @@ import {
   initialLogFilters,
   initialLogsClientState,
   type LogFilters,
+  logCountLabel,
   logsReducer,
   resetLogFilters,
   visibleLogEvents,
@@ -158,7 +159,7 @@ export function LogsScreen() {
                 ? "подключение"
                 : "переподключение"}
           </span>
-          <span>{state.events.length} из 500</span>
+          <span>{logCountLabel(visible.length, filtered.length, filters)}</span>
           {state.paused && state.unseen > 0 ? (
             <span
               role="status"

@@ -1,6 +1,7 @@
 import type { LogEvent, LogLevel, LogSource, LogStreamMessage } from "@submerge/shared";
+import { pluralRu } from "@/lib/plural";
 
-const LOG_CAPACITY = 500;
+export const LOG_CAPACITY = 500;
 
 export interface LogsClientState {
   connection: "connecting" | "live" | "reconnecting";
@@ -138,6 +139,24 @@ export function resetLogFilters(): LogFilters {
   return { ...initialLogFilters };
 }
 
+function logFiltersActive(filters: LogFilters): boolean {
+  return filters.query.trim() !== "" || filters.source !== "all" || filters.level !== "all";
+}
+
+export function logCountLabel(
+  availableCount: number,
+  matchedCount: number,
+  filters: LogFilters,
+): string {
+  if (logFiltersActive(filters)) {
+    const availableLabel =
+      availableCount >= LOG_CAPACITY ? `последних ${LOG_CAPACITY}` : String(availableCount);
+    return `${matchedCount} найдено · из ${availableLabel}`;
+  }
+  if (availableCount >= LOG_CAPACITY) return `Последние ${LOG_CAPACITY}`;
+  return `${availableCount} ${pluralRu(availableCount, ["событие", "события", "событий"])}`;
+}
+
 export function filterLogEvents(events: readonly LogEvent[], filters: LogFilters): LogEvent[] {
   const query = filters.query.trim().toLocaleLowerCase();
   return events.filter((event) => {
@@ -157,8 +176,6 @@ export function classifyLogEmpty(
   filters: LogFilters,
 ): LogEmptyState {
   if (allEvents.length === 0) return "empty";
-  const filtersActive =
-    filters.query.trim() !== "" || filters.source !== "all" || filters.level !== "all";
-  if (filtersActive && filteredEvents.length === 0) return "filtered-empty";
+  if (logFiltersActive(filters) && filteredEvents.length === 0) return "filtered-empty";
   return null;
 }

@@ -5,6 +5,7 @@ import {
   filterLogEvents,
   initialLogFilters,
   initialLogsClientState,
+  logCountLabel,
   logsReducer,
   resetLogFilters,
   visibleLogEvents,
@@ -258,5 +259,23 @@ describe("log filters", () => {
 
   it("resets all filters", () => {
     expect(resetLogFilters()).toEqual({ query: "", source: "all", level: "all" });
+  });
+
+  it("describes the available history instead of presenting capacity as progress", () => {
+    expect(logCountLabel(0, 0, initialLogFilters)).toBe("0 событий");
+    expect(logCountLabel(1, 1, initialLogFilters)).toBe("1 событие");
+    expect(logCountLabel(5, 5, initialLogFilters)).toBe("5 событий");
+    expect(logCountLabel(11, 11, initialLogFilters)).toBe("11 событий");
+    expect(logCountLabel(42, 42, initialLogFilters)).toBe("42 события");
+    expect(logCountLabel(500, 500, initialLogFilters)).toBe("Последние 500");
+  });
+
+  it("shows matches relative to the available history when filters are active", () => {
+    expect(logCountLabel(42, 18, { ...initialLogFilters, source: "mihomo" })).toBe(
+      "18 найдено · из 42",
+    );
+    expect(logCountLabel(500, 18, { ...initialLogFilters, query: "telegram" })).toBe(
+      "18 найдено · из последних 500",
+    );
   });
 });
