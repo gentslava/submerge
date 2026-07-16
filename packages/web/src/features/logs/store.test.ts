@@ -262,20 +262,20 @@ describe("log filters", () => {
   });
 
   it("describes the available history instead of presenting capacity as progress", () => {
-    expect(logCountLabel(0, 0, initialLogFilters)).toBe("0 событий");
-    expect(logCountLabel(1, 1, initialLogFilters)).toBe("1 событие");
-    expect(logCountLabel(5, 5, initialLogFilters)).toBe("5 событий");
-    expect(logCountLabel(11, 11, initialLogFilters)).toBe("11 событий");
-    expect(logCountLabel(42, 42, initialLogFilters)).toBe("42 события");
-    expect(logCountLabel(500, 500, initialLogFilters)).toBe("Последние 500");
+    expect(logCountLabel(0, 0, initialLogFilters)).toBe("0 записей");
+    expect(logCountLabel(1, 1, initialLogFilters)).toBe("1 запись");
+    expect(logCountLabel(5, 5, initialLogFilters)).toBe("5 записей");
+    expect(logCountLabel(11, 11, initialLogFilters)).toBe("11 записей");
+    expect(logCountLabel(42, 42, initialLogFilters)).toBe("42 записи");
+    expect(logCountLabel(500, 500, initialLogFilters)).toBe("Последние 500 записей");
   });
 
   it("shows matches relative to the available history when filters are active", () => {
     expect(logCountLabel(42, 18, { ...initialLogFilters, source: "mihomo" })).toBe(
-      "18 найдено · из 42",
+      "Найдено 18 · среди 42 записей",
     );
     expect(logCountLabel(500, 18, { ...initialLogFilters, query: "telegram" })).toBe(
-      "18 найдено · из последних 500",
+      "Найдено 18 · среди последних 500 записей",
     );
   });
 });

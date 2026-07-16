@@ -69,7 +69,7 @@ describe("LogsScreen", () => {
       });
     });
     expect(screen.getByText("first event")).toBeInTheDocument();
-    expect(screen.getByText("1 событие")).toBeInTheDocument();
+    expect(screen.getByText("1 запись")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Пауза" }));
     act(() => {
@@ -88,12 +88,12 @@ describe("LogsScreen", () => {
       });
     });
     expect(screen.queryByText("second event")).not.toBeInTheDocument();
-    expect(screen.getByText("1 событие")).toBeInTheDocument();
+    expect(screen.getByText("1 запись")).toBeInTheDocument();
     expect(screen.getByText("1 новых")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Продолжить" }));
     expect(screen.getByText("second event")).toBeInTheDocument();
-    expect(screen.getByText("2 события")).toBeInTheDocument();
+    expect(screen.getByText("2 записи")).toBeInTheDocument();
     expect(screen.queryByText("1 новых")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Очистить" }));
@@ -163,16 +163,16 @@ describe("LogsScreen", () => {
       });
     });
 
-    expect(screen.getByText("2 события")).toBeInTheDocument();
+    expect(screen.getByText("2 записи")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Поиск в логах"), { target: { value: "missing" } });
-    expect(screen.getByText("0 найдено · из 2")).toBeInTheDocument();
+    expect(screen.getByText("Найдено 0 · среди 2 записей")).toBeInTheDocument();
     expect(screen.getByText("По фильтрам ничего не найдено")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Сбросить фильтры" }));
     expect(screen.getByText("YouTube connected")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Источник"), { target: { value: "submerge" } });
     fireEvent.click(screen.getByRole("button", { name: "WARN" }));
-    expect(screen.getByText("1 найдено · из 2")).toBeInTheDocument();
+    expect(screen.getByText("Найдено 1 · среди 2 записей")).toBeInTheDocument();
     expect(screen.getByText("Сбой получения данных mihomo")).toBeInTheDocument();
     expect(screen.queryByText("YouTube connected")).not.toBeInTheDocument();
   });

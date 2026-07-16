@@ -143,6 +143,14 @@ function logFiltersActive(filters: LogFilters): boolean {
   return filters.query.trim() !== "" || filters.source !== "all" || filters.level !== "all";
 }
 
+function recordCountLabel(count: number): string {
+  return `${count} ${pluralRu(count, ["запись", "записи", "записей"])}`;
+}
+
+function recordCountAfterPreposition(count: number): string {
+  return `${count} ${pluralRu(count, ["записи", "записей", "записей"])}`;
+}
+
 export function logCountLabel(
   availableCount: number,
   matchedCount: number,
@@ -150,11 +158,13 @@ export function logCountLabel(
 ): string {
   if (logFiltersActive(filters)) {
     const availableLabel =
-      availableCount >= LOG_CAPACITY ? `последних ${LOG_CAPACITY}` : String(availableCount);
-    return `${matchedCount} найдено · из ${availableLabel}`;
+      availableCount >= LOG_CAPACITY
+        ? `последних ${LOG_CAPACITY} записей`
+        : recordCountAfterPreposition(availableCount);
+    return `Найдено ${matchedCount} · среди ${availableLabel}`;
   }
-  if (availableCount >= LOG_CAPACITY) return `Последние ${LOG_CAPACITY}`;
-  return `${availableCount} ${pluralRu(availableCount, ["событие", "события", "событий"])}`;
+  if (availableCount >= LOG_CAPACITY) return `Последние ${LOG_CAPACITY} записей`;
+  return recordCountLabel(availableCount);
 }
 
 export function filterLogEvents(events: readonly LogEvent[], filters: LogFilters): LogEvent[] {
