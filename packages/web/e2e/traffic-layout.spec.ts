@@ -242,13 +242,13 @@ test("mobile keeps a 2x2 metric grid, compact reset, and reachable final chart",
   const throughputBox = await page
     .getByRole("region", { name: "Пропускная способность" })
     .boundingBox();
-  expect(headerBox?.y).toBeCloseTo(4, 0);
+  expect(headerBox?.y).toBeCloseTo(20, 0);
   expect(headerBox?.height).toBeCloseTo(48, 0);
-  expect(metricBox?.y).toBeCloseTo(64, 0);
+  expect(metricBox?.y).toBeCloseTo(80, 0);
   expect(metricBox?.height).toBeCloseTo(69, 0);
-  expect(latencyBox?.y).toBeCloseTo(222, 0);
+  expect(latencyBox?.y).toBeCloseTo(238, 0);
   expect(latencyBox?.height).toBeCloseTo(161, 0);
-  expect(throughputBox?.y).toBeCloseTo(395, 0);
+  expect(throughputBox?.y).toBeCloseTo(411, 0);
   expect(throughputBox?.height).toBeCloseTo(155, 0);
 
   await page

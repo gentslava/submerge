@@ -114,7 +114,7 @@ test("populated dark desktop matches the dense Pencil timeline", async ({ page }
   const listBox = await page.locator(".logs-list").boundingBox();
   expect(rootBox?.y).toBeCloseTo(0, 0);
   expect(rootBox?.height).toBeCloseTo(1024, 0);
-  expect(listBox?.y).toBeCloseTo(147, 0);
+  expect(listBox?.y).toBeCloseTo(169, 0);
   expect((listBox?.y ?? 0) + (listBox?.height ?? 0)).toBeCloseTo(992, 0);
   expect(browserProblems).toEqual([]);
   await expectNoDocumentOverflow(page);

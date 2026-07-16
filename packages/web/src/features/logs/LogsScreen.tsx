@@ -53,7 +53,7 @@ export function LogsScreen() {
   const emptyState = classifyLogEmpty(visible, filtered, filters);
 
   return (
-    <div className="responsive-page responsive-page--logs page-content logs-screen flex h-full min-h-0 min-w-0 flex-col px-4 pb-8">
+    <div className="responsive-page responsive-page--logs page-content logs-screen flex h-full min-h-0 min-w-0 flex-col px-4 pt-5 pb-8">
       <header className="logs-header flex min-w-0 items-center justify-between gap-4">
         <div className="min-w-0 flex flex-col gap-[5px]">
           <h1 className="logs-title text-page-title-compact text-text-primary">Логи</h1>

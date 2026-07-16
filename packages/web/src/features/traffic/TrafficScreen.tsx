@@ -118,7 +118,7 @@ export function TrafficScreen() {
 
 export function TrafficDashboardView(props: TrafficDashboardViewProps) {
   return (
-    <div className="responsive-page responsive-page--traffic page-content flex min-w-0 flex-col gap-[22px] px-4 pt-1 pb-8">
+    <div className="responsive-page responsive-page--traffic page-content flex min-w-0 flex-col gap-[22px] px-4 pt-5 pb-8">
       <header className="traffic-header flex min-w-0 items-center justify-between gap-4">
         <div className="min-w-0 flex flex-col gap-[5px]">
           <h1 className="traffic-title text-page-title-compact text-text-primary">Трафик</h1>

@@ -89,7 +89,6 @@
    remains the scroll owner while its controls stay reachable. */
 .responsive-page--logs {
   gap: 0.75rem;
-  padding-top: 0.25rem;
 }
 
 .logs-action {
