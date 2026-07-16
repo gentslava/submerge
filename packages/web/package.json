@@ -21,7 +21,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@submerge/shared": "workspace:*",
     "@tanstack/react-query": "^5.101.2",
-    "@tanstack/react-router": "^1.170.17",
+    "@tanstack/react-router": "^1.170.18",
     "@trpc/client": "^11.18.0",
     "@trpc/tanstack-react-query": "^11.18.0",
     "class-variance-authority": "^0.7.1",

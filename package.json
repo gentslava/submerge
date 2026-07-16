@@ -19,7 +19,7 @@
     "verify:static": "./node_modules/.bin/biome ci . && pnpm -F @submerge/web design:tokens:check && pnpm typecheck && pnpm test && pnpm build"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.3",
+    "@biomejs/biome": "^2.5.4",
     "typescript": "^7.0.2"
   }
 }
