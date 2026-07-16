@@ -158,6 +158,17 @@ describe("DiagnosticsService cache", () => {
 });
 
 describe("DiagnosticsService orchestration", () => {
+  it("uses the real monotonic clock without detaching performance.now", async () => {
+    const deps = healthyDeps();
+    delete deps.monotonicNow;
+
+    const result = await new DiagnosticsService(deps).run({ force: true });
+
+    expect(result.state).toBe("ready");
+    expect(result.components.map((component) => component.status)).toEqual(["ok", "ok", "ok"]);
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
   it("starts independent component checks together and returns a parsed healthy result", async () => {
     const deps = healthyDeps();
     let databaseStarted = false;

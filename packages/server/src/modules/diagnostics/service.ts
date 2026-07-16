@@ -151,6 +151,10 @@ function operationSignal(overallSignal: AbortSignal): AbortSignal {
   return AbortSignal.any([overallSignal, AbortSignal.timeout(OPERATION_TIMEOUT_MS)]);
 }
 
+function monotonicNow(deps: DiagnosticsServiceDeps): number {
+  return deps.monotonicNow ? deps.monotonicNow() : performance.now();
+}
+
 async function raceSignal<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
   if (signal.aborted) throw signal.reason;
   return await new Promise<T>((resolve, reject) => {
@@ -165,7 +169,7 @@ async function timed<T>(
   overallSignal: AbortSignal,
   work: (signal: AbortSignal) => Promise<T>,
 ): Promise<{ value: T; durationMs: number }> {
-  const started = (deps.monotonicNow ?? performance.now)();
+  const started = monotonicNow(deps);
   const signal = operationSignal(overallSignal);
   if (signal.aborted) throw signal.reason;
   const value = await raceSignal(
@@ -174,7 +178,7 @@ async function timed<T>(
   );
   return {
     value,
-    durationMs: Math.max(0, (deps.monotonicNow ?? performance.now)() - started),
+    durationMs: Math.max(0, monotonicNow(deps) - started),
   };
 }
 
@@ -341,9 +345,8 @@ function safeProxyEndpoint(deps: DiagnosticsServiceDeps): string {
 
 async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<DiagnosticsResult> {
   const now = deps.now ?? Date.now;
-  const monotonic = deps.monotonicNow ?? performance.now;
   const startedEpoch = now();
-  const startedMono = monotonic();
+  const startedMono = monotonicNow(deps);
   const overallSignal = AbortSignal.timeout(OVERALL_TIMEOUT_MS);
   const proxyEndpoint = safeProxyEndpoint(deps);
   const checkDb = deps.checkDb ?? (async () => void deps.db.run(sql`select 1`));
@@ -588,7 +591,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
   return diagnosticsResultSchema.parse({
     startedAt: new Date(startedEpoch).toISOString(),
     completedAt: new Date(completedEpoch).toISOString(),
-    durationMs: Math.max(0, monotonic() - startedMono),
+    durationMs: Math.max(0, monotonicNow(deps) - startedMono),
     state,
     summary: summary(routes, services),
     components,
