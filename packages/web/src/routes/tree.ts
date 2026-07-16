@@ -1,5 +1,6 @@
 import { createRoute, createRouter } from "@tanstack/react-router";
 import { ConnectionsRoute } from "./connections";
+import { DiagnosticsRoute } from "./diagnostics";
 import { LogsRoute } from "./logs";
 import { MoreRoute } from "./more";
 import { NodesRoute } from "./nodes";
@@ -44,6 +45,11 @@ const logsRoute = createRoute({
   path: "/logs",
   component: LogsRoute,
 });
+const diagnosticsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/diagnostics",
+  component: DiagnosticsRoute,
+});
 const moreRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/more",
@@ -54,6 +60,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   trafficRoute,
   logsRoute,
+  diagnosticsRoute,
   sourcesRoute,
   connectionsRoute,
   routingRoute,

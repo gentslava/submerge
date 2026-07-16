@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import type { DirectChannel, ProxyChannel } from "@submerge/shared";
+import type { DiagnosticsResult, DirectChannel, ProxyChannel } from "@submerge/shared";
 
 const defaultPolicy = {
   kind: "speed",
@@ -84,9 +84,49 @@ const responses: Record<string, unknown> = {
   "channels.recentDecisions": [],
   "connections.list": { connections: [] },
   "logs.clear": { ok: true },
+  "diagnostics.run": {
+    startedAt: "2026-07-16T08:00:00.000Z",
+    completedAt: "2026-07-16T08:00:01.000Z",
+    durationMs: 1_000,
+    state: "ready",
+    summary: "Проверки пройдены",
+    components: [],
+    externalIp: {
+      status: "ok",
+      ip: "185.107.56.42",
+      country: "NL",
+      colo: "AMS",
+      durationMs: 84,
+      route: "AUTO",
+      node: "Амстердам — основной маршрут",
+      detail: "Внешний IP определён",
+      errorCode: null,
+    },
+    routes: [],
+    services: [],
+    config: {
+      status: "ok",
+      proxyEndpoint: "127.0.0.1:7890",
+      mode: "rule",
+      dns: true,
+      ipv6: false,
+      tun: false,
+      errorCode: null,
+    },
+  } satisfies DiagnosticsResult,
 };
 
 export type FixtureOverrides = Record<string, unknown>;
+
+interface TrpcFixtureSequence {
+  fixtureSequence: true;
+  values: unknown[];
+  index: number;
+}
+
+export function trpcFixtureSequence(first: unknown, ...rest: unknown[]): TrpcFixtureSequence {
+  return { fixtureSequence: true, values: [first, ...rest], index: 0 };
+}
 
 export interface TrpcFixtureOptions {
   subscriptions?: Record<string, { events: readonly unknown[]; end?: "return" | "disconnect" }>;
@@ -112,8 +152,29 @@ function isTrpcFixtureError(value: unknown): value is TrpcFixtureError {
   );
 }
 
+function isTrpcFixtureSequence(value: unknown): value is TrpcFixtureSequence {
+  return (
+    typeof value === "object" &&
+    value != null &&
+    "fixtureSequence" in value &&
+    value.fixtureSequence === true &&
+    "values" in value &&
+    Array.isArray(value.values) &&
+    value.values.length > 0 &&
+    "index" in value &&
+    typeof value.index === "number"
+  );
+}
+
 function responseFor(procedure: string, overrides: FixtureOverrides): unknown {
-  if (Object.hasOwn(overrides, procedure)) return overrides[procedure];
+  if (Object.hasOwn(overrides, procedure)) {
+    const override = overrides[procedure];
+    if (!isTrpcFixtureSequence(override)) return override;
+    const index = Math.min(override.index, override.values.length - 1);
+    const response = override.values[index];
+    override.index = Math.min(index + 1, override.values.length - 1);
+    return response;
+  }
   if (Object.hasOwn(responses, procedure)) return responses[procedure];
   throw new Error(`Unknown tRPC fixture procedure: ${procedure}`);
 }

@@ -3,6 +3,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { db } from "../db/client.js";
 import { settings } from "../db/schema.js";
+import { SUBMERGE_VERSION } from "../version.js";
 import { appRouter } from "./router.js";
 import { createCallerFactory } from "./trpc.js";
 
@@ -29,7 +30,7 @@ describe("appRouter", () => {
   it("health.ping returns ok", async () => {
     const res = await caller().health.ping();
     expect(res.ok).toBe(true);
-    expect(typeof res.version).toBe("string");
+    expect(res.version).toBe(SUBMERGE_VERSION);
   });
 
   it("nodes.list normalizes mihomo proxies", async () => {
@@ -60,5 +61,9 @@ describe("appRouter", () => {
 
   it("registers the logs router", async () => {
     await expect(caller().logs.clear()).resolves.toEqual({ ok: true });
+  });
+
+  it("registers the diagnostics router", () => {
+    expect(caller().diagnostics.run).toBeTypeOf("function");
   });
 });

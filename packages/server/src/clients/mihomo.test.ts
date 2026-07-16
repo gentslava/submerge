@@ -1,12 +1,30 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const requestMock = vi.hoisted(() => vi.fn());
+const destroyAgentMock = vi.hoisted(() => vi.fn(async () => undefined));
+const proxyAgentMock = vi.hoisted(() =>
+  vi.fn(function MockProxyAgent() {
+    return { destroy: destroyAgentMock };
+  }),
+);
+
+vi.mock("undici", () => ({
+  ProxyAgent: proxyAgentMock,
+  request: requestMock,
+}));
+
 import {
   closeAllConnections,
   closeConnection,
   getConnections,
   getDelay,
+  getExternalIpTrace,
   getProxies,
+  getRuntimeConfig,
   getTotals,
+  getVersion,
   openLogStream,
+  probeThroughProxy,
   reloadConfig,
   selectProxy,
   setMihomoSecret,
@@ -23,10 +41,28 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     ...init,
   });
 
+beforeEach(() => {
+  requestMock.mockReset();
+  destroyAgentMock.mockReset();
+  destroyAgentMock.mockResolvedValue(undefined);
+  proxyAgentMock.mockClear();
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   setMihomoSecret("");
 });
+
+function proxyBody(chunks: string[], dump = vi.fn(async () => undefined)) {
+  const encoder = new TextEncoder();
+  return {
+    dump,
+    async *[Symbol.asyncIterator]() {
+      for (const chunk of chunks) yield encoder.encode(chunk);
+    },
+  };
+}
 
 function ndjsonResponse(chunks: string[]): Response {
   const encoder = new TextEncoder();
@@ -42,6 +78,43 @@ function ndjsonResponse(chunks: string[]): Response {
 }
 
 describe("mihomo client", () => {
+  it("parses /version and sends controller auth", async () => {
+    setMihomoSecret("diagnostic-secret");
+    mockFetch((url, init) => {
+      expect(url).toMatch(/\/version$/);
+      expect(new Headers(init?.headers).get("authorization")).toBe("Bearer diagnostic-secret");
+      return json({ version: "v1.19.12", meta: true });
+    });
+
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+
+    mockFetch(() => json({ version: 11912 }));
+    await expect(getVersion()).rejects.toThrow();
+  });
+
+  it("parses nullable runtime config fields without inventing defaults", async () => {
+    mockFetch(() =>
+      json({ mode: "rule", dns: { enable: true }, ipv6: false, tun: { enable: false } }),
+    );
+    await expect(getRuntimeConfig()).resolves.toEqual({
+      mode: "rule",
+      dns: true,
+      ipv6: false,
+      tun: false,
+    });
+
+    mockFetch(() => json({}));
+    await expect(getRuntimeConfig()).resolves.toEqual({
+      mode: null,
+      dns: null,
+      ipv6: null,
+      tun: null,
+    });
+
+    mockFetch(() => json({ dns: { enable: "yes" } }));
+    await expect(getRuntimeConfig()).rejects.toThrow();
+  });
+
   it("parses /proxies and sends the auth header", async () => {
     let seenAuth = "";
     mockFetch((url, init) => {
@@ -59,6 +132,167 @@ describe("mihomo client", () => {
   it("parses a delay response", async () => {
     mockFetch(() => json({ delay: 123 }));
     expect(await getDelay("A")).toEqual({ delay: 123 });
+  });
+
+  it("passes bounded delay options and composes a caller abort signal", async () => {
+    const controller = new AbortController();
+    let seenSignal: AbortSignal | undefined;
+    mockFetch((url, init) => {
+      const parsed = new URL(url);
+      expect(parsed.pathname).toContain("/proxies/A%2FB/delay");
+      expect(parsed.searchParams.get("url")).toBe("https://example.com/control?a=1");
+      expect(parsed.searchParams.get("timeout")).toBe("4321");
+      expect(parsed.searchParams.get("expected")).toBe("200-399");
+      seenSignal = init?.signal ?? undefined;
+      return json({ delay: 42 });
+    });
+
+    await getDelay("A/B", "https://example.com/control?a=1", {
+      timeoutMs: 4321,
+      expected: "200-399",
+      signal: controller.signal,
+    });
+    expect(seenSignal).toBeInstanceOf(AbortSignal);
+    expect(seenSignal).not.toBe(controller.signal);
+    controller.abort();
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  it("reads a bounded Cloudflare trace only through the configured proxy", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("direct fetch forbidden"))),
+    );
+    requestMock.mockResolvedValue({
+      statusCode: 200,
+      body: proxyBody(["fl=1\nip=185.107.56.42\nloc=NL\n", "colo=AMS\nunknown=value\n"]),
+    });
+
+    await expect(getExternalIpTrace()).resolves.toEqual({
+      ip: "185.107.56.42",
+      country: "NL",
+      colo: "AMS",
+    });
+    expect(proxyAgentMock).toHaveBeenCalledWith(expect.stringMatching(/^http/));
+    const [url, options] = requestMock.mock.calls[0] as [
+      string | URL,
+      { dispatcher: unknown; signal: AbortSignal },
+    ];
+    expect(String(url)).toBe("https://www.cloudflare.com/cdn-cgi/trace");
+    expect(options.dispatcher).toBeTruthy();
+    expect(options.signal.aborted).toBe(false);
+    expect(destroyAgentMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["missing IP", "loc=NL\ncolo=AMS\n"],
+    ["invalid IP", "ip=999.1.1.1\nloc=NL\n"],
+    ["oversized body", `ip=185.107.56.42\nextra=${"x".repeat(9000)}`],
+  ])("rejects a %s trace and still destroys the proxy agent", async (_name, body) => {
+    requestMock.mockResolvedValue({ statusCode: 200, body: proxyBody([body]) });
+    await expect(getExternalIpTrace()).rejects.toThrow();
+    expect(destroyAgentMock).toHaveBeenCalledOnce();
+  });
+
+  it("returns any routed HTTP status, drains the body, and destroys the proxy agent", async () => {
+    const dump = vi.fn(async () => undefined);
+    requestMock.mockResolvedValue({ statusCode: 403, body: proxyBody([], dump) });
+
+    await expect(probeThroughProxy("https://chatgpt.com/favicon.ico")).resolves.toEqual({
+      status: 403,
+    });
+    expect(dump).toHaveBeenCalledOnce();
+    const [dumpOptions] = dump.mock.calls[0] as [{ limit: number; signal: AbortSignal }];
+    expect(dumpOptions.limit).toBe(8192);
+    expect(dumpOptions.signal.aborted).toBe(false);
+    expect(destroyAgentMock).toHaveBeenCalledOnce();
+  });
+
+  it("follows at most three redirects within one bounded probe and returns the final status", async () => {
+    const dumps = Array.from({ length: 4 }, () => vi.fn(async () => undefined));
+    requestMock
+      .mockResolvedValueOnce({
+        statusCode: 302,
+        headers: { location: "/step-1" },
+        body: proxyBody([], dumps[0]),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 301,
+        headers: { location: "https://example.com/step-2" },
+        body: proxyBody([], dumps[1]),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 307,
+        headers: { location: "/step-3" },
+        body: proxyBody([], dumps[2]),
+      })
+      .mockResolvedValueOnce({
+        statusCode: 204,
+        headers: {},
+        body: proxyBody([], dumps[3]),
+      });
+
+    await expect(probeThroughProxy("https://example.com/start")).resolves.toEqual({ status: 204 });
+    expect(requestMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://example.com/start",
+      "https://example.com/step-1",
+      "https://example.com/step-2",
+      "https://example.com/step-3",
+    ]);
+    expect(dumps.every((dump) => dump.mock.calls.length === 1)).toBe(true);
+    expect(destroyAgentMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops after three redirects and reports the remaining redirect status", async () => {
+    requestMock.mockResolvedValue({
+      statusCode: 302,
+      headers: { location: "/again" },
+      body: proxyBody([]),
+    });
+
+    await expect(probeThroughProxy("https://example.com/start")).resolves.toEqual({ status: 302 });
+    expect(requestMock).toHaveBeenCalledTimes(4);
+    expect(destroyAgentMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("propagates a caller abort to a routed probe and destroys the proxy agent", async () => {
+    const controller = new AbortController();
+    requestMock.mockImplementation(
+      (_url, options: { signal: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+            once: true,
+          });
+        }),
+    );
+
+    const pending = probeThroughProxy("https://example.com", controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(destroyAgentMock).toHaveBeenCalledOnce();
+  });
+
+  it("uses the autonomous request timeout when no caller signal is supplied", async () => {
+    const timeout = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    try {
+      requestMock.mockImplementation(
+        (_url, options: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            options.signal.addEventListener("abort", () => reject(options.signal.reason), {
+              once: true,
+            });
+          }),
+      );
+
+      const pending = probeThroughProxy("https://example.com");
+      expect(timeoutSpy).toHaveBeenCalledWith(5000);
+      timeout.abort(new DOMException("deadline", "TimeoutError"));
+      await expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(destroyAgentMock).toHaveBeenCalledOnce();
+    } finally {
+      timeoutSpy.mockRestore();
+    }
   });
 
   it("rejects a negative delay response", async () => {

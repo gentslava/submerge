@@ -13,7 +13,15 @@ import {
 /** A nav entry that routes to a real screen (functional <Link>). */
 export interface NavLink {
   kind: "link";
-  to: "/" | "/traffic" | "/sources" | "/connections" | "/routing" | "/logs" | "/settings";
+  to:
+    | "/"
+    | "/traffic"
+    | "/sources"
+    | "/connections"
+    | "/routing"
+    | "/logs"
+    | "/diagnostics"
+    | "/settings";
   label: string;
   icon: LucideIcon;
   // Mobile only: `secondary` links live under "Ещё" instead of the bottom bar
@@ -34,9 +42,7 @@ export interface NavPlaceholder {
 export type NavEntry = NavLink | NavPlaceholder;
 
 /**
- * The 8 sidebar nav items, in mockup order. Узлы / Источники / Маршрутизация /
- * Настройки are real routes; the rest have no screens yet and render as inert
- * placeholders.
+ * The 8 sidebar nav items, in mockup order.
  */
 export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/", label: "Узлы", icon: Server },
@@ -45,7 +51,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/routing", label: "Маршрутизация", icon: Route },
   { kind: "link", to: "/logs", label: "Логи", icon: SquareTerminal },
   { kind: "link", to: "/sources", label: "Источники", icon: Layers },
-  { kind: "placeholder", label: "Диагностика", icon: Stethoscope },
+  { kind: "link", to: "/diagnostics", label: "Диагностика", icon: Stethoscope, secondary: true },
   { kind: "link", to: "/settings", label: "Настройки", icon: Settings },
 ];
 
