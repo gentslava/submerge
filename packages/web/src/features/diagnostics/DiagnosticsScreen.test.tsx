@@ -125,6 +125,7 @@ describe("DiagnosticsScreen", () => {
     );
     expect(mocks.queryOptions.mock.calls[0]?.[1]).not.toHaveProperty("refetchInterval");
     expect(screen.getByText("Выполняем первичную проверку")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Проверить снова" })).toBeDisabled();
   });
 
   it("keeps the previous result visible during a forced refresh", () => {

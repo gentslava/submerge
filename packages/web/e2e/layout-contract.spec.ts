@@ -7,6 +7,7 @@ const paths = [
   "/connections",
   "/routing",
   "/logs",
+  "/diagnostics",
   "/sources",
   "/settings",
   "/more",

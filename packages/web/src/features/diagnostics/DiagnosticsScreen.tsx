@@ -43,7 +43,7 @@ export function DiagnosticsScreen() {
             variant="secondary"
             size="headerIcon"
             aria-label="Проверить снова"
-            disabled={initialLoading || running}
+            disabled={result === undefined || running}
             onClick={() => refreshMutation.mutate()}
             className="page-header-action diagnostics-refresh"
           >

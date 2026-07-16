@@ -205,6 +205,7 @@ describe("DiagnosticsService orchestration", () => {
     expect(result.externalIp.status).toBe("skipped");
     expect(result.routes).toEqual([]);
     expect(result.services.every((entry) => entry.status === "skipped")).toBe(true);
+    expect(result.summary).toBe("0 из 0 маршрутов · 0 из 0 сервисов");
     expect(result.config.status).toBe("skipped");
     expect(deps.getProxies).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain("secret");
@@ -498,6 +499,7 @@ describe("DiagnosticsService orchestration", () => {
       expect.objectContaining({ channelName: "Custom", status: "skipped" }),
       expect.objectContaining({ channelName: "Default", node: "DIRECT", status: "ok" }),
     ]);
+    expect(result.summary).toBe("1 из 1 маршрутов · 6 из 6 сервисов");
     expect(deps.getDelay).not.toHaveBeenCalled();
   });
 

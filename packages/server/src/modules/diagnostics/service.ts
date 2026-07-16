@@ -324,9 +324,11 @@ function summary(
   routes: readonly DiagnosticRouteResult[],
   services: readonly DiagnosticServiceResult[],
 ) {
-  const workingRoutes = routes.filter((entry) => entry.status === "ok").length;
-  const workingServices = services.filter((entry) => entry.status === "ok").length;
-  return `${workingRoutes} из ${routes.length} маршрутов · ${workingServices} из ${services.length} сервисов`;
+  const attemptedRoutes = routes.filter((entry) => entry.status !== "skipped");
+  const attemptedServices = services.filter((entry) => entry.status !== "skipped");
+  const workingRoutes = attemptedRoutes.filter((entry) => entry.status === "ok").length;
+  const workingServices = attemptedServices.filter((entry) => entry.status === "ok").length;
+  return `${workingRoutes} из ${attemptedRoutes.length} маршрутов · ${workingServices} из ${attemptedServices.length} сервисов`;
 }
 
 function safeProxyEndpoint(deps: DiagnosticsServiceDeps): string {

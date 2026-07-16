@@ -142,15 +142,15 @@ function ExternalIpCard({ result }: { result: DiagnosticsResult["externalIp"] })
     <CardShell label="Внешний IP" icon={<Globe2 aria-hidden="true" size={18} />}>
       <div className="flex min-w-0 flex-col gap-2 px-4 pb-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span
-            title={safeDiagnosticTitle(result.ip)}
+          <TruncatedValue
+            value={result.ip}
             className={cn(
               "min-w-0 truncate font-mono text-page-title-compact text-text-primary",
               result.status !== "ok" && "text-text-tertiary",
             )}
           >
             {safeDiagnosticTitle(result.ip)}
-          </span>
+          </TruncatedValue>
           {result.country || result.colo ? (
             <span className="rounded-full bg-online-bg px-2 py-1 font-mono text-fine text-online">
               {[result.country, result.colo].filter(Boolean).join(" · ")}
@@ -161,13 +161,13 @@ function ExternalIpCard({ result }: { result: DiagnosticsResult["externalIp"] })
           <>
             <p className="min-w-0 truncate font-mono text-fine text-text-secondary">
               через{" "}
-              <span title={safeDiagnosticTitle(result.route)}>
+              <TruncatedValue value={result.route}>
                 {safeDiagnosticTitle(result.route)}
-              </span>
+              </TruncatedValue>
               {result.node ? (
                 <>
                   {" · "}
-                  <span title={result.node}>{result.node}</span>
+                  <TruncatedValue value={result.node}>{result.node}</TruncatedValue>
                 </>
               ) : null}
             </p>
@@ -196,12 +196,18 @@ function ComponentsCard({ components }: { components: DiagnosticsResult["compone
               className="flex min-w-0 items-center gap-3 border-b border-border-subtle py-3 first:pt-1 last:border-b-0"
             >
               <StatusDot status={component.status} durationMs={component.durationMs} />
-              <span className="min-w-0 flex-1 truncate font-mono text-sub font-medium text-text-primary">
+              <TruncatedValue
+                value={component.id}
+                className="min-w-0 flex-1 truncate font-mono text-sub font-medium text-text-primary"
+              >
                 {component.id}
-              </span>
-              <span className="min-w-0 truncate font-mono text-fine text-text-tertiary">
+              </TruncatedValue>
+              <TruncatedValue
+                value={component.version ?? component.detail}
+                className="min-w-0 truncate font-mono text-fine text-text-tertiary"
+              >
                 {component.version ?? component.detail}
-              </span>
+              </TruncatedValue>
               <span className={cn("shrink-0 font-mono text-fine", visual.textClass)}>
                 {formatDiagnosticDuration(component.durationMs)}
               </span>
@@ -271,28 +277,28 @@ function DesktopRouteRow({ route }: { route: DiagnosticRouteResult }) {
   return (
     <tr className="border-b border-border-subtle last:border-b-0">
       <td className="min-w-0 px-4 py-3">
-        <span
-          title={route.channelName}
+        <TruncatedValue
+          value={route.channelName}
           className="block truncate text-sub font-medium text-text-primary"
         >
           {route.channelName}
-        </span>
+        </TruncatedValue>
       </td>
       <td className="min-w-0 px-2 py-3">
-        <span
-          title={route.targetHost}
+        <TruncatedValue
+          value={route.targetHost}
           className="block truncate font-mono text-fine text-text-tertiary"
         >
           {route.targetHost}
-        </span>
+        </TruncatedValue>
       </td>
       <td className="min-w-0 px-2 py-3">
-        <span
-          title={safeDiagnosticTitle(route.node)}
+        <TruncatedValue
+          value={route.node}
           className="block truncate font-mono text-fine text-text-secondary"
         >
           {safeDiagnosticTitle(route.node)}
-        </span>
+        </TruncatedValue>
       </td>
       <td className="min-w-0 px-2 py-3">
         <span className="flex min-w-0 flex-col gap-0.5">
@@ -317,20 +323,20 @@ function CompactRouteRow({ route }: { route: DiagnosticRouteResult }) {
     <li className="flex min-w-0 flex-col gap-1.5 border-b border-border-subtle px-4 py-3 last:border-b-0">
       <div className="flex min-w-0 items-center gap-2">
         <StatusDot status={route.status} durationMs={route.durationMs} />
-        <span
-          title={route.channelName}
+        <TruncatedValue
+          value={route.channelName}
           className="min-w-0 flex-1 truncate text-label text-text-primary"
         >
           {route.channelName}
-        </span>
+        </TruncatedValue>
         <span className={cn("shrink-0 font-mono text-fine", visual.textClass)}>
           {formatDiagnosticDuration(route.durationMs)}
         </span>
       </div>
       <p className="min-w-0 truncate font-mono text-fine text-text-tertiary">
-        <span title={route.targetHost}>{route.targetHost}</span>
+        <TruncatedValue value={route.targetHost}>{route.targetHost}</TruncatedValue>
         <span aria-hidden="true"> → </span>
-        <span title={safeDiagnosticTitle(route.node)}>{safeDiagnosticTitle(route.node)}</span>
+        <TruncatedValue value={route.node}>{safeDiagnosticTitle(route.node)}</TruncatedValue>
       </p>
       <span className="text-fine text-text-secondary">{visual.label}</span>
       {route.status !== "ok" ? (
@@ -393,16 +399,43 @@ function RuntimeConfigCard({ config }: { config: DiagnosticsResult["config"] }) 
         {rows.map(([label, value]) => (
           <div key={label} className="flex min-w-0 items-center gap-4 py-2">
             <span className="min-w-0 flex-1 text-fine text-text-tertiary">{label}</span>
-            <span
-              title={safeDiagnosticTitle(value)}
+            <TruncatedValue
+              value={value}
               className="max-w-[65%] truncate font-mono text-fine text-text-primary"
             >
               {safeDiagnosticTitle(value)}
-            </span>
+            </TruncatedValue>
           </div>
         ))}
       </div>
     </CardShell>
+  );
+}
+
+function TruncatedValue({
+  value,
+  className,
+  children,
+}: {
+  value: string | null | undefined;
+  className?: string;
+  children: ReactNode;
+}) {
+  const title = safeDiagnosticTitle(value);
+  return (
+    <span
+      role="note"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: focus exposes the full accessible value when the visible text is truncated.
+      tabIndex={0}
+      title={title}
+      aria-label={title}
+      className={cn(
+        "rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border",
+        className,
+      )}
+    >
+      {children}
+    </span>
   );
 }
 

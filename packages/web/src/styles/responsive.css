@@ -257,6 +257,60 @@
   font-weight: 400;
 }
 
+/* Diagnostics follows the compact Pencil frame by default. Its route summary
+   switches from a readable list to the dense table only when the page itself
+   has enough inline space; the browser viewport is not the deciding input. */
+.responsive-page--diagnostics .page-header {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.responsive-page--diagnostics .page-header-actions,
+.responsive-page--diagnostics .diagnostics-refresh {
+  width: 100%;
+}
+
+.responsive-page--diagnostics .diagnostics-refresh {
+  padding-inline: 0.875rem;
+}
+
+.diagnostics-refresh-label {
+  display: inline;
+}
+
+.diagnostics-overview-grid,
+.diagnostics-details-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.diagnostics-card {
+  overflow: hidden;
+}
+
+.diagnostics-routes-desktop {
+  display: none;
+}
+
+.diagnostics-routes-compact {
+  display: block;
+}
+
+.diagnostics-verdict {
+  align-items: flex-start;
+}
+
+.diagnostics-verdict > [role="status"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .logs-source-badge,
 .logs-level-badge {
   font-size: var(--text-axis);
@@ -280,6 +334,34 @@
 }
 
 @container app-page (min-width: 42rem) {
+  .responsive-page--diagnostics .page-header {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .responsive-page--diagnostics .page-header-actions,
+  .responsive-page--diagnostics .diagnostics-refresh {
+    width: auto;
+  }
+
+  .diagnostics-overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diagnostics-verdict {
+    align-items: center;
+  }
+
+  .diagnostics-verdict > [role="status"] {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+
   .logs-action-label {
     display: inline;
   }
@@ -633,6 +715,34 @@
 }
 
 @container app-page (min-width: 48rem) {
+  .diagnostics-details-grid {
+    grid-template-areas:
+      "routes services"
+      "config services";
+    grid-template-columns: minmax(0, 2fr) minmax(17rem, 1fr);
+    align-items: start;
+  }
+
+  .diagnostics-routes-card {
+    grid-area: routes;
+  }
+
+  .diagnostics-services-card {
+    grid-area: services;
+  }
+
+  .diagnostics-config-card {
+    grid-area: config;
+  }
+
+  .diagnostics-routes-desktop {
+    display: table;
+  }
+
+  .diagnostics-routes-compact {
+    display: none;
+  }
+
   .traffic-metrics {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;

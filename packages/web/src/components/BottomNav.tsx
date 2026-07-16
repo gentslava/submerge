@@ -1,12 +1,16 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { Ellipsis } from "lucide-react";
 import { toast } from "sonner";
-import { NAV_MOBILE_PRIMARY } from "./nav";
+import { NAV_MOBILE_MORE, NAV_MOBILE_PRIMARY } from "./nav";
 
 const linkClass =
   "flex h-12 w-1/5 shrink-0 flex-col items-center justify-center gap-1 px-0.5 text-fine font-medium text-text-tertiary [&.active]:font-semibold [&.active]:text-accent-text";
 
 export function BottomNav() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const moreActive = NAV_MOBILE_MORE.some(
+    (entry) => entry.kind === "link" && entry.to === pathname,
+  );
   return (
     <nav
       data-popup-bottom-boundary
@@ -39,7 +43,11 @@ export function BottomNav() {
           </Link>
         );
       })}
-      <Link to="/more" className={linkClass}>
+      <Link
+        to="/more"
+        aria-current={moreActive ? "page" : undefined}
+        className={`${linkClass}${moreActive ? " active" : ""}`}
+      >
         <Ellipsis size={21} className="shrink-0" />
         <span className="w-full truncate text-center">Ещё</span>
       </Link>
