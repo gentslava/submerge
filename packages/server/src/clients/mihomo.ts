@@ -234,6 +234,110 @@ export async function reloadConfig(targetPath: string): Promise<void> {
   if (!r.ok) throw new Error(`mihomo reload returned HTTP ${r.status}`);
 }
 
+const mihomoLogLevelSchema = z.enum(["debug", "info", "warn", "warning", "error"]);
+const mihomoLogFieldSchema = z.object({
+  key: z.string(),
+  value: z.unknown(),
+});
+const mihomoLogLineSchema = z.object({
+  time: z.string(),
+  level: mihomoLogLevelSchema,
+  message: z.string().min(1),
+  fields: z.array(mihomoLogFieldSchema).default([]),
+});
+
+export interface MihomoLogFrame {
+  level: "debug" | "info" | "warning" | "error";
+  message: string;
+  fields: Record<string, string | number | boolean>;
+}
+
+// The current structured endpoint emits an empty list, but mihomo deliberately
+// models fields as an extensible key/value list. Keep that extension boundary
+// narrow: arbitrary future fields must not silently become browser-visible data.
+const MIHOMO_LOG_FIELD_ALLOWLIST = new Set(["host", "network", "port", "scope", "status"]);
+
+function parseLogLine(line: string): MihomoLogFrame | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  const parsed = mihomoLogLineSchema.safeParse(json);
+  if (!parsed.success) return null;
+
+  const fields: Record<string, string | number | boolean> = {};
+  for (const field of parsed.data.fields) {
+    if (!MIHOMO_LOG_FIELD_ALLOWLIST.has(field.key)) continue;
+    if (
+      typeof field.value !== "string" &&
+      typeof field.value !== "number" &&
+      typeof field.value !== "boolean"
+    ) {
+      continue;
+    }
+    if (typeof field.value === "number" && !Number.isFinite(field.value)) continue;
+    fields[field.key] = field.value;
+  }
+
+  return {
+    level:
+      parsed.data.level === "warn" || parsed.data.level === "warning"
+        ? "warning"
+        : parsed.data.level,
+    message: parsed.data.message,
+    fields,
+  };
+}
+
+async function* readLogStream(
+  body: ReadableStream<Uint8Array<ArrayBuffer>>,
+  signal: AbortSignal,
+): AsyncGenerator<MihomoLogFrame> {
+  const stream = body.pipeThrough(new TextDecoderStream());
+  let buffer = "";
+  let badRun = 0;
+  try {
+    for await (const chunk of stream) {
+      buffer += chunk;
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (line) {
+          const frame = parseLogLine(line);
+          if (frame) {
+            badRun = 0;
+            yield frame;
+          } else if (++badRun >= MAX_UNPARSEABLE_RUN) {
+            throw new Error(
+              `mihomo /logs: ${badRun} consecutive unparseable frames — schema drift?`,
+            );
+          }
+        }
+        newline = buffer.indexOf("\n");
+      }
+    }
+  } catch (error) {
+    if (signal.aborted) return;
+    throw error;
+  }
+}
+
+// Open only after mihomo has accepted the request and supplied a readable body.
+// Keeping the opener separate from the generator lets the hub switch to `live`
+// immediately after headers, even when no log line has arrived yet.
+export async function openLogStream(signal: AbortSignal): Promise<AsyncGenerator<MihomoLogFrame>> {
+  const response = await fetch(`${env.MIHOMO_API}/logs?level=info&format=structured`, {
+    signal,
+    headers: { Authorization: `Bearer ${mihomoSecret}` },
+  });
+  if (!response.ok) throw new Error(`mihomo /logs returned HTTP ${response.status}`);
+  if (!response.body) throw new Error("mihomo /logs returned no readable body");
+  return readLogStream(response.body, signal);
+}
+
 // A malformed/partial frame must not kill the long-lived stream — skip it. But a
 // long RUN of unparseable frames means the schema drifted (e.g. a mihomo update
 // renamed fields): the stream would otherwise stay open yielding nothing forever,

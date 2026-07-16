@@ -4,6 +4,8 @@ import { makeLiveRouter } from "../live/router.js";
 import { liveHub } from "../live/singleton.js";
 import { channelsRouter } from "../modules/channels/router.js";
 import { connectionsRouter } from "../modules/connections/router.js";
+import { makeLogsRouter } from "../modules/logs/router.js";
+import { logHub } from "../modules/logs/singleton.js";
 import { nodesRouter } from "../modules/nodes/router.js";
 import { settingsRouter } from "../modules/settings/router.js";
 import { sourcesRouter } from "../modules/sources/router.js";
@@ -19,6 +21,7 @@ export const appRouter = router({
   nodes: nodesRouter,
   channels: channelsRouter,
   connections: connectionsRouter,
+  logs: makeLogsRouter(logHub),
   settings: settingsRouter,
   live: makeLiveRouter(liveHub),
 });

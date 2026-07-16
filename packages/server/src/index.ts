@@ -11,6 +11,7 @@ import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
 import { log } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
+import { logHub } from "./modules/logs/singleton.js";
 import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
@@ -59,6 +60,10 @@ pruneExpiredSessions(db);
 // Use the panel-set mihomo secret (if any) before talking to the engine.
 setMihomoSecret(readMihomoSecret(db));
 
+// Capture the engine stream from boot rather than from the first /logs page visit.
+// This preserves useful events that happen before an administrator opens the UI.
+logHub.start();
+
 // Regenerate + reload the mihomo config from the current DB state on boot. Without
 // this, a restart leaves the engine on whatever config is on disk, which can drift
 // from the DB (the UI's source of truth): channels/rules show in the panel while the
@@ -106,6 +111,7 @@ server.listen(env.PORT, env.HOST, () =>
 
 // Graceful shutdown: stop the hub, then stop accepting new connections and exit
 const shutdown = () => {
+  logHub.stop();
   liveHub.stop();
   server.close(() => process.exit(0));
 };

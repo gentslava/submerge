@@ -6,6 +6,7 @@ import type {
   LogStreamMessage,
   LogUpstreamState,
 } from "@submerge/shared";
+import type { MihomoLogFrame } from "../../clients/mihomo.js";
 
 export const LOG_CAPACITY = 500;
 export const LOG_STREAM_EVENT = "message";
@@ -19,6 +20,7 @@ export interface LogDraft {
 
 interface LogHubDeps {
   now?: () => Date;
+  openLogStream?: (signal: AbortSignal) => Promise<AsyncGenerator<MihomoLogFrame>>;
 }
 
 type SnapshotMessage = Extract<LogStreamMessage, { type: "snapshot" }>;
@@ -28,14 +30,34 @@ type ClearMessage = Extract<LogStreamMessage, { type: "clear" }>;
 export class LogHub {
   readonly emitter = new EventEmitter();
   private readonly now: () => Date;
+  private readonly openLogStream?: LogHubDeps["openLogStream"];
   private readonly events: LogEvent[] = [];
   private sequence = 0;
   private upstream: LogUpstreamState = "connecting";
   private nextRetryAt: string | null = null;
+  private captureAbort: AbortController | null = null;
 
   constructor(deps: LogHubDeps = {}) {
     this.now = deps.now ?? (() => new Date());
+    this.openLogStream = deps.openLogStream;
     this.emitter.setMaxListeners(0);
+  }
+
+  start(): void {
+    if (this.captureAbort) return;
+    if (!this.openLogStream) throw new Error("LogHub requires openLogStream to start capture");
+    const controller = new AbortController();
+    this.captureAbort = controller;
+    this.setUpstream("connecting", null);
+    void this.pump(controller);
+  }
+
+  stop(): void {
+    const controller = this.captureAbort;
+    if (!controller) return;
+    this.captureAbort = null;
+    controller.abort();
+    this.setUpstream("connecting", null);
   }
 
   push(draft: LogDraft): LogEvent {
@@ -111,4 +133,51 @@ export class LogHub {
   private emit(message: LogStreamMessage): void {
     this.emitter.emit(LOG_STREAM_EVENT, message);
   }
+
+  private async pump(controller: AbortController): Promise<void> {
+    const openLogStream = this.openLogStream;
+    if (!openLogStream) return;
+    const stableStreamMs = 30_000;
+    let failures = 0;
+
+    while (this.captureAbort === controller && !controller.signal.aborted) {
+      this.setUpstream("connecting", null);
+      let openedAt: number | null = null;
+      try {
+        const stream = await openLogStream(controller.signal);
+        if (this.captureAbort !== controller || controller.signal.aborted) return;
+        openedAt = this.now().getTime();
+        this.setUpstream("live", null);
+        for await (const frame of stream) {
+          if (this.captureAbort !== controller || controller.signal.aborted) return;
+          this.push({ source: "mihomo", ...frame });
+        }
+      } catch {
+        // A failed open/read is handled by the same reconnect path as clean EOF.
+        // stop() aborts the generation and is intentionally not surfaced as an outage.
+        if (this.captureAbort !== controller || controller.signal.aborted) return;
+      }
+
+      if (this.captureAbort !== controller || controller.signal.aborted) return;
+      if (openedAt !== null && this.now().getTime() - openedAt >= stableStreamMs) failures = 0;
+      failures += 1;
+      const delayMs = Math.min(1000 * 2 ** (failures - 1), 30_000);
+      const nextRetryAt = new Date(this.now().getTime() + delayMs).toISOString();
+      this.setUpstream("reconnecting", nextRetryAt);
+      await waitForRetry(delayMs, controller.signal);
+    }
+  }
+}
+
+async function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, delayMs);
+    signal.addEventListener("abort", done, { once: true });
+  });
 }
