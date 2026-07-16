@@ -273,6 +273,46 @@ describe("mihomo client", () => {
       expect(frames).toEqual([{ level: "warning", message: "slow", fields: {} }]);
     });
 
+    it("redacts credentials and secret-bearing links from browser-visible messages", async () => {
+      mockFetch(() =>
+        ndjsonResponse([
+          `${JSON.stringify({
+            time: "15:33:20",
+            level: "warning",
+            message:
+              "provider https://user:pass@example.com/sub/token?key=value Authorization=Bearer abc.def.ghi Proxy-Authorization: Basic dXNlcjpwYXNz secret=raw-secret vless://uuid@example.com:443#node",
+            fields: [],
+          })}\n`,
+        ]),
+      );
+      const stream = await openLogStream(new AbortController().signal);
+      const frames = [];
+      for await (const frame of stream) frames.push(frame);
+
+      const serialized = JSON.stringify(frames);
+      expect(serialized).toContain("provider https://example.com/…");
+      expect(serialized).not.toContain("user:pass");
+      expect(serialized).not.toContain("/sub/token");
+      expect(serialized).not.toContain("key=value");
+      expect(serialized).not.toContain("abc.def.ghi");
+      expect(serialized).not.toContain("dXNlcjpwYXNz");
+      expect(serialized).not.toContain("raw-secret");
+      expect(serialized).not.toContain("uuid@example.com");
+    });
+
+    it("keeps ordinary routing messages readable", async () => {
+      const message = "[TCP] 192.168.1.40 → discord.com:443 via nl-ams-01";
+      mockFetch(() =>
+        ndjsonResponse([
+          `${JSON.stringify({ time: "15:33:20", level: "info", message, fields: [] })}\n`,
+        ]),
+      );
+      const stream = await openLogStream(new AbortController().signal);
+      const frames = [];
+      for await (const frame of stream) frames.push(frame);
+      expect(frames[0]?.message).toBe(message);
+    });
+
     it("skips isolated malformed structured frames", async () => {
       mockFetch(() =>
         ndjsonResponse([

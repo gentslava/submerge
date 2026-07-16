@@ -84,6 +84,100 @@
   padding-block: 0.6875rem;
 }
 
+/* Logs follow the compact 390px Pencil frame by default. The page itself owns
+   the available height so the timeline, rather than the whole application,
+   remains the scroll owner while its controls stay reachable. */
+.responsive-page--logs {
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.logs-action {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding-inline: 0;
+}
+
+.logs-action-label {
+  display: none;
+}
+
+.logs-filter-bar,
+.logs-filters {
+  width: 100%;
+}
+
+.logs-filters {
+  display: grid;
+  grid-template-columns: 8.875rem minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.logs-search {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.logs-source-select {
+  width: 8.875rem;
+  height: 2.125rem;
+}
+
+.logs-severity,
+.logs-severity .segmented-control {
+  width: 100%;
+}
+
+.logs-severity .segmented-control {
+  height: 2.125rem;
+  flex-wrap: nowrap;
+  gap: 0.125rem;
+  padding: 0.1875rem;
+}
+
+.logs-severity .segmented-control > button {
+  min-width: 0;
+  height: 1.75rem;
+  flex: 1 1 0;
+  padding: 0;
+  font-size: var(--text-micro);
+}
+
+.logs-count {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.logs-stream-state-label {
+  display: inline-flex;
+}
+
+.logs-list {
+  overscroll-behavior: contain;
+}
+
+.logs-row {
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 0.375rem 0.4375rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.logs-row .logs-time {
+  width: auto;
+}
+
+.logs-row .logs-source-badge,
+.logs-row > span:nth-child(2) {
+  width: auto;
+  padding-inline: 0.375rem;
+}
+
+.logs-message {
+  grid-column: 1 / -1;
+  line-height: 1.35;
+}
+
 .nodes-auto-param-content {
   display: grid;
   grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr);
@@ -102,6 +196,86 @@
 }
 
 @container app-page (min-width: 42rem) {
+  /* A query container cannot restyle itself. Add 10px to the compact 12px gap
+     on each following child to reach Pencil's 22px desktop rhythm. */
+  .responsive-page--logs > :not(:first-child) {
+    margin-block-start: 0.625rem;
+  }
+
+  .logs-action {
+    width: auto;
+    height: 2.5rem;
+    padding-inline: 0.875rem;
+  }
+
+  .logs-action-label {
+    display: inline;
+  }
+
+  .logs-filter-bar {
+    width: auto;
+    flex-wrap: nowrap;
+  }
+
+  .logs-filters {
+    display: flex;
+    width: auto;
+  }
+
+  .logs-search {
+    width: 17.5rem;
+  }
+
+  .logs-source-select {
+    width: 10.875rem;
+    height: 2.25rem;
+  }
+
+  .logs-severity,
+  .logs-severity .segmented-control {
+    width: auto;
+  }
+
+  .logs-severity .segmented-control {
+    height: auto;
+    gap: 0.1875rem;
+    padding: 0.1875rem;
+  }
+
+  .logs-severity .segmented-control > button {
+    height: auto;
+    flex: none;
+    padding: 0.4375rem 0.8125rem;
+    font-size: var(--text-sub);
+  }
+
+  .logs-count {
+    width: auto;
+    justify-content: flex-start;
+  }
+
+  .logs-stream-state-label {
+    display: none;
+  }
+
+  .logs-row {
+    grid-template-columns: 4.375rem 3.75rem 5.125rem minmax(0, 1fr);
+    grid-template-rows: auto;
+    gap: 0.875rem;
+    padding: 0.5625rem 1rem;
+  }
+
+  .logs-row .logs-source-badge,
+  .logs-row > span:nth-child(2) {
+    width: 100%;
+    padding-inline: 0;
+  }
+
+  .logs-message {
+    grid-column: auto;
+    line-height: normal;
+  }
+
   .traffic-chart-variant--compact {
     display: none;
   }

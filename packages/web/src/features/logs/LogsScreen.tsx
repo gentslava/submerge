@@ -1,7 +1,7 @@
 import type { LogEvent, LogLevel } from "@submerge/shared";
 import { useMutation } from "@tanstack/react-query";
 import { Pause, Play, Search, Trash2, WifiOff } from "lucide-react";
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useReducer, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
@@ -53,7 +53,7 @@ export function LogsScreen() {
   const emptyState = classifyLogEmpty(visible, filtered, filters);
 
   return (
-    <div className="responsive-page responsive-page--logs page-content logs-screen flex min-w-0 flex-col gap-[22px] px-4 pt-5 pb-8">
+    <div className="responsive-page responsive-page--logs page-content logs-screen flex h-full min-h-0 min-w-0 flex-col px-4 pb-8">
       <header className="logs-header flex min-w-0 items-center justify-between gap-4">
         <div className="min-w-0 flex flex-col gap-[5px]">
           <h1 className="logs-title text-page-title-compact text-text-primary">Логи</h1>
@@ -95,7 +95,7 @@ export function LogsScreen() {
           <label htmlFor="logs-search" className="sr-only">
             Поиск в логах
           </label>
-          <div className="logs-search flex h-9 w-[280px] min-w-0 items-center gap-2 rounded-md border border-border-default bg-input px-3">
+          <div className="logs-search flex h-9 min-w-0 items-center gap-2 rounded-md border border-border-default bg-input px-3">
             <Search aria-hidden="true" size={15} className="shrink-0 text-text-tertiary" />
             <input
               id="logs-search"
@@ -122,26 +122,46 @@ export function LogsScreen() {
                 source: event.target.value as LogFilters["source"],
               }))
             }
-            className="w-[174px]"
+            className="logs-source-select"
           >
             <option value="all">Все источники</option>
             <option value="mihomo">mihomo</option>
             <option value="submerge">submerge</option>
           </Select>
 
-          <Segmented
-            options={LEVEL_OPTIONS}
-            value={filters.level}
-            onChange={(level) =>
-              setFilters((current) => ({ ...current, level: level as LogFilters["level"] }))
-            }
-            aria-label="Уровень"
-          />
+          <div className="logs-severity min-w-0">
+            <Segmented
+              options={LEVEL_OPTIONS}
+              value={filters.level}
+              onChange={(level) =>
+                setFilters((current) => ({ ...current, level: level as LogFilters["level"] }))
+              }
+              aria-label="Уровень"
+            />
+          </div>
         </div>
         <div className="logs-count flex shrink-0 items-center gap-2 font-mono text-meta text-text-tertiary">
+          <span className="logs-stream-state-label items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                state.connection === "live" ? "bg-online" : "bg-slow",
+              )}
+            />
+            {state.connection === "live"
+              ? "live"
+              : state.connection === "connecting"
+                ? "подключение"
+                : "переподключение"}
+          </span>
           <span>{state.events.length} из 500</span>
           {state.paused && state.unseen > 0 ? (
-            <span className="rounded-full bg-accent-bg px-2 py-1 text-accent-text">
+            <span
+              role="status"
+              aria-live="polite"
+              className="rounded-full bg-accent-bg px-2 py-1 text-accent-text"
+            >
               {state.unseen} новых
             </span>
           ) : null}
@@ -149,7 +169,10 @@ export function LogsScreen() {
       </div>
 
       {state.connection === "reconnecting" ? (
-        <div className="logs-reconnecting flex items-center gap-2.5 rounded-lg border border-slow bg-slow-bg px-3 py-2.5 text-sub text-slow">
+        <div
+          role="status"
+          className="logs-reconnecting flex items-center gap-2.5 rounded-lg border border-slow bg-slow-bg px-3 py-2.5 text-sub text-slow"
+        >
           <WifiOff aria-hidden="true" size={16} className="shrink-0" />
           <span>
             Переподключаем поток · показываем последние события
@@ -166,7 +189,7 @@ export function LogsScreen() {
       <section
         aria-label="События mihomo и submerge"
         aria-busy={state.connection === "connecting"}
-        className="logs-list min-h-[240px] min-w-0 overflow-hidden rounded-lg border border-border-subtle bg-surface"
+        className="logs-list min-h-0 min-w-0 flex-1 overflow-y-auto rounded-lg border border-border-subtle bg-surface"
       >
         {state.connection === "connecting" && state.cursor === null ? (
           <LogMessageState>Подключаем поток событий…</LogMessageState>
@@ -197,7 +220,7 @@ export function LogsScreen() {
   );
 }
 
-function LogMessageState({ children }: { children: React.ReactNode }) {
+function LogMessageState({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 p-6 text-center text-sub text-text-secondary">
       {children}
@@ -208,11 +231,11 @@ function LogMessageState({ children }: { children: React.ReactNode }) {
 function LogRow({ event }: { event: LogEvent }) {
   return (
     <li className="logs-row grid min-w-0 grid-cols-[70px_60px_82px_minmax(0,1fr)] items-center gap-3.5 border-b border-border-subtle px-4 py-[9px] last:border-b-0">
-      <time dateTime={event.time} className="font-mono text-meta text-text-tertiary">
+      <time dateTime={event.time} className="logs-time font-mono text-meta text-text-tertiary">
         {formatTime(event.time)}
       </time>
       <LevelBadge level={event.level} />
-      <span className="inline-flex h-[19px] w-[82px] items-center justify-center rounded-sm bg-hover px-1 font-mono text-micro font-semibold text-text-secondary">
+      <span className="logs-source-badge inline-flex h-[19px] items-center justify-center rounded-sm bg-hover px-1 font-mono text-micro font-semibold text-text-secondary">
         {event.source.toUpperCase()}
       </span>
       <p className="logs-message min-w-0 break-words font-mono text-[12.5px] text-text-secondary">

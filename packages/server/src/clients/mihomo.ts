@@ -257,6 +257,33 @@ export interface MihomoLogFrame {
 // narrow: arbitrary future fields must not silently become browser-visible data.
 const MIHOMO_LOG_FIELD_ALLOWLIST = new Set(["host", "network", "port", "scope", "status"]);
 
+const SECRET_LINK_PATTERN =
+  /\b(?:amneziawg|happ|hysteria2|ss|trojan|tuic|vless|vmess|vpn|wireguard):\/\/\S+/giu;
+const HTTP_URL_PATTERN = /https?:\/\/[^\s"'<>]+/giu;
+const BEARER_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/giu;
+const AUTHORIZATION_PATTERN =
+  /\b(authorization|proxy-authorization|auth)\s*[:=]\s*(?:Bearer|Basic)\s+\S+/giu;
+const SECRET_ASSIGNMENT_PATTERN =
+  /\b(authorization|auth|password|passwd|secret|token|api[_-]?key|x-hwid|hwid)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/giu;
+const JWT_PATTERN = /\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/gu;
+
+function redactLogText(value: string): string {
+  return value
+    .replace(SECRET_LINK_PATTERN, "[LINK REDACTED]")
+    .replace(HTTP_URL_PATTERN, (match) => {
+      try {
+        const url = new URL(match);
+        return `${url.origin}/…`;
+      } catch {
+        return "[URL REDACTED]";
+      }
+    })
+    .replace(BEARER_PATTERN, "Bearer [REDACTED]")
+    .replace(AUTHORIZATION_PATTERN, "$1=[REDACTED]")
+    .replace(SECRET_ASSIGNMENT_PATTERN, "$1=[REDACTED]")
+    .replace(JWT_PATTERN, "[TOKEN REDACTED]");
+}
+
 function parseLogLine(line: string): MihomoLogFrame | null {
   let json: unknown;
   try {
@@ -278,7 +305,8 @@ function parseLogLine(line: string): MihomoLogFrame | null {
       continue;
     }
     if (typeof field.value === "number" && !Number.isFinite(field.value)) continue;
-    fields[field.key] = field.value;
+    fields[field.key] =
+      typeof field.value === "string" ? redactLogText(field.value).slice(0, 1024) : field.value;
   }
 
   return {
@@ -286,7 +314,7 @@ function parseLogLine(line: string): MihomoLogFrame | null {
       parsed.data.level === "warn" || parsed.data.level === "warning"
         ? "warning"
         : parsed.data.level,
-    message: parsed.data.message,
+    message: redactLogText(parsed.data.message).slice(0, 16_384),
     fields,
   };
 }
