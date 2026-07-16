@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeHapp } from "./happDecoder.js";
+import { decodeHapp, healthHapp } from "./happDecoder.js";
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Promise<Response> | Response) {
   vi.stubGlobal("fetch", vi.fn(handler));
@@ -11,9 +11,80 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     ...init,
   });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("happDecoder client", () => {
+  it("checks /health with GET and parses only {ok:true}", async () => {
+    const caller = new AbortController();
+    let seenSignal: AbortSignal | undefined;
+    mockFetch((url, init) => {
+      expect(url).toMatch(/\/health$/);
+      expect(init?.method ?? "GET").toBe("GET");
+      seenSignal = init?.signal ?? undefined;
+      return json({ ok: true, ignored: "field" });
+    });
+
+    await expect(healthHapp(caller.signal)).resolves.toEqual({ ok: true });
+    expect(seenSignal).not.toBe(caller.signal);
+    caller.abort();
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  it.each([
+    ["ok:false", json({ ok: false })],
+    ["malformed JSON", new Response("not-json", { status: 200 })],
+    ["HTTP 500", json({ ok: true }, { status: 500 })],
+  ])("rejects an invalid health response: %s", async (_name, response) => {
+    mockFetch(() => response);
+    await expect(healthHapp()).rejects.toThrow(/happ-decoder/i);
+  });
+
+  it("propagates caller abort during a health check", async () => {
+    const controller = new AbortController();
+    mockFetch(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        }),
+    );
+
+    const pending = healthHapp(controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("uses the autonomous health timeout when no caller signal is supplied", async () => {
+    const timeout = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeout.signal);
+    try {
+      mockFetch(
+        (_url, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+              once: true,
+            });
+          }),
+      );
+
+      const pending = healthHapp();
+      expect(timeoutSpy).toHaveBeenCalledWith(5000);
+      timeout.abort(new DOMException("deadline", "TimeoutError"));
+      await expect(pending).rejects.toThrow(/happ-decoder health check/i);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
+  it("rejects an unreachable health sidecar", async () => {
+    mockFetch(() => Promise.reject(new Error("ECONNREFUSED")));
+    await expect(healthHapp()).rejects.toThrow(/happ-decoder/i);
+  });
+
   it("posts {link,hwid} and parses ok response", async () => {
     let sentBody: unknown;
     mockFetch((url, init) => {

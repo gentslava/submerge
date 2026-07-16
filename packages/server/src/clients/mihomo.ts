@@ -12,6 +12,8 @@ import { env } from "../config/env.js";
 
 const TIMEOUT_MS = 5000;
 const TEST_URL = "https://www.gstatic.com/generate_204";
+const TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace";
+const DIAGNOSTIC_BODY_MAX_BYTES = 8192;
 
 // The mihomo API secret can be set/rotated from Settings; the live value lives here
 // (init from env, overridden at boot from the DB, updated after a rotation reload).
@@ -68,6 +70,54 @@ export function historyForUrl(
 const delayResponseSchema = z.object({ delay: z.number().nonnegative() });
 export type DelayResponse = z.infer<typeof delayResponseSchema>;
 
+const mihomoVersionSchema = z.object({ version: z.string().min(1) });
+export interface MihomoVersion {
+  version: string;
+}
+
+const nullableBooleanSchema = z
+  .boolean()
+  .nullish()
+  .transform((value) => value ?? null);
+const runtimeConfigResponseSchema = z
+  .looseObject({
+    mode: z
+      .string()
+      .nullish()
+      .transform((value) => value ?? null),
+    dns: z.looseObject({ enable: nullableBooleanSchema }).nullish(),
+    ipv6: nullableBooleanSchema,
+    tun: z.looseObject({ enable: nullableBooleanSchema }).nullish(),
+  })
+  .transform((value) => ({
+    mode: value.mode,
+    dns: value.dns?.enable ?? null,
+    ipv6: value.ipv6,
+    tun: value.tun?.enable ?? null,
+  }));
+export interface MihomoRuntimeConfig {
+  mode: string | null;
+  dns: boolean | null;
+  ipv6: boolean | null;
+  tun: boolean | null;
+}
+
+const ipAddressSchema = z.union([z.ipv4(), z.ipv6()]);
+const externalIpTraceSchema = z.object({
+  ip: ipAddressSchema,
+  country: z.string().min(1).nullable(),
+  colo: z.string().min(1).nullable(),
+});
+export interface ExternalIpTrace {
+  ip: string;
+  country: string | null;
+  colo: string | null;
+}
+
+export interface ProxyHttpProbe {
+  status: number;
+}
+
 // /connections carries cumulative byte counters (plus a large connections array we
 // don't read — unknown keys are stripped by the schema).
 const connectionsTotalsSchema = z.object({ downloadTotal: z.number(), uploadTotal: z.number() });
@@ -107,12 +157,37 @@ const connectionsResponseSchema = z.object({
     .transform((value) => value ?? []),
 });
 
-function call(path: string, init: RequestInit = {}): Promise<Response> {
+function boundedSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number = TIMEOUT_MS,
+): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+function call(
+  path: string,
+  init: RequestInit = {},
+  signal?: AbortSignal,
+  timeoutMs: number = TIMEOUT_MS,
+): Promise<Response> {
   return fetch(`${env.MIHOMO_API}${path}`, {
     ...init,
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: boundedSignal(signal, timeoutMs),
     headers: { ...(init.headers ?? {}), Authorization: `Bearer ${mihomoSecret}` },
   });
+}
+
+export async function getVersion(signal?: AbortSignal): Promise<MihomoVersion> {
+  const r = await call("/version", {}, signal);
+  if (!r.ok) throw new Error(`mihomo /version returned HTTP ${r.status}`);
+  return mihomoVersionSchema.parse(await r.json());
+}
+
+export async function getRuntimeConfig(signal?: AbortSignal): Promise<MihomoRuntimeConfig> {
+  const r = await call("/configs", {}, signal);
+  if (!r.ok) throw new Error(`mihomo /configs returned HTTP ${r.status}`);
+  return runtimeConfigResponseSchema.parse(await r.json());
 }
 
 export async function getProxies(): Promise<ProxiesResponse> {
@@ -123,11 +198,121 @@ export async function getProxies(): Promise<ProxiesResponse> {
 
 // `url` defaults to the built-in probe endpoint; callers pass the AUTO group's
 // configured test URL so the chart/ping measure the same target AUTO selects on.
-export async function getDelay(name: string, url: string = TEST_URL): Promise<DelayResponse> {
-  const q = `timeout=3000&url=${encodeURIComponent(url)}`;
-  const r = await call(`/proxies/${encodeURIComponent(name)}/delay?${q}`);
+export interface DelayOptions {
+  timeoutMs?: number;
+  expected?: "200-399";
+  signal?: AbortSignal;
+}
+
+export async function getDelay(
+  name: string,
+  url: string = TEST_URL,
+  options: DelayOptions = {},
+): Promise<DelayResponse> {
+  const timeoutMs = options.timeoutMs ?? 3000;
+  const query = new URLSearchParams({ timeout: String(timeoutMs), url });
+  if (options.expected) query.set("expected", options.expected);
+  const r = await call(
+    `/proxies/${encodeURIComponent(name)}/delay?${query.toString()}`,
+    {},
+    options.signal,
+    timeoutMs,
+  );
   if (!r.ok) throw new Error(`mihomo delay for "${name}" returned HTTP ${r.status}`);
   return delayResponseSchema.parse(await r.json());
+}
+
+interface ProxyBody {
+  dump(options?: { limit: number; signal?: AbortSignal }): Promise<void>;
+  [Symbol.asyncIterator](): AsyncIterator<Uint8Array>;
+}
+
+async function readBoundedText(body: ProxyBody, maxBytes: number): Promise<string> {
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  for await (const chunk of body) {
+    bytes += chunk.byteLength;
+    if (bytes > maxBytes) throw new Error("proxy response exceeded diagnostic body limit");
+    text += decoder.decode(chunk, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+async function requestThroughProxy(
+  url: string,
+  signal?: AbortSignal,
+): Promise<{
+  statusCode: number;
+  body: ProxyBody;
+  signal: AbortSignal;
+  destroy: () => Promise<void>;
+}> {
+  const parsed = new URL(url);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("diagnostic proxy requests require HTTP(S)");
+  }
+  const agent = new ProxyAgent(env.MIHOMO_PROXY);
+  const requestSignal = boundedSignal(signal);
+  try {
+    const response = await request(parsed, {
+      dispatcher: agent,
+      signal: requestSignal,
+      headers: { "user-agent": "submerge-diagnostics" },
+    });
+    return {
+      statusCode: response.statusCode,
+      body: response.body,
+      signal: requestSignal,
+      destroy: () => agent.destroy(),
+    };
+  } catch (error) {
+    await agent.destroy();
+    throw error;
+  }
+}
+
+function parseExternalIpTrace(raw: string): ExternalIpTrace {
+  const fields = new Map<string, string>();
+  for (const line of raw.split(/\r?\n/u)) {
+    const separator = line.indexOf("=");
+    if (separator <= 0) continue;
+    fields.set(line.slice(0, separator), line.slice(separator + 1));
+  }
+  return externalIpTraceSchema.parse({
+    ip: fields.get("ip"),
+    country: fields.get("loc") || null,
+    colo: fields.get("colo") || null,
+  });
+}
+
+export async function getExternalIpTrace(signal?: AbortSignal): Promise<ExternalIpTrace> {
+  const response = await requestThroughProxy(TRACE_URL, signal);
+  try {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      await response.body.dump({
+        limit: DIAGNOSTIC_BODY_MAX_BYTES,
+        signal: response.signal,
+      });
+      throw new Error(`Cloudflare trace returned HTTP ${response.statusCode}`);
+    }
+    return parseExternalIpTrace(await readBoundedText(response.body, DIAGNOSTIC_BODY_MAX_BYTES));
+  } finally {
+    await response.destroy();
+  }
+}
+
+export async function probeThroughProxy(
+  url: string,
+  signal?: AbortSignal,
+): Promise<ProxyHttpProbe> {
+  const response = await requestThroughProxy(url, signal);
+  try {
+    await response.body.dump({ limit: DIAGNOSTIC_BODY_MAX_BYTES, signal: response.signal });
+    return { status: response.statusCode };
+  } finally {
+    await response.destroy();
+  }
 }
 
 // Cumulative bytes received/sent since mihomo started (downloadTotal/uploadTotal).
