@@ -20,7 +20,7 @@ import {
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { excludedNodes, sources } from "../../db/schema.js";
-import { log } from "../../log.js";
+import { operationalLog } from "../../log.js";
 import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
@@ -170,7 +170,7 @@ export async function applyConfig(
   try {
     await reloadConfig(targetPath);
   } catch (err) {
-    log.warn({ err }, "config written but mihomo reload failed — applies on next reload");
+    operationalLog("config-reload-failed", {}, err);
     return { nodes: inventory.length, applied: false };
   }
   return { nodes: inventory.length, applied: true };

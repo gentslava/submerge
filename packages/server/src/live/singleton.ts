@@ -1,7 +1,7 @@
 import { DEFAULT_POLL_INTERVAL } from "@submerge/shared";
 import { getDelay, getProxies, getTotals, streamTraffic } from "../clients/mihomo.js";
 import { db } from "../db/client.js";
-import { log } from "../log.js";
+import { operationalLog } from "../log.js";
 import { registry } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
 import { recordPassiveBandwidth } from "../modules/nodes/passiveBandwidth.js";
@@ -57,7 +57,7 @@ export const liveHub = new LiveHub({
     await recordPassiveBandwidth(db, Date.now());
   },
   // The hub reports once per outage streak, so this can't flood the log.
-  onError: (scope, err) => log.warn({ scope, err }, "mihomo live %s failed", scope),
+  onError: (scope, err) => operationalLog("mihomo-live-failed", { scope }, err),
   // mihomo restarting under submerge (image update, crash) loses its config —
   // the boot-time apply only covers a submerge restart, so a genuine engine
   // reconnect also needs one. Best-effort: the hub already guards this call.

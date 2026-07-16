@@ -1,0 +1,79 @@
+import type { LogLevel } from "@submerge/shared";
+import type { LogDraft } from "./hub.js";
+
+export type OperationalEventKey =
+  | "server-listening"
+  | "boot-config-apply-failed"
+  | "config-reload-failed"
+  | "secret-rotation-write-failed"
+  | "mihomo-live-failed";
+
+interface OperationalEventDefinition {
+  level: LogLevel;
+  uiMessage: string;
+  stdoutMessage: string;
+  fields: (input: Record<string, unknown>) => LogDraft["fields"];
+}
+
+const noFields = (): undefined => undefined;
+
+const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
+  "server-listening": {
+    level: "info",
+    uiMessage: "Сервер submerge запущен",
+    stdoutMessage: "submerge server listening",
+    fields: (input) => {
+      const fields: NonNullable<LogDraft["fields"]> = {};
+      if (typeof input.host === "string") fields.host = input.host;
+      if (typeof input.port === "number" && Number.isFinite(input.port)) fields.port = input.port;
+      return Object.keys(fields).length > 0 ? fields : undefined;
+    },
+  },
+  "boot-config-apply-failed": {
+    level: "warning",
+    uiMessage: "Не удалось применить конфигурацию при запуске",
+    stdoutMessage: "boot config apply failed",
+    fields: noFields,
+  },
+  "config-reload-failed": {
+    level: "warning",
+    uiMessage: "Конфигурация записана, но mihomo не перезагрузил её",
+    stdoutMessage: "config written but mihomo reload failed — applies on next reload",
+    fields: noFields,
+  },
+  "secret-rotation-write-failed": {
+    level: "warning",
+    uiMessage: "Не удалось записать конфигурацию после смены секрета mihomo",
+    stdoutMessage: "config write after secret rotation failed",
+    fields: noFields,
+  },
+  "mihomo-live-failed": {
+    level: "warning",
+    uiMessage: "Сбой получения данных mihomo",
+    stdoutMessage: "mihomo live failed",
+    fields: (input) =>
+      input.scope === "poll" || input.scope === "traffic" ? { scope: input.scope } : undefined,
+  },
+};
+
+export interface OperationalEvent {
+  draft: LogDraft;
+  stdoutMessage: string;
+}
+
+export function makeOperationalEvent(
+  key: OperationalEventKey,
+  input: Record<string, unknown> = {},
+): OperationalEvent {
+  const definition = definitions[key];
+  const fields = definition.fields(input);
+  return {
+    stdoutMessage: definition.stdoutMessage,
+    draft: {
+      source: "submerge",
+      level: definition.level,
+      message: definition.uiMessage,
+      ...(fields ? { fields } : {}),
+    },
+  };
+}

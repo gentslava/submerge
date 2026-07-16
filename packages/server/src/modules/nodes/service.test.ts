@@ -14,6 +14,7 @@ import * as yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { channels, sources } from "../../db/schema.js";
+import { operationalLog } from "../../log.js";
 import { setPool } from "../channels/pool.js";
 import {
   createChannel,
@@ -33,6 +34,11 @@ import {
   testDelay,
   toNodeView,
 } from "./service.js";
+
+vi.mock("../../log.js", () => ({
+  log: { warn: vi.fn() },
+  operationalLog: vi.fn(),
+}));
 
 const px = (name: string, server: string, extra: Partial<ProxyConfig> = {}): ProxyConfig => ({
   name,
@@ -104,7 +110,10 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     ...init,
   });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+});
 
 // mihomo config.yaml shape used only by these tests — narrow enough to avoid
 // `any` at each call site (the rest of the doc is untyped and not asserted on).
@@ -271,6 +280,7 @@ describe("applyConfig", () => {
     const res = await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
     expect(res.applied).toBe(false);
     expect(res.nodes).toBe(1);
+    expect(operationalLog).toHaveBeenCalledWith("config-reload-failed", {}, expect.any(Error));
     // the file must be written regardless — it applies on the engine's next reload
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
