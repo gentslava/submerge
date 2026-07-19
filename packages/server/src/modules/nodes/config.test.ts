@@ -87,9 +87,16 @@ describe("groupProxies", () => {
       { kind: "group", base: "A", members: [px("A", "1.1.1.1"), px("A", "2.2.2.2")] },
     ]);
   });
-  it("drops a true duplicate (same server:port); leftover single stays single", () => {
+  it("drops a fully identical duplicate; leftover single stays single", () => {
     const r = groupProxies([px("A", "1.1.1.1"), px("A", "1.1.1.1")]);
     expect(r).toEqual([{ kind: "single", proxy: px("A", "1.1.1.1") }]);
+  });
+  it("keeps same-address profiles distinct when their credentials differ", () => {
+    const first = { ...px("A", "1.1.1.1"), uuid: "first" };
+    const second = { ...px("A", "1.1.1.1"), uuid: "second" };
+    expect(groupProxies([first, second])).toEqual([
+      { kind: "group", base: "A", members: [first, second] },
+    ]);
   });
   it("places a group at the position of its first member", () => {
     const r = groupProxies([px("A", "1.1.1.1"), px("B"), px("A", "2.2.2.2")]);

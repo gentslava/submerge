@@ -8,6 +8,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { channelPool, channels, sources } from "../../db/schema.js";
+import { sameProxy } from "../../lib/proxy-identity.js";
 
 // mihomo group name a channel's policy targets: the Default channel keeps the
 // existing "AUTO" group (Phase 1/2 config is unchanged); every other channel gets
@@ -65,11 +66,8 @@ export function resolveChannelProxies(
   if (pool.length === 0) return allProxies;
 
   const result: ProxyConfig[] = [];
-  const seenKeys = new Set<string>();
   const add = (proxy: ProxyConfig): void => {
-    const key = `${proxy.server}:${proxy.port}`;
-    if (seenKeys.has(key)) return;
-    seenKeys.add(key);
+    if (result.some((candidate) => sameProxy(candidate, proxy))) return;
     result.push(proxy);
   };
 

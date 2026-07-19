@@ -243,6 +243,29 @@ describe("buildMultiConfig — multiple channels", () => {
     expect(media).toBeDefined();
   });
 
+  it("does not replace a routed profile with an earlier same-address profile", () => {
+    const first = { ...px("First", "shared.example"), uuid: "first" };
+    const routed = { ...px("Routed", "shared.example"), uuid: "routed" };
+    const other = px("Other", "other.example");
+    const cfg = parse(
+      buildMultiConfig([
+        channel({ proxies: [first, routed, other] }),
+        channel({
+          id: "media",
+          groupName: "ch-media",
+          isDefault: false,
+          policy: sticky,
+          domains: ["youtube.com"],
+          proxies: [routed, other],
+        }),
+      ]),
+    );
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const media = (cfg["proxy-groups"] as any[]).find((group) => group.name === "ch-media");
+
+    expect(media.proxies).toEqual(["Routed", "Other"]);
+  });
+
   it("keeps same-name collapse per channel while still sharing endpoints", () => {
     const x1 = px("X", "x1.com");
     const x2 = px("X", "x2.com");

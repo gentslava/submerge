@@ -179,8 +179,8 @@ describe("resolveChannelProxies", () => {
     expect(resolveChannelProxies(db, ch, allProxies)).toEqual([proxy("A", "a.example", 443)]);
   });
 
-  it("de-dupes by server:port across source+node members, preserving first-seen order", () => {
-    // This source redundantly carries a proxy with the same server:port as node ref "A".
+  it("de-dupes an identical proxy across source+node members, preserving first-seen order", () => {
+    // This source redundantly carries the same proxy as node ref "A".
     const sourceProxies = [proxy("A", "a.example", 443), proxy("D", "d.example", 8080)];
     const src = db
       .insert(sources)
@@ -197,5 +197,21 @@ describe("resolveChannelProxies", () => {
       proxy("D", "d.example", 8080),
       proxy("B", "b.example", 443),
     ]);
+  });
+
+  it("retains different profiles that share server:port", () => {
+    const first = { ...proxy("First", "shared.example", 443), uuid: "first" };
+    const second = { ...proxy("Second", "shared.example", 443), uuid: "second" };
+    const src = db
+      .insert(sources)
+      .values({ kind: "vless", value: "vless://shared", label: "Shared", proxies: [first] })
+      .returning()
+      .get();
+    setPool(db, "ch1", [
+      { kind: "source", ref: String(src.id) },
+      { kind: "node", ref: "Second" },
+    ]);
+
+    expect(resolveChannelProxies(db, ch, [first, second])).toEqual([first, second]);
   });
 });

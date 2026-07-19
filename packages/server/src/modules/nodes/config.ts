@@ -6,13 +6,14 @@ import {
   DEFAULT_AUTO_TOLERANCE,
   type Proxy as ProxyConfig,
 } from "@submerge/shared";
+import { sameProxy } from "../../lib/proxy-identity.js";
 
 export type TopLevelEntry =
   | { kind: "single"; proxy: ProxyConfig }
   | { kind: "group"; base: string; members: ProxyConfig[] };
 
 // Group raw proxies by exact name (pre-dedupe). Within a same-name set, drop
-// true duplicates sharing a server:port. A name with ≥2 distinct endpoints
+// true duplicates with an identical full config. A name with ≥2 distinct profiles
 // becomes a collapsed group; otherwise it stays a single proxy. Order follows
 // each name's first appearance.
 export function groupProxies(proxies: ProxyConfig[]): TopLevelEntry[] {
@@ -23,7 +24,7 @@ export function groupProxies(proxies: ProxyConfig[]): TopLevelEntry[] {
     if (!bucket) {
       byName.set(p.name, [p]);
       order.push(p.name);
-    } else if (!bucket.some((q) => q.server === p.server && q.port === p.port)) {
+    } else if (!bucket.some((q) => sameProxy(q, p))) {
       bucket.push(p);
     }
   }

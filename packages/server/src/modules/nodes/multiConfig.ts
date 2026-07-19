@@ -15,6 +15,7 @@ import {
 } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
+import { sameProxy } from "../../lib/proxy-identity.js";
 import { dedupeNames, groupProxies, type UrlTestTuning, urlTestTuning } from "./config.js";
 
 interface MatcherConfigInput {
@@ -73,8 +74,6 @@ interface ChannelBuild {
   topLevel: TopLevelRef[];
 }
 
-const endpointKey = (p: ProxyConfig): string => `${p.server}:${p.port}`;
-
 // A collapsed subgroup name must be globally unique. The default channel keeps
 // the bare base name (byte-identity); every other channel is namespaced by its
 // group name so two channels collapsing the same base can't collide.
@@ -95,10 +94,10 @@ function allocateSubGroupName(
 }
 
 // Raw proxy names that will land in the flat proxy list untouched by subgroup
-// collapsing — a channel's own "single" entry, UNLESS its endpoint was already
+// collapsing — a channel's own "single" entry, UNLESS its exact proxy was already
 // claimed by an earlier channel (then it's a shared reference that keeps
 // whichever name the earlier claim gave it, contributing no new flat entry —
-// see `claim()` below). Mirrors the real endpoint-claiming order (`channels`
+// see `claim()` below). Mirrors the real proxy-claiming order (`channels`
 // here must already be in the same Default-first order as the main loop) so
 // this precomputation agrees with what the main loop will actually produce.
 // A collapsed group never contributes its base name to `flat` either way —
@@ -110,19 +109,20 @@ function allocateSubGroupName(
 // some channel's bare proxy will use.
 function collectSingleProxyNames(orderedChannels: ProxyChannelConfigInput[]): Set<string> {
   const names = new Set<string>();
-  const claimed = new Set<string>(); // endpoint keys claimed by channels processed so far
+  const claimed: ProxyConfig[] = [];
+  const remember = (proxy: ProxyConfig): void => {
+    if (!claimed.some((candidate) => sameProxy(candidate, proxy))) claimed.push(proxy);
+  };
   for (const channel of orderedChannels) {
-    const priorEndpoints = new Set(claimed); // frozen at channel start, mirrors buildMultiConfig
     for (const entry of groupProxies(channel.proxies)) {
       if (entry.kind === "single") {
-        const key = endpointKey(entry.proxy);
-        if (!priorEndpoints.has(key)) {
+        if (!claimed.some((candidate) => sameProxy(candidate, entry.proxy))) {
           names.add(entry.proxy.name);
-          claimed.add(key);
         }
+        remember(entry.proxy);
         continue;
       }
-      for (const member of entry.members) claimed.add(endpointKey(member));
+      for (const member of entry.members) remember(member);
     }
   }
   return names;
@@ -283,7 +283,7 @@ export function buildMultiConfig(
   const ordered = defaultChannel ? [defaultChannel, ...nonDefaultProxy] : [...nonDefaultProxy];
 
   const flat: ProxyConfig[] = []; // global proxy definitions, pre-dedupe
-  const endpointToIndex = new Map<string, number>();
+  const claimed: Array<{ proxy: ProxyConfig; flatIndex: number }> = [];
   // One namespace for all group names (mihomo requires them unique). Seed with
   // the reserved names, every channel's own group name, and every channel's
   // bare proxy names — the joint-uniqueness guard (see collectSingleProxyNames).
@@ -296,18 +296,14 @@ export function buildMultiConfig(
 
   for (const channel of ordered) {
     const tuning = urlTestTuning(channel.policy);
-    // Only endpoints defined by EARLIER channels may be shared. Within a single
-    // channel, two differently-named nodes on the same server:port stay separate
-    // (matching the established single-channel naming behavior).
-    const priorEndpoints = new Set(endpointToIndex.keys());
     const topLevel: TopLevelRef[] = [];
 
     const claim = (proxy: ProxyConfig, name: string): number => {
-      const key = endpointKey(proxy);
-      if (priorEndpoints.has(key)) return endpointToIndex.get(key) as number;
+      const existing = claimed.find((candidate) => sameProxy(candidate.proxy, proxy));
+      if (existing) return existing.flatIndex;
       const index = flat.length;
       flat.push({ ...proxy, name });
-      if (!endpointToIndex.has(key)) endpointToIndex.set(key, index);
+      claimed.push({ proxy, flatIndex: index });
       return index;
     };
 
