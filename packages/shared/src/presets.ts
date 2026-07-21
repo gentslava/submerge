@@ -82,6 +82,7 @@ export const CHANNEL_PRESETS = [
   { id: "codesandbox", label: "CodeSandbox", category: "Разработка" },
   { id: "stackblitz", label: "StackBlitz", category: "Разработка" },
   { id: "sourcegraph", label: "Sourcegraph", category: "Разработка" },
+  { id: "pencil", label: "Pencil", category: "Разработка" },
   { id: "microsoft365", label: "Microsoft 365", category: "Продуктивность" },
   { id: "googledrive", label: "Google Drive", category: "Продуктивность" },
   { id: "notion", label: "Notion", category: "Продуктивность" },
@@ -238,6 +239,7 @@ export const PRESET_DOMAINS: Record<PresetId, string[]> = {
   codesandbox: ["codesandbox.io", "codesandbox.dev"],
   stackblitz: ["stackblitz.com", "webcontainer.io"],
   sourcegraph: ["sourcegraph.com"],
+  pencil: ["pencil.dev", "pen.dev"],
   microsoft365: [
     "office.com",
     "office365.com",
