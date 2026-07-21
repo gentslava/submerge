@@ -151,7 +151,7 @@ Choose option B: retain controller-owned selection.
 Introduce a `SourceRefreshCoordinator`. Both the tRPC mutation and scheduler call:
 
 ```ts
-refresh(sourceId, { trigger: "manual" | "scheduled" }): Promise<RefreshResult>
+refresh(sourceId, trigger: "manual" | "scheduled" | "enable"): Promise<RefreshResult>
 ```
 
 The coordinator provides:
@@ -186,8 +186,9 @@ delay = min(6 hours, 5 minutes × 3^(consecutiveFailures - 1))
 
 - A manual refresh ignores backoff, but still updates the persisted result and next due
   time.
-- Disabled sources are still refreshed. `enabled` controls routing, not whether a saved
-  subscription stays current.
+- Disabled sources are not refreshed in the background. Enabling a saved refreshable
+  source first performs an immediate refresh while it remains outside routing; only a
+  successful refresh activates it. The normal provider schedule starts from that success.
 
 ### 4.4 Conditional HTTP and safe validation
 

@@ -1,5 +1,6 @@
 import type { Source, SourceKind, SubscriptionMeta } from "@submerge/shared";
 import { eq } from "drizzle-orm";
+import { HappDecoderError } from "../../clients/happDecoder.js";
 import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
 
@@ -28,7 +29,31 @@ export function isRefreshableSource(kind: SourceKind, subUrl: string | null): bo
   return kind === "happ" || (kind === "sub" && subUrl !== null);
 }
 
-export type SourceRefreshTrigger = "manual" | "scheduled";
+export type SourceRefreshTrigger = "manual" | "scheduled" | "enable";
+export type SourceRefreshStage =
+  | "fetch"
+  | "decode"
+  | "validate"
+  | "database"
+  | "config-write"
+  | "unknown";
+
+export class SourceRefreshStageError extends Error {
+  readonly stage: SourceRefreshStage;
+
+  constructor(stage: SourceRefreshStage, cause: unknown) {
+    super(cause instanceof Error ? cause.message : "source refresh failed", { cause });
+    this.name = "SourceRefreshStageError";
+    this.stage = stage;
+  }
+}
+
+export class SourceRefreshSkippedError extends Error {
+  constructor(sourceId: number) {
+    super(`scheduled refresh skipped for disabled source ${sourceId}`);
+    this.name = "SourceRefreshSkippedError";
+  }
+}
 
 export interface SourceRefreshResult {
   source: Source;
@@ -39,6 +64,7 @@ export interface SourceRefreshFailureEvent {
   sourceId: number;
   kind: SourceKind;
   trigger: SourceRefreshTrigger;
+  stage: SourceRefreshStage;
   category: string;
   consecutiveFailures: number;
   nextAttemptAt: number | null;
@@ -51,20 +77,98 @@ interface SourceRefreshCoordinatorDeps {
   onFailure?: (event: SourceRefreshFailureEvent) => void;
 }
 
-function refreshErrorCategory(error: unknown): string {
-  const name = error instanceof Error ? error.name.toLowerCase() : "";
-  const message = error instanceof Error ? error.message.toLowerCase() : "";
-  const httpStatus = /\bhttp\s+(\d{3})\b/.exec(message)?.[1];
-  if (httpStatus) return `http-${httpStatus}`;
-  if (name.includes("timeout") || message.includes("timeout")) return "timeout";
-  if (message.includes("decode")) return "decoder";
+interface InFlightRefresh {
+  request: { trigger: SourceRefreshTrigger };
+  promise: Promise<SourceRefreshResult>;
+}
+
+function strongerRefreshTrigger(
+  current: SourceRefreshTrigger,
+  incoming: SourceRefreshTrigger,
+): SourceRefreshTrigger {
+  const priority: Record<SourceRefreshTrigger, number> = { scheduled: 0, manual: 1, enable: 2 };
+  return priority[incoming] > priority[current] ? incoming : current;
+}
+
+function errorChain(error: unknown): { names: string; messages: string; codes: string[] } {
+  const names: string[] = [];
+  const messages: string[] = [];
+  const codes: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth += 1) {
+    if (current instanceof Error) {
+      names.push(current.name.toLowerCase());
+      messages.push(current.message.toLowerCase());
+    }
+    const value = current as { cause?: unknown; code?: unknown };
+    if (typeof value.code === "string") codes.push(value.code.toUpperCase());
+    current = value.cause;
+  }
+  return { names: names.join(" "), messages: messages.join(" "), codes };
+}
+
+function findHappDecoderError(error: unknown): HappDecoderError | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth += 1) {
+    if (current instanceof HappDecoderError) return current;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+export function sourceRefreshErrorCategory(error: unknown): string {
+  const details = errorChain(error);
+  const decoderError = findHappDecoderError(error);
+  if (decoderError?.kind === "response") return "invalid-content";
+  if (decoderError?.kind === "decode") return "decoder";
+  if (details.codes.some((code) => code === "ENOTFOUND" || code === "EAI_AGAIN")) return "dns";
   if (
-    message.includes("no nodes") ||
-    message.includes("not recognized") ||
-    message.includes("invalid") ||
-    message.includes("empty")
+    details.codes.some(
+      (code) => code === "ECONNRESET" || code === "EPIPE" || code === "UND_ERR_SOCKET",
+    )
+  )
+    return "connection-reset";
+  if (details.codes.includes("ECONNREFUSED")) return "connection-refused";
+  if (
+    details.codes.some(
+      (code) =>
+        code.startsWith("ERR_TLS") ||
+        code.startsWith("CERT_") ||
+        code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+        code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+    )
+  )
+    return "tls";
+  if (
+    details.names.includes("timeout") ||
+    details.names.includes("abort") ||
+    details.messages.includes("timeout") ||
+    details.codes.some((code) => code.includes("TIMEOUT"))
+  )
+    return "timeout";
+  const httpStatus = /\bhttp\s+(\d{3})\b/.exec(details.messages)?.[1];
+  if (httpStatus) return `http-${httpStatus}`;
+  if (decoderError?.kind === "transport") return "network";
+  if (
+    details.messages.includes("no nodes") ||
+    details.messages.includes("no active nodes") ||
+    details.messages.includes("not recognized") ||
+    details.messages.includes("invalid") ||
+    details.messages.includes("empty")
   )
     return "invalid-content";
+  if (details.messages.includes("decode")) return "decoder";
+  const stage = error instanceof SourceRefreshStageError ? error.stage : "unknown";
+  if (stage === "fetch") return "network";
+  if (stage === "decode") return "decoder";
+  if (stage === "validate") return "invalid-content";
+  if (stage === "config-write") {
+    if (details.codes.some((code) => code === "EACCES" || code === "EPERM"))
+      return "permission-denied";
+    if (details.codes.includes("ENOSPC")) return "disk-full";
+    return "config-write";
+  }
+  if (stage === "database") return "database";
   return "refresh-failed";
 }
 
@@ -73,7 +177,7 @@ export class SourceRefreshCoordinator {
   private readonly performRefresh: (sourceId: number) => Promise<SourceRefreshResult>;
   private readonly now: () => number;
   private readonly onFailure: ((event: SourceRefreshFailureEvent) => void) | undefined;
-  private readonly inFlight = new Map<number, Promise<SourceRefreshResult>>();
+  private readonly inFlight = new Map<number, InFlightRefresh>();
   private tail: Promise<void> = Promise.resolve();
 
   constructor(deps: SourceRefreshCoordinatorDeps) {
@@ -85,13 +189,21 @@ export class SourceRefreshCoordinator {
 
   refresh(sourceId: number, trigger: SourceRefreshTrigger): Promise<SourceRefreshResult> {
     const existing = this.inFlight.get(sourceId);
-    if (existing) return existing;
+    if (existing) {
+      existing.request.trigger = strongerRefreshTrigger(existing.request.trigger, trigger);
+      return existing.promise;
+    }
 
-    const task = this.enqueue(() => this.run(sourceId, trigger));
-    this.inFlight.set(sourceId, task);
+    const request = { trigger };
+    const task = this.enqueue(() => this.run(sourceId, request.trigger));
+    this.inFlight.set(sourceId, { request, promise: task });
     void task.then(
-      () => this.inFlight.delete(sourceId),
-      () => this.inFlight.delete(sourceId),
+      () => {
+        if (this.inFlight.get(sourceId)?.promise === task) this.inFlight.delete(sourceId);
+      },
+      () => {
+        if (this.inFlight.get(sourceId)?.promise === task) this.inFlight.delete(sourceId);
+      },
     );
     return task;
   }
@@ -108,6 +220,7 @@ export class SourceRefreshCoordinator {
   private async run(sourceId: number, trigger: SourceRefreshTrigger): Promise<SourceRefreshResult> {
     const row = this.db.select().from(sources).where(eq(sources.id, sourceId)).get();
     if (!row) throw new Error(`source ${sourceId} not found`);
+    if (trigger === "scheduled" && !row.enabled) throw new SourceRefreshSkippedError(sourceId);
 
     const attemptedAt = this.now();
     this.db
@@ -139,13 +252,14 @@ export class SourceRefreshCoordinator {
       const nextAttemptAt = isRefreshableSource(row.kind as SourceKind, row.subUrl)
         ? failedAt + refreshBackoffMs(consecutiveFailures)
         : null;
-      const category = refreshErrorCategory(error);
+      const stage = error instanceof SourceRefreshStageError ? error.stage : "unknown";
+      const category = sourceRefreshErrorCategory(error);
       this.db
         .update(sources)
         .set({
           nextRefreshAttemptAt: nextAttemptAt,
           refreshFailures: consecutiveFailures,
-          lastRefreshError: category,
+          lastRefreshError: `${stage}:${category}`,
         })
         .where(eq(sources.id, sourceId))
         .run();
@@ -153,6 +267,7 @@ export class SourceRefreshCoordinator {
         sourceId,
         kind: row.kind as SourceKind,
         trigger,
+        stage,
         category,
         consecutiveFailures,
         nextAttemptAt,

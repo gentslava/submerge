@@ -14,6 +14,17 @@ const decodeResponseSchema = z.object({
   error: z.string().optional(),
 });
 export type DecodeResponse = z.infer<typeof decodeResponseSchema>;
+export type HappDecoderErrorKind = "transport" | "http" | "response" | "decode";
+
+export class HappDecoderError extends Error {
+  readonly kind: HappDecoderErrorKind;
+
+  constructor(kind: HappDecoderErrorKind, message: string, cause?: unknown) {
+    super(message, ...(cause === undefined ? [] : [{ cause }]));
+    this.name = "HappDecoderError";
+    this.kind = kind;
+  }
+}
 
 const healthResponseSchema = z.object({ ok: z.literal(true) });
 
@@ -51,12 +62,24 @@ export async function decodeHapp(link: string, useHwid: boolean): Promise<Decode
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    throw new Error(`happ-decoder unreachable/timeout (${env.HAPP_DECODER_URL}): ${msg}`);
+    throw new HappDecoderError(
+      "transport",
+      `happ-decoder unreachable (${env.HAPP_DECODER_URL}): ${msg}`,
+      e,
+    );
   }
-  const parsed = decodeResponseSchema.safeParse(await r.json().catch(() => ({})));
+  const parsed = decodeResponseSchema.safeParse(await r.json().catch(() => undefined));
+  if (!r.ok) {
+    const detail = parsed.success ? parsed.data.error : undefined;
+    throw new HappDecoderError("http", detail || `happ-decoder returned HTTP ${r.status}`);
+  }
   if (!parsed.success)
-    throw new Error(`happ-decoder returned an unexpected response (HTTP ${r.status})`);
+    throw new HappDecoderError(
+      "response",
+      `happ-decoder returned an unexpected response (HTTP ${r.status})`,
+    );
   const data = parsed.data;
-  if (!r.ok || !data.ok) throw new Error(data.error || `happ-decoder returned HTTP ${r.status}`);
+  if (!data.ok)
+    throw new HappDecoderError("decode", data.error || `happ-decoder returned HTTP ${r.status}`);
   return data;
 }

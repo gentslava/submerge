@@ -1,6 +1,7 @@
 import type { AddSourceInput, Source } from "@submerge/shared";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { HappDecoderError } from "../../clients/happDecoder.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
@@ -9,6 +10,12 @@ import { applyConfig } from "../nodes/service.js";
 import { getOrCreateHwid } from "../settings/service.js";
 import { ingestSource } from "./ingest.js";
 import { extractSubUrl } from "./parse.js";
+import {
+  isRefreshableSource,
+  type SourceRefreshStage,
+  SourceRefreshStageError,
+  sourceRefreshErrorCategory,
+} from "./refresh.js";
 
 // One-shot backfill of sub_url for rows added before the column existed, so they
 // participate in dedup without waiting for a refresh. Only the network-free kinds:
@@ -117,22 +124,56 @@ export async function refreshSource(
 ): Promise<{ source: Source; applied: boolean }> {
   const row = db.select().from(sources).where(eq(sources.id, id)).get();
   if (!row) throw new Error(`source ${id} not found`);
-  const hwid = row.hwid ? getOrCreateHwid(db, hwidFile) : "";
-  const result = await ingestSource(row.value, row.hwid, hwid);
-  const updated = db
-    .update(sources)
-    .set({
-      label: result.label,
-      // Backfills pre-migration rows: their sub URL becomes known on first refresh.
-      subUrl: result.subUrl,
-      proxies: result.proxies,
-      meta: result.meta,
-      updatedAt: sql`(current_timestamp)`,
-    })
-    .where(eq(sources.id, id))
-    .returning()
-    .get();
-  const { applied } = await applyConfig(db, configPath);
+  let hwid: string;
+  try {
+    hwid = row.hwid ? getOrCreateHwid(db, hwidFile) : "";
+  } catch (error) {
+    throw new SourceRefreshStageError("database", error);
+  }
+  let result: Awaited<ReturnType<typeof ingestSource>>;
+  try {
+    result = await ingestSource(row.value, row.hwid, hwid);
+  } catch (error) {
+    const category = sourceRefreshErrorCategory(error);
+    let stage: SourceRefreshStage = "validate";
+    if (category === "invalid-content") {
+      stage = "validate";
+    } else if (error instanceof HappDecoderError) {
+      stage = "decode";
+    } else if (
+      category.startsWith("http-") ||
+      ["timeout", "dns", "connection-reset", "connection-refused", "tls", "network"].includes(
+        category,
+      )
+    ) {
+      stage = "fetch";
+    }
+    throw new SourceRefreshStageError(stage, error);
+  }
+  let updated: typeof sources.$inferSelect;
+  try {
+    updated = db
+      .update(sources)
+      .set({
+        label: result.label,
+        // Backfills pre-migration rows: their sub URL becomes known on first refresh.
+        subUrl: result.subUrl,
+        proxies: result.proxies,
+        meta: result.meta,
+        updatedAt: sql`(current_timestamp)`,
+      })
+      .where(eq(sources.id, id))
+      .returning()
+      .get();
+  } catch (error) {
+    throw new SourceRefreshStageError("database", error);
+  }
+  let applied: boolean;
+  try {
+    ({ applied } = await applyConfig(db, configPath));
+  } catch (error) {
+    throw new SourceRefreshStageError("config-write", error);
+  }
   return { source: toSource(updated), applied };
 }
 
@@ -140,12 +181,19 @@ export async function toggleSource(
   db: Db,
   id: number,
   configPath: string = env.MIHOMO_CONFIG_PATH,
+  refreshBeforeEnable: (sourceId: number) => Promise<unknown> = (sourceId) =>
+    refreshSource(db, sourceId, configPath),
 ): Promise<{ source: Source; applied: boolean }> {
   const row = db.select().from(sources).where(eq(sources.id, id)).get();
   if (!row) throw new Error(`source ${id} not found`);
+  if (!row.enabled && isRefreshableSource(row.kind as Source["kind"], row.subUrl)) {
+    await refreshBeforeEnable(id);
+  }
+  const current = db.select().from(sources).where(eq(sources.id, id)).get();
+  if (!current) throw new Error(`source ${id} not found`);
   const updated = db
     .update(sources)
-    .set({ enabled: !row.enabled })
+    .set({ enabled: !current.enabled })
     .where(eq(sources.id, id))
     .returning()
     .get();

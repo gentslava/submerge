@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { decodeHapp, healthHapp } from "./happDecoder.js";
+import { decodeHapp, type HappDecoderError, healthHapp } from "./happDecoder.js";
 
 function mockFetch(handler: (url: string, init?: RequestInit) => Promise<Response> | Response) {
   vi.stubGlobal("fetch", vi.fn(handler));
@@ -99,18 +99,33 @@ describe("happDecoder client", () => {
   });
 
   it("throws when the decoder reports ok:false", async () => {
-    mockFetch(() => json({ ok: false, error: "expired" }));
-    await expect(decodeHapp("happ://crypt5/abc", false)).rejects.toThrow(/expired/);
+    mockFetch(() => json({ ok: false, error: "не удалось декодировать" }));
+    await expect(decodeHapp("happ://crypt5/abc", false)).rejects.toMatchObject({
+      kind: "decode",
+      message: "не удалось декодировать",
+    } satisfies Partial<HappDecoderError>);
   });
 
-  it("throws a clear error when the decoder is unreachable", async () => {
-    mockFetch(() => Promise.reject(new Error("ECONNREFUSED")));
-    await expect(decodeHapp("happ://crypt5/abc", false)).rejects.toThrow(/happ-decoder/);
+  it("preserves the network cause when the decoder is unreachable", async () => {
+    const cause = Object.assign(new Error("connect failed"), { code: "ECONNREFUSED" });
+    mockFetch(() => Promise.reject(cause));
+    await expect(decodeHapp("happ://crypt5/abc", false)).rejects.toMatchObject({
+      kind: "transport",
+      cause,
+    } satisfies Partial<HappDecoderError>);
   });
 
   it("throws a clear error when the response body is not JSON", async () => {
     mockFetch(() => new Response("not json", { status: 200 }));
     await expect(decodeHapp("happ://crypt5/abc", false)).rejects.toThrow(/happ-decoder/);
+  });
+
+  it("preserves a non-JSON HTTP failure status", async () => {
+    mockFetch(() => new Response("bad gateway", { status: 502 }));
+    await expect(decodeHapp("happ://crypt5/abc", false)).rejects.toMatchObject({
+      kind: "http",
+      message: expect.stringMatching(/HTTP 502/),
+    } satisfies Partial<HappDecoderError>);
   });
 
   it("falls back to an HTTP-status message when ok:false has no error", async () => {

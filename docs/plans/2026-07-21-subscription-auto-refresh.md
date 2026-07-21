@@ -15,8 +15,9 @@ conditional HTTP, and the broader config-apply state machine.
   supply one.
 - Run one refresh at a time. Manual refresh joins the same per-source in-flight operation
   and ignores the saved backoff.
-- Refresh `sub` and `happ` sources even when routing is disabled. Inline/single-node
-  sources are never scheduled.
+- Schedule only enabled remote `sub` and `happ` sources. Enabling a saved source first
+  refreshes it immediately while it is still excluded from routing; activation proceeds
+  only after that refresh succeeds. Inline/single-node sources are never scheduled.
 - Keep the existing validated ingest and byte-identical config guard as the execution
   path; this phase does not add a second fetch/apply implementation.
 
@@ -40,6 +41,8 @@ conditional HTTP, and the broader config-apply state machine.
 
 - [ ] Manual and scheduled triggers use one coordinator and concurrent requests for the
       same source share one operation.
+- [ ] Enabling a disabled refreshable source performs an immediate refresh before it is
+      added back to routing; a failed refresh leaves it disabled.
 - [ ] Success persists the next provider-based attempt and clears failure state.
 - [ ] Fetch, decode, and validation failures preserve the active source snapshot, store
       only a sanitized category, and schedule backoff. Atomic DB/config apply failures
@@ -56,6 +59,8 @@ conditional HTTP, and the broader config-apply state machine.
 
 - [ ] Boot initializes missing schedules from the last successful snapshot time and
       processes overdue sources in `(nextAttemptAt, id)` order.
+- [ ] Disabled sources are excluded even when they already have a persisted due/backoff
+      timestamp.
 - [ ] A 60-second pulse runs without overlap and processes sources sequentially.
 - [ ] Graceful shutdown stops the scheduler.
 

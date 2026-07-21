@@ -38,4 +38,32 @@ describe("sources router", () => {
     });
     expect(coordinator.refresh).toHaveBeenCalledWith(7, "manual");
   });
+
+  it("uses the shared coordinator before enabling a refreshable source", async () => {
+    const coordinator = {
+      refresh: vi.fn(async () => ({ source: source(), applied: true })),
+    };
+    const toggle = vi.fn(
+      async (
+        _db: unknown,
+        id: number,
+        _configPath: string | undefined,
+        refreshBeforeEnable: (sourceId: number) => Promise<unknown>,
+      ) => {
+        await refreshBeforeEnable(id);
+        return { source: { ...source(), enabled: true }, applied: true };
+      },
+    );
+    const appRouter = router({ sources: makeSourcesRouter(coordinator, toggle) });
+    const caller = createCallerFactory(appRouter)({
+      authed: true,
+      authRequired: true,
+      req: {} as never,
+      res: {} as never,
+    });
+
+    await caller.sources.toggle({ id: 7 });
+
+    expect(coordinator.refresh).toHaveBeenCalledWith(7, "enable");
+  });
 });

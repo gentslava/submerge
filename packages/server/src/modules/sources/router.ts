@@ -6,8 +6,12 @@ import type { SourceRefreshCoordinator } from "./refresh.js";
 import { addSource, listSources, removeSource, reorderSources, toggleSource } from "./service.js";
 
 type SourceRefreshRunner = Pick<SourceRefreshCoordinator, "refresh">;
+type SourceToggleRunner = typeof toggleSource;
 
-export function makeSourcesRouter(refreshCoordinator: SourceRefreshRunner) {
+export function makeSourcesRouter(
+  refreshCoordinator: SourceRefreshRunner,
+  runToggle: SourceToggleRunner = toggleSource,
+) {
   return router({
     list: protectedProcedure.query(() => listSources(db)),
     add: protectedProcedure.input(addSourceInput).mutation(({ input }) => addSource(db, input)),
@@ -15,7 +19,11 @@ export function makeSourcesRouter(refreshCoordinator: SourceRefreshRunner) {
     refresh: protectedProcedure
       .input(idInput)
       .mutation(({ input }) => refreshCoordinator.refresh(input.id, "manual")),
-    toggle: protectedProcedure.input(idInput).mutation(({ input }) => toggleSource(db, input.id)),
+    toggle: protectedProcedure
+      .input(idInput)
+      .mutation(({ input }) =>
+        runToggle(db, input.id, undefined, (id) => refreshCoordinator.refresh(id, "enable")),
+      ),
     reorder: protectedProcedure
       .input(reorderInput)
       .mutation(({ input }) => reorderSources(db, input.ids)),

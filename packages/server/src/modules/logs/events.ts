@@ -77,11 +77,22 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
         input.kind === "amneziawg"
       )
         fields.kind = input.kind;
-      if (input.trigger === "manual" || input.trigger === "scheduled")
+      if (input.trigger === "manual" || input.trigger === "scheduled" || input.trigger === "enable")
         fields.trigger = input.trigger;
       if (
+        input.stage === "fetch" ||
+        input.stage === "decode" ||
+        input.stage === "validate" ||
+        input.stage === "database" ||
+        input.stage === "config-write" ||
+        input.stage === "unknown"
+      )
+        fields.stage = input.stage;
+      if (
         typeof input.category === "string" &&
-        /^(timeout|decoder|invalid-content|refresh-failed|http-\d{3})$/.test(input.category)
+        /^(timeout|dns|connection-reset|connection-refused|tls|network|decoder|invalid-content|permission-denied|disk-full|config-write|database|refresh-failed|http-\d{3})$/.test(
+          input.category,
+        )
       )
         fields.category = input.category;
       if (

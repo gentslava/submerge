@@ -1,10 +1,11 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
+import type { SourceRefreshStageError } from "./refresh.js";
 import {
   addSource,
   backfillSubUrls,
@@ -190,6 +191,152 @@ describe("sources service", () => {
     const refreshed = await refreshSource(db, src.id, tmpConfig(), hwidFile());
     expect(refreshed.source.proxies[0]?.name).toBe("Z"); // snapshot was refreshed, not stale
     expect(typeof refreshed.source.updatedAt).toBe("string");
+  });
+
+  it("refreshes a disabled subscription before enabling it", async () => {
+    const db = freshDb();
+    const row = db
+      .insert(sources)
+      .values({
+        kind: "sub",
+        value: "https://provider.example/sub",
+        subUrl: "https://provider.example/sub",
+        label: "Provider",
+        enabled: false,
+        proxies: [{ name: "Old", type: "vless", server: "old.example", port: 443 }],
+      })
+      .returning()
+      .get();
+    stubNet("proxies:\n  - {name: Fresh, type: vless, server: ex.com, port: 443, uuid: u}\n");
+    const configPath = tmpConfig();
+
+    const toggled = await toggleSource(db, row.id, configPath, async (sourceId) => {
+      expect(db.select().from(sources).get()?.enabled).toBe(false);
+      await refreshSource(db, sourceId, configPath, hwidFile());
+    });
+
+    expect(toggled.source.enabled).toBe(true);
+    expect(toggled.source.proxies[0]?.name).toBe("Fresh");
+  });
+
+  it("leaves a subscription disabled when its enable-time refresh fails", async () => {
+    const db = freshDb();
+    const row = db
+      .insert(sources)
+      .values({
+        kind: "sub",
+        value: "https://provider.example/sub",
+        subUrl: "https://provider.example/sub",
+        label: "Provider",
+        enabled: false,
+      })
+      .returning()
+      .get();
+
+    await expect(
+      toggleSource(db, row.id, tmpConfig(), async () => {
+        throw new Error("provider unavailable");
+      }),
+    ).rejects.toThrow("provider unavailable");
+    expect(db.select().from(sources).get()?.enabled).toBe(false);
+  });
+
+  it("marks subscription transport failures as fetch-stage errors", async () => {
+    const db = freshDb();
+    const row = db
+      .insert(sources)
+      .values({
+        kind: "sub",
+        value: "https://provider.example/sub",
+        subUrl: "https://provider.example/sub",
+        label: "Provider",
+      })
+      .returning()
+      .get();
+    const socketError = Object.assign(new Error("socket closed"), { code: "ECONNRESET" });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw Object.assign(new TypeError("fetch failed"), { cause: socketError });
+      }),
+    );
+
+    await expect(refreshSource(db, row.id, tmpConfig(), hwidFile())).rejects.toMatchObject({
+      stage: "fetch",
+    } satisfies Partial<SourceRefreshStageError>);
+  });
+
+  it("marks a decoded happ payload without nodes as a validation failure", async () => {
+    const db = freshDb();
+    const row = db
+      .insert(sources)
+      .values({ kind: "happ", value: "happ://crypt5/blob", label: "Happ" })
+      .returning()
+      .get();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).includes("/decode")) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              url: "https://provider.example/sub",
+              body: "proxies:\n",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response(null, { status: 204 });
+      }),
+    );
+
+    await expect(refreshSource(db, row.id, tmpConfig(), hwidFile())).rejects.toMatchObject({
+      stage: "validate",
+    } satisfies Partial<SourceRefreshStageError>);
+  });
+
+  it("marks localized happ-decoder failures as decode-stage errors", async () => {
+    const db = freshDb();
+    const row = db
+      .insert(sources)
+      .values({ kind: "happ", value: "happ://crypt5/blob", label: "Happ" })
+      .returning()
+      .get();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ ok: false, error: "не удалось расшифровать" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+      ),
+    );
+
+    await expect(refreshSource(db, row.id, tmpConfig(), hwidFile())).rejects.toMatchObject({
+      stage: "decode",
+    } satisfies Partial<SourceRefreshStageError>);
+  });
+
+  it("marks config filesystem failures without exposing their message to refresh logs", async () => {
+    const db = freshDb();
+    const row = db
+      .insert(sources)
+      .values({
+        kind: "sub",
+        value: "https://provider.example/sub",
+        subUrl: "https://provider.example/sub",
+        label: "Provider",
+      })
+      .returning()
+      .get();
+    stubNet();
+    const blocker = join(mkdtempSync(join(tmpdir(), "submerge-blocker-")), "file");
+    writeFileSync(blocker, "not a directory");
+
+    await expect(
+      refreshSource(db, row.id, join(blocker, "config.yaml"), hwidFile()),
+    ).rejects.toMatchObject({ stage: "config-write" } satisfies Partial<SourceRefreshStageError>);
   });
 
   it("throws when refreshing a missing source", async () => {

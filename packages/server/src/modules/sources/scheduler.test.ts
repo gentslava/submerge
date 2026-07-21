@@ -85,6 +85,7 @@ describe("SourceRefreshScheduler", () => {
         enabled: false,
         meta: { used: null, total: null, expire: null, updateHours: 2 },
         updatedAt: "2026-07-21 08:00:00",
+        nextRefreshAttemptAt: 1_000,
       })
       .returning()
       .get();
@@ -133,7 +134,7 @@ describe("SourceRefreshScheduler", () => {
 
     await scheduler.runOnce();
 
-    expect(calls).toEqual([b.id, a.id, disabled.id]);
+    expect(calls).toEqual([b.id, a.id]);
     const rows = db.select().from(sources).all();
     expect(rows.find((row) => row.id === b.id)?.nextRefreshAttemptAt).toBe(
       Date.UTC(2026, 6, 21, 8, 0, 0),
@@ -141,9 +142,7 @@ describe("SourceRefreshScheduler", () => {
     expect(rows.find((row) => row.id === a.id)?.nextRefreshAttemptAt).toBe(
       Date.UTC(2026, 6, 21, 10, 0, 0),
     );
-    expect(rows.find((row) => row.id === disabled.id)?.nextRefreshAttemptAt).toBe(
-      Date.UTC(2026, 6, 21, 10, 0, 0),
-    );
+    expect(rows.find((row) => row.id === disabled.id)?.nextRefreshAttemptAt).toBe(1_000);
     expect(rows.find((row) => row.id === future.id)?.nextRefreshAttemptAt).toBe(
       Date.UTC(2026, 6, 21, 17, 0, 0),
     );

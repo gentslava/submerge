@@ -119,6 +119,7 @@ export class SourceRefreshScheduler {
     const rows = this.db.select().from(sources).all();
     for (const row of rows) {
       if (
+        !row.enabled ||
         row.nextRefreshAttemptAt !== null ||
         !isRefreshableSource(row.kind as SourceKind, row.subUrl)
       )
@@ -137,6 +138,7 @@ export class SourceRefreshScheduler {
       .all()
       .filter(
         (row) =>
+          row.enabled &&
           isRefreshableSource(row.kind as SourceKind, row.subUrl) &&
           row.nextRefreshAttemptAt !== null &&
           row.nextRefreshAttemptAt <= now,
@@ -148,6 +150,9 @@ export class SourceRefreshScheduler {
 
     for (const row of due) {
       if (generation !== null && generation !== this.generation) return;
+      const current = this.db.select().from(sources).where(eq(sources.id, row.id)).get();
+      if (!current?.enabled || !isRefreshableSource(current.kind as SourceKind, current.subUrl))
+        continue;
       try {
         await this.coordinator.refresh(row.id, "scheduled");
       } catch {
