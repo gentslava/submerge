@@ -192,7 +192,12 @@ export const PRESET_DOMAINS: Record<PresetId, string[]> = {
     "sora.com",
     "openai.fm",
   ],
-  claude: ["anthropic.com", "claude.ai", "claudeusercontent.com"],
+  claude: [
+    "anthropic.com",
+    "claude.ai",
+    "claudeusercontent.com",
+    "anthropic.gallerycdn.vsassets.io",
+  ],
   gemini: [
     "gemini.google.com",
     "bard.google.com",
