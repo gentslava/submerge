@@ -21,6 +21,8 @@ const keys: OperationalEventKey[] = [
   "config-reload-failed",
   "secret-rotation-write-failed",
   "mihomo-live-failed",
+  "source-refresh-failed",
+  "source-refresh-scheduler-failed",
 ];
 
 describe("operational event registry", () => {
@@ -53,12 +55,14 @@ describe("operational event registry", () => {
     });
   });
 
-  it.each(["boot-config-apply-failed", "config-reload-failed", "secret-rotation-write-failed"])(
-    "does not expose context fields for %s",
-    (key) => {
-      expect(makeOperationalEvent(key, toxicFields).draft.fields).toBeUndefined();
-    },
-  );
+  it.each([
+    "boot-config-apply-failed",
+    "config-reload-failed",
+    "secret-rotation-write-failed",
+    "source-refresh-scheduler-failed",
+  ])("does not expose context fields for %s", (key) => {
+    expect(makeOperationalEvent(key, toxicFields).draft.fields).toBeUndefined();
+  });
 
   it("allows only the finite mihomo live scope enum", () => {
     expect(makeOperationalEvent("mihomo-live-failed", toxicFields).draft.fields).toEqual({
@@ -67,5 +71,26 @@ describe("operational event registry", () => {
     expect(
       makeOperationalEvent("mihomo-live-failed", { scope: "secret-value" }).draft.fields,
     ).toBeUndefined();
+  });
+
+  it("allows only sanitized source refresh failure fields", () => {
+    expect(
+      makeOperationalEvent("source-refresh-failed", {
+        ...toxicFields,
+        sourceId: 7,
+        kind: "sub",
+        trigger: "scheduled",
+        category: "http-503",
+        consecutiveFailures: 2,
+        nextAttemptAt: 123_000,
+      }).draft.fields,
+    ).toEqual({
+      sourceId: 7,
+      kind: "sub",
+      trigger: "scheduled",
+      category: "http-503",
+      consecutiveFailures: 2,
+      nextAttemptAt: 123_000,
+    });
   });
 });

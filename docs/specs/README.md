@@ -20,3 +20,4 @@ quick map. Update both when a spec ships.
 | [2026-07-15 Logs screen](2026-07-15-logs-screen-design.md) | proposed |
 | [2026-07-15 Diagnostics screen](2026-07-15-diagnostics-screen-design.md) | proposed |
 | [2026-07-19 exact proxy identity routing fix](2026-07-19-proxy-identity-routing-fix.md) | implemented |
+| [2026-07-21 subscription refresh, multi-target health, and failover](2026-07-21-refresh-health-failover-design.md) | auto-refresh implemented; health/failover deferred |

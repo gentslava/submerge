@@ -10,13 +10,13 @@ import { channelPool, channels, sources } from "./schema.js";
 
 const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
-function preDirectMigrationsFolder(): string {
-  const folder = mkdtempSync(join(tmpdir(), "submerge-pre-direct-"));
+function migrationsThrough(lastIndex: number, name: string): string {
+  const folder = mkdtempSync(join(tmpdir(), `submerge-${name}-`));
   mkdirSync(join(folder, "meta"));
   const journal = JSON.parse(
     readFileSync(join(migrationsFolder, "meta", "_journal.json"), "utf8"),
   ) as { entries: { idx: number; tag: string }[] };
-  for (let index = 0; index <= 6; index++) {
+  for (let index = 0; index <= lastIndex; index++) {
     const prefix = `${String(index).padStart(4, "0")}_`;
     const entry = journal.entries.find((candidate) => candidate.idx === index);
     if (!entry?.tag.startsWith(prefix)) throw new Error(`missing migration ${prefix}`);
@@ -24,10 +24,16 @@ function preDirectMigrationsFolder(): string {
   }
   writeFileSync(
     join(folder, "meta", "_journal.json"),
-    JSON.stringify({ ...journal, entries: journal.entries.filter((entry) => entry.idx <= 6) }),
+    JSON.stringify({
+      ...journal,
+      entries: journal.entries.filter((entry) => entry.idx <= lastIndex),
+    }),
   );
   return folder;
 }
+
+const preDirectMigrationsFolder = () => migrationsThrough(6, "pre-direct");
+const preRefreshMigrationsFolder = () => migrationsThrough(7, "pre-refresh");
 
 describe("db", () => {
   it("creates and reads a source in an in-memory DB", () => {
@@ -42,6 +48,69 @@ describe("db", () => {
     expect(rows[0]?.enabled).toBe(true);
     expect(rows[0]?.hwid).toBe(false);
     expect(rows[0]?.proxies).toEqual([]);
+  });
+
+  it("adds refresh state without damaging an existing source row", () => {
+    const testDb = createDb(":memory:");
+    migrate(testDb, { migrationsFolder: preRefreshMigrationsFolder() });
+    const meta = JSON.stringify({ used: null, total: null, expire: null, updateHours: 6 });
+    testDb.$client
+      .prepare(
+        "INSERT INTO sources (kind, value, sub_url, label, hwid, enabled, sort_order, proxies, meta, updated_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "sub",
+        "https://provider.example/sub",
+        "https://provider.example/sub",
+        "Existing",
+        1,
+        0,
+        7,
+        "[]",
+        meta,
+        "2026-07-20 10:00:00",
+        "2026-07-19 09:00:00",
+      );
+
+    migrate(testDb, { migrationsFolder });
+
+    const row = testDb.select().from(sources).get();
+    expect(row).toMatchObject({
+      kind: "sub",
+      value: "https://provider.example/sub",
+      subUrl: "https://provider.example/sub",
+      label: "Existing",
+      hwid: true,
+      enabled: false,
+      sortOrder: 7,
+      proxies: [],
+      meta: { used: null, total: null, expire: null, updateHours: 6 },
+      updatedAt: "2026-07-20 10:00:00",
+      createdAt: "2026-07-19 09:00:00",
+      lastRefreshAttemptAt: null,
+      lastRefreshSuccessAt: null,
+      nextRefreshAttemptAt: null,
+      refreshFailures: 0,
+      lastRefreshError: null,
+    });
+
+    testDb
+      .update(sources)
+      .set({
+        lastRefreshAttemptAt: 100,
+        lastRefreshSuccessAt: 90,
+        nextRefreshAttemptAt: 200,
+        refreshFailures: 2,
+        lastRefreshError: "timeout",
+      })
+      .run();
+    expect(testDb.select().from(sources).get()).toMatchObject({
+      lastRefreshAttemptAt: 100,
+      lastRefreshSuccessAt: 90,
+      nextRefreshAttemptAt: 200,
+      refreshFailures: 2,
+      lastRefreshError: "timeout",
+    });
   });
 
   it("has a channels table after migrations", () => {

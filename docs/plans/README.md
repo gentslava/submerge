@@ -27,3 +27,4 @@ for their status. Mark a plan **done** here when its feature is merged to master
 | [Traffic screen](2026-07-15-traffic-screen.md) | ready (implementation order 1/3) |
 | [Logs screen](2026-07-15-logs-screen.md) | ready (implementation order 2/3) |
 | [Diagnostics screen](2026-07-15-diagnostics-screen.md) | ready (implementation order 3/3) |
+| [Subscription auto-refresh](2026-07-21-subscription-auto-refresh.md) | done |

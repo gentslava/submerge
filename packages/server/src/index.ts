@@ -13,6 +13,8 @@ import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
 import { logHub } from "./modules/logs/singleton.js";
 import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
+import { sourceRefreshScheduler } from "./modules/sources/instance.js";
+import { startSchedulerAfter } from "./modules/sources/scheduler.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
 import { contentTypeFor, safeResolve } from "./static.js";
 import { appRouter } from "./trpc/router.js";
@@ -74,7 +76,11 @@ logHub.start();
 // in the running config. The config file is written synchronously here (so mihomo
 // reads the fresh file on its own start); the reload is best-effort and fire-and-forget
 // so a not-yet-ready engine can't block or crash boot — the live loop keeps it in sync.
-void applyConfig(db).catch((err) => operationalLog("boot-config-apply-failed", {}, err));
+const shutdownController = new AbortController();
+const bootConfigApply = applyConfig(db).catch((err) =>
+  operationalLog("boot-config-apply-failed", {}, err),
+);
+void startSchedulerAfter(bootConfigApply, sourceRefreshScheduler, shutdownController.signal);
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
 liveHub.start();
@@ -114,9 +120,12 @@ server.listen(env.PORT, env.HOST, () => {
 
 // Graceful shutdown: stop the hub, then stop accepting new connections and exit
 const shutdown = () => {
+  if (shutdownController.signal.aborted) return;
+  shutdownController.abort();
   logHub.stop();
   liveHub.stop();
-  server.close(() => process.exit(0));
+  const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()));
+  void Promise.all([sourceRefreshScheduler.stop(), serverClosed]).then(() => process.exit(0));
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

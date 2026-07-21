@@ -43,6 +43,14 @@ export const sources = sqliteTable("sources", {
   // Subscription metadata (traffic/expiry/update interval) parsed from provider headers;
   // null for vless / metadata-less sources. The display name lives in `label`.
   meta: text("meta", { mode: "json" }).$type<SubscriptionMeta | null>(),
+  // Auto-refresh state is persisted so restarts preserve both the provider schedule and
+  // failure backoff. Millisecond epoch values match the rest of the runtime state.
+  lastRefreshAttemptAt: integer("last_refresh_attempt_at"),
+  lastRefreshSuccessAt: integer("last_refresh_success_at"),
+  nextRefreshAttemptAt: integer("next_refresh_attempt_at"),
+  refreshFailures: integer("refresh_failures").notNull().default(0),
+  // Sanitized category only — never a provider URL, response body, or credential.
+  lastRefreshError: text("last_refresh_error"),
   updatedAt: text("updated_at").notNull().default(sql`(current_timestamp)`),
   createdAt: text("created_at").notNull().default(sql`(current_timestamp)`),
 });

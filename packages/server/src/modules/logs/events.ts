@@ -6,7 +6,9 @@ export type OperationalEventKey =
   | "boot-config-apply-failed"
   | "config-reload-failed"
   | "secret-rotation-write-failed"
-  | "mihomo-live-failed";
+  | "mihomo-live-failed"
+  | "source-refresh-failed"
+  | "source-refresh-scheduler-failed";
 
 interface OperationalEventDefinition {
   level: LogLevel;
@@ -53,6 +55,50 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     stdoutMessage: "mihomo live failed",
     fields: (input) =>
       input.scope === "poll" || input.scope === "traffic" ? { scope: input.scope } : undefined,
+  },
+  "source-refresh-failed": {
+    level: "warning",
+    uiMessage: "Не удалось обновить источник",
+    stdoutMessage: "source refresh failed",
+    fields: (input) => {
+      const fields: NonNullable<LogDraft["fields"]> = {};
+      if (typeof input.sourceId === "number" && Number.isInteger(input.sourceId))
+        fields.sourceId = input.sourceId;
+      if (
+        input.kind === "sub" ||
+        input.kind === "happ" ||
+        input.kind === "vless" ||
+        input.kind === "hysteria2" ||
+        input.kind === "vmess" ||
+        input.kind === "trojan" ||
+        input.kind === "ss" ||
+        input.kind === "tuic" ||
+        input.kind === "wireguard" ||
+        input.kind === "amneziawg"
+      )
+        fields.kind = input.kind;
+      if (input.trigger === "manual" || input.trigger === "scheduled")
+        fields.trigger = input.trigger;
+      if (
+        typeof input.category === "string" &&
+        /^(timeout|decoder|invalid-content|refresh-failed|http-\d{3})$/.test(input.category)
+      )
+        fields.category = input.category;
+      if (
+        typeof input.consecutiveFailures === "number" &&
+        Number.isInteger(input.consecutiveFailures)
+      )
+        fields.consecutiveFailures = input.consecutiveFailures;
+      if (typeof input.nextAttemptAt === "number" && Number.isFinite(input.nextAttemptAt))
+        fields.nextAttemptAt = input.nextAttemptAt;
+      return Object.keys(fields).length > 0 ? fields : undefined;
+    },
+  },
+  "source-refresh-scheduler-failed": {
+    level: "warning",
+    uiMessage: "Сбой планировщика обновления источников",
+    stdoutMessage: "source refresh scheduler failed",
+    fields: noFields,
   },
 };
 
