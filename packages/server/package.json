@@ -17,7 +17,7 @@
     "@node-rs/argon2": "^2.0.2",
     "@submerge/shared": "workspace:*",
     "@trpc/server": "^11.18.0",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "^13.0.1",
     "drizzle-orm": "^0.45.2",
     "js-yaml": "^5.2.1",
     "pino": "^10.3.1",
