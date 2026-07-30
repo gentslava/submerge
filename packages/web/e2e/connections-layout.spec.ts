@@ -157,6 +157,8 @@ for (const width of [320, 390]) {
     await expect(directions).toHaveCount(2);
     await expect(directions.nth(0).getByText("Скачивание", { exact: true })).toHaveClass("sr-only");
     await expect(directions.nth(1).getByText("Отдача", { exact: true })).toHaveClass("sr-only");
+    await expect(directions.nth(0).locator(".connection-speed-arrow")).toHaveText("↓");
+    await expect(directions.nth(1).locator(".connection-speed-arrow")).toHaveText("↑");
     await expect(speed.locator(".connection-speed-unit")).toHaveText(["Б/с", "Б/с"]);
     await expect(speed.locator(".connection-speed-unit")).toHaveText(["МБ/с", "МБ/с"], {
       timeout: 4_000,
@@ -169,7 +171,19 @@ for (const width of [320, 390]) {
     expect(speedBoxAfterUpdate?.width).toBe(speedBoxBeforeUpdate?.width);
     for (const direction of await directions.all()) {
       expect(
-        await direction.evaluate((element) => element.scrollWidth <= element.clientWidth),
+        await direction.evaluate((element) => {
+          const arrow = element.querySelector(".connection-speed-arrow")?.getBoundingClientRect();
+          const value = element.querySelector(".connection-speed-value")?.getBoundingClientRect();
+          const unit = element.querySelector(".connection-speed-unit")?.getBoundingClientRect();
+          return (
+            arrow !== undefined &&
+            value !== undefined &&
+            unit !== undefined &&
+            value.right <= unit.left &&
+            unit.right <= arrow.left &&
+            element.scrollWidth <= element.clientWidth
+          );
+        }),
       ).toBe(true);
     }
 
@@ -196,9 +210,37 @@ test("populated connections keep their desktop rows and actions reachable", asyn
     desktop.getByText("Амстердам — основной маршрут", { exact: true }).first(),
   ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
   await expect(desktop.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
-  await expect(desktop.getByText("Скорость", { exact: true })).toBeVisible();
+  for (const column of ["Источник", "Назначение", "Тип", "Узел"]) {
+    await expect(desktop.getByText(column, { exact: true })).toHaveCSS("text-align", "left");
+  }
+  await expect(desktop.getByText("Скорость", { exact: true })).toHaveCSS("text-align", "center");
+  await expect(desktop.getByText("Время", { exact: true })).toHaveCSS("text-align", "right");
   await expect(desktop.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
   await expectNoDocumentOverflow(page);
+});
+
+test("pending speed rows align with the desktop header", async ({ page }) => {
+  await installTrpcFixture(page);
+  await page.route("**/trpc/**", async (route) => {
+    if (route.request().url().includes("connections.list")) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+    await route.fallback();
+  });
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  await page.goto("/connections");
+
+  const header = page.locator(".connections-speed-header");
+  const skeleton = page.locator(".connections-speed-skeleton").first();
+  await expect(header).toBeVisible();
+  await expect(skeleton).toBeVisible();
+  const headerBox = await header.boundingBox();
+  const skeletonBox = await skeleton.boundingBox();
+  expect(headerBox).not.toBeNull();
+  expect(skeletonBox).not.toBeNull();
+  expect(headerBox?.width).toBe(208);
+  expect(skeletonBox?.width).toBe(208);
+  expect(skeletonBox?.x).toBe(headerBox?.x);
 });
 
 test("dynamic rates stay inside the fixed desktop column as their unit changes", async ({
@@ -220,16 +262,63 @@ test("dynamic rates stay inside the fixed desktop column as their unit changes",
   const rate = page.locator(".connections-table-desktop .connection-speed").first();
   await expect(rate.getByText("Скачивание", { exact: true })).toHaveClass("sr-only");
   await expect(rate.getByText("Отдача", { exact: true })).toHaveClass("sr-only");
-  const unit = rate.locator(".connection-speed-unit");
-  await expect(unit).toHaveText("Б/с");
+  const directions = rate.locator(".connection-speed-direction");
+  await expect(directions).toHaveCount(2);
+  await expect(directions.nth(0).locator(".connection-speed-arrow")).toHaveText("↓");
+  await expect(directions.nth(1).locator(".connection-speed-arrow")).toHaveText("↑");
+  const units = rate.locator(".connection-speed-unit");
+  await expect(units).toHaveText(["Б/с", "Б/с"]);
+  for (const direction of await directions.all()) {
+    expect(
+      await direction.evaluate((element) => {
+        const arrow = element.querySelector(".connection-speed-arrow")?.getBoundingClientRect();
+        const value = element.querySelector(".connection-speed-value")?.getBoundingClientRect();
+        const unit = element.querySelector(".connection-speed-unit")?.getBoundingClientRect();
+        return (
+          arrow !== undefined &&
+          value !== undefined &&
+          unit !== undefined &&
+          value.right <= unit.left &&
+          unit.right <= arrow.left
+        );
+      }),
+    ).toBe(true);
+  }
+  const visualGap = await rate.evaluate((element) => {
+    const firstArrow = element
+      .querySelectorAll(".connection-speed-arrow")[0]
+      ?.getBoundingClientRect();
+    const secondValue = element.querySelectorAll(".connection-speed-value")[1];
+    if (!firstArrow || !secondValue) return null;
+    const valueText = document.createRange();
+    valueText.selectNodeContents(secondValue);
+    return valueText.getBoundingClientRect().left - firstArrow.right;
+  });
+  expect(visualGap).not.toBeNull();
+  expect(visualGap ?? 0).toBeGreaterThanOrEqual(8);
+  expect(visualGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(16);
+  const expectPairCentered = async () => {
+    const centerOffset = await rate.evaluate((element) => {
+      const outer = element.getBoundingClientRect();
+      const groups = element.querySelectorAll(".connection-speed-direction");
+      const first = groups[0]?.getBoundingClientRect();
+      const last = groups[groups.length - 1]?.getBoundingClientRect();
+      if (!first || !last) return null;
+      return (first.left + last.right) / 2 - (outer.left + outer.right) / 2;
+    });
+    expect(centerOffset).not.toBeNull();
+    expect(Math.abs(centerOffset ?? Number.POSITIVE_INFINITY)).toBeLessThan(0.5);
+  };
+  await expectPairCentered();
   const beforeUpdate = await rate.boundingBox();
   expect(beforeUpdate).not.toBeNull();
-  expect(beforeUpdate?.width).toBe(160);
-  await expect(unit).toHaveText("МБ/с", { timeout: 4_000 });
+  expect(beforeUpdate?.width).toBe(208);
+  await expect(units).toHaveText(["МБ/с", "МБ/с"], { timeout: 4_000 });
   const afterUpdate = await rate.boundingBox();
   expect(afterUpdate).not.toBeNull();
   expect(afterUpdate?.x).toBe(beforeUpdate?.x);
   expect(afterUpdate?.width).toBe(beforeUpdate?.width);
+  await expectPairCentered();
   expect(await rate.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expectNoDocumentOverflow(page);
 });

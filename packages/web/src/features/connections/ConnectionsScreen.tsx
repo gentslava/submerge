@@ -275,11 +275,11 @@ const HEAD =
 function ColumnsHeader() {
   return (
     <div className={`${HEAD} border-b border-border-subtle bg-elevated py-[11px]`}>
-      <span className="min-w-0 flex-1">Источник</span>
-      <span className="min-w-0 flex-1">Назначение</span>
-      <span className="w-[70px] shrink-0">Тип</span>
-      <span className="w-[150px] shrink-0">Узел</span>
-      <span className="w-40 shrink-0 text-right">Скорость</span>
+      <span className="min-w-0 flex-1 text-left">Источник</span>
+      <span className="min-w-0 flex-1 text-left">Назначение</span>
+      <span className="w-[70px] shrink-0 text-left">Тип</span>
+      <span className="w-[150px] shrink-0 text-left">Узел</span>
+      <span className="connections-speed-header w-52 shrink-0 text-center">Скорость</span>
       <span className="w-16 shrink-0 text-right">Время</span>
       <span className="w-11 shrink-0" />
     </div>
@@ -410,14 +410,23 @@ function MobileConnectionCard({
 function DesktopConnectionSpeed({ rate }: { rate: Rate }) {
   const speed = formatConnectionRatePair(rate);
   return (
-    <span className="connection-speed grid w-40 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_4ch] items-baseline gap-x-1 whitespace-nowrap font-mono text-sub font-medium text-text-primary">
-      <span className="sr-only">Скачивание</span>
-      <span aria-hidden="true">↓</span>
-      <span className="connection-speed-value text-right">{speed.down}</span>
-      <span className="sr-only">Отдача</span>
-      <span aria-hidden="true">↑</span>
-      <span className="connection-speed-value text-right">{speed.up}</span>
-      <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
+    <span className="connection-speed flex w-52 shrink-0 items-baseline justify-center gap-3 whitespace-nowrap font-mono text-sub font-medium text-text-primary">
+      <span className="connection-speed-direction inline-flex items-baseline gap-1">
+        <span className="sr-only">Скачивание</span>
+        <span className="connection-speed-value text-right">{speed.down}</span>
+        <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
+        <span aria-hidden="true" className="connection-speed-arrow">
+          ↓
+        </span>
+      </span>
+      <span className="connection-speed-direction inline-flex items-baseline gap-1">
+        <span className="sr-only">Отдача</span>
+        <span className="connection-speed-value text-right">{speed.up}</span>
+        <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
+        <span aria-hidden="true" className="connection-speed-arrow">
+          ↑
+        </span>
+      </span>
     </span>
   );
 }
@@ -427,17 +436,21 @@ function MobileConnectionSpeed({ rate }: { rate: Rate }) {
   return (
     <span className="mobile-connection-speed flex w-24 shrink-0 flex-col gap-1">
       <span className="text-axis font-medium text-text-tertiary">СКОРОСТЬ</span>
-      <span className="connection-speed-direction grid grid-cols-[auto_minmax(0,1fr)_4ch] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
+      <span className="connection-speed-direction grid grid-cols-[minmax(0,1fr)_4ch_auto] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
         <span className="sr-only">Скачивание</span>
-        <span aria-hidden="true">↓</span>
         <span className="connection-speed-value text-right">{speed.down}</span>
         <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
+        <span aria-hidden="true" className="connection-speed-arrow">
+          ↓
+        </span>
       </span>
-      <span className="connection-speed-direction grid grid-cols-[auto_minmax(0,1fr)_4ch] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
+      <span className="connection-speed-direction grid grid-cols-[minmax(0,1fr)_4ch_auto] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
         <span className="sr-only">Отдача</span>
-        <span aria-hidden="true">↑</span>
         <span className="connection-speed-value text-right">{speed.up}</span>
         <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
+        <span aria-hidden="true" className="connection-speed-arrow">
+          ↑
+        </span>
       </span>
     </span>
   );
@@ -464,7 +477,7 @@ function LoadingRows() {
           <Skeleton className="h-4 min-w-0 flex-1" />
           <Skeleton className="h-4 w-[70px] shrink-0" />
           <Skeleton className="h-4 w-[150px] shrink-0" />
-          <Skeleton className="h-4 w-40 shrink-0" />
+          <Skeleton className="connections-speed-skeleton h-4 w-52 shrink-0" />
           <Skeleton className="h-4 w-16 shrink-0" />
           <span className="w-11 shrink-0" />
         </div>
