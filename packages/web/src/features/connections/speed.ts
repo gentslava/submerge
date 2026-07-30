@@ -30,13 +30,36 @@ export function deriveSpeeds(
   return out;
 }
 
-// КБ/с with enough precision for low rates and a compact, stable footprint for high rates.
-// Thresholds keep the numeric part at roughly the same width as precision is shed.
-export function toKilobytesPerSecond(bytesPerSec: number): string {
-  if (bytesPerSec <= 0) return "0.00";
-  const kilobytesPerSecond = bytesPerSec / 1_024;
-  if (kilobytesPerSecond < 0.01) return "<0.01";
-  if (kilobytesPerSecond < 9.995) return kilobytesPerSecond.toFixed(2);
-  if (kilobytesPerSecond < 99.95) return kilobytesPerSecond.toFixed(1);
-  return kilobytesPerSecond.toFixed(0);
+export interface FormattedConnectionRatePair {
+  down: string;
+  up: string;
+  unit: "Б/с" | "КБ/с" | "МБ/с";
+}
+
+// Pick one unit for both directions so a row remains directly comparable. Precision
+// decreases before rounding would grow the numeric slot, keeping live updates compact.
+export function formatConnectionRatePair(rate: Rate): FormattedConnectionRatePair {
+  const magnitude = Math.max(0, rate.down, rate.up);
+  const scale =
+    magnitude >= 1_048_576
+      ? { divisor: 1_048_576, unit: "МБ/с" as const }
+      : magnitude >= 1_024
+        ? { divisor: 1_024, unit: "КБ/с" as const }
+        : { divisor: 1, unit: "Б/с" as const };
+
+  return {
+    down: formatScaledRate(rate.down, scale.divisor),
+    up: formatScaledRate(rate.up, scale.divisor),
+    unit: scale.unit,
+  };
+}
+
+function formatScaledRate(bytesPerSec: number, divisor: number): string {
+  if (bytesPerSec <= 0) return divisor === 1 ? "0" : "0.00";
+  const value = bytesPerSec / divisor;
+  if (divisor === 1) return value < 1 ? "<1" : value.toFixed(0);
+  if (value < 0.01) return "<0.01";
+  if (value < 9.995) return value.toFixed(2);
+  if (value < 99.95) return value.toFixed(1);
+  return value.toFixed(0);
 }

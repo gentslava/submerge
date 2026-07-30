@@ -1,6 +1,6 @@
 import type { ConnectionItem } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
-import { deriveSpeeds, toKilobytesPerSecond } from "./speed";
+import { deriveSpeeds, formatConnectionRatePair } from "./speed";
 
 const conn = (id: string, up: number, down: number): ConnectionItem => ({
   id,
@@ -45,22 +45,71 @@ describe("deriveSpeeds", () => {
   });
 });
 
-describe("toKilobytesPerSecond", () => {
-  it("keeps low КБ/с rates precise and high rates compact", () => {
-    expect(toKilobytesPerSecond(1_024)).toBe("1.00");
-    expect(toKilobytesPerSecond(5_427)).toBe("5.30");
-    expect(toKilobytesPerSecond(10_234)).toBe("9.99");
-    expect(toKilobytesPerSecond(10_235)).toBe("10.0");
-    expect(toKilobytesPerSecond(10 * 1_024)).toBe("10.0");
-    expect(toKilobytesPerSecond(102_348)).toBe("99.9");
-    expect(toKilobytesPerSecond(102_349)).toBe("100");
-    expect(toKilobytesPerSecond(100 * 1_024)).toBe("100");
-    expect(toKilobytesPerSecond(1_048_576)).toBe("1024");
-    expect(toKilobytesPerSecond(0)).toBe("0.00");
+describe("formatConnectionRatePair", () => {
+  it("uses one shared unit chosen from the larger direction", () => {
+    expect(formatConnectionRatePair({ down: 333, up: 304 })).toEqual({
+      down: "333",
+      up: "304",
+      unit: "Б/с",
+    });
+    expect(formatConnectionRatePair({ down: 512, up: 1_024 })).toEqual({
+      down: "0.50",
+      up: "1.00",
+      unit: "КБ/с",
+    });
+    expect(formatConnectionRatePair({ down: 1_048_576, up: 1 })).toEqual({
+      down: "1.00",
+      up: "<0.01",
+      unit: "МБ/с",
+    });
   });
 
-  it("does not round a positive rate down to zero", () => {
-    expect(toKilobytesPerSecond(1)).toBe("<0.01");
-    expect(toKilobytesPerSecond(10)).toBe("<0.01");
+  it.each([
+    {
+      rate: { down: 1_023, up: 1 },
+      expected: { down: "1023", up: "1", unit: "Б/с" },
+    },
+    {
+      rate: { down: 1_024, up: 1 },
+      expected: { down: "1.00", up: "<0.01", unit: "КБ/с" },
+    },
+    {
+      rate: { down: 1_048_575, up: 1 },
+      expected: { down: "1024", up: "<0.01", unit: "КБ/с" },
+    },
+    {
+      rate: { down: 1_048_576, up: 1 },
+      expected: { down: "1.00", up: "<0.01", unit: "МБ/с" },
+    },
+  ] as const)(
+    "switches units exactly at binary thresholds: $rate.down Б/с",
+    ({ rate, expected }) => {
+      expect(formatConnectionRatePair(rate)).toEqual(expected);
+    },
+  );
+
+  it("keeps positive sub-byte rates visible and zero compact", () => {
+    expect(formatConnectionRatePair({ down: 0.5, up: 0 })).toEqual({
+      down: "<1",
+      up: "0",
+      unit: "Б/с",
+    });
+    expect(formatConnectionRatePair({ down: 0, up: 0 })).toEqual({
+      down: "0",
+      up: "0",
+      unit: "Б/с",
+    });
+  });
+
+  it("sheds precision at rounding boundaries without growing the numeric slot", () => {
+    expect(formatConnectionRatePair({ down: 10_234, up: 0 }).down).toBe("9.99");
+    expect(formatConnectionRatePair({ down: 10_235, up: 0 }).down).toBe("10.0");
+    expect(formatConnectionRatePair({ down: 102_348, up: 0 }).down).toBe("99.9");
+    expect(formatConnectionRatePair({ down: 102_349, up: 0 }).down).toBe("100");
+    expect(formatConnectionRatePair({ down: 10 * 1_048_576, up: 0 })).toEqual({
+      down: "10.0",
+      up: "0.00",
+      unit: "МБ/с",
+    });
   });
 });

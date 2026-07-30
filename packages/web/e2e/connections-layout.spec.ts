@@ -119,8 +119,8 @@ for (const width of [320, 390]) {
       "connections.list": trpcFixtureSequence(populatedConnections, {
         connections: populatedConnections.connections.map((connection) => ({
           ...connection,
-          up: connection.up + 1,
-          down: connection.down + 1,
+          up: connection.up + 4_194_304,
+          down: connection.down + 4_194_304,
         })),
       }),
       "sources.list": connectionSources,
@@ -140,20 +140,38 @@ for (const width of [320, 390]) {
     ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
     await expect(mobile.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
 
-    const unitLabel = mobile.getByText("КБ/С", { exact: true }).first();
-    await expect(mobile.getByText("КБ/С", { exact: true })).toHaveCount(2);
+    const speed = mobile.locator(".mobile-connection-speed").first();
+    const speedBoxBeforeUpdate = await speed.boundingBox();
+    expect(speedBoxBeforeUpdate).not.toBeNull();
+    expect(speedBoxBeforeUpdate?.width).toBe(96);
+    await expect(speed.getByText("СКОРОСТЬ", { exact: true })).toBeVisible();
     expect(
-      await unitLabel.evaluate((element) => {
+      await speed.evaluate((element) => {
         const label = element.getBoundingClientRect();
         const metric = element.parentElement?.getBoundingClientRect();
         return metric !== undefined && label.left >= metric.left && label.right <= metric.right;
       }),
     ).toBe(true);
-    const speedValue = mobile.locator(".mobile-connection-speed > span").nth(1);
-    await expect(speedValue).toHaveText("↓ <0.01 ↑ <0.01", { timeout: 4_000 });
-    expect(await speedValue.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-      true,
+
+    const directions = speed.locator(".connection-speed-direction");
+    await expect(directions).toHaveCount(2);
+    await expect(directions.nth(0).getByText("Скачивание", { exact: true })).toHaveClass("sr-only");
+    await expect(directions.nth(1).getByText("Отдача", { exact: true })).toHaveClass("sr-only");
+    await expect(speed.locator(".connection-speed-unit")).toHaveText(["Б/с", "Б/с"]);
+    await expect(speed.locator(".connection-speed-unit")).toHaveText(["МБ/с", "МБ/с"], {
+      timeout: 4_000,
+    });
+    const speedBoxAfterUpdate = await speed.boundingBox();
+    expect(speedBoxAfterUpdate).not.toBeNull();
+    expect(Math.abs((speedBoxAfterUpdate?.x ?? 0) - (speedBoxBeforeUpdate?.x ?? 0))).toBeLessThan(
+      0.5,
     );
+    expect(speedBoxAfterUpdate?.width).toBe(speedBoxBeforeUpdate?.width);
+    for (const direction of await directions.all()) {
+      expect(
+        await direction.evaluate((element) => element.scrollWidth <= element.clientWidth),
+      ).toBe(true);
+    }
 
     await expect(mobile.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
     await expectNoDocumentOverflow(page);
@@ -178,12 +196,14 @@ test("populated connections keep their desktop rows and actions reachable", asyn
     desktop.getByText("Амстердам — основной маршрут", { exact: true }).first(),
   ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
   await expect(desktop.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
-  await expect(desktop.getByText("Скорость, КБ/с", { exact: true })).toBeVisible();
+  await expect(desktop.getByText("Скорость", { exact: true })).toBeVisible();
   await expect(desktop.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
   await expectNoDocumentOverflow(page);
 });
 
-test("kilobyte rates stay inside the fixed desktop column at high values", async ({ page }) => {
+test("dynamic rates stay inside the fixed desktop column as their unit changes", async ({
+  page,
+}) => {
   await installTrpcFixture(page, {
     "connections.list": trpcFixtureSequence(populatedConnections, {
       connections: populatedConnections.connections.map((connection) => ({
@@ -198,10 +218,14 @@ test("kilobyte rates stay inside the fixed desktop column at high values", async
   await page.goto("/connections");
 
   const rate = page.locator(".connections-table-desktop .connection-speed").first();
-  await expect(rate).toHaveText("↓ 0.00 ↑ 0.00");
+  await expect(rate.getByText("Скачивание", { exact: true })).toHaveClass("sr-only");
+  await expect(rate.getByText("Отдача", { exact: true })).toHaveClass("sr-only");
+  const unit = rate.locator(".connection-speed-unit");
+  await expect(unit).toHaveText("Б/с");
   const beforeUpdate = await rate.boundingBox();
   expect(beforeUpdate).not.toBeNull();
-  await expect(rate).not.toHaveText("↓ 0.00 ↑ 0.00", { timeout: 4_000 });
+  expect(beforeUpdate?.width).toBe(160);
+  await expect(unit).toHaveText("МБ/с", { timeout: 4_000 });
   const afterUpdate = await rate.boundingBox();
   expect(afterUpdate).not.toBeNull();
   expect(afterUpdate?.x).toBe(beforeUpdate?.x);
