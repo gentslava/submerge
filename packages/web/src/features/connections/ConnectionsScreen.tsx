@@ -201,7 +201,7 @@ export function ConnectionsScreen() {
       </div>
 
       <div className="connections-table-desktop hidden overflow-x-auto rounded-[10px] border border-border-subtle bg-surface">
-        <div className="min-w-[760px]">
+        <div className="min-w-190">
           <ColumnsHeader />
           {isPending ? (
             <LoadingRows />
@@ -269,19 +269,22 @@ function SummaryChip({ icon, text }: { icon: React.ReactNode; text: string }) {
   );
 }
 
-const HEAD =
-  "flex items-center gap-4 px-4 text-fine font-semibold uppercase tracking-[0.5px] text-text-tertiary";
+const DESKTOP_COLUMNS =
+  "grid grid-cols-[1.5fr_1.9fr_0.4fr_1.65fr_1.8fr_0.65fr_2.5rem] items-center gap-x-4 px-4";
+const HEAD = "text-fine font-semibold uppercase tracking-[0.5px] text-text-tertiary";
 
 function ColumnsHeader() {
   return (
-    <div className={`${HEAD} border-b border-border-subtle bg-elevated py-[11px]`}>
-      <span className="min-w-0 flex-1 text-left">Источник</span>
-      <span className="min-w-0 flex-1 text-left">Назначение</span>
-      <span className="w-[70px] shrink-0 text-left">Тип</span>
-      <span className="w-[150px] shrink-0 text-left">Узел</span>
-      <span className="connections-speed-header w-52 shrink-0 text-center">Скорость</span>
-      <span className="w-16 shrink-0 text-right">Время</span>
-      <span className="w-11 shrink-0" />
+    <div
+      className={`${DESKTOP_COLUMNS} ${HEAD} border-b border-border-subtle bg-elevated py-[11px]`}
+    >
+      <span className="connections-source-header min-w-0 text-left">Источник</span>
+      <span className="connections-destination-header min-w-0 text-left">Назначение</span>
+      <span className="connections-type-header min-w-0 text-center">Тип</span>
+      <span className="connections-node-header min-w-0 pl-4 text-left">Узел</span>
+      <span className="connections-speed-header min-w-0 text-center">Скорость</span>
+      <span className="connections-time-header min-w-0 text-right">Время</span>
+      <span className="min-w-0" />
     </div>
   );
 }
@@ -299,36 +302,47 @@ function ConnectionRow({
 }) {
   const dest = c.port ? `${c.host}:${c.port}` : c.host;
   const showIp = c.destIp && c.destIp !== c.host;
+  const elapsed = formatElapsed(c.start);
   return (
-    <div className="flex items-center gap-4 border-b border-border-subtle px-4 py-3 last:border-0">
-      <div className="flex min-w-0 flex-1 items-center gap-[11px]">
+    <div
+      className={`${DESKTOP_COLUMNS} connection-row border-b border-border-subtle py-3 last:border-0`}
+    >
+      <div className="connection-source-column flex min-w-0 items-center gap-[11px] text-left">
         <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg bg-elevated font-mono text-sub font-semibold text-text-secondary">
           {initial(c.source)}
         </span>
-        <span className="truncate text-sm font-medium text-text-primary">{c.source}</span>
+        <span title={c.source} className="truncate text-sm font-medium text-text-primary">
+          {c.source}
+        </span>
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span title={dest} className="truncate font-mono text-sub font-medium text-text-primary">
+      <div className="connection-destination-column flex min-w-0 flex-1 flex-col gap-0.5 text-left">
+        <span
+          title={dest}
+          className="connection-destination-value truncate font-mono text-sub font-medium text-text-primary"
+        >
           {dest}
         </span>
         {showIp && (
           <span className="truncate font-mono text-fine text-text-tertiary">{c.destIp}</span>
         )}
       </div>
-      <span className="w-[70px] shrink-0 font-mono text-meta uppercase text-text-secondary">
+      <span className="connection-type-column min-w-0 text-center font-mono text-meta uppercase text-text-secondary">
         {c.network}
       </span>
-      <div className="flex w-[150px] shrink-0 items-center gap-[7px]">
+      <div className="connection-node-column flex min-w-0 items-center justify-start gap-[7px] pl-4">
         <span className={cn("h-[7px] w-[7px] shrink-0 rounded-full", dotColors[node.lc])} />
         <span title={node.title} className="truncate font-mono text-sub text-text-primary">
           {node.display}
         </span>
       </div>
       <DesktopConnectionSpeed rate={rate} />
-      <span className="w-16 shrink-0 text-right font-mono text-sub text-text-tertiary">
-        {formatElapsed(c.start)}
+      <span
+        title={elapsed}
+        className="connection-time-column min-w-0 whitespace-normal text-right font-mono text-sub leading-tight text-text-tertiary"
+      >
+        {compactConnectionElapsed(elapsed)}
       </span>
-      <div className="flex w-11 shrink-0 justify-center">
+      <div className="flex min-w-0 justify-center">
         <button
           type="button"
           onClick={onClose}
@@ -384,7 +398,7 @@ function MobileConnectionCard({
           <span className="truncate font-mono text-micro text-text-tertiary">{c.destIp}</span>
         )}
       </div>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-t border-border-subtle pt-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-t border-border-subtle pt-3 @min-[24rem]/app-page:grid-cols-[minmax(0,1fr)_6rem_4.5rem] @min-[24rem]/app-page:gap-4">
         <span className="flex min-w-0 flex-col gap-1">
           <span className="text-axis font-medium text-text-tertiary">УЗЕЛ</span>
           <span className="flex min-w-0 items-center gap-1.5">
@@ -398,7 +412,7 @@ function MobileConnectionCard({
           </span>
         </span>
         <MobileConnectionSpeed rate={rate} />
-        <span className="flex min-w-0 flex-col gap-1">
+        <span className="flex min-w-0 flex-col items-end gap-1 text-right">
           <span className="text-axis font-medium text-text-tertiary">ВРЕМЯ</span>
           <span className="font-mono text-micro text-text-primary">{formatElapsed(c.start)}</span>
         </span>
@@ -410,8 +424,8 @@ function MobileConnectionCard({
 function DesktopConnectionSpeed({ rate }: { rate: Rate }) {
   const speed = formatConnectionRatePair(rate);
   return (
-    <span className="connection-speed flex w-52 shrink-0 items-baseline justify-center gap-3 whitespace-nowrap font-mono text-sub font-medium text-text-primary">
-      <span className="connection-speed-direction inline-flex items-baseline gap-1">
+    <span className="connection-speed connection-speed-column flex min-w-0 flex-col items-center justify-center gap-y-0.5 whitespace-nowrap font-mono text-sub font-medium text-text-primary @min-[58rem]/app-page:flex-row @min-[58rem]/app-page:items-baseline @min-[58rem]/app-page:gap-x-3 @min-[58rem]/app-page:gap-y-0">
+      <span className="connection-speed-direction inline-flex shrink-0 items-baseline gap-1">
         <span className="sr-only">Скачивание</span>
         <span className="connection-speed-value text-right">{speed.down}</span>
         <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
@@ -419,7 +433,7 @@ function DesktopConnectionSpeed({ rate }: { rate: Rate }) {
           ↓
         </span>
       </span>
-      <span className="connection-speed-direction inline-flex items-baseline gap-1">
+      <span className="connection-speed-direction inline-flex shrink-0 items-baseline gap-1">
         <span className="sr-only">Отдача</span>
         <span className="connection-speed-value text-right">{speed.up}</span>
         <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
@@ -434,9 +448,11 @@ function DesktopConnectionSpeed({ rate }: { rate: Rate }) {
 function MobileConnectionSpeed({ rate }: { rate: Rate }) {
   const speed = formatConnectionRatePair(rate);
   return (
-    <span className="mobile-connection-speed flex w-24 shrink-0 flex-col gap-1">
-      <span className="text-axis font-medium text-text-tertiary">СКОРОСТЬ</span>
-      <span className="connection-speed-direction grid grid-cols-[minmax(0,1fr)_4ch_auto] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
+    <span className="mobile-connection-speed flex w-24 shrink-0 flex-col items-center gap-1">
+      <span className="mobile-connection-speed-label text-center text-axis font-medium text-text-tertiary">
+        СКОРОСТЬ
+      </span>
+      <span className="connection-speed-direction grid w-fit grid-cols-[4ch_4ch_auto] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
         <span className="sr-only">Скачивание</span>
         <span className="connection-speed-value text-right">{speed.down}</span>
         <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
@@ -444,7 +460,7 @@ function MobileConnectionSpeed({ rate }: { rate: Rate }) {
           ↓
         </span>
       </span>
-      <span className="connection-speed-direction grid grid-cols-[minmax(0,1fr)_4ch_auto] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
+      <span className="connection-speed-direction grid w-fit grid-cols-[4ch_4ch_auto] items-baseline gap-x-1 whitespace-nowrap font-mono text-micro text-text-primary">
         <span className="sr-only">Отдача</span>
         <span className="connection-speed-value text-right">{speed.up}</span>
         <span className="connection-speed-unit text-left text-text-secondary">{speed.unit}</span>
@@ -470,16 +486,18 @@ function LoadingRows() {
       {[0, 1, 2, 3].map((i) => (
         <div
           key={i}
-          className="flex items-center gap-4 border-b border-border-subtle px-4 py-3 last:border-0"
+          className={`${DESKTOP_COLUMNS} border-b border-border-subtle py-3 last:border-0`}
         >
-          <Skeleton className="h-[30px] w-[30px] shrink-0 rounded-lg" />
-          <Skeleton className="h-4 min-w-0 flex-1" />
-          <Skeleton className="h-4 min-w-0 flex-1" />
-          <Skeleton className="h-4 w-[70px] shrink-0" />
-          <Skeleton className="h-4 w-[150px] shrink-0" />
-          <Skeleton className="connections-speed-skeleton h-4 w-52 shrink-0" />
-          <Skeleton className="h-4 w-16 shrink-0" />
-          <span className="w-11 shrink-0" />
+          <div className="flex min-w-0 items-center gap-[11px]">
+            <Skeleton className="h-[30px] w-[30px] shrink-0 rounded-lg" />
+            <Skeleton className="h-4 min-w-0 flex-1" />
+          </div>
+          <Skeleton className="h-4 min-w-0" />
+          <Skeleton className="h-4 min-w-0" />
+          <Skeleton className="h-4 min-w-0" />
+          <Skeleton className="connections-speed-skeleton h-4 min-w-0" />
+          <Skeleton className="h-4 min-w-0" />
+          <span className="min-w-0" />
         </div>
       ))}
     </>
@@ -505,4 +523,12 @@ function ErrorState() {
 function initial(source: string): string {
   const ch = source.trim().match(/[\p{L}\p{N}]/u);
   return ch ? ch[0].toUpperCase() : "?";
+}
+
+function compactConnectionElapsed(elapsed: string): string {
+  const match = /^(\d+):(\d{2}):\d{2}$/.exec(elapsed);
+  if (!match) return elapsed;
+  const hours = Number(match[1]);
+  if (hours < 24) return `${hours}:${match[2]}`;
+  return `${Math.floor(hours / 24)}д ${hours % 24}ч`;
 }

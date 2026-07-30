@@ -58,6 +58,15 @@ const connectionSources = [
   },
 ];
 
+const desktopColumnFractions = {
+  source: 1.5,
+  destination: 1.9,
+  type: 0.4,
+  node: 1.65,
+  speed: 1.8,
+  time: 0.65,
+} as const;
+
 test("connections keep search compact beside the destructive action on desktop", async ({
   page,
 }) => {
@@ -111,7 +120,7 @@ test("connections use the available content pane rather than the viewport for to
   await expectNoDocumentOverflow(page);
 });
 
-for (const width of [320, 390]) {
+for (const width of [320, 390, 416, 425]) {
   test(`populated connections keep their mobile cards reachable at ${width}px`, async ({
     page,
   }) => {
@@ -163,6 +172,25 @@ for (const width of [320, 390]) {
     await expect(speed.locator(".connection-speed-unit")).toHaveText(["МБ/с", "МБ/с"], {
       timeout: 4_000,
     });
+    await expect(
+      mobile
+        .locator("article")
+        .first()
+        .getByText(/^\d+:\d{2}:\d{2}$/),
+    ).toBeVisible();
+    expect(
+      await speed.evaluate((element) => {
+        const label = element
+          .querySelector(".mobile-connection-speed-label")
+          ?.getBoundingClientRect();
+        const rows = [...element.querySelectorAll(".connection-speed-direction")].map((row) =>
+          row.getBoundingClientRect(),
+        );
+        if (!label || rows.length !== 2) return false;
+        const labelCenter = (label.left + label.right) / 2;
+        return rows.every((row) => Math.abs((row.left + row.right) / 2 - labelCenter) < 0.5);
+      }),
+    ).toBe(true);
     const speedBoxAfterUpdate = await speed.boundingBox();
     expect(speedBoxAfterUpdate).not.toBeNull();
     expect(Math.abs((speedBoxAfterUpdate?.x ?? 0) - (speedBoxBeforeUpdate?.x ?? 0))).toBeLessThan(
@@ -210,12 +238,136 @@ test("populated connections keep their desktop rows and actions reachable", asyn
     desktop.getByText("Амстердам — основной маршрут", { exact: true }).first(),
   ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
   await expect(desktop.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
-  for (const column of ["Источник", "Назначение", "Тип", "Узел"]) {
-    await expect(desktop.getByText(column, { exact: true })).toHaveCSS("text-align", "left");
+  for (const column of ["Тип", "Скорость"]) {
+    await expect(desktop.getByText(column, { exact: true })).toHaveCSS("text-align", "center");
   }
-  await expect(desktop.getByText("Скорость", { exact: true })).toHaveCSS("text-align", "center");
+  await expect(desktop.getByText("Источник", { exact: true })).toHaveCSS("text-align", "left");
+  await expect(desktop.getByText("Назначение", { exact: true })).toHaveCSS("text-align", "left");
+  await expect(desktop.getByText("Узел", { exact: true })).toHaveCSS("text-align", "left");
   await expect(desktop.getByText("Время", { exact: true })).toHaveCSS("text-align", "right");
+
+  const firstRow = desktop.locator(".connection-row").first();
+  const sourceColumn = firstRow.locator(".connection-source-column");
+  const destinationColumn = firstRow.locator(".connection-destination-column");
+  const typeColumn = firstRow.locator(".connection-type-column");
+  const nodeColumn = firstRow.locator(".connection-node-column");
+  const timeColumn = firstRow.locator(".connection-time-column");
+  await expect(sourceColumn).toHaveCSS("text-align", "left");
+  await expect(destinationColumn).toHaveCSS("text-align", "left");
+  await expect(typeColumn).toHaveCSS("text-align", "center");
+  await expect(nodeColumn).toHaveCSS("justify-content", "flex-start");
+  await expect(nodeColumn).toHaveCSS("padding-left", "16px");
+  await expect(timeColumn).toHaveCSS("text-align", "right");
+
+  const sourceBox = await sourceColumn.boundingBox();
+  const destinationBox = await destinationColumn.boundingBox();
+  expect(sourceBox).not.toBeNull();
+  expect(destinationBox).not.toBeNull();
+  const destinationToSourceRatio =
+    (destinationBox?.width ?? 0) / (sourceBox?.width ?? Number.POSITIVE_INFINITY);
+  expect(destinationToSourceRatio).toBeGreaterThan(1.24);
+  expect(destinationToSourceRatio).toBeLessThan(1.3);
+
+  for (const name of ["source", "destination", "type", "node", "speed", "time"] as const) {
+    const headerBox = await desktop.locator(`.connections-${name}-header`).boundingBox();
+    const rowBox = await firstRow.locator(`.connection-${name}-column`).boundingBox();
+    expect(headerBox).not.toBeNull();
+    expect(rowBox).not.toBeNull();
+    expect(rowBox?.x).toBe(headerBox?.x);
+    expect(rowBox?.width).toBe(headerBox?.width);
+  }
   await expect(desktop.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
+  await expectNoDocumentOverflow(page);
+});
+
+test("proportional connection grid fits without a table scrollbar at 1171px", async ({ page }) => {
+  await installTrpcFixture(page, {
+    "connections.list": populatedConnections,
+    "sources.list": connectionSources,
+  });
+  await page.setViewportSize({ width: 1171, height: 800 });
+  await page.goto("/connections");
+
+  const desktop = page.locator(".connections-table-desktop");
+  await expect(desktop).toBeVisible();
+  expect(
+    await desktop.evaluate((element) => {
+      return element.scrollWidth <= element.clientWidth;
+    }),
+  ).toBe(true);
+  const row = desktop.locator(".connection-row").first();
+  await expect(desktop.locator(".connection-row")).toHaveCount(2);
+  const sourceBox = await row.locator(".connection-source-column").boundingBox();
+  expect(sourceBox).not.toBeNull();
+  for (const [name, fraction] of Object.entries(desktopColumnFractions)) {
+    const box = await row.locator(`.connection-${name}-column`).boundingBox();
+    expect(box).not.toBeNull();
+    expect((box?.width ?? 0) / (sourceBox?.width ?? Number.POSITIVE_INFINITY)).toBeCloseTo(
+      fraction / desktopColumnFractions.source,
+      1,
+    );
+  }
+  expect(
+    await row
+      .locator(".connection-time-column")
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+  const tableBox = await desktop.boundingBox();
+  const actionBox = await row.getByRole("button", { name: "Разорвать соединение" }).boundingBox();
+  expect(tableBox).not.toBeNull();
+  expect(actionBox).not.toBeNull();
+  expect(actionBox?.x ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(tableBox?.x ?? 0);
+  expect((actionBox?.x ?? 0) + (actionBox?.width ?? 0)).toBeLessThanOrEqual(
+    (tableBox?.x ?? 0) + (tableBox?.width ?? 0),
+  );
+  await expectNoDocumentOverflow(page);
+});
+
+test("all desktop connection columns grow proportionally on a 4K viewport", async ({ page }) => {
+  await installTrpcFixture(page, {
+    "connections.list": populatedConnections,
+    "sources.list": connectionSources,
+  });
+  await page.setViewportSize({ width: 1171, height: 800 });
+  await page.goto("/connections");
+
+  const table = page.locator(".connections-table-desktop");
+  const row = table.locator(".connection-row").first();
+  const compactWidths = Object.fromEntries(
+    await Promise.all(
+      Object.keys(desktopColumnFractions).map(async (name) => {
+        const box = await row.locator(`.connection-${name}-column`).boundingBox();
+        return [name, box?.width ?? 0];
+      }),
+    ),
+  );
+
+  await page.setViewportSize({ width: 3840, height: 2160 });
+
+  const pageRoot = page.locator(".connections-screen");
+  const tableBox = await table.boundingBox();
+  const pageBox = await pageRoot.boundingBox();
+  expect(tableBox).not.toBeNull();
+  expect(pageBox).not.toBeNull();
+  expect((tableBox?.x ?? 0) - (pageBox?.x ?? 0)).toBe(32);
+  expect((pageBox?.width ?? 0) - (tableBox?.width ?? 0)).toBe(64);
+  const sourceBox = await row.locator(".connection-source-column").boundingBox();
+  expect(sourceBox).not.toBeNull();
+  for (const [name, fraction] of Object.entries(desktopColumnFractions)) {
+    const box = await row.locator(`.connection-${name}-column`).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box?.width ?? 0).toBeGreaterThan((compactWidths[name] ?? 0) * 2);
+    expect((box?.width ?? 0) / (sourceBox?.width ?? Number.POSITIVE_INFINITY)).toBeCloseTo(
+      fraction / desktopColumnFractions.source,
+      1,
+    );
+  }
+  const destinationBox = await row.locator(".connection-destination-column").boundingBox();
+  expect(destinationBox).not.toBeNull();
+  const sourceWidth = sourceBox?.width ?? 0;
+  const destinationWidth = destinationBox?.width ?? 0;
+  expect(destinationWidth / sourceWidth).toBeGreaterThan(1.24);
+  expect(destinationWidth / sourceWidth).toBeLessThan(1.3);
   await expectNoDocumentOverflow(page);
 });
 
@@ -238,12 +390,11 @@ test("pending speed rows align with the desktop header", async ({ page }) => {
   const skeletonBox = await skeleton.boundingBox();
   expect(headerBox).not.toBeNull();
   expect(skeletonBox).not.toBeNull();
-  expect(headerBox?.width).toBe(208);
-  expect(skeletonBox?.width).toBe(208);
+  expect(skeletonBox?.width).toBe(headerBox?.width);
   expect(skeletonBox?.x).toBe(headerBox?.x);
 });
 
-test("dynamic rates stay inside the fixed desktop column as their unit changes", async ({
+test("dynamic rates stay inside the proportional desktop column at its narrow boundary", async ({
   page,
 }) => {
   await installTrpcFixture(page, {
@@ -252,14 +403,18 @@ test("dynamic rates stay inside the fixed desktop column as their unit changes",
         ...connection,
         up: connection.up + 2_097_152,
         down: connection.down + 2_097_152,
+        start: new Date(Date.now() - 23 * 3_600_000).toISOString(),
       })),
     }),
     "sources.list": connectionSources,
   });
   await page.setViewportSize({ width: 1440, height: 1024 });
   await page.goto("/connections");
+  await page.evaluate(() => document.fonts.ready);
 
   const rate = page.locator(".connections-table-desktop .connection-speed").first();
+  const speedFontSize = await rate.evaluate((element) => getComputedStyle(element).fontSize);
+  await expect(rate).toHaveCSS("flex-direction", "row");
   await expect(rate.getByText("Скачивание", { exact: true })).toHaveClass("sr-only");
   await expect(rate.getByText("Отдача", { exact: true })).toHaveClass("sr-only");
   const directions = rate.locator(".connection-speed-direction");
@@ -295,8 +450,8 @@ test("dynamic rates stay inside the fixed desktop column as their unit changes",
     return valueText.getBoundingClientRect().left - firstArrow.right;
   });
   expect(visualGap).not.toBeNull();
-  expect(visualGap ?? 0).toBeGreaterThanOrEqual(8);
-  expect(visualGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(16);
+  expect(visualGap ?? 0).toBeGreaterThanOrEqual(11);
+  expect(visualGap ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(13);
   const expectPairCentered = async () => {
     const centerOffset = await rate.evaluate((element) => {
       const outer = element.getBoundingClientRect();
@@ -312,13 +467,49 @@ test("dynamic rates stay inside the fixed desktop column as their unit changes",
   await expectPairCentered();
   const beforeUpdate = await rate.boundingBox();
   expect(beforeUpdate).not.toBeNull();
-  expect(beforeUpdate?.width).toBe(208);
   await expect(units).toHaveText(["МБ/с", "МБ/с"], { timeout: 4_000 });
+  expect(await rate.evaluate((element) => getComputedStyle(element).fontSize)).toBe(speedFontSize);
   const afterUpdate = await rate.boundingBox();
   expect(afterUpdate).not.toBeNull();
   expect(afterUpdate?.x).toBe(beforeUpdate?.x);
   expect(afterUpdate?.width).toBe(beforeUpdate?.width);
   await expectPairCentered();
+  const desktopTime = page.locator(".connections-table-desktop .connection-time-column").first();
+  await expect(desktopTime).toHaveText(/^\d{1,2}:\d{2}$/);
+  await expect(desktopTime).toHaveAttribute("title", /^\d{1,2}:\d{2}:\d{2}$/);
+  expect(await rate.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+  for (const width of [1080, 1144, 1192, 1239]) {
+    await page.setViewportSize({ width, height: 1024 });
+    await page.evaluate(() => document.fonts.ready);
+    await expect(rate).toHaveCSS("flex-direction", "column");
+    expect(await rate.evaluate((element) => getComputedStyle(element).fontSize)).toBe(
+      speedFontSize,
+    );
+    const directionTops = await directions.evaluateAll((elements) =>
+      elements.map((element) => element.getBoundingClientRect().top),
+    );
+    expect(directionTops[1]).toBeGreaterThan(directionTops[0] ?? 0);
+    const speedMetrics = await rate.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(speedMetrics.scrollWidth, `speed must fit at viewport ${width}px`).toBeLessThanOrEqual(
+      speedMetrics.clientWidth,
+    );
+    const timeMetrics = await desktopTime.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(timeMetrics.scrollWidth, `time must fit at viewport ${width}px`).toBeLessThanOrEqual(
+      timeMetrics.clientWidth,
+    );
+  }
+
+  await page.setViewportSize({ width: 1240, height: 1024 });
+  await page.evaluate(() => document.fonts.ready);
+  await expect(rate).toHaveCSS("flex-direction", "row");
+  expect(await rate.evaluate((element) => getComputedStyle(element).fontSize)).toBe(speedFontSize);
   expect(await rate.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expectNoDocumentOverflow(page);
 });
