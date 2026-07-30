@@ -21,7 +21,7 @@ import { formatElapsed } from "@/lib/duration";
 import { pluralRu } from "@/lib/plural";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
-import { deriveSpeeds, type Rate, toMbps } from "./speed";
+import { deriveSpeeds, type Rate, toKilobytesPerSecond } from "./speed";
 
 type Filter = "all" | "tcp" | "udp";
 // Resolve a connection's outbound node (chains[0]) to how the Узлы screen shows it:
@@ -279,7 +279,7 @@ function ColumnsHeader() {
       <span className="min-w-0 flex-1">Назначение</span>
       <span className="w-[70px] shrink-0">Тип</span>
       <span className="w-[150px] shrink-0">Узел</span>
-      <span className="w-[140px] shrink-0 text-right">Скорость, МБ/с</span>
+      <span className="w-[140px] shrink-0 text-right">Скорость, КБ/с</span>
       <span className="w-16 shrink-0 text-right">Время</span>
       <span className="w-11 shrink-0" />
     </div>
@@ -324,8 +324,8 @@ function ConnectionRow({
           {node.display}
         </span>
       </div>
-      <span className="w-[140px] shrink-0 text-right font-mono text-sub font-medium text-text-primary">
-        ↓ {toMbps(rate.down)} ↑ {toMbps(rate.up)}
+      <span className="connection-speed w-[140px] shrink-0 text-right font-mono text-sub font-medium text-text-primary">
+        ↓ {toKilobytesPerSecond(rate.down)} ↑ {toKilobytesPerSecond(rate.up)}
       </span>
       <span className="w-16 shrink-0 text-right font-mono text-sub text-text-tertiary">
         {formatElapsed(c.start)}
@@ -386,7 +386,7 @@ function MobileConnectionCard({
           <span className="truncate font-mono text-micro text-text-tertiary">{c.destIp}</span>
         )}
       </div>
-      <div className="grid grid-cols-3 gap-3 border-t border-border-subtle pt-3">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-t border-border-subtle pt-3">
         <span className="flex min-w-0 flex-col gap-1">
           <span className="text-axis font-medium text-text-tertiary">УЗЕЛ</span>
           <span className="flex min-w-0 items-center gap-1.5">
@@ -399,10 +399,10 @@ function MobileConnectionCard({
             </span>
           </span>
         </span>
-        <span className="flex min-w-0 flex-col gap-1">
-          <span className="text-axis font-medium text-text-tertiary">СКОРОСТЬ</span>
+        <span className="mobile-connection-speed flex min-w-0 flex-col gap-1">
+          <span className="text-axis font-medium text-text-tertiary">КБ/С</span>
           <span className="truncate font-mono text-micro text-text-primary">
-            ↓ {toMbps(rate.down)} ↑ {toMbps(rate.up)}
+            ↓ {toKilobytesPerSecond(rate.down)} ↑ {toKilobytesPerSecond(rate.up)}
           </span>
         </span>
         <span className="flex min-w-0 flex-col gap-1">

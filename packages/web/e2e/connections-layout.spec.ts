@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { expectNoDocumentOverflow, installTrpcFixture, trpcFixtureError } from "./fixtures";
+import {
+  expectNoDocumentOverflow,
+  installTrpcFixture,
+  trpcFixtureError,
+  trpcFixtureSequence,
+} from "./fixtures";
 
 const populatedConnections = {
   connections: [
@@ -106,28 +111,54 @@ test("connections use the available content pane rather than the viewport for to
   await expectNoDocumentOverflow(page);
 });
 
-test("populated connections keep their mobile cards reachable", async ({ page }) => {
-  await installTrpcFixture(page, {
-    "connections.list": populatedConnections,
-    "sources.list": connectionSources,
-  });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/connections");
+for (const width of [320, 390]) {
+  test(`populated connections keep their mobile cards reachable at ${width}px`, async ({
+    page,
+  }) => {
+    await installTrpcFixture(page, {
+      "connections.list": trpcFixtureSequence(populatedConnections, {
+        connections: populatedConnections.connections.map((connection) => ({
+          ...connection,
+          up: connection.up + 1,
+          down: connection.down + 1,
+        })),
+      }),
+      "sources.list": connectionSources,
+    });
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/connections");
 
-  const mobile = page.locator(".connections-table-mobile");
-  const destination = mobile.getByText("api.very-long-development-service.example.com:443");
-  await expect(destination).toBeVisible();
-  await expect(destination).toHaveAttribute(
-    "title",
-    "api.very-long-development-service.example.com:443",
-  );
-  await expect(
-    mobile.getByText("Амстердам — основной маршрут", { exact: true }).first(),
-  ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
-  await expect(mobile.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
-  await expect(mobile.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
-  await expectNoDocumentOverflow(page);
-});
+    const mobile = page.locator(".connections-table-mobile");
+    const destination = mobile.getByText("api.very-long-development-service.example.com:443");
+    await expect(destination).toBeVisible();
+    await expect(destination).toHaveAttribute(
+      "title",
+      "api.very-long-development-service.example.com:443",
+    );
+    await expect(
+      mobile.getByText("Амстердам — основной маршрут", { exact: true }).first(),
+    ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
+    await expect(mobile.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
+
+    const unitLabel = mobile.getByText("КБ/С", { exact: true }).first();
+    await expect(mobile.getByText("КБ/С", { exact: true })).toHaveCount(2);
+    expect(
+      await unitLabel.evaluate((element) => {
+        const label = element.getBoundingClientRect();
+        const metric = element.parentElement?.getBoundingClientRect();
+        return metric !== undefined && label.left >= metric.left && label.right <= metric.right;
+      }),
+    ).toBe(true);
+    const speedValue = mobile.locator(".mobile-connection-speed > span").nth(1);
+    await expect(speedValue).toHaveText("↓ <0.01 ↑ <0.01", { timeout: 4_000 });
+    expect(await speedValue.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+
+    await expect(mobile.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
+    await expectNoDocumentOverflow(page);
+  });
+}
 
 test("populated connections keep their desktop rows and actions reachable", async ({ page }) => {
   await installTrpcFixture(page, {
@@ -147,7 +178,35 @@ test("populated connections keep their desktop rows and actions reachable", asyn
     desktop.getByText("Амстердам — основной маршрут", { exact: true }).first(),
   ).toHaveAttribute("title", "Основная подписка — Амстердам — основной маршрут");
   await expect(desktop.getByText("DIRECT", { exact: true })).toHaveAttribute("title", "DIRECT");
+  await expect(desktop.getByText("Скорость, КБ/с", { exact: true })).toBeVisible();
   await expect(desktop.getByRole("button", { name: "Разорвать соединение" })).toHaveCount(2);
+  await expectNoDocumentOverflow(page);
+});
+
+test("kilobyte rates stay inside the fixed desktop column at high values", async ({ page }) => {
+  await installTrpcFixture(page, {
+    "connections.list": trpcFixtureSequence(populatedConnections, {
+      connections: populatedConnections.connections.map((connection) => ({
+        ...connection,
+        up: connection.up + 2_097_152,
+        down: connection.down + 2_097_152,
+      })),
+    }),
+    "sources.list": connectionSources,
+  });
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  await page.goto("/connections");
+
+  const rate = page.locator(".connections-table-desktop .connection-speed").first();
+  await expect(rate).toHaveText("↓ 0.00 ↑ 0.00");
+  const beforeUpdate = await rate.boundingBox();
+  expect(beforeUpdate).not.toBeNull();
+  await expect(rate).not.toHaveText("↓ 0.00 ↑ 0.00", { timeout: 4_000 });
+  const afterUpdate = await rate.boundingBox();
+  expect(afterUpdate).not.toBeNull();
+  expect(afterUpdate?.x).toBe(beforeUpdate?.x);
+  expect(afterUpdate?.width).toBe(beforeUpdate?.width);
+  expect(await rate.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   await expectNoDocumentOverflow(page);
 });
 

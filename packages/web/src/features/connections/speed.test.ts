@@ -1,6 +1,6 @@
 import type { ConnectionItem } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
-import { deriveSpeeds, toMbps } from "./speed";
+import { deriveSpeeds, toKilobytesPerSecond } from "./speed";
 
 const conn = (id: string, up: number, down: number): ConnectionItem => ({
   id,
@@ -45,15 +45,22 @@ describe("deriveSpeeds", () => {
   });
 });
 
-describe("toMbps", () => {
-  it("formats bytes/s as fixed МБ/с with two decimals", () => {
-    expect(toMbps(1_048_576)).toBe("1.00");
-    expect(toMbps(5_557_452)).toBe("5.30");
-    expect(toMbps(0)).toBe("0.00");
+describe("toKilobytesPerSecond", () => {
+  it("keeps low КБ/с rates precise and high rates compact", () => {
+    expect(toKilobytesPerSecond(1_024)).toBe("1.00");
+    expect(toKilobytesPerSecond(5_427)).toBe("5.30");
+    expect(toKilobytesPerSecond(10_234)).toBe("9.99");
+    expect(toKilobytesPerSecond(10_235)).toBe("10.0");
+    expect(toKilobytesPerSecond(10 * 1_024)).toBe("10.0");
+    expect(toKilobytesPerSecond(102_348)).toBe("99.9");
+    expect(toKilobytesPerSecond(102_349)).toBe("100");
+    expect(toKilobytesPerSecond(100 * 1_024)).toBe("100");
+    expect(toKilobytesPerSecond(1_048_576)).toBe("1024");
+    expect(toKilobytesPerSecond(0)).toBe("0.00");
   });
 
   it("does not round a positive rate down to zero", () => {
-    expect(toMbps(1)).toBe("<0.01");
-    expect(toMbps(5_000)).toBe("<0.01");
+    expect(toKilobytesPerSecond(1)).toBe("<0.01");
+    expect(toKilobytesPerSecond(10)).toBe("<0.01");
   });
 });

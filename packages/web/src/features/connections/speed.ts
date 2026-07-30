@@ -30,9 +30,13 @@ export function deriveSpeeds(
   return out;
 }
 
-// МБ/с with two-decimal precision; preserve positive sub-cent values as "<0.01".
-export function toMbps(bytesPerSec: number): string {
+// КБ/с with enough precision for low rates and a compact, stable footprint for high rates.
+// Thresholds keep the numeric part at roughly the same width as precision is shed.
+export function toKilobytesPerSecond(bytesPerSec: number): string {
   if (bytesPerSec <= 0) return "0.00";
-  const mbps = bytesPerSec / 1_048_576;
-  return mbps < 0.01 ? "<0.01" : mbps.toFixed(2);
+  const kilobytesPerSecond = bytesPerSec / 1_024;
+  if (kilobytesPerSecond < 0.01) return "<0.01";
+  if (kilobytesPerSecond < 9.995) return kilobytesPerSecond.toFixed(2);
+  if (kilobytesPerSecond < 99.95) return kilobytesPerSecond.toFixed(1);
+  return kilobytesPerSecond.toFixed(0);
 }
