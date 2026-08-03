@@ -1,4 +1,6 @@
 // Isolated mihomo (Clash) REST API client. Every response is Zod-parsed.
+
+import { isIP } from "node:net";
 import {
   SPEED_TEST_MAX_BYTES,
   SPEED_TEST_TIMEOUT_MS,
@@ -103,6 +105,18 @@ export interface MihomoRuntimeConfig {
 }
 
 const ipAddressSchema = z.union([z.ipv4(), z.ipv6()]);
+
+function canonicalIpAddress(address: string): string | null {
+  const family = isIP(address);
+  if (family === 4) return address;
+  if (family !== 6) return null;
+  try {
+    const hostname = new URL(`http://[${address}]/`).hostname;
+    return hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
+  } catch {
+    return null;
+  }
+}
 const externalIpTraceSchema = z.object({
   ip: ipAddressSchema,
   country: z.string().min(1).nullable(),
@@ -138,6 +152,9 @@ const connectionMetadataSchema = z.looseObject({
   destinationPort: z.string().default(""),
   sourceIP: z.string().default(""),
   process: z.string().default(""),
+  inboundName: z.string().default(""),
+  inboundUser: z.string().default(""),
+  inboundPort: z.string().default(""),
 });
 const connectionSchema = z.looseObject({
   id: z.string(),
@@ -345,6 +362,121 @@ export async function getConnections(signal?: AbortSignal): Promise<MihomoConnec
   const r = await call("/connections", {}, signal);
   if (!r.ok) throw new Error(`mihomo /connections returned HTTP ${r.status}`);
   return connectionsResponseSchema.parse(await r.json()).connections;
+}
+
+export interface ForcedRouteExpectation {
+  inboundName: string;
+  inboundUser: string;
+  inboundPort: number;
+  targetGroupName: string;
+}
+
+export interface ForcedRouteDestination {
+  address: string;
+  port: number;
+  signal?: AbortSignal;
+}
+
+export type ForcedRouteVerifier = (destination: ForcedRouteDestination) => Promise<void>;
+
+interface ForcedRouteProofOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  fetchConnections?: typeof getConnections;
+}
+
+function delayWithSignal(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    timer.unref();
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+}
+
+/**
+ * Capture the current connection IDs before opening a validation tunnel, then
+ * return a verifier for that one tunnel. Matching all three listener facts and
+ * the pinned destination keeps unrelated user traffic from satisfying proof.
+ */
+export async function prepareForcedRouteProof(
+  expectation: ForcedRouteExpectation,
+  options: ForcedRouteProofOptions = {},
+): Promise<ForcedRouteVerifier> {
+  const timeoutMs = options.timeoutMs ?? 2_000;
+  const pollIntervalMs = options.pollIntervalMs ?? 50;
+  if (
+    !expectation.inboundName ||
+    !expectation.inboundUser ||
+    !Number.isInteger(expectation.inboundPort) ||
+    expectation.inboundPort < 1 ||
+    expectation.inboundPort > 65_535 ||
+    !expectation.targetGroupName ||
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs < 1 ||
+    timeoutMs > TIMEOUT_MS ||
+    !Number.isInteger(pollIntervalMs) ||
+    pollIntervalMs < 1 ||
+    pollIntervalMs > timeoutMs
+  ) {
+    throw new TypeError("invalid forced-route proof configuration");
+  }
+  const fetchConnections = options.fetchConnections ?? getConnections;
+  const baseline = new Set((await fetchConnections(options.signal)).map(({ id }) => id));
+  if (options.signal?.aborted) throw options.signal.reason;
+
+  return async ({ address, port, signal: callerSignal }) => {
+    const expectedAddress = canonicalIpAddress(address);
+    if (
+      !ipAddressSchema.safeParse(address).success ||
+      !expectedAddress ||
+      !Number.isInteger(port) ||
+      port < 1 ||
+      port > 65_535
+    ) {
+      throw new TypeError("invalid forced-route proof destination");
+    }
+    if (options.signal?.aborted) throw options.signal.reason;
+    if (callerSignal?.aborted) throw callerSignal.reason;
+    const deadline = AbortSignal.timeout(timeoutMs);
+    const signals = [deadline, options.signal, callerSignal].filter(
+      (value): value is AbortSignal => value !== undefined,
+    );
+    const signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals);
+    if (!signal) throw new Error("forced-route proof signal unavailable");
+
+    try {
+      while (!signal.aborted) {
+        const connections = await fetchConnections(signal);
+        const match = connections.some(
+          (connection) =>
+            !baseline.has(connection.id) &&
+            connection.metadata.inboundName === expectation.inboundName &&
+            connection.metadata.inboundUser === expectation.inboundUser &&
+            connection.metadata.inboundPort === String(expectation.inboundPort) &&
+            canonicalIpAddress(connection.metadata.destinationIP) === expectedAddress &&
+            connection.metadata.destinationPort === String(port) &&
+            connection.chains.includes(expectation.targetGroupName),
+        );
+        if (match) return;
+        await delayWithSignal(pollIntervalMs, signal);
+      }
+    } catch (error) {
+      if (options.signal?.aborted) throw options.signal.reason ?? error;
+      if (callerSignal?.aborted) throw callerSignal.reason ?? error;
+      if (!deadline.aborted) throw error;
+    }
+    throw new Error("forced route could not be proven");
+  };
 }
 
 export async function closeConnection(id: string): Promise<void> {

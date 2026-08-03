@@ -214,9 +214,9 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] PROXY probes authenticate to the dedicated listener and use the same safe redirect
+- [x] PROXY probes authenticate to the dedicated listener and use the same safe redirect
       policy as DIRECT.
-- [ ] Tests verify listener/inbound identity and the configured target group without
+- [x] Tests verify listener/inbound identity and the configured target group without
       changing a live selector.
 
 ### Task 11: Make deterministic candidate decisions
