@@ -279,6 +279,8 @@ enables the feature in a deployment.
 
 **Files:**
 
+- Modify the shared domain-intelligence settings contracts and server procedures
+- Modify the domain runtime boot/settings reconciliation and generic settings boundary
 - Modify `packages/web/src/features/settings/SettingsScreen.tsx` and its tests
 - Create `packages/web/src/features/domain-intelligence/DomainIntelligenceScreen.tsx`
 - Create its component/browser tests
@@ -286,6 +288,20 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
+- [x] The dedicated protected settings API is report-only, rejects raw/apply-shaped
+      writes, keeps first-install scope unconfigured, and starts collection only after a
+      successful Mihomo config apply.
+- [x] Enabled runtime composition promotes only threshold-qualified observations and runs
+      the bounded DIRECT/forced-PROXY validation path with fail-closed active coverage.
+- [x] Config transitions require explicit Mihomo activation proof, wait for A/B transport
+      cleanup, classify mixed resolver failures as infrastructure, and expire candidates by
+      their last observation rather than validation churn.
+- [x] Secret rotation switches the API client before runtime resume, and decision evidence
+      cannot attribute an out-of-scope redirect failure to the observed candidate rule.
+- [x] Forced-route proof participates in cleanup ownership, and a missed hard drain terminally
+      latches the scheduler so no later pulse can accumulate zombie transports.
+- [x] The terminal network latch preserves an executor-free maintenance pulse so crash recovery
+      and the 14-day privacy retention continue without permitting another probe.
 - [ ] The approved Pencil controls and states are functional, token-based, and honest.
 - [ ] Never-add and do-not-widen editors remain separate and scope restrictions are
       visible before expansion.

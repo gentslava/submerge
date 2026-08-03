@@ -76,6 +76,184 @@ const safeOriginSchema = z
 export const domainRuleScopeSchema = z.enum(["exact", "site"]);
 export type DomainRuleScope = z.infer<typeof domainRuleScopeSchema>;
 
+const policyLabelSchema = z
+  .string()
+  .min(1)
+  .max(63)
+  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/u);
+const policyDomainSchema = z
+  .string()
+  .min(3)
+  .max(253)
+  .refine((value) => {
+    const labels = value.split(".");
+    return (
+      labels.length >= 2 && labels.every((label) => policyLabelSchema.safeParse(label).success)
+    );
+  }, "policy domain must be canonical ASCII");
+const telemetryPatternSchema = z
+  .string()
+  .min(1)
+  .max(253)
+  .refine(
+    (value) => value.split(".").every((label) => policyLabelSchema.safeParse(label).success),
+    "telemetry pattern must be canonical ASCII",
+  );
+const externalResolverSchema = z.enum([
+  "https://dns.google/resolve",
+  "https://cloudflare-dns.com/dns-query",
+]);
+
+function uniqueArray<T extends z.ZodType>(item: T, maximum: number) {
+  return z
+    .array(item)
+    .max(maximum)
+    .superRefine((values, context) => {
+      if (new Set(values).size !== values.length) {
+        context.addIssue({ code: "custom", message: "settings values must be unique" });
+      }
+    });
+}
+
+export const domainIntelligenceReportSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    mode: z.literal("report"),
+    retentionDays: z.literal(14),
+    minimumConnectionCount: z.number().int().min(3).max(1_000),
+    directAttemptsRequired: z.number().int().min(3).max(24),
+    minimumAttemptSpacingMinutes: z.number().int().min(120).max(1_440),
+    validationWindowHours: z.literal(24),
+    minimumProxySuccesses: z.number().int().min(2).max(24),
+    maximumProxyTransportFailures: z.literal(0),
+    maximumCandidatesPerRun: z.number().int().min(1).max(20),
+    maximumAutomaticRulesPerDay: z.number().int().min(1).max(100),
+    maxConcurrency: z.number().int().min(1).max(2),
+    requestTimeoutMs: z.number().int().min(1_000).max(30_000),
+    defaultRuleScope: domainRuleScopeSchema.nullable(),
+    automationMode: z.enum(["off", "review"]),
+    automaticConsentRevision: z.null(),
+    externalResolvers: uniqueArray(externalResolverSchema, 4).min(2),
+    excludedTlds: uniqueArray(policyLabelSchema, 256),
+    neverAddDomains: uniqueArray(policyDomainSchema, 4_096),
+    neverAddSuffixes: uniqueArray(policyDomainSchema, 4_096),
+    nonWidenableSuffixes: uniqueArray(policyDomainSchema, 4_096),
+    telemetryPatterns: uniqueArray(telemetryPatternSchema, 4_096),
+    customProviderUrl: z.literal(""),
+    customTargetChannelId: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9_-]+$/u),
+    applyEnabled: z.literal(false),
+  })
+  .strict()
+  .superRefine((settings, context) => {
+    if (settings.maxConcurrency > settings.maximumCandidatesPerRun) {
+      context.addIssue({
+        code: "custom",
+        path: ["maxConcurrency"],
+        message: "validation concurrency cannot exceed the run capacity",
+      });
+    }
+    if (settings.enabled !== (settings.automationMode === "review")) {
+      context.addIssue({ code: "custom", message: "report automation state is inconsistent" });
+    }
+    if (settings.enabled && settings.defaultRuleScope === null) {
+      context.addIssue({ code: "custom", message: "enabled reports require an explicit scope" });
+    }
+  });
+export type DomainIntelligenceReportSettings = z.infer<
+  typeof domainIntelligenceReportSettingsSchema
+>;
+
+export const DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS = {
+  enabled: false,
+  mode: "report",
+  retentionDays: 14,
+  minimumConnectionCount: 3,
+  directAttemptsRequired: 3,
+  minimumAttemptSpacingMinutes: 120,
+  validationWindowHours: 24,
+  minimumProxySuccesses: 2,
+  maximumProxyTransportFailures: 0,
+  maximumCandidatesPerRun: 20,
+  maximumAutomaticRulesPerDay: 3,
+  maxConcurrency: 2,
+  requestTimeoutMs: 8_000,
+  defaultRuleScope: null,
+  automationMode: "off",
+  automaticConsentRevision: null,
+  externalResolvers: ["https://dns.google/resolve", "https://cloudflare-dns.com/dns-query"],
+  excludedTlds: ["ru", "su", "xn--p1ai"],
+  neverAddDomains: [],
+  neverAddSuffixes: [],
+  nonWidenableSuffixes: [
+    "googleapis.com",
+    "cloudflare.com",
+    "vercel.app",
+    "githubusercontent.com",
+    "github.io",
+    "amazonaws.com",
+    "cloudfront.net",
+    "fastly.net",
+    "akamaized.net",
+  ],
+  telemetryPatterns: [
+    "ads",
+    "adservice",
+    "analytics",
+    "beacon",
+    "metrics",
+    "telemetry",
+    "tracker",
+    "tracking",
+  ],
+  customProviderUrl: "",
+  customTargetChannelId: "default",
+  applyEnabled: false,
+} as const satisfies DomainIntelligenceReportSettings;
+
+export const domainIntelligenceSettingsViewSchema = z
+  .object({
+    configurationState: z.enum(["unconfigured", "ready", "invalid"]),
+    settings: domainIntelligenceReportSettingsSchema,
+    automatic: z
+      .object({
+        available: z.literal(false),
+        reason: z.literal("publisher-unavailable"),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((view, context) => {
+    if (
+      view.configurationState !== "ready" &&
+      (view.settings.enabled ||
+        view.settings.automationMode !== "off" ||
+        view.settings.defaultRuleScope !== null)
+    ) {
+      context.addIssue({ code: "custom", message: "unavailable settings must fail closed" });
+    }
+    if (view.configurationState === "unconfigured" && view.settings.defaultRuleScope !== null) {
+      context.addIssue({ code: "custom", message: "unconfigured settings cannot choose a scope" });
+    }
+    if (view.configurationState === "ready" && view.settings.defaultRuleScope === null) {
+      context.addIssue({ code: "custom", message: "ready settings require an explicit scope" });
+    }
+  });
+export type DomainIntelligenceSettingsView = z.infer<typeof domainIntelligenceSettingsViewSchema>;
+
+export const domainIntelligenceSettingsMutationResultSchema = z
+  .object({
+    view: domainIntelligenceSettingsViewSchema,
+    applied: z.boolean(),
+  })
+  .strict();
+export type DomainIntelligenceSettingsMutationResult = z.infer<
+  typeof domainIntelligenceSettingsMutationResultSchema
+>;
+
 export const domainCandidateReviewStateSchema = z.enum(["active", "rejected"]);
 export type DomainCandidateReviewState = z.infer<typeof domainCandidateReviewStateSchema>;
 

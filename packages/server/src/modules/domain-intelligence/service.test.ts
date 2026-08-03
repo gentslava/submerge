@@ -1,8 +1,9 @@
 import { Buffer } from "node:buffer";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS } from "@submerge/shared";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
 import {
   domainCandidates,
@@ -21,12 +22,15 @@ import {
 import {
   type CompleteDomainValidationRunInput,
   completeDomainValidationRun,
+  countDomainObservationsInWindow,
   domainValidationCircuitState,
   failDomainValidationRun,
   getDomainDecision,
   getDomainIntelligenceOverview,
+  getDomainIntelligenceSettingsView,
   leaseDomainCandidate,
   listDomainCandidateReport,
+  listDomainCandidateValidationEvidence,
   listDomainValidationAttempts,
   listDueDomainCandidates,
   pruneDomainIntelligence,
@@ -36,7 +40,9 @@ import {
   recordObservation,
   selectDomainCandidateScope,
   setDomainCandidateRejection,
+  setDomainIntelligenceReportSettings,
   startDomainValidationRun,
+  updateDomainIntelligenceReportSettings,
 } from "./service.js";
 
 const FILTER_POLICY = {
@@ -206,6 +212,149 @@ function leaseAndStart(
 }
 
 describe("domain intelligence admin read model", () => {
+  it("fails closed for absent or invalid report settings", () => {
+    const db = migratedDb();
+
+    expect(getDomainIntelligenceSettingsView(db)).toEqual({
+      configurationState: "unconfigured",
+      settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      automatic: { available: false, reason: "publisher-unavailable" },
+    });
+
+    db.insert(settings).values({ key: "domainIntelligence", value: '{"enabled":true}' }).run();
+    expect(getDomainIntelligenceSettingsView(db)).toMatchObject({
+      configurationState: "invalid",
+      settings: { enabled: false, defaultRuleScope: null, automationMode: "off" },
+      automatic: { available: false, reason: "publisher-unavailable" },
+    });
+
+    db.update(settings)
+      .set({ value: "invalid\0settings" })
+      .where(eq(settings.key, "domainIntelligence"))
+      .run();
+    expect(getDomainIntelligenceSettingsView(db)).toMatchObject({
+      configurationState: "invalid",
+      settings: { enabled: false, defaultRuleScope: null },
+    });
+  });
+
+  it("remains unconfigured when untouched defaults are persisted", () => {
+    const db = migratedDb();
+
+    expect(
+      setDomainIntelligenceReportSettings(db, DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS),
+    ).toMatchObject({
+      configurationState: "unconfigured",
+      settings: { enabled: false, defaultRuleScope: null },
+    });
+    expect(getDomainIntelligenceSettingsView(db)).toMatchObject({
+      configurationState: "unconfigured",
+    });
+  });
+
+  it("persists a complete report-only configuration and exposes its filter policy", () => {
+    const db = migratedDb();
+    const configured = {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "site" as const,
+      automationMode: "review" as const,
+    };
+
+    expect(setDomainIntelligenceReportSettings(db, configured)).toMatchObject({
+      configurationState: "ready",
+      settings: configured,
+    });
+    expect(getDomainIntelligenceSettingsView(db)).toMatchObject({
+      configurationState: "ready",
+      settings: configured,
+    });
+    expect(readDomainIntelligenceFilterPolicy(db)).toEqual({
+      excludedTlds: configured.excludedTlds,
+      neverAddDomains: configured.neverAddDomains,
+      neverAddSuffixes: configured.neverAddSuffixes,
+      nonWidenableSuffixes: configured.nonWidenableSuffixes,
+      telemetryPatterns: configured.telemetryPatterns,
+    });
+  });
+
+  it("makes existing queued candidates inert as soon as Never add changes", () => {
+    const db = migratedDb();
+    const now = Date.now();
+    observeAndQueue(db, "api.service.example", now);
+
+    setDomainIntelligenceReportSettings(db, {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "exact",
+      automationMode: "review",
+      neverAddDomains: ["api.service.example"],
+    });
+
+    expect(
+      db
+        .select({
+          status: domainCandidates.status,
+          selectedScope: domainCandidates.selectedScope,
+          proposedRule: domainCandidates.proposedRule,
+          exclusionReason: domainCandidates.exclusionReason,
+        })
+        .from(domainCandidates)
+        .where(eq(domainCandidates.fqdn, "api.service.example"))
+        .get(),
+    ).toEqual({
+      status: "excluded",
+      selectedScope: null,
+      proposedRule: null,
+      exclusionReason: "never-add-domain",
+    });
+    expect(listDueDomainCandidates(db, { now: now + 1, limit: 20 })).toEqual([]);
+  });
+
+  it("persists before delegating the serialized runtime reconciliation", async () => {
+    const db = migratedDb();
+    const configured = {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "exact" as const,
+      automationMode: "review" as const,
+    };
+    const reconcile = vi.fn(async () => ({
+      view: getDomainIntelligenceSettingsView(db),
+      applied: true,
+    }));
+
+    await expect(
+      updateDomainIntelligenceReportSettings(db, configured, {
+        reconcile,
+      }),
+    ).resolves.toMatchObject({ applied: true, view: { settings: { enabled: true } } });
+    expect(reconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains persisted intent when serialized runtime reconciliation cannot apply it", async () => {
+    const db = migratedDb();
+    const configured = {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "site" as const,
+      automationMode: "review" as const,
+    };
+
+    await expect(
+      updateDomainIntelligenceReportSettings(db, configured, {
+        reconcile: async () => ({
+          view: getDomainIntelligenceSettingsView(db),
+          applied: false,
+        }),
+      }),
+    ).resolves.toMatchObject({ applied: false, view: { settings: { enabled: true } } });
+    expect(getDomainIntelligenceSettingsView(db)).toMatchObject({
+      configurationState: "ready",
+      settings: { enabled: true },
+    });
+  });
+
   it("reads only a complete stored filter policy and fails closed otherwise", () => {
     const db = migratedDb();
     expect(readDomainIntelligenceFilterPolicy(db)).toBeNull();
@@ -213,7 +362,11 @@ describe("domain intelligence admin read model", () => {
     db.insert(settings)
       .values({
         key: "domainIntelligence",
-        value: JSON.stringify({ enabled: true, ...FILTER_POLICY }),
+        value: JSON.stringify({
+          ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+          defaultRuleScope: "exact",
+          ...FILTER_POLICY,
+        }),
       })
       .run();
     expect(readDomainIntelligenceFilterPolicy(db)).toEqual(FILTER_POLICY);
@@ -1550,6 +1703,23 @@ describe("domain observation persistence", () => {
     completeDomainValidationRun(db, completionInput("run_1", leaseId, startedAt));
 
     expect(listDomainValidationAttempts(db, "run_1")).toHaveLength(2);
+    expect(
+      countDomainObservationsInWindow(db, {
+        fqdn: "api.service.example",
+        since: startedAt,
+        until: finishedAt,
+      }),
+    ).toBe(1);
+    expect(
+      listDomainCandidateValidationEvidence(db, {
+        fqdn: "api.service.example",
+        since: startedAt,
+        until: finishedAt,
+      }),
+    ).toMatchObject({
+      direct: [{ attemptId: "run_1_direct", category: "connect_timeout" }],
+      proxy: [{ attemptId: "run_1_proxy", category: "http_response" }],
+    });
     expect(getDomainDecision(db, "run_1_decision")).toMatchObject({
       id: "run_1_decision",
       status: "pending",
@@ -1663,24 +1833,32 @@ describe("domain observation persistence", () => {
     });
   });
 
-  it("reconstructs the persisted circuit interval from spaced infrastructure failures", () => {
+  it("reconstructs the persisted circuit interval from systemic executor failures", () => {
     const db = migratedDb();
     const triggeredAt = Date.parse("2026-08-03T12:00:00.000Z");
     insertCandidate(db, "api.service.example", triggeredAt - 14 * 60_000);
     db.insert(domainValidationRuns)
       .values(
-        [triggeredAt - 14 * 60_000, triggeredAt - 7 * 60_000, triggeredAt].map(
-          (finishedAt, index) => ({
-            id: `circuit_run_${index}`,
-            leaseId: `circuit_lease_${index}`,
-            leaseGeneration: 1,
-            fqdn: "api.service.example",
-            startedAt: finishedAt,
-            finishedAt,
-            status: "failed" as const,
-            errorCategory: "infrastructure-failure" as const,
-          }),
-        ),
+        [
+          {
+            finishedAt: triggeredAt - 14 * 60_000,
+            errorCategory: "coverage-failure" as const,
+          },
+          {
+            finishedAt: triggeredAt - 7 * 60_000,
+            errorCategory: "proxy-probe-failure" as const,
+          },
+          { finishedAt: triggeredAt, errorCategory: "infrastructure-failure" as const },
+        ].map(({ finishedAt, errorCategory }, index) => ({
+          id: `circuit_run_${index}`,
+          leaseId: `circuit_lease_${index}`,
+          leaseGeneration: 1,
+          fqdn: "api.service.example",
+          startedAt: finishedAt,
+          finishedAt,
+          status: "failed" as const,
+          errorCategory,
+        })),
       )
       .run();
 
@@ -2303,7 +2481,87 @@ describe("domain observation persistence", () => {
     expect(db.select().from(domainDecisions).all()).toHaveLength(1);
   });
 
-  it("keeps old candidates with running or boundary-fresh child rows", () => {
+  it("expires candidates by last observation even when validation refreshed updatedAt", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-20T00:00:00.000Z");
+    const cutoff = now - 14 * 24 * 60 * 60 * 1_000;
+    insertCandidate(db, "stale.service.example", now);
+    db.update(domainCandidates)
+      .set({
+        firstSeenAt: cutoff - 2,
+        lastSeenAt: cutoff - 1,
+        updatedAt: now,
+        nextValidationAt: now,
+      })
+      .where(eq(domainCandidates.fqdn, "stale.service.example"))
+      .run();
+    db.insert(domainValidationRuns)
+      .values({
+        id: "fresh-validation",
+        leaseId: "finished-lease",
+        leaseGeneration: 1,
+        fqdn: "stale.service.example",
+        startedAt: now - 1,
+        finishedAt: now,
+        status: "completed",
+        errorCategory: null,
+      })
+      .run();
+    db.insert(domainValidationAttempts)
+      .values({
+        id: "fresh-attempt",
+        runId: "fresh-validation",
+        direction: "direct",
+        attemptedAt: now,
+        category: "connect_timeout",
+        transportSuccess: false,
+        httpStatus: null,
+        resolvedAddress: "1.1.1.1",
+        availableAddressCount: 1,
+        connectDurationMs: null,
+        tlsDurationMs: null,
+        totalDurationMs: 1,
+        redirectCount: 0,
+        finalOrigin: "https://stale.service.example",
+      })
+      .run();
+    db.insert(domainDecisions)
+      .values({
+        id: "fresh-decision",
+        fqdn: "stale.service.example",
+        evaluatedAt: now,
+        status: "pending",
+        confidence: "low",
+        reasons: ["insufficient-direct-failures"],
+        windowStart: now - 24 * 60 * 60 * 1_000,
+        evidence: {
+          directQualifyingFailures: 1,
+          directSpacedFailures: 1,
+          directAddressDiversityRequired: false,
+          directAddressDiversitySatisfied: true,
+          proxyHttpSuccesses: 0,
+          proxyTransportFailures: 0,
+          proxyUncertainFailures: 0,
+        },
+        selectedScope: "exact",
+        proposedRule: "stale.service.example",
+      })
+      .run();
+
+    expect(listDueDomainCandidates(db, { now, limit: 20 })).toEqual([]);
+    expect(pruneDomainIntelligence(db, now)).toMatchObject({
+      candidates: 1,
+      validationRuns: 1,
+      validationAttempts: 1,
+      decisions: 1,
+    });
+    expect(db.select().from(domainCandidates).all()).toEqual([]);
+    expect(db.select().from(domainValidationRuns).all()).toEqual([]);
+    expect(db.select().from(domainValidationAttempts).all()).toEqual([]);
+    expect(db.select().from(domainDecisions).all()).toEqual([]);
+  });
+
+  it("keeps running candidates but removes stale candidates with fresh validation children", () => {
     const db = migratedDb();
     const now = Date.parse("2026-08-20T00:00:00.000Z");
     const cutoff = now - 14 * 24 * 60 * 60 * 1_000;
@@ -2387,12 +2645,15 @@ describe("domain observation persistence", () => {
       .run();
 
     const result = pruneDomainIntelligence(db, now);
-    expect(result.candidates).toBe(0);
-    expect(result.validationRuns).toBe(0);
-    expect(result.decisions).toBe(0);
-    expect(db.select().from(domainCandidates).all()).toHaveLength(2);
-    expect(db.select().from(domainValidationRuns).all()).toHaveLength(3);
-    expect(db.select().from(domainValidationAttempts).all()).toHaveLength(1);
-    expect(db.select().from(domainDecisions).all()).toHaveLength(1);
+    expect(result.candidates).toBe(1);
+    expect(result.validationRuns).toBe(2);
+    expect(result.validationAttempts).toBe(1);
+    expect(result.decisions).toBe(1);
+    expect(db.select().from(domainCandidates).all()).toMatchObject([
+      { fqdn: "running.service.example" },
+    ]);
+    expect(db.select().from(domainValidationRuns).all()).toMatchObject([{ id: "running-run" }]);
+    expect(db.select().from(domainValidationAttempts).all()).toEqual([]);
+    expect(db.select().from(domainDecisions).all()).toEqual([]);
   });
 });

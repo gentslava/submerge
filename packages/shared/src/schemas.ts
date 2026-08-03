@@ -381,11 +381,16 @@ export function isValidGeoCountry(value: string): boolean {
 // Strict INPUT matcher — used only by createChannelInput/updateChannelInput (the
 // write boundary). channelMatcherSchema (the read model, used by channelSchema)
 // intentionally stays permissive; see the comment on domainSchema above.
+export const MAX_RULE_PROVIDERS_PER_CHANNEL = 64;
+
 export const channelMatcherInputSchema = z.object({
   presets: z.array(z.string()).default([]),
   domains: z.array(domainSchema).default([]),
   keywords: z.array(keywordSchema).default([]),
-  ruleProviders: z.array(ruleProviderRefInputSchema).default([]),
+  ruleProviders: z
+    .array(ruleProviderRefInputSchema)
+    .max(MAX_RULE_PROVIDERS_PER_CHANNEL)
+    .default([]),
   geosite: z.array(geoCategorySchema).default([]),
   geoip: z.array(geoCountrySchema).default([]),
   cidrs: z.array(cidrSchema).default([]),

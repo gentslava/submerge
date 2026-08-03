@@ -301,6 +301,7 @@ export const DOMAIN_VALIDATION_COOLDOWN_MS = 2 * 60 * 60 * 1_000;
 export const DOMAIN_VALIDATION_MAX_CANDIDATES_PER_RUN = 20;
 export const DOMAIN_VALIDATION_MAX_CONCURRENCY = 2;
 export const DOMAIN_VALIDATION_WORK_TIMEOUT_MS = 2 * 60_000;
+export const DOMAIN_VALIDATION_CLEANUP_TIMEOUT_MS = 5_000;
 export const DOMAIN_VALIDATION_CIRCUIT_FAILURE_THRESHOLD = 3;
 export const DOMAIN_VALIDATION_CIRCUIT_OPEN_MS = 15 * 60_000;
 const DOMAIN_VALIDATION_LEASE_MS = 10 * 60_000;
@@ -317,6 +318,7 @@ export type DomainValidationExecutorFailureCategory = Extract<
   | "direct-probe-failure"
   | "proxy-probe-failure"
   | "decision-failure"
+  | "policy-changed"
   | "infrastructure-failure"
 >;
 
@@ -330,11 +332,18 @@ export class DomainValidationSchedulerError extends Error {
   }
 }
 
+class DomainValidationCleanupError extends Error {
+  constructor() {
+    super("domain validation executor did not finish cleanup");
+    this.name = "DomainValidationCleanupError";
+  }
+}
+
 export interface DomainValidationExecution {
-  attempts: readonly [
-    { attemptedAt: number; result: DirectProbeResult },
-    { attemptedAt: number; result: ProxyProbeResult },
-  ];
+  attempts: readonly (
+    | { attemptedAt: number; result: DirectProbeResult }
+    | { attemptedAt: number; result: ProxyProbeResult }
+  )[];
   decision: {
     evaluatedAt: number;
     value: CandidateDecision;
@@ -350,11 +359,13 @@ export interface DomainValidationSchedulerDeps {
     candidate: DueDomainCandidate,
     signal: AbortSignal,
   ) => Promise<DomainValidationExecution>;
+  getLimits?: () => { maximumCandidatesPerRun: number; maxConcurrency: number };
   now?: () => number;
   pulseMs?: number;
   maximumCandidatesPerRun?: number;
   maxConcurrency?: number;
   workTimeoutMs?: number;
+  cleanupTimeoutMs?: number;
   circuitFailureThreshold?: number;
   circuitOpenMs?: number;
   jitterMs?: () => number;
@@ -397,11 +408,13 @@ export class DomainValidationScheduler {
   private readonly db: Db;
   private readonly isEnabled: () => boolean;
   private readonly executeValidation: DomainValidationSchedulerDeps["execute"];
+  private readonly getLimits?: DomainValidationSchedulerDeps["getLimits"];
   private readonly now: () => number;
   private readonly pulseMs: number;
   private readonly maximumCandidatesPerRun: number;
   private readonly maxConcurrency: number;
   private readonly workTimeoutMs: number;
+  private readonly cleanupTimeoutMs: number;
   private readonly circuitFailureThreshold: number;
   private readonly circuitOpenMs: number;
   private readonly idFactory: NonNullable<DomainValidationSchedulerDeps["idFactory"]>;
@@ -416,11 +429,14 @@ export class DomainValidationScheduler {
   private failureReported = false;
   private wakeRequested = false;
   private wakeDrain: Promise<void> | null = null;
+  private readonly activeExecutions = new Set<Promise<DomainValidationExecution>>();
+  private cleanupFailed = false;
 
   constructor(deps: DomainValidationSchedulerDeps) {
     this.db = deps.db;
     this.isEnabled = deps.isEnabled;
     this.executeValidation = deps.execute;
+    this.getLimits = deps.getLimits;
     this.now = deps.now ?? Date.now;
     this.pulseMs = boundedInteger(
       deps.pulseMs ?? DOMAIN_VALIDATION_PULSE_MS,
@@ -447,6 +463,12 @@ export class DomainValidationScheduler {
       DOMAIN_VALIDATION_LEASE_MS - 1,
       "domain validation timeout",
     );
+    this.cleanupTimeoutMs = boundedInteger(
+      deps.cleanupTimeoutMs ?? DOMAIN_VALIDATION_CLEANUP_TIMEOUT_MS,
+      1,
+      30_000,
+      "domain validation cleanup timeout",
+    );
     this.circuitFailureThreshold = boundedInteger(
       deps.circuitFailureThreshold ?? DOMAIN_VALIDATION_CIRCUIT_FAILURE_THRESHOLD,
       1,
@@ -465,6 +487,7 @@ export class DomainValidationScheduler {
   }
 
   runOnce(): Promise<void> {
+    if (this.cleanupFailed) return Promise.reject(new DomainValidationCleanupError());
     const scheduledController = this.controller;
     if (scheduledController) return this.run(this.generation, scheduledController);
     const existingManualController = this.manualController;
@@ -478,6 +501,10 @@ export class DomainValidationScheduler {
   }
 
   start(): void {
+    if (this.cleanupFailed) {
+      this.scheduleMaintenanceNext();
+      return;
+    }
     if (this.controller) return;
     const generation = ++this.generation;
     const controller = new AbortController();
@@ -488,6 +515,7 @@ export class DomainValidationScheduler {
   }
 
   wake(): void {
+    if (this.cleanupFailed) return;
     const controller = this.controller;
     if (!controller) return;
     this.wakeRequested = true;
@@ -503,7 +531,14 @@ export class DomainValidationScheduler {
   async stop(): Promise<void> {
     const controller = this.controller;
     const manualController = this.manualController;
-    if (!controller && !manualController) return;
+    if (
+      !this.cleanupFailed &&
+      !controller &&
+      !manualController &&
+      this.activeExecutions.size === 0
+    ) {
+      return;
+    }
     this.controller = null;
     this.manualController = null;
     this.generation += 1;
@@ -513,12 +548,33 @@ export class DomainValidationScheduler {
     controller?.abort(new Error("domain validation scheduler stopped"));
     manualController?.abort(new Error("domain validation scheduler stopped"));
     const active = this.activeRun?.promise ?? null;
-    await Promise.all([active?.catch(() => undefined), this.wakeDrain?.catch(() => undefined)]);
+    const barriers = await Promise.allSettled([active, this.wakeDrain]);
+    const cleanupFailure = barriers.find(
+      (barrier) =>
+        barrier.status === "rejected" && barrier.reason instanceof DomainValidationCleanupError,
+    );
+    if (cleanupFailure?.status === "rejected") {
+      this.latchCleanupFailure();
+      throw new DomainValidationCleanupError();
+    }
+    const executions = [...this.activeExecutions];
+    const cleaned = await Promise.all(
+      executions.map((execution) => this.waitForCleanup(execution)),
+    );
+    if (cleaned.some((complete) => !complete)) {
+      this.latchCleanupFailure();
+      throw new DomainValidationCleanupError();
+    }
+    if (this.cleanupFailed) {
+      this.scheduleMaintenanceNext();
+      throw new DomainValidationCleanupError();
+    }
   }
 
   private async drainWakes(controller: AbortController, generation: number): Promise<void> {
     while (
       this.wakeRequested &&
+      !this.cleanupFailed &&
       this.controller === controller &&
       this.generation === generation &&
       !controller.signal.aborted
@@ -542,13 +598,30 @@ export class DomainValidationScheduler {
     this.timer = setTimeout(async () => {
       this.timer = null;
       await this.run(generation, controller).catch(() => this.reportFailure());
-      if (this.controller === controller && this.generation === generation) {
+      if (!this.cleanupFailed && this.controller === controller && this.generation === generation) {
         this.scheduleNext(controller, generation);
       }
     }, this.pulseMs);
   }
 
+  private scheduleMaintenanceNext(): void {
+    if (!this.cleanupFailed || this.timer) return;
+    const timer = setTimeout(() => {
+      if (this.timer === timer) this.timer = null;
+      if (!this.cleanupFailed) return;
+      try {
+        this.runMaintenance();
+      } catch {
+        this.reportFailure();
+      }
+      this.scheduleMaintenanceNext();
+    }, this.pulseMs);
+    timer.unref();
+    this.timer = timer;
+  }
+
   private run(generation: number | null, controller: AbortController): Promise<void> {
+    if (this.cleanupFailed) return Promise.reject(new DomainValidationCleanupError());
     const active = this.activeRun;
     if (active) {
       if (generation === null || active.generation === generation) return active.promise;
@@ -574,20 +647,27 @@ export class DomainValidationScheduler {
 
   private async executeRun(signal: AbortSignal): Promise<void> {
     if (signal.aborted) return;
+    this.runMaintenance();
+    if (this.cleanupFailed || signal.aborted) return;
     const now = this.now();
-    recoverExpiredDomainValidationRuns(this.db, { now, limit: 1_000 });
-    if (
-      now >= DOMAIN_OPERATIONAL_RETENTION_MS &&
-      (this.lastRetentionAt === null || now - this.lastRetentionAt >= DOMAIN_RETENTION_INTERVAL_MS)
-    ) {
-      pruneDomainIntelligence(this.db, now);
-      this.lastRetentionAt = now;
-    }
     if (!this.isEnabled()) return;
     if (this.circuitState(now).open) return;
+    const configuredLimits = this.getLimits?.();
+    const maximumCandidatesPerRun = boundedInteger(
+      configuredLimits?.maximumCandidatesPerRun ?? this.maximumCandidatesPerRun,
+      1,
+      DOMAIN_VALIDATION_MAX_CANDIDATES_PER_RUN,
+      "domain validation run capacity",
+    );
+    const maxConcurrency = boundedInteger(
+      configuredLimits?.maxConcurrency ?? this.maxConcurrency,
+      1,
+      maximumCandidatesPerRun,
+      "domain validation concurrency",
+    );
     const due = listDueDomainCandidates(this.db, {
       now,
-      limit: this.maximumCandidatesPerRun,
+      limit: maximumCandidatesPerRun,
     });
     let cursor = 0;
     const worker = async (): Promise<void> => {
@@ -598,15 +678,26 @@ export class DomainValidationScheduler {
         cursor += 1;
         if (!candidate) return;
         if (this.circuitState(this.now()).open) return;
-        const outcome = await this.validateCandidate(candidate, signal);
+        const outcome = await this.validateCandidate(candidate, signal, maximumCandidatesPerRun);
         if (outcome === "rate-limited") return;
       }
     };
     const outcomes = await Promise.allSettled(
-      Array.from({ length: Math.min(this.maxConcurrency, due.length) }, () => worker()),
+      Array.from({ length: Math.min(maxConcurrency, due.length) }, () => worker()),
     );
-    if (outcomes.some((outcome) => outcome.status === "rejected")) {
-      throw new Error("domain validation scheduler worker failed");
+    const failed = outcomes.find((outcome) => outcome.status === "rejected");
+    if (failed?.status === "rejected") throw failed.reason;
+  }
+
+  private runMaintenance(): void {
+    const now = this.now();
+    recoverExpiredDomainValidationRuns(this.db, { now, limit: 1_000 });
+    if (
+      now >= DOMAIN_OPERATIONAL_RETENTION_MS &&
+      (this.lastRetentionAt === null || now - this.lastRetentionAt >= DOMAIN_RETENTION_INTERVAL_MS)
+    ) {
+      pruneDomainIntelligence(this.db, now);
+      this.lastRetentionAt = now;
     }
   }
 
@@ -635,6 +726,7 @@ export class DomainValidationScheduler {
   private async validateCandidate(
     candidate: DueDomainCandidate,
     schedulerSignal: AbortSignal,
+    maximumCandidatesPerRun: number,
   ): Promise<"completed" | "rate-limited" | "unavailable"> {
     const startedAt = this.now();
     const leaseId = this.idFactory("lease");
@@ -646,7 +738,7 @@ export class DomainValidationScheduler {
       now: startedAt,
       leaseUntil: safeFutureTimestamp(startedAt, DOMAIN_VALIDATION_LEASE_MS),
       rateWindowMs: DOMAIN_VALIDATION_RATE_WINDOW_MS,
-      maximumStarts: this.maximumCandidatesPerRun,
+      maximumStarts: maximumCandidatesPerRun,
     });
     if (claim.status !== "claimed") return claim.status;
 
@@ -657,11 +749,19 @@ export class DomainValidationScheduler {
       () => workController.abort(new Error("domain validation timed out")),
       this.workTimeoutMs,
     );
+    let executionPromise: Promise<DomainValidationExecution>;
     try {
-      const execution = await Promise.race([
-        this.executeValidation(candidate, workController.signal),
-        abortPromise(workController.signal),
-      ]);
+      executionPromise = this.executeValidation(candidate, workController.signal);
+    } catch (error) {
+      executionPromise = Promise.reject(error);
+    }
+    this.activeExecutions.add(executionPromise);
+    void executionPromise.then(
+      () => this.activeExecutions.delete(executionPromise),
+      () => this.activeExecutions.delete(executionPromise),
+    );
+    try {
+      const execution = await Promise.race([executionPromise, abortPromise(workController.signal)]);
       if (schedulerSignal.aborted) throw schedulerSignal.reason;
       if (workController.signal.aborted) {
         throw new DomainValidationSchedulerError("infrastructure-failure");
@@ -677,10 +777,10 @@ export class DomainValidationScheduler {
           this.nextDelay(DOMAIN_VALIDATION_COOLDOWN_MS),
         ),
         failureStreak: 0,
-        attempts: [
-          { id: this.idFactory("direct"), ...execution.attempts[0] },
-          { id: this.idFactory("proxy"), ...execution.attempts[1] },
-        ],
+        attempts: execution.attempts.map((attempt) => ({
+          id: this.idFactory(attempt.result.direction),
+          ...attempt,
+        })),
         decision: {
           id: this.idFactory("decision"),
           ...execution.decision,
@@ -698,6 +798,7 @@ export class DomainValidationScheduler {
       const failureStreak = shutdown
         ? candidate.failureStreak
         : Math.min(1_000_000, candidate.failureStreak + 1);
+      let persistenceFailed = false;
       try {
         failDomainValidationRun(this.db, {
           runId,
@@ -714,14 +815,61 @@ export class DomainValidationScheduler {
         });
       } catch {
         if (!shutdown) this.reportFailure();
-        return "completed";
+        persistenceFailed = true;
       }
       if (!shutdown) this.reportFailure();
+      if (!(await this.waitForCleanup(executionPromise))) {
+        this.latchCleanupFailure();
+        throw new DomainValidationCleanupError();
+      }
+      if (persistenceFailed) return "completed";
     } finally {
       clearTimeout(timeout);
+      if (!workController.signal.aborted) {
+        workController.abort(new Error("domain validation work finished"));
+      }
       schedulerSignal.removeEventListener("abort", forwardAbort);
     }
     return "completed";
+  }
+
+  private waitForCleanup(execution: Promise<DomainValidationExecution>): Promise<boolean> {
+    if (!this.activeExecutions.has(execution)) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (complete: boolean): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(complete);
+      };
+      const timer = setTimeout(() => finish(false), this.cleanupTimeoutMs);
+      timer.unref();
+      void execution.then(
+        () => finish(true),
+        () => finish(true),
+      );
+    });
+  }
+
+  private latchCleanupFailure(): void {
+    if (this.cleanupFailed) {
+      this.scheduleMaintenanceNext();
+      return;
+    }
+    this.cleanupFailed = true;
+    const reason = new DomainValidationCleanupError();
+    const controller = this.controller;
+    const manualController = this.manualController;
+    this.controller = null;
+    this.manualController = null;
+    this.generation += 1;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    this.wakeRequested = false;
+    controller?.abort(reason);
+    manualController?.abort(reason);
+    this.scheduleMaintenanceNext();
   }
 
   private reportFailure(): void {

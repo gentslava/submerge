@@ -33,6 +33,7 @@ export interface ValidationAttempt {
   httpStatus: number | null;
   resolvedAddress: string | null;
   availableAddressCount: number;
+  finalOrigin: string | null;
 }
 
 export interface CandidateEvidence {
@@ -100,6 +101,7 @@ export interface CandidateDecision {
 
 interface ValidatedAttempt extends ValidationAttempt {
   canonicalAddress: string | null;
+  finalOriginFqdn: string;
 }
 
 interface SpacedEvidence {
@@ -172,7 +174,42 @@ function validHttpStatus(value: number | null): boolean {
   return value === null || (Number.isInteger(value) && value >= 100 && value <= 599);
 }
 
+function finalOriginFqdn(value: string | null): string | null {
+  if (value === null) return null;
+  try {
+    const parsed = new URL(value);
+    const fqdn = normalizeObservedFqdn(parsed.hostname);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      parsed.origin !== value ||
+      parsed.pathname !== "/" ||
+      parsed.search !== "" ||
+      parsed.hash !== "" ||
+      fqdn === null ||
+      fqdn !== parsed.hostname
+    ) {
+      return null;
+    }
+    return fqdn;
+  } catch {
+    return null;
+  }
+}
+
+function candidateRuleCoversFqdn(
+  candidate: NonNullable<ReturnType<typeof deriveDomainCandidate>>,
+  fqdn: string,
+): boolean {
+  if (candidate.selectedScope === "exact") return fqdn === candidate.fqdn;
+  if (candidate.selectedScope === null) return fqdn === candidate.fqdn;
+  const site = candidate.registrableSite;
+  return site !== null && (fqdn === site || fqdn.endsWith(`.${site}`));
+}
+
 function validateAttempt(attempt: ValidationAttempt, evaluatedAt: number): ValidatedAttempt | null {
+  const originFqdn = finalOriginFqdn(attempt.finalOrigin);
   if (
     !ATTEMPT_ID.test(attempt.attemptId) ||
     !Number.isSafeInteger(attempt.attemptedAt) ||
@@ -182,7 +219,8 @@ function validateAttempt(attempt: ValidationAttempt, evaluatedAt: number): Valid
     !validHttpStatus(attempt.httpStatus) ||
     !Number.isSafeInteger(attempt.availableAddressCount) ||
     attempt.availableAddressCount < 0 ||
-    attempt.availableAddressCount > MAX_AVAILABLE_ADDRESSES
+    attempt.availableAddressCount > MAX_AVAILABLE_ADDRESSES ||
+    originFqdn === null
   ) {
     return null;
   }
@@ -218,7 +256,7 @@ function validateAttempt(attempt: ValidationAttempt, evaluatedAt: number): Valid
     if (attempt.httpStatus !== null || canonicalAddress === null) return null;
   }
 
-  return { ...attempt, canonicalAddress };
+  return { ...attempt, canonicalAddress, finalOriginFqdn: originFqdn };
 }
 
 function coverageIsValid(fqdn: string, coverage: CoverageResult): boolean {
@@ -355,8 +393,10 @@ export function decideCandidate(
 
   const directInWindow = direct.filter((attempt) => attempt.attemptedAt >= windowStart);
   const proxyInWindow = proxy.filter((attempt) => attempt.attemptedAt >= windowStart);
-  const directQualifying = directInWindow.filter((attempt) =>
-    QUALIFYING_TRANSPORT_FAILURES.has(attempt.category),
+  const directQualifying = directInWindow.filter(
+    (attempt) =>
+      QUALIFYING_TRANSPORT_FAILURES.has(attempt.category) &&
+      candidateRuleCoversFqdn(currentCandidate, attempt.finalOriginFqdn),
   );
   const spaced = evaluateSpacedEvidence(
     directQualifying,

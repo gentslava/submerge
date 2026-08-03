@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { MihomoLogFrame } from "../../clients/mihomo.js";
-import { DomainIntelligenceObserver } from "./instance.js";
+import {
+  DomainIntelligenceObserver,
+  DomainIntelligenceRuntimeLifecycle,
+  reconcileDomainIntelligenceRuntime,
+} from "./instance.js";
 import type { DomainObservation } from "./observer.js";
 
 const routedFrame: MihomoLogFrame = {
@@ -23,6 +27,34 @@ function harness(capacity?: number) {
 }
 
 describe("DomainIntelligenceObserver", () => {
+  it("starts observation before scheduling and stops scheduling before observation", () => {
+    const calls: string[] = [];
+    const observer = {
+      start: () => calls.push("observer:start"),
+      stop: () => calls.push("observer:stop"),
+    };
+    const scheduler = {
+      start: () => calls.push("scheduler:start"),
+      stop: () => calls.push("scheduler:stop"),
+    };
+    const validator = {
+      start: () => calls.push("validator:start"),
+      stop: () => calls.push("validator:stop"),
+    };
+
+    reconcileDomainIntelligenceRuntime(true, observer, scheduler, validator);
+    reconcileDomainIntelligenceRuntime(false, observer, scheduler, validator);
+
+    expect(calls).toEqual([
+      "observer:start",
+      "scheduler:start",
+      "validator:start",
+      "validator:stop",
+      "scheduler:stop",
+      "observer:stop",
+    ]);
+  });
+
   it("is disabled by default and does not schedule persistence", () => {
     const { observer, persistObservation, scheduled } = harness();
 
@@ -141,5 +173,64 @@ describe("DomainIntelligenceObserver", () => {
     expect(() => observer.observeLogFrame(routedFrame, Number.NaN)).not.toThrow();
     expect(scheduled).toHaveLength(0);
     expect(onError).not.toHaveBeenCalled();
+  });
+});
+
+describe("DomainIntelligenceRuntimeLifecycle", () => {
+  it("keeps the validation maintenance pulse alive while collection is disabled", async () => {
+    const calls: string[] = [];
+    const observer = {
+      start: () => calls.push("observer:start"),
+      stop: () => calls.push("observer:stop"),
+    };
+    const snapshot = {
+      start: () => calls.push("snapshot:start"),
+      stop: () => calls.push("snapshot:stop"),
+    };
+    const validator = {
+      start: () => calls.push("validator:start"),
+      wake: () => calls.push("validator:wake"),
+      stop: async () => {
+        calls.push("validator:stop");
+      },
+    };
+    const lifecycle = new DomainIntelligenceRuntimeLifecycle([observer, snapshot], validator);
+
+    await lifecycle.setEnabled(false);
+    expect(calls).toEqual(["snapshot:stop", "observer:stop", "validator:stop", "validator:start"]);
+
+    calls.length = 0;
+    await lifecycle.setEnabled(false);
+    expect(calls).toEqual(["validator:start"]);
+
+    calls.length = 0;
+    await lifecycle.setEnabled(true);
+    expect(calls).toEqual([
+      "observer:start",
+      "snapshot:start",
+      "validator:start",
+      "validator:wake",
+    ]);
+
+    calls.length = 0;
+    lifecycle.beginShutdown();
+    await lifecycle.setEnabled(false);
+    expect(calls).toEqual(["snapshot:stop", "observer:stop", "validator:stop"]);
+  });
+
+  it("cannot resume after validation cleanup fails", async () => {
+    const validator = {
+      start: vi.fn(),
+      wake: vi.fn(),
+      stop: vi.fn(async () => {
+        throw new Error("cleanup incomplete");
+      }),
+    };
+    const lifecycle = new DomainIntelligenceRuntimeLifecycle([], validator);
+
+    await expect(lifecycle.setEnabled(false)).rejects.toThrow("cleanup incomplete");
+    await expect(lifecycle.setEnabled(true)).rejects.toThrow(/cleanup is incomplete/i);
+    expect(validator.start).not.toHaveBeenCalled();
+    expect(validator.wake).not.toHaveBeenCalled();
   });
 });

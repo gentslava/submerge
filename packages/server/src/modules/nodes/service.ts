@@ -9,7 +9,6 @@ import {
 } from "@submerge/shared";
 import { TRPCError } from "@trpc/server";
 import { asc, eq } from "drizzle-orm";
-import { z } from "zod";
 import type { MihomoProxy, ProxiesResponse } from "../../clients/mihomo.js";
 import {
   getDelay,
@@ -25,6 +24,7 @@ import { operationalLog } from "../../log.js";
 import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
+import { getDomainIntelligenceSettingsView } from "../domain-intelligence/service.js";
 import { getOrCreateInternalSecret, getSetting } from "../settings/service.js";
 import { groupProxies } from "./config.js";
 import type {
@@ -34,33 +34,27 @@ import type {
 } from "./multiConfig.js";
 import { buildMultiConfig } from "./multiConfig.js";
 
-const DOMAIN_INTELLIGENCE_SETTING_KEY = "domainIntelligence";
 const DOMAIN_VALIDATION_PASSWORD_KEY = "internal.domainValidationProxyPassword";
-const domainValidationSettingsSchema = z
-  .object({
-    enabled: z.boolean(),
-    customTargetChannelId: z.string().min(1),
-  })
-  .passthrough();
+
+function domainValidationTarget(
+  inputs: readonly ChannelConfigInput[],
+  targetChannelId: string,
+): ProxyChannelConfigInput | null {
+  return (
+    inputs.find(
+      (input): input is ProxyChannelConfigInput =>
+        input.target === "proxy" && input.id === targetChannelId,
+    ) ?? null
+  );
+}
 
 function domainValidationListener(
   db: Db,
   inputs: readonly ChannelConfigInput[],
 ): DomainValidationListenerInput | undefined {
-  const raw = getSetting(db, DOMAIN_INTELLIGENCE_SETTING_KEY);
-  if (!raw) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  const settings = domainValidationSettingsSchema.safeParse(parsed);
-  if (!settings.success || !settings.data.enabled) return undefined;
-  const target = inputs.find(
-    (input): input is ProxyChannelConfigInput =>
-      input.target === "proxy" && input.id === settings.data.customTargetChannelId,
-  );
+  const view = getDomainIntelligenceSettingsView(db);
+  if (view.configurationState !== "ready" || !view.settings.enabled) return undefined;
+  const target = domainValidationTarget(inputs, view.settings.customTargetChannelId);
   if (!target || (target.race ?? target.proxies).length === 0) return undefined;
   return {
     listen: env.DOMAIN_VALIDATION_LISTEN,
@@ -110,6 +104,86 @@ export interface ApplyResult {
   // e.g. mihomo is down. It applies on the engine's next successful reload, so
   // callers must report "saved, engine pending", never a hard failure.
   applied: boolean;
+  // true only when this call received a successful Mihomo reload response.
+  // A byte-identical file skips reload and therefore cannot prove activation
+  // after an earlier reload failure.
+  activationVerified: boolean;
+}
+
+type ConfigApplyCoordinator = (apply: () => Promise<ApplyResult>) => Promise<ApplyResult>;
+let configApplyCoordinator: ConfigApplyCoordinator | null = null;
+
+export function registerConfigApplyCoordinator(coordinator: ConfigApplyCoordinator): () => void {
+  if (configApplyCoordinator) throw new Error("config apply coordinator is already registered");
+  configApplyCoordinator = coordinator;
+  return () => {
+    if (configApplyCoordinator === coordinator) configApplyCoordinator = null;
+  };
+}
+
+export interface ActiveRoutingInputs {
+  inputs: ChannelConfigInput[];
+  inventory: ProxyConfig[];
+}
+
+// One canonical projection of persisted channels into the exact inputs used by
+// config generation. Domain coverage reads this same projection so it cannot
+// drift from the rules Mihomo actually receives.
+export function collectActiveRoutingInputs(db: Db): ActiveRoutingInputs {
+  const allProxies = collectProxies(db);
+  const excluded = getExcludedSet(db);
+  const keep = (proxies: ProxyConfig[]): ProxyConfig[] =>
+    proxies.filter((proxy) => !excluded.has(proxy.name));
+  const inventory = keep(allProxies);
+  const inputs: ChannelConfigInput[] = listChannels(db)
+    .filter((channel) => (channel.target === "proxy" && channel.isDefault) || channel.enabled)
+    .map((channel): ChannelConfigInput => {
+      const base = {
+        target: channel.target,
+        id: channel.id,
+        isDefault: channel.isDefault,
+        domains: resolveMatcherDomains(channel.matcher),
+        keywords: channel.matcher.keywords,
+        ruleProviders: channel.matcher.ruleProviders,
+        geosite: channel.matcher.geosite,
+        geoip: channel.matcher.geoip,
+        cidrs: channel.matcher.cidrs,
+      };
+      if (channel.target === "direct") {
+        return {
+          ...base,
+          target: "direct",
+          id: "direct",
+          isDefault: false,
+          directPresets: channel.directPresets,
+        };
+      }
+      const pool = keep(resolveChannelProxies(db, channel, allProxies));
+      const proxyBase = {
+        ...base,
+        target: "proxy" as const,
+        groupName: groupNameFor(channel),
+        policy: channel.policy,
+      };
+      return channel.isDefault
+        ? { ...proxyBase, proxies: inventory, race: pool }
+        : { ...proxyBase, proxies: pool };
+    });
+  return { inputs, inventory };
+}
+
+export function readDomainValidationProxyPassword(db: Db): string | null {
+  return getSetting(db, DOMAIN_VALIDATION_PASSWORD_KEY) || null;
+}
+
+export function hasDomainValidationRoute(db: Db): boolean {
+  const view = getDomainIntelligenceSettingsView(db);
+  if (view.configurationState !== "ready" || !view.settings.enabled) return false;
+  const target = domainValidationTarget(
+    collectActiveRoutingInputs(db).inputs,
+    view.settings.customTargetChannelId,
+  );
+  return target !== null && (target.race ?? target.proxies).length > 0;
 }
 
 // Read the config currently on disk, or null if it doesn't exist / can't be read.
@@ -136,15 +210,17 @@ export async function applyConfig(
   db: Db,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; skipRuntimeReconciliation?: boolean } = {},
 ): Promise<ApplyResult> {
-  const allProxies = collectProxies(db);
-  // Global deny-list: excluded names are dropped from the whole config — never
-  // defined, pinged, routed, or in PROXY. `keep` filters both the inventory and each
-  // channel's resolved pool (a source-ref pool can otherwise re-introduce them).
-  const excluded = getExcludedSet(db);
-  const keep = (ps: ProxyConfig[]): ProxyConfig[] => ps.filter((p) => !excluded.has(p.name));
-  const inventory = keep(allProxies);
+  if (!opts.skipRuntimeReconciliation && configApplyCoordinator) {
+    return configApplyCoordinator(() =>
+      applyConfig(db, configPath, targetPath, {
+        ...opts,
+        skipRuntimeReconciliation: true,
+      }),
+    );
+  }
+  const { inputs, inventory } = collectActiveRoutingInputs(db);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
   // The config's `secret:` is the editable panel secret (seeded from env on first run):
@@ -157,44 +233,6 @@ export async function applyConfig(
   // A disabled non-default channel is dropped from routing entirely — no group,
   // no DOMAIN-SUFFIX rules — until re-enabled. The Default is the catch-all and
   // stays active regardless of its own `enabled` flag.
-  const inputs: ChannelConfigInput[] = listChannels(db)
-    .filter((ch) => (ch.target === "proxy" && ch.isDefault) || ch.enabled)
-    .map((ch): ChannelConfigInput => {
-      const base = {
-        target: ch.target,
-        id: ch.id,
-        isDefault: ch.isDefault,
-        domains: resolveMatcherDomains(ch.matcher),
-        keywords: ch.matcher.keywords,
-        ruleProviders: ch.matcher.ruleProviders,
-        geosite: ch.matcher.geosite,
-        geoip: ch.matcher.geoip,
-        cidrs: ch.matcher.cidrs,
-      };
-      if (ch.target === "direct") {
-        return {
-          ...base,
-          target: "direct",
-          id: "direct",
-          isDefault: false,
-          directPresets: ch.directPresets,
-        };
-      }
-      const pool = keep(resolveChannelProxies(db, ch, allProxies));
-      const proxyBase = {
-        ...base,
-        target: "proxy" as const,
-        groupName: groupNameFor(ch),
-        policy: ch.policy,
-      };
-      // The Default channel DEFINES the whole (non-excluded) inventory — every node is
-      // written to the config, pinged by the prober, and manually selectable via PROXY
-      // — while its AUTO group RACES only the pool. Other channels define + race their
-      // pool. Excluded nodes are already filtered out of both `inventory` and `pool`.
-      return ch.isDefault
-        ? { ...proxyBase, proxies: inventory, race: pool }
-        : { ...proxyBase, proxies: pool };
-    });
   const content = buildMultiConfig(
     inputs,
     readMihomoSecret(db),
@@ -205,7 +243,7 @@ export async function applyConfig(
   // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and
   // still reload. `force` (reconnect recovery) always pushes.
   if (!opts.force && readExistingConfig(configPath) === content) {
-    return { nodes: inventory.length, applied: true };
+    return { nodes: inventory.length, applied: true, activationVerified: false };
   }
   const tmpPath = `${configPath}.tmp`;
   writeFileSync(tmpPath, content, "utf8");
@@ -216,9 +254,9 @@ export async function applyConfig(
     await reloadConfig(targetPath);
   } catch (err) {
     operationalLog("config-reload-failed", {}, err);
-    return { nodes: inventory.length, applied: false };
+    return { nodes: inventory.length, applied: false, activationVerified: false };
   }
-  return { nodes: inventory.length, applied: true };
+  return { nodes: inventory.length, applied: true, activationVerified: true };
 }
 
 // Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose

@@ -91,7 +91,9 @@ export function getAllSettings(db: Db): Record<string, string> {
 // the panel behind ADMIN_PASSWORD if it's network-exposed (see the deploy notes).
 export function getSettingsView(db: Db): Record<string, string> {
   const publicSettings = Object.fromEntries(
-    Object.entries(getAllSettings(db)).filter(([key]) => !isInternalSettingKey(key)),
+    Object.entries(getAllSettings(db)).filter(
+      ([key]) => !isInternalSettingKey(key) && key !== "domainIntelligence",
+    ),
   );
   return {
     ...publicSettings,

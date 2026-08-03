@@ -45,6 +45,7 @@ function attempt(
     httpStatus: null,
     resolvedAddress: "1.1.1.1",
     availableAddressCount: 1,
+    finalOrigin: "https://api.service.example",
     ...overrides,
   };
 }
@@ -60,6 +61,7 @@ function http(attemptedAt: number, httpStatus = 200): ValidationAttempt {
 function confirmedEvidence(overrides: Partial<CandidateEvidence> = {}): CandidateEvidence {
   const candidate = deriveDomainCandidate("api.service.example", FILTER_POLICY, "site");
   if (!candidate) throw new Error("candidate fixture is invalid");
+  const evidenceFqdn = overrides.fqdn ?? candidate.fqdn;
   return {
     fqdn: candidate.fqdn,
     connectionCount: 3,
@@ -68,8 +70,13 @@ function confirmedEvidence(overrides: Partial<CandidateEvidence> = {}): Candidat
     selectedScope: candidate.selectedScope,
     proposedRule: candidate.proposedRule,
     coverage: UNCOVERED,
-    direct: [attempt(NOW - 23 * HOUR), attempt(NOW - 12 * HOUR), attempt(NOW - HOUR)],
-    proxy: [http(NOW - 12 * HOUR, 401), http(NOW - HOUR, 429)],
+    direct: [attempt(NOW - 23 * HOUR), attempt(NOW - 12 * HOUR), attempt(NOW - HOUR)].map(
+      (item) => ({ ...item, finalOrigin: `https://${evidenceFqdn}` }),
+    ),
+    proxy: [http(NOW - 12 * HOUR, 401), http(NOW - HOUR, 429)].map((item) => ({
+      ...item,
+      finalOrigin: `https://${evidenceFqdn}`,
+    })),
     ...overrides,
   };
 }
@@ -92,6 +99,46 @@ describe("decideCandidate", () => {
         proxyTransportFailures: 0,
         proxyUncertainFailures: 0,
       },
+    });
+  });
+
+  it("does not count repeated DIRECT failures outside the proposed exact rule", () => {
+    const exactCandidate = deriveDomainCandidate("api.service.example", FILTER_POLICY, "exact");
+    if (!exactCandidate) throw new Error("exact candidate fixture is invalid");
+    const direct = [23, 12, 1].map((hoursAgo) =>
+      attempt(NOW - hoursAgo * HOUR, {
+        finalOrigin: "https://blocked.shared.example",
+      }),
+    );
+
+    expect(
+      decideCandidate(
+        confirmedEvidence({
+          selectedScope: exactCandidate.selectedScope,
+          proposedRule: exactCandidate.proposedRule,
+          direct,
+        }),
+        POLICY,
+        NOW,
+      ),
+    ).toMatchObject({
+      status: "pending",
+      reasons: ["insufficient-direct-failures"],
+      evidence: { directQualifyingFailures: 0 },
+    });
+  });
+
+  it("counts a redirected DIRECT failure when the selected site rule covers that host", () => {
+    const direct = [23, 12, 1].map((hoursAgo) =>
+      attempt(NOW - hoursAgo * HOUR, {
+        finalOrigin: "https://cdn.service.example",
+      }),
+    );
+
+    expect(decideCandidate(confirmedEvidence({ direct }), POLICY, NOW)).toMatchObject({
+      status: "confirmed",
+      reasons: [],
+      evidence: { directQualifyingFailures: 3 },
     });
   });
 

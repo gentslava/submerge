@@ -495,6 +495,70 @@ describe("requestPinnedProxyHttps", () => {
     expect(proofAborted).toBe(true);
   });
 
+  it("does not settle a timed-out hop before route-proof cleanup settles", async () => {
+    let proofAborted = false;
+    let releaseProof: (() => void) | undefined;
+    let tlsStarted = false;
+    const pending = requestPinnedProxyHttps(
+      {
+        target: new URL("https://api.service.example/"),
+        address: "8.8.8.8",
+        family: 4,
+        connectTimeoutMs: 5,
+        totalTimeoutMs: 50,
+        proxy: {
+          endpoint: "http://mihomo:7891",
+          username: "submerge-domain-validation",
+          password: "a".repeat(43),
+        },
+        proveRoute: ({ signal }) =>
+          new Promise<void>((resolve) => {
+            releaseProof = resolve;
+            signal?.addEventListener(
+              "abort",
+              () => {
+                proofAborted = true;
+              },
+              { once: true },
+            );
+          }),
+      },
+      {
+        connectRequest: () => {
+          const request = new EventEmitter() as EventEmitter & {
+            destroy(): void;
+            end(): void;
+          };
+          request.destroy = () => undefined;
+          request.end = () =>
+            queueMicrotask(() =>
+              request.emit("connect", { statusCode: 200 }, new PassThrough(), Buffer.alloc(0)),
+            );
+          return request as unknown as ClientRequest;
+        },
+        tlsConnect: () => {
+          tlsStarted = true;
+          return new PassThrough() as TLSSocket;
+        },
+      },
+    );
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+
+    await vi.waitFor(() => expect(proofAborted).toBe(true));
+    expect(settled).toBe(false);
+    expect(tlsStarted).toBe(false);
+
+    releaseProof?.();
+    await expect(pending).resolves.toMatchObject({
+      kind: "failure",
+      category: "route_proof_failure",
+    });
+    expect(tlsStarted).toBe(false);
+  });
+
   it("cannot miss cancellation that happens while the CONNECT request is created", async () => {
     const controller = new AbortController();
     const reason = new Error("shutdown");
@@ -666,6 +730,128 @@ describe("probeDirectHttps", () => {
     });
 
     expect(result).toMatchObject({ category: "unsafe_address", transportSuccess: false });
+    expect(requests).toBe(0);
+  });
+
+  it("distinguishes a common resolver outage from a destination DNS failure", async () => {
+    const result = await probeDirectHttps("api.service.example", {
+      resolverUrls: ["https://resolver.example/dns-query"],
+      resolverQuorum: 2,
+      resolveImpl: async () => ({
+        status: "quorum-failed",
+        quorumRequired: 2,
+        quorumReached: 0,
+        addresses: [],
+        outcomes: [
+          {
+            resolverId: "resolver-1",
+            status: "failed",
+            publicAddressCount: 0,
+            rejectedAnswerCount: 0,
+          },
+          {
+            resolverId: "resolver-2",
+            status: "failed",
+            publicAddressCount: 0,
+            rejectedAnswerCount: 0,
+          },
+        ],
+      }),
+      requestPinnedImpl: async () => hopResponse(200),
+    });
+
+    expect(result).toMatchObject({
+      category: "infrastructure_error",
+      transportSuccess: false,
+    });
+  });
+
+  it.each(["resolved", "negative"] as const)(
+    "treats mixed %s/failed resolver quorum as infrastructure failure",
+    async (firstStatus) => {
+      const result = await probeDirectHttps("api.service.example", {
+        resolverUrls: ["https://resolver.example/dns-query"],
+        resolverQuorum: 2,
+        resolveImpl: async () => ({
+          status: "quorum-failed",
+          quorumRequired: 2,
+          quorumReached: firstStatus === "resolved" ? 1 : 0,
+          addresses:
+            firstStatus === "resolved"
+              ? [
+                  {
+                    address: "8.8.8.8",
+                    family: 4 as const,
+                    resolverIds: ["resolver-1"],
+                  },
+                ]
+              : [],
+          outcomes: [
+            {
+              resolverId: "resolver-1",
+              status: firstStatus,
+              publicAddressCount: firstStatus === "resolved" ? 1 : 0,
+              rejectedAnswerCount: 0,
+            },
+            {
+              resolverId: "resolver-2",
+              status: "failed",
+              publicAddressCount: 0,
+              rejectedAnswerCount: 0,
+            },
+          ],
+        }),
+        requestPinnedImpl: async () => hopResponse(200),
+      });
+
+      expect(result).toMatchObject({
+        category: "infrastructure_error",
+        transportSuccess: false,
+      });
+    },
+  );
+
+  it("treats resolved/negative resolver disagreement as infrastructure failure", async () => {
+    let requests = 0;
+    const result = await probeDirectHttps("api.service.example", {
+      resolverUrls: ["https://resolver.example/dns-query"],
+      resolverQuorum: 2,
+      resolveImpl: async () => ({
+        status: "quorum-failed",
+        quorumRequired: 2,
+        quorumReached: 1,
+        addresses: [
+          {
+            address: "8.8.8.8",
+            family: 4,
+            resolverIds: ["resolver-1"],
+          },
+        ],
+        outcomes: [
+          {
+            resolverId: "resolver-1",
+            status: "resolved",
+            publicAddressCount: 1,
+            rejectedAnswerCount: 0,
+          },
+          {
+            resolverId: "resolver-2",
+            status: "negative",
+            publicAddressCount: 0,
+            rejectedAnswerCount: 0,
+          },
+        ],
+      }),
+      requestPinnedImpl: async () => {
+        requests += 1;
+        return hopResponse(200);
+      },
+    });
+
+    expect(result).toMatchObject({
+      category: "infrastructure_error",
+      transportSuccess: false,
+    });
     expect(requests).toBe(0);
   });
 

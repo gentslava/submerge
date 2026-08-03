@@ -1,10 +1,13 @@
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MihomoConnection, MihomoLogFrame } from "../../clients/mihomo.js";
 import { createDb, type Db } from "../../db/client.js";
 import {
   domainCandidates,
+  domainDailyStats,
   domainDecisions,
+  domainObservations,
   domainValidationAttempts,
   domainValidationRuns,
 } from "../../db/schema.js";
@@ -26,6 +29,7 @@ import {
 
 const migrationsFolder = new URL("../../../drizzle", import.meta.url).pathname;
 const HOUR_MS = 60 * 60 * 1_000;
+const DAY_MS = 24 * HOUR_MS;
 
 function migratedDb(): Db {
   const db = createDb(":memory:");
@@ -337,6 +341,54 @@ describe("DomainIntelligenceScheduler", () => {
 });
 
 describe("DomainValidationScheduler", () => {
+  it("persists a coverage-blocked decision without fabricating probe attempts", async () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertDueCandidate(db, "api.service.example", now);
+    const execute = vi.fn(
+      async (): Promise<DomainValidationExecution> => ({
+        attempts: [],
+        decision: {
+          evaluatedAt: now,
+          value: {
+            status: "blocked",
+            confidence: "none",
+            reasons: ["already-covered"],
+            windowStart: now - 24 * HOUR_MS,
+            evidence: {
+              directQualifyingFailures: 0,
+              directSpacedFailures: 0,
+              directAddressDiversityRequired: false,
+              directAddressDiversitySatisfied: true,
+              proxyHttpSuccesses: 0,
+              proxyTransportFailures: 0,
+              proxyUncertainFailures: 0,
+            },
+          },
+          selectedScope: "exact",
+          proposedRule: "api.service.example",
+        },
+      }),
+    );
+    const scheduler = new DomainValidationScheduler({
+      db,
+      isEnabled: () => true,
+      execute,
+      now: () => now,
+      jitterMs: () => 0,
+      idFactory: sequentialIds(),
+    });
+
+    await scheduler.runOnce();
+
+    expect(db.select().from(domainValidationAttempts).all()).toEqual([]);
+    expect(db.select().from(domainDecisions).get()).toMatchObject({
+      status: "blocked",
+      reasons: ["already-covered"],
+    });
+    expect(db.select().from(domainCandidates).get()).toMatchObject({ status: "blocked" });
+  });
+
   it("caps overdue restart work, joins overlapping runs, and respects concurrency", async () => {
     const db = migratedDb();
     const now = Date.parse("2026-08-03T12:00:00.000Z");
@@ -544,6 +596,55 @@ describe("DomainValidationScheduler", () => {
     ).toHaveLength(1);
   });
 
+  it("does not finish stop until an aborted executor completes delayed cleanup", async () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertDueCandidate(db, "api.service.example", now);
+    const cleanup = deferred<void>();
+    const execute = vi.fn(
+      (_candidate: { fqdn: string }, signal: AbortSignal) =>
+        new Promise<DomainValidationExecution>((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              void cleanup.promise.then(() => reject(signal.reason));
+            },
+            { once: true },
+          );
+        }),
+    );
+    const scheduler = new DomainValidationScheduler({
+      db,
+      isEnabled: () => true,
+      execute,
+      now: () => now,
+      cleanupTimeoutMs: 1_000,
+      idFactory: sequentialIds(),
+    });
+    scheduler.start();
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+
+    const stopping = scheduler.stop();
+    let stopped = false;
+    void stopping.then(() => {
+      stopped = true;
+    });
+    await vi.waitFor(() =>
+      expect(db.select().from(domainValidationRuns).get()).toMatchObject({
+        status: "cancelled",
+      }),
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(stopped).toBe(false);
+
+    cleanup.resolve();
+    await expect(stopping).resolves.toBeUndefined();
+    expect(db.select().from(domainValidationRuns).get()).toMatchObject({
+      status: "cancelled",
+      errorCategory: "shutdown",
+    });
+  });
+
   it("keeps sibling workers owned until every worker settles", async () => {
     const db = migratedDb();
     const now = Date.parse("2026-08-03T12:00:00.000Z");
@@ -691,13 +792,15 @@ describe("DomainValidationScheduler", () => {
       },
       now: Date.now,
       workTimeoutMs: 100,
+      cleanupTimeoutMs: 50,
       onError,
       idFactory: sequentialIds(),
     });
 
     const running = scheduler.runOnce();
-    await vi.advanceTimersByTimeAsync(100);
-    await running;
+    const result = expect(running).rejects.toThrow(/cleanup/i);
+    await vi.advanceTimersByTimeAsync(150);
+    await result;
 
     expect(signal?.aborted).toBe(true);
     expect(onError).toHaveBeenCalledTimes(1);
@@ -707,6 +810,74 @@ describe("DomainValidationScheduler", () => {
     });
     expect(db.select().from(domainValidationAttempts).all()).toEqual([]);
     expect(db.select().from(domainDecisions).all()).toEqual([]);
+  });
+
+  it("latches scheduled validation closed after an executor misses cleanup", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-03T12:00:00.000Z"));
+    const db = migratedDb();
+    insertDueCandidate(db, "a.service.example", Date.now());
+    insertDueCandidate(db, "b.service.example", Date.now());
+    const execute = vi.fn(() => new Promise<DomainValidationExecution>(() => undefined));
+    const scheduler = new DomainValidationScheduler({
+      db,
+      isEnabled: () => true,
+      execute,
+      now: Date.now,
+      pulseMs: DAY_MS,
+      workTimeoutMs: 10,
+      cleanupTimeoutMs: 5,
+      maxConcurrency: 1,
+      circuitFailureThreshold: 100,
+      idFactory: sequentialIds(),
+    });
+
+    scheduler.start();
+    await vi.advanceTimersByTimeAsync(15);
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    scheduler.wake();
+    scheduler.start();
+    const staleAt = Date.now() - 15 * DAY_MS;
+    insertDueCandidate(db, "stale.service.example", staleAt);
+    db.insert(domainObservations)
+      .values({
+        fingerprint: "a".repeat(64),
+        fqdn: "stale.service.example",
+        observedAt: staleAt,
+        lastSeenAt: staleAt,
+        transport: "tcp",
+        source: "mihomo-log",
+        count: 1,
+      })
+      .run();
+    db.insert(domainDailyStats)
+      .values({
+        day: new Date(staleAt).toISOString().slice(0, 10),
+        fqdn: "stale.service.example",
+        connectionCount: 1,
+        firstSeenAt: staleAt,
+        lastSeenAt: staleAt,
+      })
+      .run();
+
+    await vi.advanceTimersByTimeAsync(DAY_MS);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(
+      db
+        .select()
+        .from(domainCandidates)
+        .where(eq(domainCandidates.fqdn, "stale.service.example"))
+        .all(),
+    ).toEqual([]);
+    expect(db.select().from(domainObservations).all()).toEqual([]);
+    expect(db.select().from(domainDailyStats).all()).toEqual([]);
+    await expect(scheduler.runOnce()).rejects.toThrow(/cleanup/i);
+
+    const stopping = expect(scheduler.stop()).rejects.toThrow(/cleanup/i);
+    await vi.advanceTimersByTimeAsync(5);
+    await stopping;
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
   it("rejects a validation result resolved by the timeout abort handler", async () => {
@@ -875,6 +1046,35 @@ describe("DomainValidationScheduler", () => {
     now += 60_000;
     await restarted.runOnce();
     expect(execute).toHaveBeenCalledTimes(40);
+  });
+
+  it("reads validated run and concurrency limits for every scheduler run", async () => {
+    const db = migratedDb();
+    let now = Date.parse("2026-08-03T12:00:00.000Z");
+    for (let index = 0; index < 5; index += 1) {
+      insertDueCandidate(db, `dynamic${index}.service.example`, now);
+    }
+    let limits = { maximumCandidatesPerRun: 2, maxConcurrency: 1 };
+    const execute = vi.fn(async (candidate: { fqdn: string }) =>
+      validationExecution(candidate.fqdn, now),
+    );
+    const scheduler = new DomainValidationScheduler({
+      db,
+      isEnabled: () => true,
+      execute,
+      getLimits: () => limits,
+      now: () => now,
+      jitterMs: () => 0,
+      idFactory: sequentialIds(),
+    });
+
+    await scheduler.runOnce();
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    now += 60_001;
+    limits = { maximumCandidatesPerRun: 4, maxConcurrency: 2 };
+    await scheduler.runOnce();
+    expect(execute).toHaveBeenCalledTimes(5);
   });
 
   it("runs operational retention at most once per day per process", async () => {

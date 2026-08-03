@@ -155,11 +155,18 @@ export function ruleProviderName(ref: RuleProviderRef): string {
   return `rp-${createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
 }
 
+export function ruleProviderRelativePath(ref: RuleProviderRef): string {
+  const format = ruleProviderFormat(ref.url);
+  return `providers/${ruleProviderName(ref)}.${PROVIDER_EXT[format]}`;
+}
+
 // Collect every distinct rule-provider referenced by the non-default channels
 // into the top-level `rule-providers:` map. The `format` is derived from the URL
 // extension (mihomo trusts the declared format). mihomo (not submerge) fetches
 // each list — `proxy: DIRECT` so the fetch never loops through the tunnel it
 // configures — and caches it under the mihomo Home Dir (`./providers/...`, gitignored).
+export const RULE_PROVIDER_REFRESH_INTERVAL_SECONDS = 86_400;
+
 function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const channel of nonDefault) {
@@ -172,9 +179,9 @@ function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, un
         url: ref.url,
         behavior: ref.behavior,
         format,
-        interval: 86400, // daily auto-update
+        interval: RULE_PROVIDER_REFRESH_INTERVAL_SECONDS, // daily auto-update
         proxy: "DIRECT",
-        path: `./providers/${name}.${PROVIDER_EXT[format]}`,
+        path: `./${ruleProviderRelativePath(ref)}`,
         "size-limit": 0,
       };
     }

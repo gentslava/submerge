@@ -7,6 +7,7 @@ export type OperationalEventKey =
   | "config-reload-failed"
   | "secret-rotation-write-failed"
   | "domain-validation-config-write-failed"
+  | "domain-validation-scheduler-failed"
   | "mihomo-live-failed"
   | "source-refresh-failed"
   | "source-refresh-scheduler-failed";
@@ -54,6 +55,12 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     level: "warning",
     uiMessage: "Не удалось обновить защищённый маршрут проверки доменов",
     stdoutMessage: "domain validation config write failed",
+    fields: noFields,
+  },
+  "domain-validation-scheduler-failed": {
+    level: "warning",
+    uiMessage: "Фоновая проверка доменов временно остановлена",
+    stdoutMessage: "domain validation scheduler failed",
     fields: noFields,
   },
   "mihomo-live-failed": {

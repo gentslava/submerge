@@ -85,11 +85,13 @@ describe("settings service", () => {
     const db = freshDb();
     const key = "internal.domainValidationProxyPassword";
     const secret = getOrCreateInternalSecret(db, key);
+    setSetting(db, "domainIntelligence", '{"enabled":false}');
 
     expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(getOrCreateInternalSecret(db, key)).toBe(secret);
     expect(getSetting(db, key)).toBe(secret);
     expect(getSettingsView(db)).not.toHaveProperty(key);
+    expect(getSettingsView(db)).not.toHaveProperty("domainIntelligence");
     expect(JSON.stringify(getSettingsView(db))).not.toContain(secret);
     expect(() => getOrCreateInternalSecret(db, "public-setting")).toThrow(
       "internal secret key is not protected",

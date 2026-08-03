@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   type ChannelPolicy,
   DEFAULT_AUTO_TEST_URL,
+  DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
   emptyChannelMatcher,
   type NodeView,
   type Proxy as ProxyConfig,
@@ -27,9 +28,11 @@ import {
   applyConfig,
   collectProxies,
   getExcludedSet,
+  hasDomainValidationRoute,
   listNodes,
   mergeDbInventory,
   type ProxyMeta,
+  registerConfigApplyCoordinator,
   selectNode,
   setExcluded,
   testDelay,
@@ -111,7 +114,11 @@ const json = (body: unknown, init: ResponseInit = {}) =>
     ...init,
   });
 
+let unregisterConfigApplyCoordinator: (() => void) | undefined;
+
 afterEach(() => {
+  unregisterConfigApplyCoordinator?.();
+  unregisterConfigApplyCoordinator = undefined;
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -170,7 +177,7 @@ describe("applyConfig", () => {
     expect(getSetting(db, "internal.domainValidationProxyPassword")).toBeUndefined();
   });
 
-  it("targets the selected generated channel with a stable non-public credential", async () => {
+  it("rejects a legacy partial domain setting without minting a listener credential", async () => {
     const db = freshDb();
     db.insert(sources)
       .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
@@ -179,6 +186,35 @@ describe("applyConfig", () => {
       db,
       "domainIntelligence",
       JSON.stringify({ enabled: true, customTargetChannelId: "default" }),
+    );
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(cfg.listeners).toBeUndefined();
+    expect(getSetting(db, "internal.domainValidationProxyPassword")).toBeUndefined();
+  });
+
+  it("targets the selected generated channel with a stable non-public credential", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    setSetting(
+      db,
+      "domainIntelligence",
+      JSON.stringify({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        enabled: true,
+        defaultRuleScope: "exact",
+        automationMode: "review",
+      }),
     );
     const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
     vi.stubGlobal(
@@ -202,6 +238,7 @@ describe("applyConfig", () => {
         proxy: "AUTO",
       },
     ]);
+    expect(hasDomainValidationRoute(db)).toBe(true);
     expect(getSettingsView(db)).not.toHaveProperty("internal.domainValidationProxyPassword");
     expect(JSON.stringify(getSettingsView(db))).not.toContain(password);
   });
@@ -214,7 +251,13 @@ describe("applyConfig", () => {
     setSetting(
       db,
       "domainIntelligence",
-      JSON.stringify({ enabled: true, customTargetChannelId: "missing" }),
+      JSON.stringify({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        enabled: true,
+        defaultRuleScope: "exact",
+        automationMode: "review",
+        customTargetChannelId: "missing",
+      }),
     );
     const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
     vi.stubGlobal(
@@ -227,6 +270,7 @@ describe("applyConfig", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
     expect(cfg.listeners).toBeUndefined();
+    expect(hasDomainValidationRoute(db)).toBe(false);
     expect(getSetting(db, "internal.domainValidationProxyPassword")).toBeUndefined();
   });
 
@@ -315,6 +359,25 @@ describe("applyConfig", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("routes every production config apply through the registered runtime coordinator", async () => {
+    const db = freshDb();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    const coordinator = vi.fn(async (apply: () => Promise<{ nodes: number; applied: boolean }>) =>
+      apply(),
+    );
+    unregisterConfigApplyCoordinator = registerConfigApplyCoordinator(coordinator);
+
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml"),
+    ).resolves.toMatchObject({ applied: true });
+
+    expect(coordinator).toHaveBeenCalledTimes(1);
+  });
+
   it("still reloads when the config actually changes between applies", async () => {
     const db = freshDb();
     db.insert(sources)
@@ -365,6 +428,27 @@ describe("applyConfig", () => {
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
     const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
     expect(cfg.proxies[0].name).toBe("A");
+  });
+
+  it("force-retries a byte-identical config after a failed reload", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    const fetchMock = vi
+      .fn<() => Response>()
+      .mockReturnValueOnce(new Response("engine down", { status: 503 }))
+      .mockReturnValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml"),
+    ).resolves.toMatchObject({ applied: false });
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml", { force: true }),
+    ).resolves.toMatchObject({ applied: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   const speedPolicy: ChannelPolicy = {

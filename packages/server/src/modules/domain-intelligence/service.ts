@@ -1,16 +1,23 @@
 import { Buffer } from "node:buffer";
 import {
+  DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
   type DomainCandidateList,
   type DomainCandidateListInput,
   type DomainCandidateReviewActionResult,
   type DomainCandidateReviewErrorReason,
   type DomainCandidateStatus,
   type DomainIntelligenceOverview,
+  type DomainIntelligenceReportSettings,
+  type DomainIntelligenceSettingsMutationResult,
+  type DomainIntelligenceSettingsView,
   type DomainObserverHealth,
   type DomainReportExclusionReason,
   domainCandidateListSchema,
   domainCandidateReviewActionResultSchema,
   domainIntelligenceOverviewSchema,
+  domainIntelligenceReportSettingsSchema,
+  domainIntelligenceSettingsMutationResultSchema,
+  domainIntelligenceSettingsViewSchema,
   MAX_SETTING_VALUE_BYTES,
 } from "@submerge/shared";
 import {
@@ -40,6 +47,7 @@ import {
   domainObservations,
   domainValidationAttempts,
   domainValidationRuns,
+  settings,
 } from "../../db/schema.js";
 import { getSetting } from "../settings/service.js";
 import {
@@ -50,6 +58,7 @@ import {
   type CandidateDecision,
   decisionConfidenceForStatus,
   decisionStatusForReasons,
+  type ValidationAttempt,
 } from "./decision.js";
 import {
   type DomainExclusionReason,
@@ -1044,6 +1053,10 @@ export function listDueDomainCandidates(
           isNotNull(domainCandidates.proposedRule),
           lte(domainCandidates.nextValidationAt, parsed.now),
           lte(domainCandidates.updatedAt, parsed.now),
+          gte(
+            domainCandidates.lastSeenAt,
+            Math.max(0, parsed.now - DOMAIN_OPERATIONAL_RETENTION_DAYS * DAY_MS),
+          ),
           or(isNull(domainCandidates.leaseUntil), lte(domainCandidates.leaseUntil, parsed.now)),
         ),
       )
@@ -1061,6 +1074,13 @@ const circuitStateInputSchema = z
   })
   .strict();
 const MAX_CIRCUIT_EVIDENCE_ROWS = 10_000;
+const CIRCUIT_FAILURE_CATEGORIES: readonly DomainValidationRunErrorCategory[] = [
+  "coverage-failure",
+  "direct-probe-failure",
+  "proxy-probe-failure",
+  "decision-failure",
+  "infrastructure-failure",
+];
 
 export interface DomainValidationCircuitState {
   open: boolean;
@@ -1082,7 +1102,7 @@ export function domainValidationCircuitState(
     .where(
       and(
         eq(domainValidationRuns.status, "failed"),
-        eq(domainValidationRuns.errorCategory, "infrastructure-failure"),
+        inArray(domainValidationRuns.errorCategory, CIRCUIT_FAILURE_CATEGORIES),
         isNotNull(domainValidationRuns.finishedAt),
         gte(domainValidationRuns.finishedAt, evidenceCutoff),
         lte(domainValidationRuns.finishedAt, parsed.now),
@@ -1426,7 +1446,7 @@ const completeValidationRunSchema = z
     finishedAt: timestampSchema,
     nextValidationAt: timestampSchema,
     failureStreak: z.number().int().min(0).max(1_000_000),
-    attempts: z.array(persistedAttemptInputSchema).length(2),
+    attempts: z.array(persistedAttemptInputSchema).max(2),
     decision: z
       .object({
         id: identifierSchema,
@@ -1440,10 +1460,19 @@ const completeValidationRunSchema = z
   .strict()
   .superRefine((input, context) => {
     const directions = new Set(input.attempts.map((attempt) => attempt.result.direction));
-    if (!directions.has("direct") || !directions.has("proxy")) {
+    const noProbeDecision =
+      input.attempts.length === 0 &&
+      input.decision.value.status === "blocked" &&
+      input.decision.value.reasons.some((reason) =>
+        ["already-covered", "coverage-incomplete"].includes(reason),
+      );
+    if (
+      !noProbeDecision &&
+      (input.attempts.length !== 2 || !directions.has("direct") || !directions.has("proxy"))
+    ) {
       context.addIssue({
         code: "custom",
-        message: "one DIRECT and one PROXY attempt are required",
+        message: "one DIRECT and one PROXY attempt are required unless coverage blocks probing",
       });
     }
     if (input.nextValidationAt < input.finishedAt) {
@@ -1530,26 +1559,28 @@ export function completeDomainValidationRun(db: Db, input: CompleteDomainValidat
       throw new Error("persisted decision scope does not match the candidate");
     }
 
-    tx.insert(domainValidationAttempts)
-      .values(
-        parsed.attempts.map((attempt) => ({
-          id: attempt.id,
-          runId: run.id,
-          direction: attempt.result.direction,
-          attemptedAt: attempt.attemptedAt,
-          category: attempt.result.category,
-          transportSuccess: attempt.result.transportSuccess,
-          httpStatus: attempt.result.httpStatus,
-          resolvedAddress: attempt.result.resolvedAddress,
-          availableAddressCount: attempt.result.availableAddressCount,
-          connectDurationMs: attempt.result.connectDurationMs,
-          tlsDurationMs: attempt.result.tlsDurationMs,
-          totalDurationMs: attempt.result.totalDurationMs,
-          redirectCount: attempt.result.redirectCount,
-          finalOrigin: attempt.result.finalOrigin,
-        })),
-      )
-      .run();
+    if (parsed.attempts.length > 0) {
+      tx.insert(domainValidationAttempts)
+        .values(
+          parsed.attempts.map((attempt) => ({
+            id: attempt.id,
+            runId: run.id,
+            direction: attempt.result.direction,
+            attemptedAt: attempt.attemptedAt,
+            category: attempt.result.category,
+            transportSuccess: attempt.result.transportSuccess,
+            httpStatus: attempt.result.httpStatus,
+            resolvedAddress: attempt.result.resolvedAddress,
+            availableAddressCount: attempt.result.availableAddressCount,
+            connectDurationMs: attempt.result.connectDurationMs,
+            tlsDurationMs: attempt.result.tlsDurationMs,
+            totalDurationMs: attempt.result.totalDurationMs,
+            redirectCount: attempt.result.redirectCount,
+            finalOrigin: attempt.result.finalOrigin,
+          })),
+        )
+        .run();
+    }
     const finishedRun = tx
       .update(domainValidationRuns)
       .set({ status: "completed", finishedAt: parsed.finishedAt, errorCategory: null })
@@ -1756,6 +1787,75 @@ export function listDomainValidationAttempts(
         .where(eq(domainValidationAttempts.runId, parsedRunId))
         .all(),
     );
+}
+
+export function countDomainObservationsInWindow(
+  db: Db,
+  input: { fqdn: string; since: number; until: number },
+): number {
+  const fqdn = fqdnSchema.parse(input.fqdn);
+  const since = timestampSchema.parse(input.since);
+  const until = timestampSchema.parse(input.until);
+  if (until < since) throw new RangeError("observation window is inverted");
+  const count = db
+    .select({ count: sql<number>`coalesce(sum(${domainObservations.count}), 0)` })
+    .from(domainObservations)
+    .where(
+      and(
+        eq(domainObservations.fqdn, fqdn),
+        gte(domainObservations.observedAt, since),
+        lte(domainObservations.observedAt, until),
+      ),
+    )
+    .get()?.count;
+  return z
+    .number()
+    .int()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .parse(count ?? 0);
+}
+
+export function listDomainCandidateValidationEvidence(
+  db: Db,
+  input: { fqdn: string; since: number; until: number },
+): { direct: ValidationAttempt[]; proxy: ValidationAttempt[] } {
+  const fqdn = fqdnSchema.parse(input.fqdn);
+  const since = timestampSchema.parse(input.since);
+  const until = timestampSchema.parse(input.until);
+  if (until < since) throw new RangeError("validation evidence window is inverted");
+  const rows = db
+    .select({ attempt: domainValidationAttempts })
+    .from(domainValidationAttempts)
+    .innerJoin(domainValidationRuns, eq(domainValidationAttempts.runId, domainValidationRuns.id))
+    .where(
+      and(
+        eq(domainValidationRuns.fqdn, fqdn),
+        eq(domainValidationRuns.status, "completed"),
+        gte(domainValidationAttempts.attemptedAt, since),
+        lte(domainValidationAttempts.attemptedAt, until),
+      ),
+    )
+    .orderBy(domainValidationAttempts.attemptedAt, domainValidationAttempts.id)
+    .all();
+  const result: { direct: ValidationAttempt[]; proxy: ValidationAttempt[] } = {
+    direct: [],
+    proxy: [],
+  };
+  for (const { attempt } of rows) {
+    const parsed = persistedAttemptRowSchema.parse(attempt);
+    result[parsed.direction].push({
+      attemptId: parsed.id,
+      attemptedAt: parsed.attemptedAt,
+      category: parsed.category,
+      transportSuccess: parsed.transportSuccess,
+      httpStatus: parsed.httpStatus,
+      resolvedAddress: parsed.resolvedAddress,
+      availableAddressCount: parsed.availableAddressCount,
+      finalOrigin: parsed.finalOrigin,
+    });
+  }
+  return result;
 }
 
 const persistedDecisionRowSchema = z
@@ -2085,28 +2185,153 @@ export function getDomainIntelligenceOverview(
 
 type DomainReportFilterPolicy = DomainFilterPolicy;
 
-export function readDomainIntelligenceFilterPolicy(db: Db): DomainFilterPolicy | null {
+function safeDefaultDomainIntelligenceSettings(): DomainIntelligenceReportSettings {
+  return domainIntelligenceReportSettingsSchema.parse(DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS);
+}
+
+export function getDomainIntelligenceSettingsView(db: Db): DomainIntelligenceSettingsView {
   const raw = getSetting(db, "domainIntelligence");
-  if (!raw) return null;
+  if (raw === undefined) {
+    const storedRow = db
+      .select({ key: settings.key })
+      .from(settings)
+      .where(eq(settings.key, "domainIntelligence"))
+      .get();
+    return domainIntelligenceSettingsViewSchema.parse({
+      configurationState: storedRow ? "invalid" : "unconfigured",
+      settings: safeDefaultDomainIntelligenceSettings(),
+      automatic: { available: false, reason: "publisher-unavailable" },
+    });
+  }
   if (raw.includes("\0") || Buffer.byteLength(raw, "utf8") > MAX_SETTING_VALUE_BYTES) {
-    return null;
+    return domainIntelligenceSettingsViewSchema.parse({
+      configurationState: "invalid",
+      settings: safeDefaultDomainIntelligenceSettings(),
+      automatic: { available: false, reason: "publisher-unavailable" },
+    });
   }
   let stored: unknown;
   try {
     stored = JSON.parse(raw);
   } catch {
-    return null;
+    stored = null;
   }
-  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
-  const record = stored as Record<string, unknown>;
-  const parsed = filterPolicySchema.safeParse({
-    excludedTlds: record.excludedTlds,
-    neverAddDomains: record.neverAddDomains,
-    neverAddSuffixes: record.neverAddSuffixes,
-    nonWidenableSuffixes: record.nonWidenableSuffixes,
-    telemetryPatterns: record.telemetryPatterns,
+  const parsed = domainIntelligenceReportSettingsSchema.safeParse(stored);
+  return domainIntelligenceSettingsViewSchema.parse({
+    configurationState: parsed.success
+      ? parsed.data.defaultRuleScope === null
+        ? "unconfigured"
+        : "ready"
+      : "invalid",
+    settings: parsed.success ? parsed.data : safeDefaultDomainIntelligenceSettings(),
+    automatic: { available: false, reason: "publisher-unavailable" },
   });
-  return parsed.success ? parsed.data : null;
+}
+
+export function setDomainIntelligenceReportSettings(
+  db: Db,
+  input: DomainIntelligenceReportSettings,
+): DomainIntelligenceSettingsView {
+  const parsed = domainIntelligenceReportSettingsSchema.parse(input);
+  const value = JSON.stringify(parsed);
+  if (Buffer.byteLength(value, "utf8") > MAX_SETTING_VALUE_BYTES) {
+    throw new RangeError("domain intelligence settings exceed the storage limit");
+  }
+  const filterPolicy = {
+    excludedTlds: parsed.excludedTlds,
+    neverAddDomains: parsed.neverAddDomains,
+    neverAddSuffixes: parsed.neverAddSuffixes,
+    nonWidenableSuffixes: parsed.nonWidenableSuffixes,
+    telemetryPatterns: parsed.telemetryPatterns,
+  };
+  const now = Date.now();
+  db.transaction((tx) => {
+    tx.insert(settings)
+      .values({ key: "domainIntelligence", value })
+      .onConflictDoUpdate({ target: settings.key, set: { value } })
+      .run();
+
+    for (const existing of tx.select().from(domainCandidates).all()) {
+      const running = tx
+        .select({ startedAt: domainValidationRuns.startedAt })
+        .from(domainValidationRuns)
+        .where(
+          and(
+            eq(domainValidationRuns.fqdn, existing.fqdn),
+            eq(domainValidationRuns.status, "running"),
+          ),
+        )
+        .all();
+      const changedAt = Math.max(now, existing.updatedAt, ...running.map((run) => run.startedAt));
+      const candidate = deriveDomainCandidate(
+        existing.fqdn,
+        filterPolicy,
+        existing.selectedScope ?? parsed.defaultRuleScope ?? "exact",
+      );
+      const excluded =
+        !candidate || candidate.excluded || !candidate.selectedScope || !candidate.proposedRule;
+      const selectedScope = excluded ? null : candidate.selectedScope;
+      const proposedRule = excluded ? null : candidate.proposedRule;
+      const proposalChanged =
+        selectedScope !== existing.selectedScope || proposedRule !== existing.proposedRule;
+      if (!excluded && !proposalChanged) continue;
+
+      tx.update(domainValidationRuns)
+        .set({ status: "cancelled", finishedAt: changedAt, errorCategory: "policy-changed" })
+        .where(
+          and(
+            eq(domainValidationRuns.fqdn, existing.fqdn),
+            eq(domainValidationRuns.status, "running"),
+            lte(domainValidationRuns.startedAt, changedAt),
+          ),
+        )
+        .run();
+      tx.update(domainCandidates)
+        .set({
+          registrableSite: candidate?.registrableSite ?? existing.registrableSite,
+          selectedScope,
+          proposedRule,
+          exclusionReason: excluded ? (candidate?.exclusionReason ?? "invalid-policy") : null,
+          status: excluded ? "excluded" : "queued",
+          nextValidationAt: excluded ? MAX_DATE_MS : changedAt,
+          leaseId: null,
+          leaseUntil: null,
+          updatedAt: changedAt,
+        })
+        .where(eq(domainCandidates.fqdn, existing.fqdn))
+        .run();
+    }
+  });
+  return domainIntelligenceSettingsViewSchema.parse({
+    configurationState: parsed.defaultRuleScope === null ? "unconfigured" : "ready",
+    settings: parsed,
+    automatic: { available: false, reason: "publisher-unavailable" },
+  });
+}
+
+interface UpdateDomainIntelligenceReportSettingsDeps {
+  reconcile: () => Promise<DomainIntelligenceSettingsMutationResult>;
+}
+
+export async function updateDomainIntelligenceReportSettings(
+  db: Db,
+  input: DomainIntelligenceReportSettings,
+  deps: UpdateDomainIntelligenceReportSettingsDeps,
+): Promise<DomainIntelligenceSettingsMutationResult> {
+  setDomainIntelligenceReportSettings(db, input);
+  return domainIntelligenceSettingsMutationResultSchema.parse(await deps.reconcile());
+}
+
+export function readDomainIntelligenceFilterPolicy(db: Db): DomainFilterPolicy | null {
+  const view = getDomainIntelligenceSettingsView(db);
+  if (view.configurationState !== "ready") return null;
+  return filterPolicySchema.parse({
+    excludedTlds: view.settings.excludedTlds,
+    neverAddDomains: view.settings.neverAddDomains,
+    neverAddSuffixes: view.settings.neverAddSuffixes,
+    nonWidenableSuffixes: view.settings.nonWidenableSuffixes,
+    telemetryPatterns: view.settings.telemetryPatterns,
+  });
 }
 
 export function listDomainCandidateReport(
@@ -2383,7 +2608,58 @@ export function pruneDomainIntelligence(db: Db, now: number): DomainRetentionRes
       .delete(domainDailyStats)
       .where(lt(domainDailyStats.lastSeenAt, cutoff))
       .run().changes;
-    const validationAttempts = tx
+    const staleValidationAttempts = tx
+      .delete(domainValidationAttempts)
+      .where(sql`exists (
+        select 1
+        from domain_validation_runs stale_run
+        join domain_candidates stale_candidate on stale_candidate.fqdn = stale_run.fqdn
+        where stale_run.id = ${domainValidationAttempts.runId}
+          and stale_candidate.last_seen_at < ${cutoff}
+          and (stale_candidate.lease_until is null or stale_candidate.lease_until <= ${now})
+          and not exists (
+            select 1 from domain_validation_runs active_run
+            where active_run.fqdn = stale_candidate.fqdn
+              and active_run.status = 'running'
+          )
+      )`)
+      .run().changes;
+    const staleDecisions = tx
+      .delete(domainDecisions)
+      .where(sql`exists (
+        select 1
+        from domain_candidates stale_candidate
+        where stale_candidate.fqdn = ${domainDecisions.fqdn}
+          and stale_candidate.last_seen_at < ${cutoff}
+          and (stale_candidate.lease_until is null or stale_candidate.lease_until <= ${now})
+          and not exists (
+            select 1 from domain_validation_runs active_run
+            where active_run.fqdn = stale_candidate.fqdn
+              and active_run.status = 'running'
+          )
+      )`)
+      .run().changes;
+    const staleValidationRuns = tx
+      .delete(domainValidationRuns)
+      .where(
+        and(
+          ne(domainValidationRuns.status, "running"),
+          sql`exists (
+            select 1
+            from domain_candidates stale_candidate
+            where stale_candidate.fqdn = ${domainValidationRuns.fqdn}
+              and stale_candidate.last_seen_at < ${cutoff}
+              and (stale_candidate.lease_until is null or stale_candidate.lease_until <= ${now})
+              and not exists (
+                select 1 from domain_validation_runs active_run
+                where active_run.fqdn = stale_candidate.fqdn
+                  and active_run.status = 'running'
+              )
+          )`,
+        ),
+      )
+      .run().changes;
+    const agedValidationAttempts = tx
       .delete(domainValidationAttempts)
       .where(
         and(
@@ -2398,7 +2674,7 @@ export function pruneDomainIntelligence(db: Db, now: number): DomainRetentionRes
         ),
       )
       .run().changes;
-    const validationRuns = tx
+    const agedValidationRuns = tx
       .delete(domainValidationRuns)
       .where(
         and(
@@ -2419,7 +2695,7 @@ export function pruneDomainIntelligence(db: Db, now: number): DomainRetentionRes
         ),
       )
       .run().changes;
-    const decisions = tx
+    const agedDecisions = tx
       .delete(domainDecisions)
       .where(
         and(
@@ -2437,7 +2713,7 @@ export function pruneDomainIntelligence(db: Db, now: number): DomainRetentionRes
       .delete(domainCandidates)
       .where(
         and(
-          lt(domainCandidates.updatedAt, cutoff),
+          lt(domainCandidates.lastSeenAt, cutoff),
           or(isNull(domainCandidates.leaseUntil), lte(domainCandidates.leaseUntil, now)),
           sql`not exists (
             select 1 from domain_validation_runs retained_run
@@ -2454,9 +2730,9 @@ export function pruneDomainIntelligence(db: Db, now: number): DomainRetentionRes
       observations,
       dailyStats,
       candidates,
-      validationRuns,
-      validationAttempts,
-      decisions,
+      validationRuns: staleValidationRuns + agedValidationRuns,
+      validationAttempts: staleValidationAttempts + agedValidationAttempts,
+      decisions: staleDecisions + agedDecisions,
     };
   });
 }

@@ -7,6 +7,9 @@ import {
   type DomainCandidateReviewMutationResult,
   type DomainCandidateScopeActionInput,
   type DomainIntelligenceOverview,
+  type DomainIntelligenceReportSettings,
+  type DomainIntelligenceSettingsMutationResult,
+  type DomainIntelligenceSettingsView,
   domainCandidateListInputSchema,
   domainCandidateListSchema,
   domainCandidateRecheckActionInputSchema,
@@ -14,21 +17,34 @@ import {
   domainCandidateReviewMutationResultSchema,
   domainCandidateScopeActionInputSchema,
   domainIntelligenceOverviewSchema,
+  domainIntelligenceReportSettingsSchema,
+  domainIntelligenceSettingsMutationResultSchema,
+  domainIntelligenceSettingsViewSchema,
 } from "@submerge/shared";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
-import { domainIntelligenceScheduler } from "../logs/singleton.js";
+import {
+  domainIntelligenceRuntimeCoordinator,
+  domainIntelligenceScheduler,
+  domainValidationScheduler,
+} from "../logs/singleton.js";
 import {
   DomainCandidateReviewError,
   getDomainIntelligenceOverview,
+  getDomainIntelligenceSettingsView,
   listDomainCandidateReport,
   readDomainIntelligenceFilterPolicy,
   recheckDomainCandidate,
   selectDomainCandidateScope,
   setDomainCandidateRejection,
+  updateDomainIntelligenceReportSettings,
 } from "./service.js";
 
 export interface DomainIntelligenceService {
+  settings: () => DomainIntelligenceSettingsView | Promise<DomainIntelligenceSettingsView>;
+  setSettings: (
+    input: DomainIntelligenceReportSettings,
+  ) => DomainIntelligenceSettingsMutationResult | Promise<DomainIntelligenceSettingsMutationResult>;
   overview: () => DomainIntelligenceOverview | Promise<DomainIntelligenceOverview>;
   list: (input: DomainCandidateListInput) => DomainCandidateList | Promise<DomainCandidateList>;
   setScope: (
@@ -55,6 +71,13 @@ async function executeReviewAction(
 
 export function makeDomainIntelligenceRouter(service: DomainIntelligenceService) {
   return router({
+    settings: protectedProcedure
+      .output(domainIntelligenceSettingsViewSchema)
+      .query(() => service.settings()),
+    setSettings: protectedProcedure
+      .input(domainIntelligenceReportSettingsSchema)
+      .output(domainIntelligenceSettingsMutationResultSchema)
+      .mutation(({ input }) => service.setSettings(input)),
     overview: protectedProcedure
       .output(domainIntelligenceOverviewSchema)
       .query(() => service.overview()),
@@ -78,6 +101,11 @@ export function makeDomainIntelligenceRouter(service: DomainIntelligenceService)
 }
 
 const domainIntelligenceService: DomainIntelligenceService = {
+  settings: () => getDomainIntelligenceSettingsView(db),
+  setSettings: (input) =>
+    updateDomainIntelligenceReportSettings(db, input, {
+      reconcile: () => domainIntelligenceRuntimeCoordinator.reconcile(),
+    }),
   overview: () =>
     getDomainIntelligenceOverview(db, {
       now: Date.now(),
@@ -99,7 +127,9 @@ const domainIntelligenceService: DomainIntelligenceService = {
   recheck: (input) => {
     const filterPolicy = readDomainIntelligenceFilterPolicy(db);
     if (!filterPolicy) throw new DomainCandidateReviewError("policy-unavailable");
-    return recheckDomainCandidate(db, { ...input, filterPolicy, now: Date.now() });
+    const candidate = recheckDomainCandidate(db, { ...input, filterPolicy, now: Date.now() });
+    domainValidationScheduler.wake();
+    return candidate;
   },
 };
 

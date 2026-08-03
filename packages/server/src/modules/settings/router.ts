@@ -4,39 +4,40 @@ import { setMihomoSecret } from "../../clients/mihomo.js";
 import { db } from "../../db/client.js";
 import { operationalLog } from "../../log.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
+import { domainIntelligenceRuntimeCoordinator } from "../logs/singleton.js";
 import { applyConfig } from "../nodes/service.js";
 import { getSettingsView, isInternalSettingKey, setSetting } from "./service.js";
 
 export const settingsRouter = router({
   get: protectedProcedure.query(() => getSettingsView(db)),
   set: protectedProcedure.input(setSettingInput).mutation(async ({ input }) => {
-    if (isInternalSettingKey(input.key)) {
-      throw new TRPCError({ code: "FORBIDDEN", message: "internal settings are read-only" });
+    if (isInternalSettingKey(input.key) || input.key === "domainIntelligence") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "managed settings are read-only" });
     }
     setSetting(db, input.key, input.value);
     // The secret is editable: it's written into the regenerated config (rotating a
     // sidecar engine) AND it's the panel's client credential. reloadConfig authenticates
-    // with the CURRENT (old) secret, so we rotate first, then re-point the client in a
-    // `finally` — that re-point ALWAYS runs even if the reload 401s, so typing a wrong
-    // secret can never lock you out (re-enter the right one to recover).
+    // with the CURRENT (old) secret. The serialized callback re-points the client after
+    // the reload attempt but before domain-intelligence runtime resumption. A reload
+    // failure still re-points the client, so re-entering the prior secret can recover.
     let applied = true;
     if (input.key === "mihomoSecret") {
       try {
-        // Reload failures are soft inside applyConfig (applied:false); this catch
-        // now only guards fs errors — still non-fatal here, so a wrong secret or a
-        // broken mount can't block the client re-point below.
-        ({ applied } = await applyConfig(db));
+        const result = await domainIntelligenceRuntimeCoordinator.runConfigApply(async () => {
+          try {
+            return await applyConfig(db, undefined, undefined, {
+              skipRuntimeReconciliation: true,
+            });
+          } finally {
+            // The reload above authenticates with the old secret. Re-point the client
+            // before this serialized callback resolves so the runtime cannot issue its
+            // first /connections request with stale credentials.
+            setMihomoSecret(input.value);
+          }
+        });
+        applied = result.applied;
       } catch (err) {
         operationalLog("secret-rotation-write-failed", {}, err);
-        applied = false;
-      } finally {
-        setMihomoSecret(input.value);
-      }
-    } else if (input.key === "domainIntelligence") {
-      try {
-        ({ applied } = await applyConfig(db));
-      } catch (err) {
-        operationalLog("domain-validation-config-write-failed", {}, err);
         applied = false;
       }
     }
@@ -48,10 +49,10 @@ export const settingsRouter = router({
   // engine-side refresh, and it also heals any drift between the DB and the engine.
   // `force` is essential here: this button's whole job is to push a reload even when
   // the config is byte-identical to disk (that's exactly the drift-recovery case, e.g.
-  // after a previous reload failed and left the engine stale) — without it the button
-  // would silently no-op whenever nothing changed.
+  // after a previous reload failed and left the engine stale). The coordinator owns
+  // that forced apply and keeps the domain observer disabled until it succeeds.
   reload: protectedProcedure.mutation(async () => {
-    const { applied } = await applyConfig(db, undefined, undefined, { force: true });
+    const { applied } = await domainIntelligenceRuntimeCoordinator.reconcile();
     return { ok: true as const, applied };
   }),
 });

@@ -12,11 +12,11 @@ import { liveHub } from "./live/singleton.js";
 import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
 import {
-  domainIntelligenceObserver,
-  domainIntelligenceScheduler,
+  domainIntelligenceRuntimeCoordinator,
   logHub,
+  shutdownDomainIntelligenceRuntime,
 } from "./modules/logs/singleton.js";
-import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
+import { readMihomoSecret } from "./modules/nodes/service.js";
 import { sourceRefreshScheduler } from "./modules/sources/instance.js";
 import { startSchedulerAfter } from "./modules/sources/scheduler.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
@@ -81,9 +81,9 @@ logHub.start();
 // reads the fresh file on its own start); the reload is best-effort and fire-and-forget
 // so a not-yet-ready engine can't block or crash boot — the live loop keeps it in sync.
 const shutdownController = new AbortController();
-const bootConfigApply = applyConfig(db).catch((err) =>
-  operationalLog("boot-config-apply-failed", {}, err),
-);
+const bootConfigApply = domainIntelligenceRuntimeCoordinator
+  .reconcile()
+  .catch((err) => operationalLog("boot-config-apply-failed", {}, err));
 void startSchedulerAfter(bootConfigApply, sourceRefreshScheduler, shutdownController.signal);
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
@@ -126,12 +126,14 @@ server.listen(env.PORT, env.HOST, () => {
 const shutdown = () => {
   if (shutdownController.signal.aborted) return;
   shutdownController.abort();
-  domainIntelligenceScheduler.stop();
-  domainIntelligenceObserver.stop();
   logHub.stop();
   liveHub.stop();
   const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()));
-  void Promise.all([sourceRefreshScheduler.stop(), serverClosed]).then(() => process.exit(0));
+  void Promise.allSettled([
+    shutdownDomainIntelligenceRuntime(),
+    sourceRefreshScheduler.stop(),
+    serverClosed,
+  ]).then(() => process.exit(0));
 };
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

@@ -431,6 +431,7 @@ export async function requestPinnedProxyHttps(
     let tunnelAgent: HttpsAgent | null = null;
     let connectTimer: NodeJS.Timeout | null = null;
     let totalTimer: NodeJS.Timeout | null = null;
+    let routeProofPromise: Promise<void> | null = null;
     const routeProofController = new AbortController();
 
     const cleanup = () => {
@@ -446,11 +447,19 @@ export async function requestPinnedProxyHttps(
       tlsDurationMs,
       totalDurationMs: safeDuration(now() - startedAt),
     });
+    const settleAfterRouteProof = (settle: () => void) => {
+      const proof = routeProofPromise;
+      if (!proof) {
+        settle();
+        return;
+      }
+      void proof.then(settle, settle);
+    };
     const finish = (result: PinnedHopResult) => {
       if (settled) return;
       settled = true;
       cleanup();
-      resolve(result);
+      settleAfterRouteProof(() => resolve(result));
     };
     const closeTransport = () => {
       targetRequest?.destroy();
@@ -465,11 +474,12 @@ export async function requestPinnedProxyHttps(
       closeTransport();
     };
     const onAbort = () => {
-      if (settled || !input.signal) return;
+      const signal = input.signal;
+      if (settled || !signal) return;
       settled = true;
       cleanup();
       closeTransport();
-      reject(abortedReason(input.signal));
+      settleAfterRouteProof(() => reject(abortedReason(signal)));
     };
 
     const startHttpsRequest = () => {
@@ -618,17 +628,18 @@ export async function requestPinnedProxyHttps(
         const proofSignal = input.signal
           ? AbortSignal.any([input.signal, routeProofController.signal])
           : routeProofController.signal;
-        void input
-          .proveRoute({
+        routeProofPromise = Promise.resolve().then(() => {
+          if (proofSignal.aborted) throw abortedReason(proofSignal);
+          return input.proveRoute({
             address: input.address,
             port: targetPort,
             signal: proofSignal,
-          })
-          .then(startTls)
-          .catch(() => {
-            if (input.signal?.aborted) onAbort();
-            else if (!settled) fail("route_proof_failure");
           });
+        });
+        void routeProofPromise.then(startTls).catch(() => {
+          if (input.signal?.aborted) onAbort();
+          else if (!settled) fail("route_proof_failure");
+        });
       });
       proxyRequest.once("error", (error) => {
         if (!settled) fail(classifyNetworkError(error, phase));
@@ -773,7 +784,13 @@ async function probeHttps(
       return result("unsafe_address", { finalOrigin: target.origin });
     }
     if (resolution.status !== "resolved") {
-      return result("dns_failure", { finalOrigin: target.origin });
+      return result(
+        resolution.outcomes.length > 0 &&
+          resolution.outcomes.every((outcome) => outcome.status === "negative")
+          ? "dns_failure"
+          : "infrastructure_error",
+        { finalOrigin: target.origin },
+      );
     }
     const validatedAddresses = resolution.addresses.filter(
       (address) => isPublicIpAddress(address.address) && isIP(address.address) === address.family,

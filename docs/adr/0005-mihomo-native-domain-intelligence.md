@@ -177,7 +177,9 @@ One event or one probe can never confirm a domain.
 
 - The feature flag and apply mode are off by default.
 - A failed observer, validator, report, or publisher is fail-open for user traffic.
-- Unsupported or stale rule-provider coverage blocks recommendation/apply.
+- Unsupported, empty, unsafe, or stale rule-provider coverage blocks recommendation/apply. For
+  the current daily provider update contract, a cache older than two refresh intervals is stale;
+  provider count and aggregate bytes are bounded per coverage snapshot.
 - Apply requires persistent configuration and a confirmed rule scope. Review mode requires
   an explicit rule action; automatic mode requires an explicit, persisted enablement.
 - Publication credentials are optional, narrowly scoped to `mihomo-rules`, supplied
@@ -185,7 +187,23 @@ One event or one probe can never confirm a domain.
 - The module does not change DNS configuration, Mihomo log level, VPN egress, VLESS, or
   node-selection policy.
 - All background tasks are single-flight, bounded, abortable, and stopped during
-  graceful shutdown.
+  graceful shutdown. Runtime suspension is a hard barrier: a validator that does not finish
+  transport cleanup prevents the following Mihomo config mutation instead of overlapping it.
+  The scheduler latches terminally closed after such a timeout and cannot accumulate later
+  validation work; process restart is the explicit network-recovery boundary. A separate
+  maintenance-only pulse continues 14-day SQLite retention without leasing candidates or
+  invoking probes.
+- Config application reports activation proof separately from file mutation. A failed or
+  unverified reload clears that proof, and byte-identical output cannot restart validation
+  until Mihomo is force-reloaded successfully.
+- Resolver transport/protocol failures are infrastructure failures even when another resolver
+  returns a negative answer; public/negative disagreement and other mixed quorum failures never
+  become evidence against a domain.
+- A DIRECT failure after a redirect qualifies only when the proposed rule covers the sanitized
+  failing origin. This prevents one blocked shared redirect target from generating many
+  ineffective rules for otherwise reachable origins.
+- Forced-route proof is owned asynchronous work: cancellation does not release the validator
+  lease or config-mutation barrier until the proof transport has actually settled.
 
 ## Consequences
 

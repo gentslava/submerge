@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setMihomoSecret } from "../../clients/mihomo.js";
 import { operationalLog } from "../../log.js";
 import { createCallerFactory, router } from "../../trpc/trpc.js";
+import { domainIntelligenceRuntimeCoordinator } from "../logs/singleton.js";
 import { applyConfig } from "../nodes/service.js";
 import { settingsRouter } from "./router.js";
 import { setSetting } from "./service.js";
@@ -13,6 +14,9 @@ vi.mock("../../log.js", () => ({
   operationalLog: vi.fn(),
 }));
 vi.mock("../nodes/service.js", () => ({ applyConfig: vi.fn() }));
+vi.mock("../logs/singleton.js", () => ({
+  domainIntelligenceRuntimeCoordinator: { reconcile: vi.fn(), runConfigApply: vi.fn() },
+}));
 vi.mock("./service.js", () => ({
   getSettingsView: vi.fn(() => ({})),
   isInternalSettingKey: vi.fn((key: string) => key.startsWith("internal.")),
@@ -29,6 +33,11 @@ const caller = createCallerFactory(router({ settings: settingsRouter }))({
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(applyConfig).mockReset();
+  vi.mocked(domainIntelligenceRuntimeCoordinator.reconcile).mockReset();
+  vi.mocked(domainIntelligenceRuntimeCoordinator.runConfigApply).mockReset();
+  vi.mocked(domainIntelligenceRuntimeCoordinator.runConfigApply).mockImplementation((apply) =>
+    apply(),
+  );
 });
 
 describe("settings router operational events", () => {
@@ -42,17 +51,15 @@ describe("settings router operational events", () => {
     expect(setSetting).not.toHaveBeenCalled();
   });
 
-  it("reapplies mihomo immediately when domain-intelligence routing changes", async () => {
-    vi.mocked(applyConfig).mockResolvedValueOnce({ nodes: 2, applied: true });
+  it("does not allow raw domain-intelligence JSON outside its strict router", async () => {
     const value = JSON.stringify({ enabled: true, customTargetChannelId: "media" });
 
-    await expect(caller.settings.set({ key: "domainIntelligence", value })).resolves.toEqual({
-      ok: true,
-      applied: true,
+    await expect(caller.settings.set({ key: "domainIntelligence", value })).rejects.toMatchObject({
+      code: "FORBIDDEN",
     });
 
-    expect(setSetting).toHaveBeenCalledWith({}, "domainIntelligence", value);
-    expect(applyConfig).toHaveBeenCalledWith({});
+    expect(setSetting).not.toHaveBeenCalled();
+    expect(applyConfig).not.toHaveBeenCalled();
     expect(setMihomoSecret).not.toHaveBeenCalled();
   });
 
@@ -70,5 +77,47 @@ describe("settings router operational events", () => {
     expect(JSON.stringify(vi.mocked(operationalLog).mock.calls)).not.toContain(
       "new-secret-must-not-be-logged",
     );
+  });
+
+  it("updates the API credential after reload and before the runtime resumes", async () => {
+    const events: string[] = [];
+    vi.mocked(applyConfig).mockImplementationOnce(async () => {
+      events.push("reload");
+      return { nodes: 1, applied: true, activationVerified: true };
+    });
+    vi.mocked(setMihomoSecret).mockImplementationOnce(() => {
+      events.push("credential");
+    });
+    vi.mocked(domainIntelligenceRuntimeCoordinator.runConfigApply).mockImplementationOnce(
+      async (apply) => {
+        events.push("suspend");
+        const result = await apply();
+        events.push("runtime-resume");
+        return result;
+      },
+    );
+
+    await expect(
+      caller.settings.set({ key: "mihomoSecret", value: "rotated-secret" }),
+    ).resolves.toEqual({ ok: true, applied: true });
+
+    expect(events).toEqual(["suspend", "reload", "credential", "runtime-resume"]);
+    expect(applyConfig).toHaveBeenCalledWith(
+      {},
+      undefined,
+      undefined,
+      expect.objectContaining({ skipRuntimeReconciliation: true }),
+    );
+  });
+
+  it("routes a manual config reload through domain-intelligence reconciliation", async () => {
+    vi.mocked(domainIntelligenceRuntimeCoordinator.reconcile).mockResolvedValueOnce({
+      applied: false,
+    } as never);
+
+    await expect(caller.settings.reload()).resolves.toEqual({ ok: true, applied: false });
+
+    expect(domainIntelligenceRuntimeCoordinator.reconcile).toHaveBeenCalledTimes(1);
+    expect(applyConfig).not.toHaveBeenCalled();
   });
 });

@@ -1,8 +1,11 @@
-import type {
-  DomainCandidateList,
-  DomainCandidateListInput,
-  DomainCandidateReviewActionResult,
-  DomainIntelligenceOverview,
+import {
+  DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+  type DomainCandidateList,
+  type DomainCandidateListInput,
+  type DomainCandidateReviewActionResult,
+  type DomainIntelligenceOverview,
+  type DomainIntelligenceReportSettings,
+  type DomainIntelligenceSettingsView,
 } from "@submerge/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createCallerFactory, router } from "../../trpc/trpc.js";
@@ -53,6 +56,14 @@ function actionResult(): DomainCandidateReviewActionResult {
   };
 }
 
+function settingsView(): DomainIntelligenceSettingsView {
+  return {
+    configurationState: "unconfigured",
+    settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+    automatic: { available: false, reason: "publisher-unavailable" },
+  };
+}
+
 function caller(service: DomainIntelligenceService, authed = true) {
   const appRouter = router({ domainIntelligence: makeDomainIntelligenceRouter(service) });
   return createCallerFactory(appRouter)({
@@ -66,6 +77,8 @@ function caller(service: DomainIntelligenceService, authed = true) {
 describe("domain intelligence router", () => {
   it("exposes protected overview and bounded candidate list queries", async () => {
     const service = {
+      settings: vi.fn(() => settingsView()),
+      setSettings: vi.fn(() => ({ view: settingsView(), applied: true })),
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
       setScope: vi.fn(() => actionResult()),
@@ -78,8 +91,42 @@ describe("domain intelligence router", () => {
     expect(service.list).toHaveBeenCalledWith({ view: "candidates", limit: 50 });
   });
 
+  it("exposes strict report-only settings without apply capabilities", async () => {
+    const configured: DomainIntelligenceReportSettings = {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "site",
+      automationMode: "review",
+    };
+    const ready: DomainIntelligenceSettingsView = {
+      configurationState: "ready",
+      settings: configured,
+      automatic: { available: false, reason: "publisher-unavailable" },
+    };
+    const service = {
+      settings: vi.fn(() => ready),
+      setSettings: vi.fn(() => ({ view: ready, applied: true })),
+      overview: vi.fn(() => overview()),
+      list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
+      setScope: vi.fn(() => actionResult()),
+      setRejected: vi.fn(() => actionResult()),
+      recheck: vi.fn(() => actionResult()),
+    };
+    const api = caller(service).domainIntelligence;
+
+    await expect(api.settings()).resolves.toEqual(ready);
+    await expect(api.setSettings(configured)).resolves.toEqual({ view: ready, applied: true });
+    expect(service.setSettings).toHaveBeenCalledWith(configured);
+    await expect(
+      api.setSettings({ ...configured, mode: "apply", applyEnabled: true } as never),
+    ).rejects.toThrow();
+    expect(service.setSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects unauthenticated report access before calling the service", async () => {
     const service = {
+      settings: vi.fn(() => settingsView()),
+      setSettings: vi.fn(() => ({ view: settingsView(), applied: true })),
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
       setScope: vi.fn(() => actionResult()),
@@ -88,6 +135,10 @@ describe("domain intelligence router", () => {
     };
     const unauthenticated = caller(service, false).domainIntelligence;
 
+    await expect(unauthenticated.settings()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(
+      unauthenticated.setSettings(DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(unauthenticated.overview()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(unauthenticated.list({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(
@@ -99,6 +150,8 @@ describe("domain intelligence router", () => {
     await expect(unauthenticated.recheck({ fqdn: "api.service.example" })).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+    expect(service.settings).not.toHaveBeenCalled();
+    expect(service.setSettings).not.toHaveBeenCalled();
     expect(service.overview).not.toHaveBeenCalled();
     expect(service.list).not.toHaveBeenCalled();
     expect(service.setScope).not.toHaveBeenCalled();
@@ -108,6 +161,8 @@ describe("domain intelligence router", () => {
 
   it("rejects service output outside the shared privacy contract", async () => {
     const unsafe = {
+      settings: vi.fn(() => ({ ...settingsView(), repositoryToken: "secret" })),
+      setSettings: vi.fn(() => ({ view: settingsView(), applied: true })),
       overview: vi.fn(() => ({ ...overview(), rawObservations: [] })),
       list: vi.fn((_input: DomainCandidateListInput) => ({
         ...candidateList(),
@@ -119,12 +174,15 @@ describe("domain intelligence router", () => {
     };
     const api = caller(unsafe as never).domainIntelligence;
 
+    await expect(api.settings()).rejects.toThrow();
     await expect(api.overview()).rejects.toThrow();
     await expect(api.list({})).rejects.toThrow();
   });
 
   it("exposes only protected scope, rejection, and recheck review mutations", async () => {
     const service = {
+      settings: vi.fn(() => settingsView()),
+      setSettings: vi.fn(() => ({ view: settingsView(), applied: true })),
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
       setScope: vi.fn(() => actionResult()),
@@ -161,6 +219,8 @@ describe("domain intelligence router", () => {
 
   it("rejects apply-shaped review input and output outside the safe action contract", async () => {
     const service = {
+      settings: vi.fn(() => settingsView()),
+      setSettings: vi.fn(() => ({ view: settingsView(), applied: true })),
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
       setScope: vi.fn(() => ({ ...actionResult(), commitSha: "secret" })),
@@ -192,6 +252,8 @@ describe("domain intelligence router", () => {
 
   it("returns stable safe review reason codes without exposing internal error details", async () => {
     const service = {
+      settings: vi.fn(() => settingsView()),
+      setSettings: vi.fn(() => ({ view: settingsView(), applied: true })),
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
       setScope: vi.fn(() => {

@@ -7,10 +7,13 @@ vi.mock("../log.js", () => ({
 }));
 vi.mock("../clients/mihomo.js", () => ({
   getDelay: vi.fn(async () => ({ delay: 42 })),
+  getConnections: vi.fn(async () => []),
   getProxies: vi.fn(async () => ({
     proxies: { PROXY: { name: "PROXY", type: "Selector", all: ["A"], history: [] } },
   })),
   getTotals: vi.fn(),
+  openLogStream: vi.fn(async function* () {}),
+  prepareForcedRouteProof: vi.fn(),
   streamTraffic: vi.fn(),
 }));
 vi.mock("../modules/channels/instance.js", () => ({
@@ -21,9 +24,14 @@ vi.mock("../modules/channels/service.js", () => ({
   readDefaultPolicy: vi.fn(() => ({})),
 }));
 vi.mock("../modules/nodes/service.js", () => ({
+  applyConfig: vi.fn(async () => ({ nodes: 0, applied: true })),
+  collectActiveRoutingInputs: vi.fn(() => ({ inputs: [], inventory: [] })),
   collectProxies: vi.fn(() => []),
   getExcludedSet: vi.fn(() => new Set()),
+  hasDomainValidationRoute: vi.fn(() => false),
   proxyMeta: vi.fn(),
+  readDomainValidationProxyPassword: vi.fn(() => null),
+  registerConfigApplyCoordinator: vi.fn(() => () => undefined),
   toNodeView: vi.fn(() => ({ now: null, autoNow: null, all: [] })),
   mergeDbInventory: vi.fn((view) => view),
 }));

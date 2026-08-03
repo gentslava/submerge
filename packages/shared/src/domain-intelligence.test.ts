@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
   domainCandidateListInputSchema,
   domainCandidateListSchema,
   domainCandidateRecheckActionInputSchema,
@@ -8,6 +9,9 @@ import {
   domainCandidateReviewMutationResultSchema,
   domainCandidateScopeActionInputSchema,
   domainIntelligenceOverviewSchema,
+  domainIntelligenceReportSettingsSchema,
+  domainIntelligenceSettingsMutationResultSchema,
+  domainIntelligenceSettingsViewSchema,
   domainProbeCategorySchema,
 } from "./domain-intelligence.js";
 
@@ -20,6 +24,124 @@ const health = {
 };
 
 describe("domain intelligence shared contracts", () => {
+  it("keeps report settings disabled and unconfigured until scope is explicit", () => {
+    expect(
+      domainIntelligenceSettingsViewSchema.parse({
+        configurationState: "unconfigured",
+        settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        automatic: { available: false, reason: "publisher-unavailable" },
+      }),
+    ).toMatchObject({
+      configurationState: "unconfigured",
+      settings: { enabled: false, mode: "report", defaultRuleScope: null },
+      automatic: { available: false },
+    });
+
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        enabled: true,
+        automationMode: "review",
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        maximumCandidatesPerRun: 1,
+        maxConcurrency: 2,
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        mode: "apply",
+        applyEnabled: true,
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        automationMode: "automatic",
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        externalResolvers: [
+          "https://user:password@dns.example/resolve",
+          "https://dns.google/resolve",
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        customProviderUrl: "https://rules.example/custom.txt?token=secret",
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        externalResolvers: [
+          "https://resolver.example/token/example-secret/dns-query",
+          "https://dns.google/resolve",
+        ],
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        customProviderUrl: "https://rules.example/token/ghp_example_secret/custom.txt",
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceSettingsViewSchema.parse({
+        configurationState: "ready",
+        settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        automatic: { available: false, reason: "publisher-unavailable" },
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceSettingsViewSchema.parse({
+        configurationState: "ready",
+        settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        automatic: { available: true, reason: null },
+      }),
+    ).toThrow();
+  });
+
+  it("accepts only internally consistent report settings mutation results", () => {
+    const enabled = {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "site" as const,
+      automationMode: "review" as const,
+    };
+    const view = {
+      configurationState: "ready" as const,
+      settings: enabled,
+      automatic: { available: false as const, reason: "publisher-unavailable" as const },
+    };
+
+    expect(domainIntelligenceSettingsMutationResultSchema.parse({ view, applied: true })).toEqual({
+      view,
+      applied: true,
+    });
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...enabled,
+        automationMode: "off",
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceSettingsMutationResultSchema.parse({
+        view,
+        applied: true,
+        repositoryToken: "secret",
+      }),
+    ).toThrow();
+  });
+
   it("strictly validates the only three report-mode review actions", () => {
     expect(
       domainCandidateScopeActionInputSchema.parse({

@@ -21,6 +21,7 @@ const keys: OperationalEventKey[] = [
   "config-reload-failed",
   "secret-rotation-write-failed",
   "domain-validation-config-write-failed",
+  "domain-validation-scheduler-failed",
   "mihomo-live-failed",
   "source-refresh-failed",
   "source-refresh-scheduler-failed",
@@ -61,6 +62,7 @@ describe("operational event registry", () => {
     "config-reload-failed",
     "secret-rotation-write-failed",
     "domain-validation-config-write-failed",
+    "domain-validation-scheduler-failed",
     "source-refresh-scheduler-failed",
   ])("does not expose context fields for %s", (key) => {
     expect(makeOperationalEvent(key, toxicFields).draft.fields).toBeUndefined();

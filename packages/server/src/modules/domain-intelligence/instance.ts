@@ -7,6 +7,71 @@ import {
 } from "./observer.js";
 import { recordObservation } from "./service.js";
 
+interface DomainIntelligenceRuntimePart {
+  start: () => void;
+  stop: () => void | Promise<void>;
+}
+
+export function reconcileDomainIntelligenceRuntime(
+  enabled: boolean,
+  ...parts: readonly DomainIntelligenceRuntimePart[]
+): Promise<void> {
+  if (enabled) {
+    for (const part of parts) part.start();
+    return Promise.resolve();
+  }
+  const stops = [...parts].reverse().map((part) => part.stop());
+  return Promise.all(stops).then(() => undefined);
+}
+
+interface DomainValidationRuntimePart extends DomainIntelligenceRuntimePart {
+  wake: () => void;
+}
+
+export class DomainIntelligenceRuntimeLifecycle {
+  private shuttingDown = false;
+  private state: "initial" | "stopping" | "failed" | "disabled" | "enabled" = "initial";
+
+  constructor(
+    private readonly collectionParts: readonly DomainIntelligenceRuntimePart[],
+    private readonly validationPart: DomainValidationRuntimePart,
+  ) {}
+
+  async setEnabled(enabled: boolean): Promise<void> {
+    if (enabled && !this.shuttingDown) {
+      if (this.state === "stopping" || this.state === "failed") {
+        throw new Error("domain validation cleanup is incomplete");
+      }
+      this.state = "enabled";
+      for (const part of this.collectionParts) part.start();
+      this.validationPart.start();
+      this.validationPart.wake();
+      return;
+    }
+
+    if (this.state === "disabled" && !this.shuttingDown) {
+      this.validationPart.start();
+      return;
+    }
+    this.state = "stopping";
+
+    const collectionStops = [...this.collectionParts].reverse().map((part) => part.stop());
+    const validationStop = this.validationPart.stop();
+    try {
+      await Promise.all([...collectionStops, validationStop]);
+    } catch (error) {
+      this.state = "failed";
+      throw error;
+    }
+    this.state = "disabled";
+    if (!this.shuttingDown) this.validationPart.start();
+  }
+
+  beginShutdown(): void {
+    this.shuttingDown = true;
+  }
+}
+
 interface DomainIntelligenceObserverDeps {
   persistObservation: (observation: DomainObservation) => void;
   schedule?: (work: () => void) => void;

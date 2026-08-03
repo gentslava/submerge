@@ -1,7 +1,26 @@
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+} from "node:fs";
 import { isIP } from "node:net";
-import { isValidKeyword, ruleProviderFormat } from "@submerge/shared";
+import { dirname, join } from "node:path";
+import {
+  isValidKeyword,
+  MAX_RULE_PROVIDERS_PER_CHANNEL,
+  ruleProviderFormat,
+} from "@submerge/shared";
 import * as yaml from "js-yaml";
-import { type ChannelConfigInput, ruleProviderName } from "../nodes/multiConfig.js";
+import {
+  type ChannelConfigInput,
+  RULE_PROVIDER_REFRESH_INTERVAL_SECONDS,
+  ruleProviderName,
+  ruleProviderRelativePath,
+} from "../nodes/multiConfig.js";
 import { normalizeObservedFqdn } from "./observer.js";
 
 export type CoverageRuleKind = "exact" | "suffix" | "keyword";
@@ -24,6 +43,11 @@ export interface ActiveRuleProvider {
 export interface ProviderMaterialization {
   content: string | null;
   sourceKind: Exclude<CoverageSourceKind, "inline">;
+}
+
+export interface ActiveRuleProviderSnapshot {
+  providers: ReadonlyMap<string, ProviderMaterialization>;
+  isCurrent: () => boolean;
 }
 
 export interface OpaqueDomainMatcher {
@@ -54,6 +78,174 @@ export interface CoverageResult {
 export const MAX_PROVIDER_CONTENT_BYTES = 4 * 1024 * 1024;
 export const MAX_PROVIDER_ENTRIES = 50_000;
 export const MAX_PROVIDER_LINE_LENGTH = 4_096;
+export const MAX_ACTIVE_PROVIDER_COUNT = MAX_RULE_PROVIDERS_PER_CHANNEL;
+export const MAX_ACTIVE_PROVIDER_TOTAL_BYTES = 16 * 1024 * 1024;
+const MAX_PROVIDER_CACHE_AGE_MS = 2 * RULE_PROVIDER_REFRESH_INTERVAL_SECONDS * 1_000;
+const MAX_PROVIDER_FUTURE_SKEW_MS = 5 * 60 * 1_000;
+
+interface ProviderFileIdentity {
+  path: string;
+  dev: number;
+  ino: number;
+  size: number;
+  mtimeMs: number;
+  ctimeMs: number;
+}
+
+function readBoundedProvider(
+  path: string,
+  now: number,
+  remainingBytes: number,
+): { content: string; bytes: number; identity: ProviderFileIdentity } | null {
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const before = fstatSync(descriptor);
+    if (
+      !before.isFile() ||
+      before.size === 0 ||
+      before.size > MAX_PROVIDER_CONTENT_BYTES ||
+      before.size > remainingBytes ||
+      before.mtimeMs < now - MAX_PROVIDER_CACHE_AGE_MS ||
+      before.mtimeMs > now + MAX_PROVIDER_FUTURE_SKEW_MS
+    ) {
+      return null;
+    }
+    const content = Buffer.alloc(before.size);
+    let offset = 0;
+    while (offset < content.length) {
+      const read = readSync(descriptor, content, offset, content.length - offset, offset);
+      if (read === 0) return null;
+      offset += read;
+    }
+    const after = fstatSync(descriptor);
+    if (
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== before.size ||
+      after.mtimeMs !== before.mtimeMs ||
+      after.ctimeMs !== before.ctimeMs
+    ) {
+      return null;
+    }
+    return {
+      content: content.toString("utf8"),
+      bytes: before.size,
+      identity: {
+        path,
+        dev: before.dev,
+        ino: before.ino,
+        size: before.size,
+        mtimeMs: before.mtimeMs,
+        ctimeMs: before.ctimeMs,
+      },
+    };
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+  }
+}
+
+function safeProviderDirectory(mihomoDirectory: string): string | null {
+  const providersDirectory = join(mihomoDirectory, "providers");
+  try {
+    const rootStats = lstatSync(mihomoDirectory);
+    const providerStats = lstatSync(providersDirectory);
+    if (
+      rootStats.isSymbolicLink() ||
+      providerStats.isSymbolicLink() ||
+      !rootStats.isDirectory() ||
+      !providerStats.isDirectory()
+    ) {
+      return null;
+    }
+    const realRoot = realpathSync(mihomoDirectory);
+    const realProviders = realpathSync(providersDirectory);
+    return dirname(realProviders) === realRoot ? realProviders : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentProviderIdentity(identity: ProviderFileIdentity, now: number): boolean {
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(identity.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const current = fstatSync(descriptor);
+    return (
+      current.isFile() &&
+      current.dev === identity.dev &&
+      current.ino === identity.ino &&
+      current.size === identity.size &&
+      current.mtimeMs === identity.mtimeMs &&
+      current.ctimeMs === identity.ctimeMs &&
+      current.mtimeMs >= now - MAX_PROVIDER_CACHE_AGE_MS &&
+      current.mtimeMs <= now + MAX_PROVIDER_FUTURE_SKEW_MS
+    );
+  } catch {
+    return false;
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+  }
+}
+
+export function materializeActiveRuleProviderSnapshot(
+  channels: readonly ChannelConfigInput[],
+  mihomoDirectory: string,
+  now: number = Date.now(),
+): ActiveRuleProviderSnapshot {
+  const materialized = new Map<string, ProviderMaterialization>();
+  const identities: ProviderFileIdentity[] = [];
+  const providerDirectory = safeProviderDirectory(mihomoDirectory);
+  let totalBytes = 0;
+  let full = false;
+  for (const channel of channels) {
+    if (full) break;
+    if (channel.isDefault) continue;
+    for (const reference of channel.ruleProviders ?? []) {
+      const providerId = ruleProviderName(reference);
+      if (materialized.has(providerId)) continue;
+      if (materialized.size >= MAX_ACTIVE_PROVIDER_COUNT) {
+        full = true;
+        break;
+      }
+      const read =
+        providerDirectory && ruleProviderFormat(reference.url) !== "mrs"
+          ? readBoundedProvider(
+              join(
+                providerDirectory,
+                ruleProviderRelativePath(reference).slice("providers/".length),
+              ),
+              now,
+              MAX_ACTIVE_PROVIDER_TOTAL_BYTES - totalBytes,
+            )
+          : null;
+      if (read) totalBytes += read.bytes;
+      if (read) identities.push(read.identity);
+      const content = read?.content ?? null;
+      materialized.set(providerId, { content, sourceKind: "third-party" });
+    }
+  }
+  return {
+    providers: materialized,
+    isCurrent: () => {
+      const currentDirectory = safeProviderDirectory(mihomoDirectory);
+      return (
+        currentDirectory === providerDirectory &&
+        identities.every((identity) => currentProviderIdentity(identity, Date.now()))
+      );
+    },
+  };
+}
+
+export function materializeActiveRuleProviders(
+  channels: readonly ChannelConfigInput[],
+  mihomoDirectory: string,
+  now: number = Date.now(),
+): ReadonlyMap<string, ProviderMaterialization> {
+  return materializeActiveRuleProviderSnapshot(channels, mihomoDirectory, now).providers;
+}
 
 export function coverageModelFromActiveChannels(
   channels: readonly ChannelConfigInput[],
@@ -67,6 +259,7 @@ export function coverageModelFromActiveChannels(
   const rules: ActiveDomainRule[] = [];
   const providers = new Map<string, ActiveRuleProvider>();
   const opaqueMatchers: OpaqueDomainMatcher[] = [];
+  let providerLimitExceeded = false;
 
   for (const channel of channels) {
     if (channel.isDefault) continue;
@@ -76,6 +269,10 @@ export function coverageModelFromActiveChannels(
     for (const ref of channel.ruleProviders ?? []) {
       const providerId = ruleProviderName(ref);
       if (providers.has(providerId)) continue;
+      if (providers.size >= MAX_ACTIVE_PROVIDER_COUNT) {
+        providerLimitExceeded = true;
+        break;
+      }
       const materialized = materializedProviders.get(providerId);
       providers.set(providerId, {
         sourceId: providerId,
@@ -88,6 +285,15 @@ export function coverageModelFromActiveChannels(
     for (const value of channel.geosite ?? []) {
       opaqueMatchers.push({ kind: "geosite", value, sourceId });
     }
+  }
+  if (providerLimitExceeded) {
+    providers.set("active-provider-limit", {
+      sourceId: "active-provider-limit",
+      sourceKind: "third-party",
+      behavior: "domain",
+      format: "unknown",
+      content: null,
+    });
   }
 
   return { rules, providers: [...providers.values()], opaqueMatchers };
@@ -145,7 +351,7 @@ function textEntries(content: string): string[] | null {
   const entries = lines
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith("#"));
-  return entries.length <= MAX_PROVIDER_ENTRIES ? entries : null;
+  return entries.length > 0 && entries.length <= MAX_PROVIDER_ENTRIES ? entries : null;
 }
 
 function domainProviderRule(entry: string, sourceId: string): ActiveDomainRule {

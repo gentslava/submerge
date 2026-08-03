@@ -15,6 +15,7 @@ import {
   directPresetSettingsSchema,
   isValidCidr,
   isValidDomain,
+  MAX_RULE_PROVIDERS_PER_CHANNEL,
   nodeItemSchema,
   nodeViewSchema,
   proxyChannelSchema,
@@ -425,6 +426,22 @@ describe("channelMatcherInputSchema (Phase-4a: keywords + ruleProviders)", () =>
         ruleProviders: [{ url: "http://", behavior: "domain" }],
       }),
     ).toThrow();
+  });
+  it("bounds provider references at the write boundary", () => {
+    const ruleProviders = Array.from(
+      { length: MAX_RULE_PROVIDERS_PER_CHANNEL + 1 },
+      (_, index) => ({
+        url: `https://example.com/provider-${index}.txt`,
+        behavior: "domain" as const,
+      }),
+    );
+
+    expect(
+      channelMatcherInputSchema.safeParse({ presets: [], domains: [], ruleProviders }).success,
+    ).toBe(false);
+    expect(
+      channelMatcherSchema.safeParse({ presets: [], domains: [], ruleProviders }).success,
+    ).toBe(true);
   });
 });
 

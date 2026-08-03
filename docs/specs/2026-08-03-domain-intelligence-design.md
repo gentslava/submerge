@@ -267,7 +267,7 @@ interface DomainIntelligenceSettings {
   maximumAutomaticRulesPerDay: 3;
   maxConcurrency: 2;
   requestTimeoutMs: 8_000;
-  defaultRuleScope: "exact" | "site";
+  defaultRuleScope: "exact" | "site" | null;
   automationMode: "off" | "review" | "automatic";
   automaticConsentRevision: string | null;
   externalResolvers: string[];
@@ -292,6 +292,49 @@ them may still be eligible for exact scope unless a separate exclusion covers it
 `defaultRuleScope` controls the initial choice for eligible candidates; it is not a hard
 rule and does not override per-candidate review or `nonWidenableSuffixes`. The selected
 value and its coverage are always visible before confirmation and apply.
+`null` is the fail-closed first-install state and is valid only while the mechanism is
+disabled. Enabling report/review collection requires an explicit `exact` or `site` choice;
+the implementation never invents a factory scope.
+
+The report-first build exposes these settings through a dedicated strict protected API,
+not the generic raw-string settings mutation. It accepts only `mode: report`,
+`applyEnabled: false`, and `automationMode: off | review`. The automatic option remains
+visible but disabled with a publisher-unavailable reason until the deferred apply slice
+exists. Its resolver list is limited to the two reviewed credential-free JSON DoH
+endpoints, and `customProviderUrl` remains empty until the deferred publisher adds a
+separate safe source/credential contract.
+
+One process-wide coordinator serializes boot and settings-triggered config reconciliation.
+It stops the domain runtime before every transition, always force-reloads Mihomo so a
+byte-identical file cannot masquerade as an active config, and starts collection only when
+the latest settings revision is still `ready` and enabled after that reload succeeds. A
+newer mutation or shutdown fences every older completion. Failed reconciliation leaves the
+persisted intent visible but keeps the runtime stopped. Every consumer, including listener
+generation and review policy, derives from the same full settings parse; legacy partial or
+corrupt rows are `invalid` and cannot mint a listener credential.
+
+Activation proof is explicit in every config-apply result. Writing bytes, including a
+byte-identical file, is not proof that the running Mihomo instance accepted them. After any
+failed or unverified reload the coordinator clears its proof; the next otherwise unchanged
+apply must force and verify a real reload before validation may restart.
+
+If boot reconciliation runs before Mihomo is reachable, the first healthy controller poll
+retries only that failed reconciliation; later engine reconnects and the manual reload action
+use the same serialized coordinator. Every config apply caused by source, channel, pool, or
+node-exclusion changes passes through that coordinator as well, so gaining or losing the selected
+route starts or stops validation immediately. A successful config reload is not enough to start
+the runtime when the selected channel has no usable exit: the generated validation listener must
+also be present and target a non-empty proxy group.
+
+While the runtime is active, the deferred observation sink promotes a normalized FQDN only
+after `minimumConnectionCount` observations in the trailing validation window. Promotion
+derives the candidate from the current full filter policy and wakes the bounded validation
+scheduler. Each run reads current settings, the exact active channel projection, and bounded
+provider caches; executes one pinned DIRECT/forced-PROXY pair; then rechecks coverage before
+combining the pair with persisted window evidence. The two probes share a cancellation scope and
+both settle before the run releases its lease. Missing, empty, opaque, oversized, unsafe, or more
+than two daily refresh intervals old provider materialization makes coverage incomplete and
+therefore blocks confirmation.
 
 The two filter policies are independent:
 
@@ -342,6 +385,12 @@ Operational observations, stats, attempts, candidates, and non-apply decisions o
 default because the rule and commit are already public in the Git source of truth and are
 needed for rollback explanations.
 
+Candidate expiry is based on its last qualifying observation, not on validation or queue
+maintenance timestamps. Rechecks may update lifecycle state and evidence, but cannot keep an
+unobserved hostname alive indefinitely. Retention first removes the stale candidate's
+operational children when no active lease or running validation exists, then removes the
+candidate itself.
+
 Apply-audit rows are self-contained snapshots of the published facts and revisions. They
 must not have cascading foreign keys to operational candidate, validation, attempt, or
 decision rows; operational retention therefore cannot erase publication history.
@@ -390,7 +439,10 @@ DOMAIN-SUFFIX,example.com
 ```
 
 If an active provider format cannot be checked reliably, coverage is incomplete and the
-candidate cannot be recommended or applied.
+candidate cannot be recommended or applied. Materialization accepts at most 64 distinct active
+providers and 16 MiB in aggregate per snapshot, rejects symlinked cache roots/parents and files
+that change while being read, and treats a cache older than 48 hours as stale for the current
+daily provider refresh contract.
 
 Every candidate keeps both its observation and its selected rule scope:
 
@@ -429,8 +481,11 @@ DIRECT validation:
 6. keeps TLS verification enabled;
 7. bounds connect time, total time, redirects, and downloaded bytes.
 
-DNS failure qualifies only when the configured resolver quorum fails. An IPv6 failure is
-ignored if the Submerge host has no verified IPv6 egress.
+DNS failure qualifies only when the configured resolver quorum fails with consistent
+destination-negative answers. If any resolver in an unmet quorum fails at the transport or
+protocol boundary, or if resolvers disagree between a public answer and a negative answer,
+the result is an infrastructure failure and cannot count as evidence against the domain. An
+IPv6 failure is ignored if the Submerge host has no verified IPv6 egress.
 
 ### 9.2 PROXY
 
@@ -460,6 +515,11 @@ cover Compose service-DNS reachability, host-development loopback reachability,
 authentication rejection, listener/inbound identity, and the actual proxy chain from
 Mihomo connection metadata. Changing a live selector is never used as a probing mechanism,
 so user traffic and channel selection cannot be disturbed.
+
+The route-proof request is owned by the PROXY hop lifecycle. Timeout or cancellation aborts
+it, but the hop and enclosing executor do not report cleanup complete until the proof promise
+actually settles. An uncooperative route-proof transport is therefore visible to the scheduler's
+hard cleanup barrier rather than escaping as detached work.
 
 PROXY DNS resolution uses configured resolver endpoints through this forced listener. The
 selected public address is then pinned for the connection while the original hostname is
@@ -512,6 +572,10 @@ read, so arbitrarily old attempts cannot be reinterpreted as current proof:
 Confirmation establishes that the observed FQDN has a DIRECT-versus-PROXY routing
 problem. The selected scope is an explicit policy choice; it is not a claim that every
 possible sibling hostname was independently probed.
+For a qualifying DIRECT transport failure, the persisted sanitized final origin must be
+covered by the proposed exact or site rule. A failure reached only after redirecting outside
+that scope cannot confirm the candidate because applying the proposed rule would not route
+the failing hop. Redirects within a selected site scope remain eligible.
 Review state is a separate administrator decision: rejecting a candidate does not rewrite
 its retained evidence status, so a rejected row may remain `confirmed`. It is nevertheless
 never apply-eligible until explicitly restored and re-evaluated under the current policy.
@@ -705,16 +769,26 @@ The scheduler follows the existing Submerge patterns:
 - single-flight per operation and global validation/apply serialization;
 - all errors contained and reported once per failure streak;
 - `AbortSignal` propagated through resolver/probe/publisher operations;
-- graceful shutdown waits for or aborts current bounded work;
+- graceful shutdown aborts current bounded work and waits for its transport cleanup;
+- an executor that does not finish cleanup within the hard bounded drain moves the runtime
+  into a failed-closed state, and no config mutation may cross that suspension barrier;
+- cleanup failure is a terminal latch for network validation in the scheduler instance: it
+  cancels the current validation generation and forbids periodic, wake, and manual probe starts
+  until process restart, even if the underlying transport promise later settles;
+- the latched scheduler keeps a separate maintenance-only pulse for crash recovery and
+  14-day SQLite retention; that pulse cannot lease a candidate or invoke the network executor;
 - overdue work after restart is processed in capped order, never as an unbounded burst.
 
-Operational retention remains active when validation collection is disabled. The enable
-gate is rechecked before every due item is atomically leased and started, so disabling a
+Operational retention remains active when validation collection is disabled: the validation
+scheduler stays alive as a maintenance-only pulse while its network executor gate is closed. The
+enable gate is rechecked before every due item is atomically leased and started, so disabling a
 pass prevents every later item in its snapshot from reaching the injected DIRECT/PROXY
 executor. Lifecycle shutdown owns both timer-driven and explicit `runOnce` work and aborts
 either before resolving. Before retention, expired crash runs are fenced, cancelled at their
 persisted lease-loss time, and released; old FQDN/run rows therefore cannot survive forever
 behind a stale `running` status while collection is disabled.
+The same maintenance-only path remains active after a terminal cleanup latch, so fail-closed
+network behavior cannot turn a long-running process into unbounded browsing-history storage.
 
 Suggested cadence:
 
@@ -739,11 +813,14 @@ Unit tests cover:
    protected-boundary locking;
 9. retention and apply-audit preservation;
 10. exact DIRECT failure enums, timing, resolver/address diversity, and DNS quorum;
-11. stable/unstable PROXY decisions with a zero-failure stability threshold;
-12. HTTP `401`/`403`/`404`/`429` semantics;
-13. redirect/final-origin sanitization;
-14. deterministic/idempotent managed-block updates;
-15. report/apply capability, review/automatic consent, and dry-run interlocks;
+11. resolver disagreement and redirect failures outside the proposed rule scope remain
+    non-qualifying;
+12. stable/unstable PROXY decisions with a zero-failure stability threshold;
+13. HTTP `401`/`403`/`404`/`429` semantics;
+14. redirect/final-origin sanitization;
+15. route-proof cleanup ownership and terminal scheduler latching after hard-drain failure;
+16. deterministic/idempotent managed-block updates;
+17. report/apply capability, review/automatic consent, and dry-run interlocks;
 16. partial publication/activation retry;
 17. log/credential/domain redaction outside protected reports;
 18. scheduler single-flight, circuit breaker, shutdown, and restart recovery;
