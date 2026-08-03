@@ -38,17 +38,19 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] Supported structured fields and versioned routing-message forms produce a
+- [x] Supported structured fields and versioned routing-message forms produce a
       normalized FQDN, transport, timestamp, source, and source-independent fingerprint.
-- [ ] IP literals, internal/single-label names, local/reverse zones, invalid IDNA, and
+- [x] IP literals, internal/single-label names, local/reverse zones, invalid IDNA, and
       unrelated/schema-drifted log lines produce no observation.
-- [ ] Snapshot observations use the connection start time when valid and repeated
+- [x] Snapshot observations use the connection start time when valid and repeated
       snapshots produce the same fingerprint without exposing the connection ID.
 
 **Verification:**
 
-- [ ] Focused tests are observed failing before implementation and then pass.
-- [ ] `pnpm verify:static` and the incremental review gate are green.
+- [x] Focused tests are observed failing before implementation and then pass.
+- [x] Every `pnpm verify:static` stage and the incremental review gate are green under
+      the pinned Node 24 binaries; the pnpm shim itself stalled before script execution
+      on its registry-signature lookup.
 
 ### Task 2: Persist observations and daily aggregates
 
