@@ -14,7 +14,7 @@ export interface DomainObservation {
   fingerprint: string;
 }
 
-const OBSERVATION_BUCKET_MS = 30_000;
+export const OBSERVATION_RECONCILIATION_WINDOW_MS = 30_000;
 const INTERNAL_SUFFIXES = [
   "localhost",
   "local",
@@ -77,7 +77,7 @@ export function fingerprintObservation(
   observedAt: number,
 ): string {
   if (!isEpochMillis(observedAt)) throw new RangeError("invalid observation timestamp");
-  const bucket = Math.floor(observedAt / OBSERVATION_BUCKET_MS);
+  const bucket = Math.floor(observedAt / OBSERVATION_RECONCILIATION_WINDOW_MS);
   return createHash("sha256").update(`${fqdn}\0${transport}\0${bucket}`).digest("hex");
 }
 
@@ -108,7 +108,7 @@ export function canReconcileObservations(
     left.source !== right.source &&
     left.fqdn === right.fqdn &&
     left.transport === right.transport &&
-    Math.abs(left.observedAt - right.observedAt) <= OBSERVATION_BUCKET_MS
+    Math.abs(left.observedAt - right.observedAt) <= OBSERVATION_RECONCILIATION_WINDOW_MS
   );
 }
 

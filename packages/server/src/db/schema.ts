@@ -11,6 +11,7 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
@@ -139,3 +140,50 @@ export const nodeBandwidth = sqliteTable("node_bandwidth", {
   mbps: real("mbps").notNull(),
   testedAt: integer("tested_at").notNull(),
 });
+
+// Privacy-bounded destination observations. The canonical fingerprint excludes
+// source type so one connection seen by both the log stream and /connections can
+// reconcile without storing a client/connection identifier.
+export const domainObservations = sqliteTable(
+  "domain_observations",
+  {
+    fingerprint: text("fingerprint").primaryKey(),
+    fqdn: text("fqdn").notNull(),
+    observedAt: integer("observed_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+    transport: text("transport", { enum: ["tcp", "udp"] }).notNull(),
+    source: text("source", { enum: ["mihomo-log", "connection-snapshot"] }).notNull(),
+    count: integer("count").notNull().default(1),
+  },
+  (t) => [
+    check("domain_observations_timestamp_check", sql`${t.observedAt} >= 0`),
+    check("domain_observations_last_seen_check", sql`${t.lastSeenAt} >= ${t.observedAt}`),
+    check("domain_observations_transport_check", sql`${t.transport} in ('tcp', 'udp')`),
+    check(
+      "domain_observations_source_check",
+      sql`${t.source} in ('mihomo-log', 'connection-snapshot')`,
+    ),
+    check("domain_observations_count_check", sql`${t.count} >= 1`),
+    index("domain_observations_reconcile_idx").on(t.fqdn, t.transport, t.observedAt, t.source),
+    index("domain_observations_retention_idx").on(t.lastSeenAt),
+  ],
+);
+
+// One aggregate row per normalized FQDN and UTC day. It contains no client
+// dimensions, request payload, URL, or connection metadata.
+export const domainDailyStats = sqliteTable(
+  "domain_daily_stats",
+  {
+    day: text("day").notNull(),
+    fqdn: text("fqdn").notNull(),
+    connectionCount: integer("connection_count").notNull(),
+    firstSeenAt: integer("first_seen_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.day, t.fqdn] }),
+    check("domain_daily_stats_count_check", sql`${t.connectionCount} >= 1`),
+    check("domain_daily_stats_first_seen_check", sql`${t.firstSeenAt} >= 0`),
+    check("domain_daily_stats_last_seen_check", sql`${t.lastSeenAt} >= ${t.firstSeenAt}`),
+  ],
+);

@@ -64,6 +64,13 @@
       "when": 1784624395552,
       "tag": "0008_aberrant_scarecrow",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785750031268,
+      "tag": "0009_domain_observations",
+      "breakpoints": true
     }
   ]
 }

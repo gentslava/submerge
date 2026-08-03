@@ -6,7 +6,14 @@ import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it } from "vitest";
 import { createDb } from "./client.js";
-import { channelPool, channels, sources } from "./schema.js";
+import {
+  channelPool,
+  channels,
+  domainDailyStats,
+  domainObservations,
+  settings,
+  sources,
+} from "./schema.js";
 
 const migrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 
@@ -34,6 +41,7 @@ function migrationsThrough(lastIndex: number, name: string): string {
 
 const preDirectMigrationsFolder = () => migrationsThrough(6, "pre-direct");
 const preRefreshMigrationsFolder = () => migrationsThrough(7, "pre-refresh");
+const preDomainMigrationsFolder = () => migrationsThrough(8, "pre-domain");
 
 describe("db", () => {
   it("creates and reads a source in an in-memory DB", () => {
@@ -124,6 +132,31 @@ describe("db", () => {
     const testDb = createDb(":memory:");
     migrate(testDb, { migrationsFolder: fileURLToPath(new URL("../../drizzle", import.meta.url)) });
     expect(() => testDb.select().from(channelPool).all()).not.toThrow();
+  });
+
+  it("adds domain observation tables without changing existing application rows", () => {
+    const testDb = createDb(":memory:");
+    migrate(testDb, { migrationsFolder: preDomainMigrationsFolder() });
+    testDb
+      .insert(sources)
+      .values({ kind: "sub", value: "https://provider.example/sub", label: "Existing" })
+      .run();
+    testDb.insert(settings).values({ key: "existing", value: "preserved" }).run();
+
+    migrate(testDb, { migrationsFolder });
+
+    expect(testDb.select().from(sources).get()).toMatchObject({
+      kind: "sub",
+      value: "https://provider.example/sub",
+      label: "Existing",
+    });
+    expect(testDb.select().from(settings).get()).toEqual({
+      key: "existing",
+      value: "preserved",
+    });
+    expect(testDb.select().from(domainObservations).all()).toEqual([]);
+    expect(testDb.select().from(domainDailyStats).all()).toEqual([]);
+    expect(testDb.$client.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
   });
 
   it("upgrades the real pre-Direct schema without losing channels or pool rows", () => {

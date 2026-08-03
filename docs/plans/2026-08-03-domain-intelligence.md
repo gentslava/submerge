@@ -64,16 +64,18 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] The migration adds observation, daily-stat, candidate, validation, and decision
-      storage without changing existing rows.
-- [ ] A duplicate fingerprint reconciles `lastSeen` without incrementing count; a new
+- [x] The migration adds observation and daily-stat storage without changing existing
+      rows; candidate, validation, decision, and audit tables stay with the slices that
+      first write them.
+- [x] A duplicate fingerprint reconciles `lastSeen` without incrementing count; a new
       fingerprint atomically increments the UTC daily aggregate.
-- [ ] Only the normalized fields approved by the spec are persisted.
+- [x] Only the normalized fields approved by the spec are persisted.
 
 **Verification:**
 
-- [ ] Migration upgrade, deduplication, aggregation, and privacy tests pass.
-- [ ] Existing database tests remain green.
+- [x] Migration upgrade, deduplication, aggregation, rollback, and privacy tests pass.
+- [x] Existing database tests, the repository static gate stages, `drizzle-kit check`,
+      and the incremental review remain green.
 
 ### Task 3: Derive site scope and independent filter outcomes
 
@@ -234,6 +236,8 @@ enables the feature in a deployment.
 - Modify `packages/server/src/modules/domain-intelligence/scheduler.ts` and
   `scheduler.test.ts`
 - Modify `packages/server/src/modules/domain-intelligence/service.ts` and `service.test.ts`
+- Modify `packages/server/src/db/schema.ts` and generate the candidate/validation/decision
+  migration used by this slice
 
 **Acceptance criteria:**
 
