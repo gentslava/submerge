@@ -1,6 +1,10 @@
-import type { MihomoLogFrame } from "../../clients/mihomo.js";
+import type { MihomoConnection, MihomoLogFrame } from "../../clients/mihomo.js";
 import type { Db } from "../../db/client.js";
-import { type DomainObservation, observationFromLogFrame } from "./observer.js";
+import {
+  type DomainObservation,
+  observationFromConnection,
+  observationFromLogFrame,
+} from "./observer.js";
 import { recordObservation } from "./service.js";
 
 interface DomainIntelligenceObserverDeps {
@@ -11,6 +15,7 @@ interface DomainIntelligenceObserverDeps {
 }
 
 export const DOMAIN_OBSERVATION_QUEUE_CAPACITY = 1_024;
+const RECENT_LOG_OBSERVATION_CAPACITY = 2_048;
 
 export class DomainIntelligenceObserver {
   private readonly persistObservation: DomainIntelligenceObserverDeps["persistObservation"];
@@ -18,6 +23,7 @@ export class DomainIntelligenceObserver {
   private readonly onError?: DomainIntelligenceObserverDeps["onError"];
   private readonly capacity: number;
   private readonly pending = new Map<string, DomainObservation>();
+  private readonly recentLogObservationsByFingerprint = new Map<string, DomainObservation>();
   private running = false;
   private generation = 0;
   private drainScheduled = false;
@@ -45,6 +51,7 @@ export class DomainIntelligenceObserver {
     this.running = false;
     this.generation += 1;
     this.pending.clear();
+    this.recentLogObservationsByFingerprint.clear();
     this.drainScheduled = false;
     this.failureStreak = false;
   }
@@ -60,7 +67,38 @@ export class DomainIntelligenceObserver {
       return;
     }
     if (!observation) return;
+    if (!this.recentLogObservationsByFingerprint.has(observation.fingerprint)) {
+      this.recentLogObservationsByFingerprint.set(observation.fingerprint, observation);
+      if (this.recentLogObservationsByFingerprint.size > RECENT_LOG_OBSERVATION_CAPACITY) {
+        const oldest = this.recentLogObservationsByFingerprint.keys().next().value;
+        if (oldest !== undefined) this.recentLogObservationsByFingerprint.delete(oldest);
+      }
+    }
+    this.enqueue(observation);
+  }
 
+  observeConnection(connection: MihomoConnection, snapshotAt: number): DomainObservation | null {
+    if (!this.running) return null;
+    let observation: DomainObservation | null;
+    try {
+      observation = observationFromConnection(connection, snapshotAt);
+    } catch (error) {
+      this.reportFailure(error);
+      return null;
+    }
+    if (!observation) return null;
+    this.enqueue(observation);
+    return observation;
+  }
+
+  recentLogObservations(since: number): DomainObservation[] {
+    if (!Number.isSafeInteger(since) || since < 0) return [];
+    return [...this.recentLogObservationsByFingerprint.values()].filter(
+      (observation) => observation.observedAt >= since,
+    );
+  }
+
+  private enqueue(observation: DomainObservation): void {
     if (this.pending.has(observation.fingerprint)) {
       this.ensureDrain();
       return;

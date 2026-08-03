@@ -341,8 +341,8 @@ export async function getTotals(): Promise<TrafficTotals> {
 // Snapshot of active connections. Reuses the /connections endpoint (getTotals reads
 // the same payload's counters); callers derive per-connection speed from consecutive
 // snapshots.
-export async function getConnections(): Promise<MihomoConnection[]> {
-  const r = await call("/connections");
+export async function getConnections(signal?: AbortSignal): Promise<MihomoConnection[]> {
+  const r = await call("/connections", {}, signal);
   if (!r.ok) throw new Error(`mihomo /connections returned HTTP ${r.status}`);
   return connectionsResponseSchema.parse(await r.json()).connections;
 }

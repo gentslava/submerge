@@ -341,6 +341,19 @@ describe("mihomo client", () => {
     await expect(getConnections()).resolves.toEqual([]);
   });
 
+  it("forwards an abort signal to the bounded /connections request", async () => {
+    const controller = new AbortController();
+    mockFetch((_url, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      expect(init?.signal).not.toBe(controller.signal);
+      controller.abort();
+      expect(init?.signal?.aborted).toBe(true);
+      throw init?.signal?.reason;
+    });
+
+    await expect(getConnections(controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+  });
+
   it("closes a connection via DELETE and tolerates a 404", async () => {
     let method = "";
     let path = "";

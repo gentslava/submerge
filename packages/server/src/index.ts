@@ -11,7 +11,11 @@ import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
 import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
-import { domainIntelligenceObserver, logHub } from "./modules/logs/singleton.js";
+import {
+  domainIntelligenceObserver,
+  domainIntelligenceScheduler,
+  logHub,
+} from "./modules/logs/singleton.js";
 import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
 import { sourceRefreshScheduler } from "./modules/sources/instance.js";
 import { startSchedulerAfter } from "./modules/sources/scheduler.js";
@@ -122,6 +126,7 @@ server.listen(env.PORT, env.HOST, () => {
 const shutdown = () => {
   if (shutdownController.signal.aborted) return;
   shutdownController.abort();
+  domainIntelligenceScheduler.stop();
   domainIntelligenceObserver.stop();
   logHub.stop();
   liveHub.stop();

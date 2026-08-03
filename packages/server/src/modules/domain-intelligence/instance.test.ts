@@ -117,6 +117,23 @@ describe("DomainIntelligenceObserver", () => {
     ).toBe(2);
   });
 
+  it("retains a bounded primary-log history and filters snapshot correlation reads", () => {
+    const { observer } = harness();
+    const observedAt = Date.parse("2026-08-03T12:00:00.000Z");
+    observer.start();
+    observer.observeLogFrame(routedFrame, observedAt);
+
+    expect(observer.recentLogObservations(observedAt)).toEqual([
+      expect.objectContaining({
+        fqdn: "api.service.example",
+        observedAt,
+        source: "mihomo-log",
+      }),
+    ]);
+    expect(observer.recentLogObservations(observedAt + 1)).toEqual([]);
+    expect(observer.recentLogObservations(0)).toHaveLength(1);
+  });
+
   it("contains parser failures without scheduling or throwing into the caller", () => {
     const { observer, onError, scheduled } = harness();
     observer.start();

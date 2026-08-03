@@ -130,19 +130,21 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] A bounded pulse reconciles validated `/connections` snapshots without overlap.
-- [ ] Log/snapshot ambiguity undercounts instead of manufacturing a threshold crossing.
-- [ ] Parser drift with healthy domain-bearing snapshots marks observer health degraded.
+- [x] A bounded pulse reconciles validated `/connections` snapshots without overlap.
+- [x] Log/snapshot ambiguity undercounts instead of manufacturing a threshold crossing.
+- [x] Parser drift with healthy domain-bearing snapshots marks observer health degraded.
 
 **Verification:**
 
-- [ ] Fake-clock tests cover single-flight, restart, shutdown, and degraded health.
+- [x] Fake-clock tests cover single-flight, restart, shutdown, delayed correlation,
+      snapshot recovery, and degraded health; the repository gate and independent review
+      are green.
 
 ### Checkpoint: observation foundation
 
-- [ ] Focused and repository-wide tests, typecheck, lint, and builds are green.
-- [ ] The feature remains disabled and produces no network probes or config mutations.
-- [ ] Incremental review findings for Tasks 1–5 are resolved.
+- [x] Focused and repository-wide tests, typecheck, lint, and builds are green.
+- [x] The feature remains disabled and produces no network probes or config mutations.
+- [x] Incremental review findings for Tasks 1–5 are resolved.
 
 ## Phase 2 — coverage and A/B evidence
 
