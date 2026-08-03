@@ -110,13 +110,14 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] The existing Mihomo stream fans a frame into the observer without a second stream.
-- [ ] Observation failures are contained and never stop or delay log capture.
-- [ ] The observer is inactive by default and shuts down cleanly.
+- [x] The existing Mihomo stream fans a frame into the observer without a second stream.
+- [x] Observation failures are contained and never stop or delay log capture.
+- [x] The observer is inactive by default and shuts down cleanly.
 
 **Verification:**
 
-- [ ] Log-pump error-containment and disabled-default integration tests pass.
+- [x] Log-pump error-containment, bounded-queue, failure-streak, and disabled-default
+      integration tests pass; the repository gate and independent review are green.
 
 ### Task 5: Reconcile active connection snapshots and report health
 

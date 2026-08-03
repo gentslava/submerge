@@ -155,6 +155,65 @@ async function* waitUntilAborted(signal: AbortSignal): AsyncGenerator<MihomoLogF
 }
 
 describe("LogHub mihomo pump", () => {
+  it("fans each upstream frame to the observer hook with receipt time", async () => {
+    const first: MihomoLogFrame = {
+      level: "info",
+      message: "first",
+      fields: { host: "first.example" },
+    };
+    const second: MihomoLogFrame = {
+      level: "warning",
+      message: "second",
+      fields: { host: "second.example" },
+    };
+    const onMihomoFrame = vi.fn();
+    const now = new Date("2026-08-03T12:00:00.000Z");
+    const hub = new LogHub({
+      now: () => now,
+      onMihomoFrame,
+      openLogStream: async (signal) =>
+        (async function* () {
+          yield first;
+          yield second;
+          yield* waitUntilAborted(signal);
+        })(),
+    });
+
+    hub.start();
+    await vi.waitFor(() => expect(hub.snapshot().events).toHaveLength(2));
+
+    expect(onMihomoFrame).toHaveBeenNthCalledWith(1, first, now.getTime());
+    expect(onMihomoFrame).toHaveBeenNthCalledWith(2, second, now.getTime());
+    hub.stop();
+  });
+
+  it("contains observer-hook failures without stopping log capture", async () => {
+    const observerError = new Error("observer failed");
+    const onMihomoFrame = vi
+      .fn<(frame: MihomoLogFrame, observedAt: number) => void>()
+      .mockImplementationOnce(() => {
+        throw observerError;
+      });
+    const onMihomoFrameError = vi.fn();
+    const hub = new LogHub({
+      onMihomoFrame,
+      onMihomoFrameError,
+      openLogStream: async (signal) =>
+        (async function* () {
+          yield { level: "info", message: "first", fields: {} };
+          yield { level: "info", message: "second", fields: {} };
+          yield* waitUntilAborted(signal);
+        })(),
+    });
+
+    hub.start();
+    await vi.waitFor(() => expect(hub.snapshot().events).toHaveLength(2));
+
+    expect(onMihomoFrame).toHaveBeenCalledTimes(2);
+    expect(onMihomoFrameError).toHaveBeenCalledWith(observerError);
+    hub.stop();
+  });
+
   it("becomes live as soon as the opener resolves, before the first frame", async () => {
     const opened = deferred<AsyncGenerator<MihomoLogFrame>>();
     const releaseFrame = deferred<void>();

@@ -11,7 +11,7 @@ import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
 import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
-import { logHub } from "./modules/logs/singleton.js";
+import { domainIntelligenceObserver, logHub } from "./modules/logs/singleton.js";
 import { applyConfig, readMihomoSecret } from "./modules/nodes/service.js";
 import { sourceRefreshScheduler } from "./modules/sources/instance.js";
 import { startSchedulerAfter } from "./modules/sources/scheduler.js";
@@ -122,6 +122,7 @@ server.listen(env.PORT, env.HOST, () => {
 const shutdown = () => {
   if (shutdownController.signal.aborted) return;
   shutdownController.abort();
+  domainIntelligenceObserver.stop();
   logHub.stop();
   liveHub.stop();
   const serverClosed = new Promise<void>((resolve) => server.close(() => resolve()));
