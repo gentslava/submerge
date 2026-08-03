@@ -173,8 +173,8 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] External resolver responses are parsed and quorum failures are deterministic.
-- [ ] Private, loopback, link-local, reserved, multicast, documentation, and otherwise
+- [x] External resolver responses are parsed and quorum failures are deterministic.
+- [x] Private, loopback, link-local, reserved, multicast, documentation, and otherwise
       non-global addresses are rejected before connect.
 
 ### Task 8: Probe DIRECT with per-hop SSRF protection
