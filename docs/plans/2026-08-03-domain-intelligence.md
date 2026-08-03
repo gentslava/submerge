@@ -159,9 +159,9 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] Exact, suffix, classical, custom, notblocked, and active third-party provider
+- [x] Exact, suffix, classical, custom, notblocked, and active third-party provider
       coverage is evaluated using the active Submerge routing model.
-- [ ] Unknown or unparseable provider formats return incomplete coverage and block a
+- [x] Unknown or unparseable provider formats return incomplete coverage and block a
       recommendation.
 
 ### Task 7: Resolve and validate public DIRECT addresses

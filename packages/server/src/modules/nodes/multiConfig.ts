@@ -139,7 +139,7 @@ const PROVIDER_EXT: Record<RuleProviderFormat, string> = {
 // behavior; the format is a function of the url). Two channels referencing the
 // same list collapse to one definition and one name. The `rp-` prefix + hex
 // digest keeps it out of the (separate) proxy/proxy-group namespace by construction.
-function ruleProviderName(ref: RuleProviderRef): string {
+export function ruleProviderName(ref: RuleProviderRef): string {
   const key = `${ref.url}|${ref.behavior}`;
   return `rp-${createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
 }
