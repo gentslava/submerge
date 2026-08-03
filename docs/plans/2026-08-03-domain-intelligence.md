@@ -2,15 +2,15 @@
 
 ## Overview
 
-Implement the approved report/review scope from
+Implement the approved report/review, CLI, and guarded apply scope from
 [`2026-08-03-domain-intelligence-design.md`](../specs/2026-08-03-domain-intelligence-design.md)
 as a disabled-by-default Submerge server module. Mihomo is the only observation boundary.
 The work is split into small risk-first and vertical slices so every commit remains
 testable and rollback-friendly.
 
-Production Git publication, provider activation, and automatic apply are deliberately
-deferred. No slice adds credentials, publishes a port, changes the Mihomo log level, or
-enables the feature in a deployment.
+The publisher ships fail-closed and report mode remains the default. No slice adds live
+credentials, publishes a port, changes the Mihomo log level, enables apply in a deployment,
+or mutates the production rules repository during verification.
 
 ## Architecture decisions
 
@@ -317,12 +317,60 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] Collect, validate, and report dry-run commands share the service path and cannot
-      mutate Git, provider state, config, or channels.
+- [ ] Collect, validate, and report commands share the same service boundaries.
+- [ ] Every dry-run leaves all domain/settings/apply SQLite rows and Git, provider, config,
+      and channel state unchanged; an explicit report artifact/stdout is the sole output.
 - [ ] JSON and Markdown output is atomic, sanitized, and available only at the explicit
       protected destination.
 
-### Task 16: Complete responsive evidence and runbook
+### Task 16: Add guarded Git publication and provider activation
+
+**Files:**
+
+- Create `packages/server/src/modules/domain-intelligence/publisher.ts` and its tests
+- Extend the shared settings/actions, protected router, service, and SQLite schema
+- Extend the CLI with the real `--apply` action and its fully non-mutating dry-run path
+- Extend the domain runtime for automatic batches without coupling it to observation
+- Modify the Mihomo client only through its validated provider-refresh boundary
+
+**Acceptance criteria:**
+
+- [ ] The managed block update is deterministic and idempotent, preserves every unrelated
+      byte, rejects invalid/duplicate rules, and passes `git diff --check`.
+- [ ] A narrow Git adapter accepts only the deployment checkout whose remote is exactly
+      `gentslava/mihomo-rules`, branch `main`, and file `custom.txt`; it fast-forwards,
+      commits, and pushes without shell interpolation or force.
+- [ ] Candidate apply in both review and automatic modes re-reads `confirmed` plus `active`
+      under the global apply lock, rechecks health/coverage/scope/topology, and atomically
+      enforces the UTC daily budget for automatic additions only.
+- [ ] Publication waits for validated raw-source convergence, refreshes only the stable
+      custom provider, proves resulting route coverage, and records partial/success audit.
+- [ ] Manual add/edit/delete and automatic add use the same pipeline; manual edits transfer
+      ownership to `Manual`, while automation cannot rewrite manual rules.
+- [ ] Report/default configuration has no mutation capability. Apply and automatic mode
+      remain unavailable without explicit deployment readiness and consent revision.
+- [ ] The automatic consent fingerprint is code-owned, covers every safety preference,
+      invalidates to review on change, and is required again by the locked preflight.
+- [ ] `--apply --dry-run` leaves candidate, validation, decision, audit, budget, ownership,
+      Git, provider, config, and channel state unchanged.
+
+### Task 17: Complete the apply-aware admin UI
+
+**Files:**
+
+- Extend the approved screen with custom-rule add/edit/delete and publication state
+- Add automatic-mode consent, daily budget, ownership, failure, retry, and rollback views
+- Keep the Settings screen and separate filter editors synchronized with the same contracts
+
+**Acceptance criteria:**
+
+- [ ] Report, review, and automatic modes are functional and capability-honest; unavailable
+      apply remains visible with its exact remediation reason.
+- [ ] Candidate confirmation, manual rules, scope changes, delete warnings, publication
+      progress, partial activation retry, and ownership changes call protected actions.
+- [ ] Never-add and do-not-widen remain separate; first-install scope is an explicit choice.
+
+### Task 18: Complete responsive evidence and runbook
 
 **Files:**
 
@@ -334,8 +382,10 @@ enables the feature in a deployment.
 
 - [ ] Populated, empty, degraded, error, collapsed, long-FQDN, and scope states match the
       approved Pencil frames at the required desktop and responsive widths.
-- [ ] The runbook explicitly leaves apply credentials, Git publication, and production
-      enablement deferred.
+- [ ] The runbook covers install, report-only use, apply prerequisites, enablement,
+      dry-run, retry, uninstall, normal Git revert rollback, and provider re-verification.
+- [ ] Verification uses mocks/reserved domains only and never enables or executes
+      production apply.
 
 ### Final checkpoint
 
@@ -346,12 +396,9 @@ enables the feature in a deployment.
 
 ## Deferred follow-up
 
-- Git-backed managed-block publication and provider activation. Its TDD slice must prove
-  that both batch selection and the locked final preflight veto a rejected candidate even
-  when its retained lifecycle status is `confirmed`.
-- Manual add/edit/delete through the shared publisher.
-- Automatic consent revision, UTC daily budget, automatic ownership, and cleanup policy.
-- Choosing the factory value of `defaultRuleScope`.
+- Automatic cleanup/removal policy for rules that later become unnecessary.
+- Adoption of pre-existing rules outside the Submerge-managed block.
+- Any production credential, mount, provider, or mode change.
 
 ## Risks and mitigations
 

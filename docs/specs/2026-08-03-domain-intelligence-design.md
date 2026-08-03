@@ -1,8 +1,8 @@
 # Mihomo-native domain intelligence and guarded custom rules — design
 
 - **Date:** 2026-08-03
-- **Status:** Approved for report/review implementation; production automatic apply and
-  first-install scope default remain deferred
+- **Status:** Approved for report/review, CLI, and guarded apply implementation;
+  production enablement remains a separate operation
 - **Related:** [ADR-0005](../adr/0005-mihomo-native-domain-intelligence.md),
   [routing Phase 4](2026-07-07-routing-phase4-design.md),
   [background prober](2026-07-03-background-prober-design.md)
@@ -19,8 +19,9 @@
    temporally spaced.
 5. Version 1 is a Submerge TypeScript module using the existing SQLite and lifecycle; no
    separate Python/systemd worker is introduced.
-6. Report mode ships first. Apply remains disabled until its credentials, managed
-   provider, and rollback are separately verified.
+6. Report mode remains the default. Guarded apply is implemented in the same feature but
+   cannot run until its deployment credentials, managed provider, and rollback path are
+   separately configured and verified.
 7. Rule scope is an explicit candidate decision: exact observed address or the whole
    registrable site when that expansion cannot capture unrelated tenants.
 8. The approved Indigo Console Pencil frames define how candidates, scope, reports, and
@@ -167,7 +168,11 @@ pnpm -F @submerge/server domain-intelligence --report --dry-run
 pnpm -F @submerge/server domain-intelligence --apply
 ```
 
-`--dry-run` blocks Git writes, commits, pushes, provider refresh, and any config mutation.
+`--dry-run` makes no durable application or system-state mutation. It may read Mihomo,
+SQLite, Git, and the raw source and may perform explicitly requested bounded probes, but it
+does not write observations, candidates, leases, validation evidence, decisions, settings,
+apply audit, budgets, ownership, Git, providers, config, or channels. An explicitly requested
+report file or stdout payload is its only allowed output side effect.
 
 ### 4.3 Planned files
 
@@ -249,37 +254,47 @@ export function decideCandidate(evidence: CandidateEvidence, policy: DecisionPol
 
 ## 6. Configuration
 
-Settings are stored through the existing Submerge settings path and exposed to the admin
-only. Defaults are disabled/report-only:
+Admin preferences are stored through the existing Submerge settings path and exposed to
+the admin only. Deployment capability is derived server-side and is never writable through
+the API. Defaults are disabled/report-only:
 
 ```ts
-interface DomainIntelligenceSettings {
-  enabled: false;
-  mode: "report";
+interface DomainIntelligencePreferences {
+  enabled: boolean;
   retentionDays: 14;
-  minimumConnectionCount: 3;
-  directAttemptsRequired: 3;
-  minimumAttemptSpacingMinutes: 120;
+  minimumConnectionCount: number;
+  directAttemptsRequired: number;
+  minimumAttemptSpacingMinutes: number;
   validationWindowHours: 24;
-  minimumProxySuccesses: 2;
+  minimumProxySuccesses: number;
   maximumProxyTransportFailures: 0;
-  maximumCandidatesPerRun: 20;
-  maximumAutomaticRulesPerDay: 3;
-  maxConcurrency: 2;
-  requestTimeoutMs: 8_000;
+  maximumCandidatesPerRun: number;
+  maximumAutomaticRulesPerDay: number;
+  maxConcurrency: number;
+  requestTimeoutMs: number;
   defaultRuleScope: "exact" | "site" | null;
   automationMode: "off" | "review" | "automatic";
-  automaticConsentRevision: string | null;
   externalResolvers: string[];
   excludedTlds: string[];
   neverAddDomains: string[];
   neverAddSuffixes: string[];
   nonWidenableSuffixes: string[];
   telemetryPatterns: string[];
-  customProviderUrl: string;
   customTargetChannelId: string;
-  applyEnabled: false;
 }
+
+type DomainIntelligenceDeploymentCapability =
+  | { mode: "report"; apply: { available: false; reason: ApplyUnavailableReason } }
+  | {
+      mode: "apply";
+      apply: {
+        available: true;
+        repository: "gentslava/mihomo-rules";
+        branch: "main";
+        path: "custom.txt";
+        providerUrl: "https://raw.githubusercontent.com/gentslava/mihomo-rules/main/custom.txt";
+      };
+    };
 ```
 
 Default exclusions include `ru`, `su`, `xn--p1ai`, private/local/reverse zones, telemetry,
@@ -296,13 +311,25 @@ value and its coverage are always visible before confirmation and apply.
 disabled. Enabling report/review collection requires an explicit `exact` or `site` choice;
 the implementation never invents a factory scope.
 
-The report-first build exposes these settings through a dedicated strict protected API,
-not the generic raw-string settings mutation. It accepts only `mode: report`,
-`applyEnabled: false`, and `automationMode: off | review`. The automatic option remains
-visible but disabled with a publisher-unavailable reason until the deferred apply slice
-exists. Its resolver list is limited to the two reviewed credential-free JSON DoH
-endpoints, and `customProviderUrl` remains empty until the deferred publisher adds a
-separate safe source/credential contract.
+The feature exposes preferences through a dedicated strict protected API, not the generic
+raw-string settings mutation. `mode`, apply readiness, repository, branch, path, provider
+URL, checkout path, and credentials are not accepted in that input. Report capability
+accepts only `automationMode: off | review`; the separate protected automatic-consent
+action can select `automatic` only after server-derived deployment readiness succeeds.
+The resolver list is limited to the two reviewed credential-free JSON DoH endpoints.
+The repository is pinned to `gentslava/mihomo-rules`, branch `main`, path `custom.txt`, and
+the exact corresponding GitHub Raw URL; a mismatched checkout remote, branch, file, or
+active provider fails closed. Git credentials are never stored in or returned through the
+settings API. Boundary tests reject every client-supplied capability/repository/provider
+field and every deployment mismatch.
+
+Automatic consent is stored separately from mutable preferences. Its revision is a
+code-owned safety version plus a SHA-256 fingerprint of the canonical automatic-safety
+preferences (thresholds, scope default and guards, target channel, concurrency, timeouts,
+and daily budget). Every locked automatic preflight requires an exact fingerprint match.
+Changing any fingerprinted preference or the code-owned safety version invalidates consent,
+falls back to `review`, and requires a fresh protected confirmation action and audit row.
+Missing or stale consent never schedules, reserves budget, or publishes.
 
 One process-wide coordinator serializes boot and settings-triggered config reconciliation.
 It stops the domain runtime before every transition, always force-reloads Mihomo so a
@@ -675,9 +702,9 @@ Required behavior:
 Every mutation requires these shared preconditions:
 
 ```text
-settings.enabled == true
-settings.mode == "apply"
-settings.applyEnabled == true
+preferences.enabled == true
+deploymentCapability.mode == "apply"
+deploymentCapability.apply.available == true
 dryRun == false
 ```
 
@@ -687,7 +714,8 @@ authorization; no click is required for each later batch. Changing from review t
 automatic is therefore the explicit action described by the confirmation dialog. Report
 mode can never mutate even if the UI workflow setting is stale.
 
-For an automatic candidate, every apply attempt has an additional non-negotiable veto:
+Every candidate-derived apply, whether explicitly confirmed in review mode or selected by
+automatic mode, has an additional non-negotiable veto:
 
 ```text
 candidate.status == "confirmed"
@@ -695,10 +723,12 @@ candidate.reviewState == "active"
 ```
 
 The publisher must re-read both fields under the global apply lock immediately before its
-SQLite reservation and Git mutation. A previously selected candidate that is now rejected
-stops without consuming budget or changing Git, providers, config, or channels. This check
-is required both when selecting a batch and in the final locked preflight; filtering only by
-`status == "confirmed"` is forbidden.
+SQLite reservation and Git mutation. Pending, blocked, excluded, or rejected candidate
+actions stop without consuming budget or changing Git, providers, config, or channels. This
+check is required both when selecting a batch and in the final locked preflight; filtering
+only by `status == "confirmed"` is forbidden. Only a distinct free-form manual-rule editor
+action may bypass candidate evidence, and it remains subject to syntax, scope, coverage
+preview, capability, Git, activation, and audit safeguards.
 
 ### 12.1 Automatic daily budget
 
@@ -737,9 +767,11 @@ Pipeline:
 1. acquire a global apply lock;
 2. verify observer health, current topology, target channel, and complete coverage;
 3. require a clean managed checkout and fast-forward to current `main`;
-4. re-read automatic candidates and require both `status == confirmed` and
-   `reviewState == active`, then re-evaluate evidence and validate the requested
-   scope/mutation;
+4. branch by action kind under the same lock: for every candidate-derived request in
+   review or automatic mode, re-read and require both `status == confirmed` and
+   `reviewState == active`, then re-evaluate evidence and scope; for a distinct free-form
+   manual-rule request, validate its explicit authorization, syntax, scope, and coverage
+   preview without pretending it is candidate evidence;
 5. reserve the UTC daily budget for automatic additions, or validate explicit manual
    authorization for add/edit/delete;
 6. deterministically mutate only the marked managed block in `custom.txt`;
@@ -828,6 +860,8 @@ Unit tests cover:
     protection;
 20. atomic UTC daily-budget reservation/consumption across retries and restarts;
 21. automatic-to-manual ownership transitions and automation immutability afterward.
+22. review and automatic candidate apply both veto pending, blocked, excluded, or rejected
+    rows under the locked preflight, while a distinct valid free-form manual rule succeeds.
 
 Component/browser tests cover:
 
@@ -893,8 +927,13 @@ complete active-list coverage, three spaced DIRECT failures, stable PROXY eviden
 pre-commit scope and coverage revalidation, a three-rule cap, report-only default, and
 multiple apply interlocks. Any uncertainty blocks apply.
 
-## 17. Open questions requiring approval
+## 17. First-install and deployment decisions
 
-1. Choose the first-install value of `defaultRuleScope`: `exact` or `site`. The approved
-   mockups intentionally show a configured example, not this product default.
-2. Approve Git publication design separately before apply credentials or mounts are added.
+There is no hidden factory value for `defaultRuleScope`. The first-install UI requires the
+administrator to choose `exact` or `site` before observation can be enabled; the approved
+mockups show `site` only as a configured example.
+
+Shipping the publisher code does not authorize a production mutation. Apply stays
+fail-closed until a repository-scoped credential, clean persistent checkout, managed
+provider, target channel, backup, and rollback verification are supplied by a separate
+deployment change.
