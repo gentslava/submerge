@@ -18,10 +18,12 @@ import {
 import {
   type CompleteDomainValidationRunInput,
   completeDomainValidationRun,
+  domainValidationCircuitState,
   failDomainValidationRun,
   getDomainDecision,
   leaseDomainCandidate,
   listDomainValidationAttempts,
+  listDueDomainCandidates,
   pruneDomainIntelligence,
   queueDomainCandidate,
   recordObservation,
@@ -444,6 +446,31 @@ describe("domain observation persistence", () => {
     expect(db.select().from(domainCandidates).all()).toEqual([]);
   });
 
+  it("lists due candidates deterministically with a hard cap and active-lease guard", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    for (const fqdn of [
+      "future.service.example",
+      "b.service.example",
+      "leased.service.example",
+      "a.service.example",
+    ]) {
+      insertCandidate(db, fqdn, now - 10);
+    }
+    const update = db.$client.prepare(
+      "UPDATE domain_candidates SET next_validation_at = ?, lease_id = ?, lease_until = ?, lease_generation = ? WHERE fqdn = ?",
+    );
+    update.run(now + 1, null, null, 0, "future.service.example");
+    update.run(now - 1, null, null, 0, "b.service.example");
+    update.run(now - 3, "active_lease", now + 1, 1, "leased.service.example");
+    update.run(now - 2, null, null, 0, "a.service.example");
+
+    expect(listDueDomainCandidates(db, { now, limit: 2 }).map(({ fqdn }) => fqdn)).toEqual([
+      "a.service.example",
+      "b.service.example",
+    ]);
+  });
+
   it("forces an existing site candidate to exact when current policy forbids widening", () => {
     const db = migratedDb();
     recordObservation(db, observation(10_000));
@@ -640,6 +667,47 @@ describe("domain observation persistence", () => {
       leaseId: null,
       leaseUntil: null,
     });
+  });
+
+  it("reconstructs the persisted circuit interval from spaced infrastructure failures", () => {
+    const db = migratedDb();
+    const triggeredAt = Date.parse("2026-08-03T12:00:00.000Z");
+    insertCandidate(db, "api.service.example", triggeredAt - 14 * 60_000);
+    db.insert(domainValidationRuns)
+      .values(
+        [triggeredAt - 14 * 60_000, triggeredAt - 7 * 60_000, triggeredAt].map(
+          (finishedAt, index) => ({
+            id: `circuit_run_${index}`,
+            leaseId: `circuit_lease_${index}`,
+            leaseGeneration: 1,
+            fqdn: "api.service.example",
+            startedAt: finishedAt,
+            finishedAt,
+            status: "failed" as const,
+            errorCategory: "infrastructure-failure" as const,
+          }),
+        ),
+      )
+      .run();
+
+    expect(
+      domainValidationCircuitState(db, {
+        now: triggeredAt + 14 * 60_000,
+        failureThreshold: 3,
+        openMs: 15 * 60_000,
+      }),
+    ).toEqual({
+      open: true,
+      recentInfrastructureFailures: 3,
+      retryAt: triggeredAt + 15 * 60_000,
+    });
+    expect(
+      domainValidationCircuitState(db, {
+        now: triggeredAt + 15 * 60_000,
+        failureThreshold: 3,
+        openMs: 15 * 60_000,
+      }).open,
+    ).toBe(false);
   });
 
   it("rejects stale queue, lease, and start lifecycle timestamps", () => {

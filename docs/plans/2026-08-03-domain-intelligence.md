@@ -246,16 +246,16 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] One A/B pair runs per due domain with cooldown, concurrency, backoff, and circuit
+- [x] One A/B pair runs per due domain with cooldown, concurrency, backoff, and circuit
       breaker controls.
-- [ ] Fourteen-day operational retention preserves future apply audit rows.
-- [ ] Shutdown aborts bounded work and overdue restart work is capped.
+- [x] Fourteen-day operational retention preserves future apply audit rows.
+- [x] Shutdown aborts bounded work and overdue restart work is capped.
 
 ### Checkpoint: evidence pipeline
 
-- [ ] No probe runs until the admin explicitly enables report/review collection.
-- [ ] Integration tests use only reserved `example.com` fixtures and mocked boundaries.
-- [ ] The generated normal traffic route remains byte-identical while the feature is off.
+- [x] No probe runs until the admin explicitly enables report/review collection.
+- [x] Integration tests use only reserved `example.com` fixtures and mocked boundaries.
+- [x] The generated normal traffic route remains byte-identical while the feature is off.
 
 ## Phase 3 — protected report and review UI
 

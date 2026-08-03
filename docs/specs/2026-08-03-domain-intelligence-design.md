@@ -516,12 +516,17 @@ possible sibling hostname was independently probed.
 One scheduler tick performs at most one A/B pair per due domain. Controls:
 
 - persistent queue and debounce;
-- per-domain two-hour cooldown and exponential backoff;
+- per-domain two-hour cooldown with up to five minutes of persisted positive jitter;
+  failed work doubles the base delay up to a total of 24 hours;
 - maximum 20 candidates per run;
 - concurrency 2;
-- global request rate limit;
-- global circuit breaker after repeated infrastructure failures;
-- jitter and no immediate retry loop;
+- the same candidate cap is atomically reconstructed and reserved from persisted run starts
+  across all wake-ups, scheduler instances, and restarts in a rolling minute, so repeated
+  enqueue events or crash loops cannot bypass the global validation-start rate limit;
+- a persisted global circuit breaker after three infrastructure failures within 15
+  minutes; it remains open for 15 minutes after the threshold-crossing failure and is
+  reconstructed from bounded validation-run history after restart;
+- no immediate retry loop;
 - a persisted maximum of three automatic rules per UTC day.
 
 An event can enqueue immediately, but confirmation necessarily takes several spaced
@@ -669,12 +674,21 @@ The scheduler follows the existing Submerge patterns:
 
 - starts only after migrations and the boot config apply prerequisite;
 - one in-process timer with persisted due state;
-- immediate enqueue wake-up plus a low-frequency reconciliation pulse;
+- immediate enqueue wake-up plus a low-frequency reconciliation pulse; a wake received
+  during an active pass is coalesced into one trailing pass;
 - single-flight per operation and global validation/apply serialization;
 - all errors contained and reported once per failure streak;
 - `AbortSignal` propagated through resolver/probe/publisher operations;
 - graceful shutdown waits for or aborts current bounded work;
 - overdue work after restart is processed in capped order, never as an unbounded burst.
+
+Operational retention remains active when validation collection is disabled. The enable
+gate is rechecked before every due item is atomically leased and started, so disabling a
+pass prevents every later item in its snapshot from reaching the injected DIRECT/PROXY
+executor. Lifecycle shutdown owns both timer-driven and explicit `runOnce` work and aborts
+either before resolving. Before retention, expired crash runs are fenced, cancelled at their
+persisted lease-loss time, and released; old FQDN/run rows therefore cannot survive forever
+behind a stale `running` status while collection is disabled.
 
 Suggested cadence:
 

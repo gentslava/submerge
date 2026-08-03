@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../../db/client.js";
 import type { DomainValidationRunErrorCategory } from "../../db/schema.js";
@@ -49,6 +49,10 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const MIN_DECISION_WINDOW_MS = 60 * 60 * 1_000;
 const MAX_DECISION_WINDOW_MS = DAY_MS;
 const MAX_DATE_MS = 8_640_000_000_000_000;
+
+function safeTimestampAfter(timestamp: number, delayMs: number): number {
+  return Math.min(MAX_DATE_MS, timestamp + delayMs);
+}
 
 export interface DomainRetentionResult {
   observations: number;
@@ -681,6 +685,136 @@ export function leaseDomainCandidate(
   });
 }
 
+const dueCandidatesInputSchema = z
+  .object({
+    now: timestampSchema,
+    limit: z.number().int().min(1).max(20),
+  })
+  .strict();
+const dueDomainCandidateSchema = z
+  .object({
+    fqdn: fqdnSchema,
+    registrableSite: fqdnSchema.nullable(),
+    selectedScope: ruleScopeSchema,
+    proposedRule: proposedRuleSchema,
+    nextValidationAt: timestampSchema,
+    failureStreak: z.number().int().min(0).max(1_000_000),
+    updatedAt: timestampSchema,
+  })
+  .strict();
+
+export type DueDomainCandidate = z.infer<typeof dueDomainCandidateSchema>;
+
+export function listDueDomainCandidates(
+  db: Db,
+  input: { now: number; limit: number },
+): DueDomainCandidate[] {
+  const parsed = dueCandidatesInputSchema.parse(input);
+  return z.array(dueDomainCandidateSchema).parse(
+    db
+      .select({
+        fqdn: domainCandidates.fqdn,
+        registrableSite: domainCandidates.registrableSite,
+        selectedScope: domainCandidates.selectedScope,
+        proposedRule: domainCandidates.proposedRule,
+        nextValidationAt: domainCandidates.nextValidationAt,
+        failureStreak: domainCandidates.failureStreak,
+        updatedAt: domainCandidates.updatedAt,
+      })
+      .from(domainCandidates)
+      .where(
+        and(
+          ne(domainCandidates.status, "excluded"),
+          isNotNull(domainCandidates.selectedScope),
+          isNotNull(domainCandidates.proposedRule),
+          lte(domainCandidates.nextValidationAt, parsed.now),
+          lte(domainCandidates.updatedAt, parsed.now),
+          or(isNull(domainCandidates.leaseUntil), lte(domainCandidates.leaseUntil, parsed.now)),
+        ),
+      )
+      .orderBy(domainCandidates.nextValidationAt, domainCandidates.fqdn)
+      .limit(parsed.limit)
+      .all(),
+  );
+}
+
+const circuitStateInputSchema = z
+  .object({
+    now: timestampSchema,
+    failureThreshold: z.number().int().min(1).max(100),
+    openMs: z.number().int().min(1).max(DAY_MS),
+  })
+  .strict();
+const MAX_CIRCUIT_EVIDENCE_ROWS = 10_000;
+
+export interface DomainValidationCircuitState {
+  open: boolean;
+  recentInfrastructureFailures: number;
+  retryAt: number | null;
+}
+
+export function domainValidationCircuitState(
+  db: Db,
+  input: { now: number; failureThreshold: number; openMs: number },
+): DomainValidationCircuitState {
+  const parsed = circuitStateInputSchema.parse(input);
+  const evidenceCutoff = Math.max(0, parsed.now - 2 * parsed.openMs);
+  const newestFirst = db
+    .select({
+      finishedAt: domainValidationRuns.finishedAt,
+    })
+    .from(domainValidationRuns)
+    .where(
+      and(
+        eq(domainValidationRuns.status, "failed"),
+        eq(domainValidationRuns.errorCategory, "infrastructure-failure"),
+        isNotNull(domainValidationRuns.finishedAt),
+        gte(domainValidationRuns.finishedAt, evidenceCutoff),
+        lte(domainValidationRuns.finishedAt, parsed.now),
+      ),
+    )
+    .orderBy(desc(domainValidationRuns.finishedAt))
+    .limit(MAX_CIRCUIT_EVIDENCE_ROWS)
+    .all();
+  if (newestFirst.length === MAX_CIRCUIT_EVIDENCE_ROWS) {
+    return {
+      open: true,
+      recentInfrastructureFailures: newestFirst.length,
+      retryAt: safeTimestampAfter(parsed.now, parsed.openMs),
+    };
+  }
+  const timestamps = newestFirst
+    .flatMap((row) => (row.finishedAt === null ? [] : [row.finishedAt]))
+    .reverse();
+  let windowStart = 0;
+  let recentInfrastructureFailures = 0;
+  let retryAt: number | null = null;
+  for (let index = 0; index < timestamps.length; index += 1) {
+    const triggerAt = timestamps[index];
+    if (triggerAt === undefined) continue;
+    while (true) {
+      const earliest = timestamps[windowStart];
+      if (earliest === undefined || earliest >= triggerAt - parsed.openMs) break;
+      windowStart += 1;
+    }
+    const failureCount = index - windowStart + 1;
+    const candidateRetryAt = safeTimestampAfter(triggerAt, parsed.openMs);
+    if (
+      failureCount >= parsed.failureThreshold &&
+      parsed.now < candidateRetryAt &&
+      (retryAt === null || candidateRetryAt > retryAt)
+    ) {
+      recentInfrastructureFailures = failureCount;
+      retryAt = candidateRetryAt;
+    }
+  }
+  return {
+    open: retryAt !== null && parsed.now < retryAt,
+    recentInfrastructureFailures,
+    retryAt,
+  };
+}
+
 const startValidationRunSchema = z
   .object({
     id: identifierSchema,
@@ -748,6 +882,223 @@ export function startDomainValidationRun(
       )
       .run().changes;
     if (updated !== 1) throw new Error("validation lease was lost before start");
+  });
+}
+
+const claimValidationRunSchema = z
+  .object({
+    runId: identifierSchema,
+    fqdn: fqdnSchema,
+    leaseId: identifierSchema,
+    now: timestampSchema,
+    leaseUntil: timestampSchema,
+    rateWindowMs: z.number().int().min(1).max(DAY_MS),
+    maximumStarts: z.number().int().min(1).max(20),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.leaseUntil <= input.now || input.leaseUntil - input.now > MAX_VALIDATION_LEASE_MS) {
+      context.addIssue({ code: "custom", message: "validation lease duration is invalid" });
+    }
+  });
+
+export type ClaimDomainValidationRunResult =
+  | {
+      status: "claimed";
+      leaseId: string;
+      leaseGeneration: number;
+      leaseUntil: number;
+    }
+  | { status: "rate-limited" | "unavailable" };
+
+export function claimDomainValidationRun(
+  db: Db,
+  input: z.input<typeof claimValidationRunSchema>,
+): ClaimDomainValidationRunResult {
+  const parsed = claimValidationRunSchema.parse(input);
+  return db.transaction((tx) => {
+    const rateCutoff = Math.max(0, parsed.now - parsed.rateWindowMs);
+    const recentStarts =
+      tx
+        .select({ count: sql<number>`count(*)` })
+        .from(domainValidationRuns)
+        .where(
+          and(
+            gt(domainValidationRuns.startedAt, rateCutoff),
+            lte(domainValidationRuns.startedAt, parsed.now),
+          ),
+        )
+        .get()?.count ?? 0;
+    if (recentStarts >= parsed.maximumStarts) return { status: "rate-limited" };
+
+    const claimed = tx
+      .update(domainCandidates)
+      .set({
+        status: "pending",
+        leaseId: parsed.leaseId,
+        leaseUntil: parsed.leaseUntil,
+        leaseGeneration: sql`${domainCandidates.leaseGeneration} + 1`,
+        updatedAt: parsed.now,
+      })
+      .where(
+        and(
+          eq(domainCandidates.fqdn, parsed.fqdn),
+          ne(domainCandidates.status, "excluded"),
+          lte(domainCandidates.nextValidationAt, parsed.now),
+          lte(domainCandidates.updatedAt, parsed.now),
+          lt(domainCandidates.leaseGeneration, 1_000_000_000),
+          or(isNull(domainCandidates.leaseUntil), lte(domainCandidates.leaseUntil, parsed.now)),
+        ),
+      )
+      .run().changes;
+    if (claimed !== 1) return { status: "unavailable" };
+
+    const lease = tx
+      .select({
+        leaseId: domainCandidates.leaseId,
+        leaseGeneration: domainCandidates.leaseGeneration,
+        leaseUntil: domainCandidates.leaseUntil,
+      })
+      .from(domainCandidates)
+      .where(eq(domainCandidates.fqdn, parsed.fqdn))
+      .get();
+    if (!lease || lease.leaseId === null || lease.leaseUntil === null) {
+      throw new Error("claimed validation lease is incomplete");
+    }
+
+    tx.update(domainValidationRuns)
+      .set({ status: "cancelled", finishedAt: parsed.now, errorCategory: "lease-lost" })
+      .where(
+        and(
+          eq(domainValidationRuns.fqdn, parsed.fqdn),
+          eq(domainValidationRuns.status, "running"),
+          ne(domainValidationRuns.leaseGeneration, lease.leaseGeneration),
+          lte(domainValidationRuns.startedAt, parsed.now),
+        ),
+      )
+      .run();
+    const stillRunning = tx
+      .select({ id: domainValidationRuns.id })
+      .from(domainValidationRuns)
+      .where(
+        and(eq(domainValidationRuns.fqdn, parsed.fqdn), eq(domainValidationRuns.status, "running")),
+      )
+      .get();
+    if (stillRunning) throw new Error("candidate already has a running validation");
+
+    tx.insert(domainValidationRuns)
+      .values({
+        id: parsed.runId,
+        leaseId: lease.leaseId,
+        leaseGeneration: lease.leaseGeneration,
+        fqdn: parsed.fqdn,
+        startedAt: parsed.now,
+        finishedAt: null,
+        status: "running",
+        errorCategory: null,
+      })
+      .run();
+    return {
+      status: "claimed",
+      leaseId: lease.leaseId,
+      leaseGeneration: lease.leaseGeneration,
+      leaseUntil: lease.leaseUntil,
+    };
+  });
+}
+
+const recoverValidationRunsSchema = z
+  .object({
+    now: timestampSchema,
+    limit: z.number().int().min(1).max(1_000),
+  })
+  .strict();
+
+export function recoverExpiredDomainValidationRuns(
+  db: Db,
+  input: { now: number; limit: number },
+): number {
+  const parsed = recoverValidationRunsSchema.parse(input);
+  return db.transaction((tx) => {
+    const stale = tx
+      .select({
+        runId: domainValidationRuns.id,
+        runLeaseId: domainValidationRuns.leaseId,
+        runLeaseGeneration: domainValidationRuns.leaseGeneration,
+        fqdn: domainValidationRuns.fqdn,
+        startedAt: domainValidationRuns.startedAt,
+        candidateLeaseId: domainCandidates.leaseId,
+        candidateLeaseGeneration: domainCandidates.leaseGeneration,
+        candidateLeaseUntil: domainCandidates.leaseUntil,
+        candidateUpdatedAt: domainCandidates.updatedAt,
+      })
+      .from(domainValidationRuns)
+      .innerJoin(domainCandidates, eq(domainCandidates.fqdn, domainValidationRuns.fqdn))
+      .where(
+        and(
+          eq(domainValidationRuns.status, "running"),
+          lte(domainValidationRuns.startedAt, parsed.now),
+          or(
+            isNull(domainCandidates.leaseUntil),
+            lte(domainCandidates.leaseUntil, parsed.now),
+            ne(domainCandidates.leaseId, domainValidationRuns.leaseId),
+            ne(domainCandidates.leaseGeneration, domainValidationRuns.leaseGeneration),
+          ),
+        ),
+      )
+      .orderBy(domainValidationRuns.startedAt, domainValidationRuns.id)
+      .limit(parsed.limit)
+      .all();
+    let recovered = 0;
+    for (const row of stale) {
+      const ownsCandidateLease =
+        row.candidateLeaseId === row.runLeaseId &&
+        row.candidateLeaseGeneration === row.runLeaseGeneration &&
+        row.candidateLeaseUntil !== null;
+      const staleAt = ownsCandidateLease
+        ? (row.candidateLeaseUntil ?? row.candidateUpdatedAt)
+        : row.candidateUpdatedAt;
+      const finishedAt = Math.max(row.startedAt, Math.min(parsed.now, staleAt));
+      const cancelled = tx
+        .update(domainValidationRuns)
+        .set({ status: "cancelled", finishedAt, errorCategory: "lease-lost" })
+        .where(
+          and(
+            eq(domainValidationRuns.id, row.runId),
+            eq(domainValidationRuns.status, "running"),
+            eq(domainValidationRuns.leaseId, row.runLeaseId),
+            eq(domainValidationRuns.leaseGeneration, row.runLeaseGeneration),
+          ),
+        )
+        .run().changes;
+      if (cancelled !== 1) continue;
+      recovered += 1;
+      if (
+        ownsCandidateLease &&
+        row.candidateLeaseUntil !== null &&
+        row.candidateLeaseUntil <= parsed.now
+      ) {
+        tx.update(domainCandidates)
+          .set({
+            status: "pending",
+            nextValidationAt: sql`min(${domainCandidates.nextValidationAt}, ${finishedAt})`,
+            leaseId: null,
+            leaseUntil: null,
+            updatedAt: sql`max(${domainCandidates.updatedAt}, ${finishedAt})`,
+          })
+          .where(
+            and(
+              eq(domainCandidates.fqdn, row.fqdn),
+              eq(domainCandidates.leaseId, row.runLeaseId),
+              eq(domainCandidates.leaseGeneration, row.runLeaseGeneration),
+              lte(domainCandidates.leaseUntil, parsed.now),
+              ne(domainCandidates.status, "excluded"),
+            ),
+          )
+          .run();
+      }
+    }
+    return recovered;
   });
 }
 
