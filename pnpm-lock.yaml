@@ -38,6 +38,9 @@ importers:
       pino:
         specifier: ^10.3.1
         version: 10.3.1
+      tldts:
+        specifier: ^7.4.5
+        version: 7.4.5
       undici:
         specifier: ^8.7.0
         version: 8.7.0

@@ -87,15 +87,17 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] Registrable-site derivation uses the PSL private section and never crosses a public
+- [x] Registrable-site derivation uses the PSL private section and never crosses a public
       or private suffix.
-- [ ] Never-add and do-not-widen decisions are independent; protected shared/CDN hosts
+- [x] Never-add and do-not-widen decisions are independent; protected shared/CDN hosts
       remain eligible as exact-only candidates.
-- [ ] Rule serialization distinguishes exact hostnames from `+.` site rules.
+- [x] Rule serialization distinguishes exact hostnames from `+.` site rules.
 
 **Verification:**
 
-- [ ] Normalization, IDNA, excluded-TLD, shared-hosting, and scope tests pass.
+- [x] Normalization, IDNA, excluded-TLD, shared-hosting, and scope tests pass; the
+      repository static gate and independent incremental review are green under the
+      pinned Node 24 runtime.
 
 ### Task 4: Attach the observer without coupling it to UI logs
 
