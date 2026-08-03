@@ -12,6 +12,10 @@ import { ProxyAgent, errors as undiciErrors, fetch as undiciFetch } from "undici
 import { env } from "../../config/env.js";
 import { DOMAIN_VALIDATION_USERNAME } from "../nodes/multiConfig.js";
 import { normalizeObservedFqdn } from "./observer.js";
+import type { ProbeCategory } from "./probe-category.js";
+
+export { PROBE_CATEGORIES, type ProbeCategory } from "./probe-category.js";
+
 import {
   isPublicIpAddress,
   type PublicResolutionOptions,
@@ -29,24 +33,6 @@ const MAX_LOCATION_BYTES = 4_096;
 const MAX_RESPONSE_HEADER_BYTES = 16_384;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const RESET_CODES = new Set(["ECONNRESET", "EPIPE"]);
-
-export type ProbeCategory =
-  | "http_response"
-  | "dns_failure"
-  | "unsafe_address"
-  | "ipv6_unavailable"
-  | "unsafe_redirect"
-  | "redirect_limit"
-  | "connect_timeout"
-  | "tls_timeout"
-  | "tls_handshake_reset"
-  | "connection_reset_before_http"
-  | "tls_error"
-  | "network_error"
-  | "total_timeout"
-  | "proxy_auth_failure"
-  | "route_proof_failure"
-  | "infrastructure_error";
 
 export interface PinnedHopRequest {
   target: URL;

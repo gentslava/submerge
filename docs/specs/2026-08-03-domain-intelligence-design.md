@@ -296,8 +296,9 @@ value and its coverage are always visible before confirmation and apply.
 The two filter policies are independent:
 
 - **Never add** uses `excludedTlds`, `neverAddDomains`, `neverAddSuffixes`, and
-  `telemetryPatterns`. Matching destinations are rejected before validation, never become
-  candidates, and can re-enter only after the relevant filter is changed.
+  `telemetryPatterns`. Matching destinations are rejected before validation and never become
+  active candidates. A previously eligible candidate is retained as an inert `excluded` audit
+  row and can re-enter only after the relevant filter is changed.
 - **Do not widen** uses `nonWidenableSuffixes`. Matching destinations are still observed,
   validated, and eligible as exact candidates, but automatic site scope is disabled.
 
@@ -324,7 +325,7 @@ The existing SQLite database receives these tables:
 | `domain_candidates` | observed FQDN, site group, due time, cooldown, scope and lifecycle state |
 | `domain_validation_runs` | bounded scheduler/circuit-breaker summary |
 | `domain_validation_attempts` | DIRECT/PROXY transport results and safe timings |
-| `domain_decisions` | decision, confidence, reasons, selected scope and proposed rule |
+| `domain_decisions` | decision, deterministic confidence, reasons, selected scope and proposed rule |
 | `domain_apply_operations` | commit SHA, previous/new revision, activation result |
 | `domain_automatic_budgets` | atomic UTC-date reservations and consumed automatic-rule count |
 | `domain_rule_ownership` | automatic/manual ownership and last successful mutation audit |
@@ -340,6 +341,22 @@ Operational observations, stats, attempts, candidates, and non-apply decisions o
 14 days are deleted by the scheduler. Minimal apply audit is retained indefinitely by
 default because the rule and commit are already public in the Git source of truth and are
 needed for rollback explanations.
+
+Apply-audit rows are self-contained snapshots of the published facts and revisions. They
+must not have cascading foreign keys to operational candidate, validation, attempt, or
+decision rows; operational retention therefore cannot erase publication history.
+
+Decision confidence is deliberately conservative and reproducible from the decision
+status: `high` only for a confirmed candidate that passed every hard gate, `low` for a
+valid but incomplete pending evidence set, and `none` for a blocked or invalid result.
+It is stored with the decision so reports do not invent a probabilistic score or reinterpret
+historical evidence after policy changes.
+
+Candidate lifecycle timestamps are monotonic. Queue reconciliation and lease claims cannot
+predate the candidate's latest mutation; validation start cannot predate its lease claim; and
+completion or failure cannot predate the latest candidate mutation. Lease fencing combines an
+opaque lease ID with a monotonically increasing generation, so an expired worker cannot publish
+evidence even if a later lease reuses the same ID.
 
 ## 8. Normalization, filtering, and rule coverage
 
@@ -476,7 +493,9 @@ application responses, not routing failures.
 
 ## 10. Decision thresholds and load control
 
-A domain is confirmed only if, within the trailing 24 hours:
+A domain is confirmed only if all of the following hold within the trailing 24 hours. Persisted
+non-null evidence windows must be between one and 24 hours and are validated on both write and
+read, so arbitrarily old attempts cannot be reinterpreted as current proof:
 
 - at least three DIRECT attempts failed with `connect_timeout`, `tls_timeout`,
   `tls_handshake_reset`, `connection_reset_before_http`, or resolver-quorum

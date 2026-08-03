@@ -1,7 +1,12 @@
 import type { CoverageResult } from "./coverage.js";
 import { type DomainFilterPolicy, deriveDomainCandidate, type RuleScope } from "./model.js";
 import { normalizeObservedFqdn } from "./observer.js";
-import type { ProbeCategory } from "./probe.js";
+import {
+  FAILURE_CATEGORIES_WITH_HTTP_STATUS,
+  PROBE_CATEGORIES,
+  type ProbeCategory,
+  QUALIFYING_DIRECT_FAILURE_CATEGORIES,
+} from "./probe-category.js";
 import { canonicalPublicIpAddress } from "./resolver.js";
 
 const MINUTE_MS = 60_000;
@@ -15,34 +20,10 @@ const MIN_DIRECT_SPACING_MINUTES = 120;
 const MIN_PROXY_SUCCESSES = 2;
 const ATTEMPT_ID = /^[A-Za-z0-9_-]{1,128}$/u;
 
-const PROBE_CATEGORIES = new Set<ProbeCategory>([
-  "http_response",
-  "dns_failure",
-  "unsafe_address",
-  "ipv6_unavailable",
-  "unsafe_redirect",
-  "redirect_limit",
-  "connect_timeout",
-  "tls_timeout",
-  "tls_handshake_reset",
-  "connection_reset_before_http",
-  "tls_error",
-  "network_error",
-  "total_timeout",
-  "proxy_auth_failure",
-  "route_proof_failure",
-  "infrastructure_error",
-]);
+const PROBE_CATEGORY_SET = new Set<ProbeCategory>(PROBE_CATEGORIES);
 
-const QUALIFYING_TRANSPORT_FAILURES = new Set<ProbeCategory>([
-  "connect_timeout",
-  "tls_timeout",
-  "tls_handshake_reset",
-  "connection_reset_before_http",
-  "dns_failure",
-]);
-
-const FAILURES_WITH_HTTP_STATUS = new Set<ProbeCategory>(["unsafe_redirect", "redirect_limit"]);
+const QUALIFYING_TRANSPORT_FAILURES = new Set<ProbeCategory>(QUALIFYING_DIRECT_FAILURE_CATEGORIES);
+const FAILURES_WITH_HTTP_STATUS = new Set<ProbeCategory>(FAILURE_CATEGORIES_WITH_HTTP_STATUS);
 
 export interface ValidationAttempt {
   attemptId: string;
@@ -75,23 +56,29 @@ export interface DecisionPolicy {
   maximumProxyTransportFailures: number;
 }
 
-export type CandidateDecisionStatus = "confirmed" | "pending" | "blocked";
+export const CANDIDATE_DECISION_STATUSES = ["confirmed", "pending", "blocked"] as const;
+export type CandidateDecisionStatus = (typeof CANDIDATE_DECISION_STATUSES)[number];
 
-export type CandidateDecisionReason =
-  | "invalid-policy"
-  | "invalid-evidence"
-  | "observer-unhealthy"
-  | "insufficient-observations"
-  | "candidate-excluded"
-  | "invalid-scope"
-  | "coverage-incomplete"
-  | "already-covered"
-  | "proxy-unstable"
-  | "proxy-evidence-uncertain"
-  | "insufficient-direct-failures"
-  | "direct-failures-not-spaced"
-  | "direct-address-diversity-missing"
-  | "insufficient-proxy-successes";
+export const CANDIDATE_DECISION_REASONS = [
+  "invalid-policy",
+  "invalid-evidence",
+  "observer-unhealthy",
+  "insufficient-observations",
+  "candidate-excluded",
+  "invalid-scope",
+  "coverage-incomplete",
+  "already-covered",
+  "proxy-unstable",
+  "proxy-evidence-uncertain",
+  "insufficient-direct-failures",
+  "direct-failures-not-spaced",
+  "direct-address-diversity-missing",
+  "insufficient-proxy-successes",
+] as const;
+export type CandidateDecisionReason = (typeof CANDIDATE_DECISION_REASONS)[number];
+
+export const CANDIDATE_DECISION_CONFIDENCES = ["none", "low", "high"] as const;
+export type CandidateDecisionConfidence = (typeof CANDIDATE_DECISION_CONFIDENCES)[number];
 
 export interface CandidateDecisionEvidenceSummary {
   directQualifyingFailures: number;
@@ -105,6 +92,7 @@ export interface CandidateDecisionEvidenceSummary {
 
 export interface CandidateDecision {
   status: CandidateDecisionStatus;
+  confidence: CandidateDecisionConfidence;
   reasons: CandidateDecisionReason[];
   windowStart: number | null;
   evidence: CandidateDecisionEvidenceSummary;
@@ -129,7 +117,7 @@ const EMPTY_SUMMARY: CandidateDecisionEvidenceSummary = {
   proxyUncertainFailures: 0,
 };
 
-const BLOCKING_REASONS = new Set<CandidateDecisionReason>([
+export const CANDIDATE_DECISION_BLOCKING_REASONS = [
   "invalid-policy",
   "invalid-evidence",
   "observer-unhealthy",
@@ -139,7 +127,21 @@ const BLOCKING_REASONS = new Set<CandidateDecisionReason>([
   "already-covered",
   "proxy-unstable",
   "proxy-evidence-uncertain",
-]);
+] as const satisfies readonly CandidateDecisionReason[];
+const BLOCKING_REASONS = new Set<CandidateDecisionReason>(CANDIDATE_DECISION_BLOCKING_REASONS);
+
+export function decisionStatusForReasons(
+  reasons: readonly CandidateDecisionReason[],
+): CandidateDecisionStatus {
+  if (reasons.some((reason) => BLOCKING_REASONS.has(reason))) return "blocked";
+  return reasons.length > 0 ? "pending" : "confirmed";
+}
+
+export function decisionConfidenceForStatus(
+  status: CandidateDecisionStatus,
+): CandidateDecisionConfidence {
+  return status === "confirmed" ? "high" : status === "pending" ? "low" : "none";
+}
 
 function isSafeCount(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000;
@@ -176,7 +178,7 @@ function validateAttempt(attempt: ValidationAttempt, evaluatedAt: number): Valid
     !Number.isSafeInteger(attempt.attemptedAt) ||
     attempt.attemptedAt < 0 ||
     attempt.attemptedAt > evaluatedAt ||
-    !PROBE_CATEGORIES.has(attempt.category) ||
+    !PROBE_CATEGORY_SET.has(attempt.category) ||
     !validHttpStatus(attempt.httpStatus) ||
     !Number.isSafeInteger(attempt.availableAddressCount) ||
     attempt.availableAddressCount < 0 ||
@@ -293,12 +295,9 @@ function result(
   windowStart: number | null,
   evidence: CandidateDecisionEvidenceSummary,
 ): CandidateDecision {
-  const status: CandidateDecisionStatus = reasons.some((reason) => BLOCKING_REASONS.has(reason))
-    ? "blocked"
-    : reasons.length > 0
-      ? "pending"
-      : "confirmed";
-  return { status, reasons, windowStart, evidence };
+  const status = decisionStatusForReasons(reasons);
+  const confidence = decisionConfidenceForStatus(status);
+  return { status, confidence, reasons, windowStart, evidence };
 }
 
 /**

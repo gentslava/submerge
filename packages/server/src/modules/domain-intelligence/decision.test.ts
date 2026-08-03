@@ -79,6 +79,7 @@ describe("decideCandidate", () => {
     const decision = decideCandidate(confirmedEvidence(), POLICY, NOW);
 
     expect(decision).toEqual({
+      confidence: "high",
       status: "confirmed",
       reasons: [],
       windowStart: NOW - 24 * HOUR,

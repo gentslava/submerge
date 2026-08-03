@@ -9,8 +9,12 @@ import { createDb } from "./client.js";
 import {
   channelPool,
   channels,
+  domainCandidates,
   domainDailyStats,
+  domainDecisions,
   domainObservations,
+  domainValidationAttempts,
+  domainValidationRuns,
   settings,
   sources,
 } from "./schema.js";
@@ -42,6 +46,7 @@ function migrationsThrough(lastIndex: number, name: string): string {
 const preDirectMigrationsFolder = () => migrationsThrough(6, "pre-direct");
 const preRefreshMigrationsFolder = () => migrationsThrough(7, "pre-refresh");
 const preDomainMigrationsFolder = () => migrationsThrough(8, "pre-domain");
+const preDomainEvidenceMigrationsFolder = () => migrationsThrough(9, "pre-domain-evidence");
 
 describe("db", () => {
   it("creates and reads a source in an in-memory DB", () => {
@@ -156,6 +161,55 @@ describe("db", () => {
     });
     expect(testDb.select().from(domainObservations).all()).toEqual([]);
     expect(testDb.select().from(domainDailyStats).all()).toEqual([]);
+    expect(testDb.$client.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
+  });
+
+  it("adds domain evidence tables without changing existing observations or application rows", () => {
+    const testDb = createDb(":memory:");
+    migrate(testDb, { migrationsFolder: preDomainEvidenceMigrationsFolder() });
+    testDb
+      .insert(sources)
+      .values({ kind: "sub", value: "https://provider.example/sub", label: "Existing" })
+      .run();
+    testDb.insert(settings).values({ key: "existing", value: "preserved" }).run();
+    testDb
+      .insert(domainObservations)
+      .values({
+        fingerprint: "existing-observation",
+        fqdn: "api.service.example",
+        observedAt: 100,
+        lastSeenAt: 100,
+        transport: "tcp",
+        source: "mihomo-log",
+        count: 1,
+      })
+      .run();
+    testDb
+      .insert(domainDailyStats)
+      .values({
+        day: "1970-01-01",
+        fqdn: "api.service.example",
+        connectionCount: 1,
+        firstSeenAt: 100,
+        lastSeenAt: 100,
+      })
+      .run();
+
+    migrate(testDb, { migrationsFolder });
+
+    expect(testDb.select().from(sources).get()?.label).toBe("Existing");
+    expect(testDb.select().from(settings).get()).toEqual({
+      key: "existing",
+      value: "preserved",
+    });
+    expect(testDb.select().from(domainObservations).get()?.fingerprint).toBe(
+      "existing-observation",
+    );
+    expect(testDb.select().from(domainDailyStats).get()?.connectionCount).toBe(1);
+    expect(testDb.select().from(domainCandidates).all()).toEqual([]);
+    expect(testDb.select().from(domainValidationRuns).all()).toEqual([]);
+    expect(testDb.select().from(domainValidationAttempts).all()).toEqual([]);
+    expect(testDb.select().from(domainDecisions).all()).toEqual([]);
     expect(testDb.$client.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
   });
 
