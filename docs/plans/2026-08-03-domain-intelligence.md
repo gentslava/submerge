@@ -186,9 +186,9 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] HTTPS connects to a pinned validated address while preserving SNI and Host.
-- [ ] Every redirect is independently normalized, resolved, validated, and pinned.
-- [ ] Stored results contain only safe transport categories, timing, status, and origin.
+- [x] HTTPS connects to a pinned validated address while preserving SNI and Host.
+- [x] Every redirect is independently normalized, resolved, validated, and pinned.
+- [x] Stored results contain only safe transport categories, timing, status, and origin.
 
 ### Task 9: Generate the private forced-outbound validation listener
 
