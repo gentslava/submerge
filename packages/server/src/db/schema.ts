@@ -200,8 +200,9 @@ const MAX_DATE_MS = 8_640_000_000_000_000;
 const MAX_DATE_SQL = sql.raw(String(MAX_DATE_MS));
 const PROBE_CATEGORIES_SQL = sql.raw(PROBE_CATEGORIES.map((value) => `'${value}'`).join(", "));
 
-// Persistent validation queue. Only a candidate rederived from the current
-// Never-add and scope policy is admitted; raw observations remain in their own tables.
+// Persistent validation queue plus the admin's reversible review state. Only a
+// candidate rederived from the current Never-add and scope policy is admitted;
+// raw observations remain in their own tables.
 export const domainCandidates = sqliteTable(
   "domain_candidates",
   {
@@ -221,6 +222,9 @@ export const domainCandidates = sqliteTable(
     status: text("status", { enum: ["queued", "pending", "confirmed", "blocked", "excluded"] })
       .notNull()
       .default("queued"),
+    reviewState: text("review_state", { enum: ["active", "rejected"] })
+      .notNull()
+      .default("active"),
     firstSeenAt: integer("first_seen_at").notNull(),
     lastSeenAt: integer("last_seen_at").notNull(),
     nextValidationAt: integer("next_validation_at").notNull(),
@@ -236,6 +240,7 @@ export const domainCandidates = sqliteTable(
       "domain_candidates_status_check",
       sql`${t.status} in ('queued', 'pending', 'confirmed', 'blocked', 'excluded')`,
     ),
+    check("domain_candidates_review_state_check", sql`${t.reviewState} in ('active', 'rejected')`),
     check("domain_candidates_fqdn_length_check", sql`length(${t.fqdn}) between 3 and 253`),
     check(
       "domain_candidates_site_length_check",

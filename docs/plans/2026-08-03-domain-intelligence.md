@@ -272,7 +272,7 @@ enables the feature in a deployment.
 
 - [x] Protected procedures expose health, aggregates, exclusions, candidates, selected
       scopes, evidence summaries, and safe reason codes without raw observations.
-- [ ] Review actions support scope selection, rejection, and recheck only; they cannot
+- [x] Review actions support scope selection, rejection, and recheck only; they cannot
       mutate Git, providers, active config, or channels.
 
 ### Task 14: Add settings and the report/review screen
@@ -330,7 +330,9 @@ enables the feature in a deployment.
 
 ## Deferred follow-up
 
-- Git-backed managed-block publication and provider activation.
+- Git-backed managed-block publication and provider activation. Its TDD slice must prove
+  that both batch selection and the locked final preflight veto a rejected candidate even
+  when its retained lifecycle status is `confirmed`.
 - Manual add/edit/delete through the shared publisher.
 - Automatic consent revision, UTC daily budget, automatic ownership, and cleanup policy.
 - Choosing the factory value of `defaultRuleScope`.

@@ -322,7 +322,7 @@ The existing SQLite database receives these tables:
 |---|---|
 | `domain_observations` | deduplicated FQDN/time/transport/source/count |
 | `domain_daily_stats` | daily connection counts and last/first seen |
-| `domain_candidates` | observed FQDN, site group, due time, cooldown, scope and lifecycle state |
+| `domain_candidates` | observed FQDN, site group, due time, cooldown, scope, lifecycle, and reversible admin review state |
 | `domain_validation_runs` | bounded scheduler/circuit-breaker summary |
 | `domain_validation_attempts` | DIRECT/PROXY transport results and safe timings |
 | `domain_decisions` | decision, deterministic confidence, reasons, selected scope and proposed rule |
@@ -512,6 +512,9 @@ read, so arbitrarily old attempts cannot be reinterpreted as current proof:
 Confirmation establishes that the observed FQDN has a DIRECT-versus-PROXY routing
 problem. The selected scope is an explicit policy choice; it is not a claim that every
 possible sibling hostname was independently probed.
+Review state is a separate administrator decision: rejecting a candidate does not rewrite
+its retained evidence status, so a rejected row may remain `confirmed`. It is nevertheless
+never apply-eligible until explicitly restored and re-evaluated under the current policy.
 
 One scheduler tick performs at most one A/B pair per due domain. Controls:
 
@@ -551,6 +554,14 @@ Observed domain names may appear in the protected admin report because that is t
 feature's purpose. They are not printed to stdout or general operational logs.
 
 Report mode cannot mutate Git, providers, config, channels, or materialized rule files.
+Its protected review actions are limited to eligible scope selection, reversible user
+rejection, and recheck queueing in SQLite. User rejection remains separate from system
+exclusion reasons; restoring a rejected candidate re-evaluates the current filter and
+scope policy before making it eligible for validation again.
+Overview lifecycle counts retain the persisted candidate status, while separate bucket
+counts describe what the candidate and exclusion views contain. Review mutations return
+stable, bounded reason codes for unavailable actions instead of requiring the UI to parse
+error messages.
 
 ### 11.2 Admin UI contract
 
@@ -612,6 +623,19 @@ authorization; no click is required for each later batch. Changing from review t
 automatic is therefore the explicit action described by the confirmation dialog. Report
 mode can never mutate even if the UI workflow setting is stale.
 
+For an automatic candidate, every apply attempt has an additional non-negotiable veto:
+
+```text
+candidate.status == "confirmed"
+candidate.reviewState == "active"
+```
+
+The publisher must re-read both fields under the global apply lock immediately before its
+SQLite reservation and Git mutation. A previously selected candidate that is now rejected
+stops without consuming budget or changing Git, providers, config, or channels. This check
+is required both when selecting a batch and in the final locked preflight; filtering only by
+`status == "confirmed"` is forbidden.
+
 ### 12.1 Automatic daily budget
 
 `maximumAutomaticRulesPerDay` is a UTC-day ceiling, not a per-run limit. Before publication
@@ -649,7 +673,9 @@ Pipeline:
 1. acquire a global apply lock;
 2. verify observer health, current topology, target channel, and complete coverage;
 3. require a clean managed checkout and fast-forward to current `main`;
-4. re-evaluate evidence for automatic candidates and validate the requested scope/mutation;
+4. re-read automatic candidates and require both `status == confirmed` and
+   `reviewState == active`, then re-evaluate evidence and validate the requested
+   scope/mutation;
 5. reserve the UTC daily budget for automatic additions, or validate explicit manual
    authorization for add/edit/delete;
 6. deterministically mutate only the marked managed block in `custom.txt`;

@@ -47,6 +47,7 @@ const preDirectMigrationsFolder = () => migrationsThrough(6, "pre-direct");
 const preRefreshMigrationsFolder = () => migrationsThrough(7, "pre-refresh");
 const preDomainMigrationsFolder = () => migrationsThrough(8, "pre-domain");
 const preDomainEvidenceMigrationsFolder = () => migrationsThrough(9, "pre-domain-evidence");
+const preDomainReviewMigrationsFolder = () => migrationsThrough(10, "pre-domain-review");
 
 describe("db", () => {
   it("creates and reads a source in an in-memory DB", () => {
@@ -210,6 +211,76 @@ describe("db", () => {
     expect(testDb.select().from(domainValidationRuns).all()).toEqual([]);
     expect(testDb.select().from(domainValidationAttempts).all()).toEqual([]);
     expect(testDb.select().from(domainDecisions).all()).toEqual([]);
+    expect(testDb.$client.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
+  });
+
+  it("adds an active review state to existing domain candidates without changing evidence", () => {
+    const testDb = createDb(":memory:");
+    migrate(testDb, { migrationsFolder: preDomainReviewMigrationsFolder() });
+    testDb.$client
+      .prepare(
+        "INSERT INTO domain_candidates (fqdn, registrable_site, selected_scope, proposed_rule, exclusion_reason, status, first_seen_at, last_seen_at, next_validation_at, last_validation_at, failure_streak, lease_id, lease_until, lease_generation, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "api.service.example",
+        "service.example",
+        "site",
+        "+.service.example",
+        null,
+        "pending",
+        100,
+        200,
+        300,
+        250,
+        0,
+        null,
+        null,
+        1,
+        250,
+      );
+    testDb.$client
+      .prepare(
+        "INSERT INTO domain_decisions (id, fqdn, evaluated_at, status, confidence, reasons, window_start, evidence, selected_scope, proposed_rule) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "existing-review-decision",
+        "api.service.example",
+        250,
+        "pending",
+        "low",
+        JSON.stringify(["insufficient-direct-failures"]),
+        100,
+        JSON.stringify({
+          directQualifyingFailures: 1,
+          directSpacedFailures: 1,
+          directAddressDiversityRequired: false,
+          directAddressDiversitySatisfied: true,
+          proxyHttpSuccesses: 1,
+          proxyTransportFailures: 0,
+          proxyUncertainFailures: 0,
+        }),
+        "site",
+        "+.service.example",
+      );
+
+    migrate(testDb, { migrationsFolder });
+
+    expect(
+      testDb.$client
+        .prepare("SELECT review_state FROM domain_candidates WHERE fqdn = ?")
+        .get("api.service.example"),
+    ).toEqual({ review_state: "active" });
+    expect(testDb.select().from(domainDecisions).get()).toMatchObject({
+      id: "existing-review-decision",
+      fqdn: "api.service.example",
+      selectedScope: "site",
+      proposedRule: "+.service.example",
+    });
+    expect(() =>
+      testDb.$client
+        .prepare("UPDATE domain_candidates SET review_state = 'invalid' WHERE fqdn = ?")
+        .run("api.service.example"),
+    ).toThrow(/check constraint/i);
     expect(testDb.$client.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
   });
 

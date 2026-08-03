@@ -1,11 +1,13 @@
 import type {
   DomainCandidateList,
   DomainCandidateListInput,
+  DomainCandidateReviewActionResult,
   DomainIntelligenceOverview,
 } from "@submerge/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createCallerFactory, router } from "../../trpc/trpc.js";
-import { makeDomainIntelligenceRouter } from "./router.js";
+import { type DomainIntelligenceService, makeDomainIntelligenceRouter } from "./router.js";
+import { DomainCandidateReviewError } from "./service.js";
 
 const now = Date.parse("2026-08-03T12:00:00.000Z");
 
@@ -28,7 +30,11 @@ function overview(): DomainIntelligenceOverview {
       blocked: 4,
       excluded: 5,
     },
-    exclusionCounts: [],
+    bucketCounts: { candidate: 6, exclusion: 9 },
+    exclusionCounts: [
+      { reason: "proxy-unstable", count: 4 },
+      { reason: "telemetry-pattern", count: 5 },
+    ],
     evidenceIntegrityCounts: { missingDecisions: 0, invalidDecisions: 0 },
   };
 }
@@ -37,13 +43,17 @@ function candidateList(): DomainCandidateList {
   return { items: [], nextCursor: null };
 }
 
-function caller(
-  service: {
-    overview: () => DomainIntelligenceOverview;
-    list: (input: DomainCandidateListInput) => DomainCandidateList;
-  },
-  authed = true,
-) {
+function actionResult(): DomainCandidateReviewActionResult {
+  return {
+    fqdn: "api.service.example",
+    reviewState: "active",
+    status: "queued",
+    selectedScope: "site",
+    proposedRule: "+.service.example",
+  };
+}
+
+function caller(service: DomainIntelligenceService, authed = true) {
   const appRouter = router({ domainIntelligence: makeDomainIntelligenceRouter(service) });
   return createCallerFactory(appRouter)({
     authed,
@@ -58,6 +68,9 @@ describe("domain intelligence router", () => {
     const service = {
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
+      setScope: vi.fn(() => actionResult()),
+      setRejected: vi.fn(() => actionResult()),
+      recheck: vi.fn(() => actionResult()),
     };
 
     await expect(caller(service).domainIntelligence.overview()).resolves.toEqual(overview());
@@ -69,13 +82,28 @@ describe("domain intelligence router", () => {
     const service = {
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
+      setScope: vi.fn(() => actionResult()),
+      setRejected: vi.fn(() => actionResult()),
+      recheck: vi.fn(() => actionResult()),
     };
     const unauthenticated = caller(service, false).domainIntelligence;
 
     await expect(unauthenticated.overview()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(unauthenticated.list({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(
+      unauthenticated.setScope({ fqdn: "api.service.example", selectedScope: "site" }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(
+      unauthenticated.setRejected({ fqdn: "api.service.example", rejected: true }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(unauthenticated.recheck({ fqdn: "api.service.example" })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
     expect(service.overview).not.toHaveBeenCalled();
     expect(service.list).not.toHaveBeenCalled();
+    expect(service.setScope).not.toHaveBeenCalled();
+    expect(service.setRejected).not.toHaveBeenCalled();
+    expect(service.recheck).not.toHaveBeenCalled();
   });
 
   it("rejects service output outside the shared privacy contract", async () => {
@@ -85,10 +113,108 @@ describe("domain intelligence router", () => {
         ...candidateList(),
         internalCursor: "lease_1",
       })),
+      setScope: vi.fn(() => actionResult()),
+      setRejected: vi.fn(() => actionResult()),
+      recheck: vi.fn(() => actionResult()),
     };
     const api = caller(unsafe as never).domainIntelligence;
 
     await expect(api.overview()).rejects.toThrow();
     await expect(api.list({})).rejects.toThrow();
+  });
+
+  it("exposes only protected scope, rejection, and recheck review mutations", async () => {
+    const service = {
+      overview: vi.fn(() => overview()),
+      list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
+      setScope: vi.fn(() => actionResult()),
+      setRejected: vi.fn(() => ({ ...actionResult(), reviewState: "rejected" as const })),
+      recheck: vi.fn(() => actionResult()),
+    };
+    const api = caller(service as never).domainIntelligence as unknown as {
+      setScope: (input: { fqdn: string; selectedScope: "exact" | "site" }) => Promise<unknown>;
+      setRejected: (input: { fqdn: string; rejected: boolean }) => Promise<unknown>;
+      recheck: (input: { fqdn: string }) => Promise<unknown>;
+    };
+
+    expect(api.setScope).toBeTypeOf("function");
+    await expect(
+      api.setScope({ fqdn: "api.service.example", selectedScope: "site" }),
+    ).resolves.toEqual({ ok: true, candidate: actionResult() });
+    await expect(
+      api.setRejected({ fqdn: "api.service.example", rejected: true }),
+    ).resolves.toMatchObject({ ok: true, candidate: { reviewState: "rejected" } });
+    await expect(api.recheck({ fqdn: "api.service.example" })).resolves.toEqual({
+      ok: true,
+      candidate: actionResult(),
+    });
+    expect(service.setScope).toHaveBeenCalledWith({
+      fqdn: "api.service.example",
+      selectedScope: "site",
+    });
+    expect(service.setRejected).toHaveBeenCalledWith({
+      fqdn: "api.service.example",
+      rejected: true,
+    });
+    expect(service.recheck).toHaveBeenCalledWith({ fqdn: "api.service.example" });
+  });
+
+  it("rejects apply-shaped review input and output outside the safe action contract", async () => {
+    const service = {
+      overview: vi.fn(() => overview()),
+      list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
+      setScope: vi.fn(() => ({ ...actionResult(), commitSha: "secret" })),
+      setRejected: vi.fn(() => actionResult()),
+      recheck: vi.fn(() => actionResult()),
+    };
+    const api = caller(service as never).domainIntelligence;
+
+    await expect(
+      api.setScope({
+        fqdn: "api.service.example",
+        selectedScope: "site",
+        apply: true,
+      } as never),
+    ).rejects.toThrow();
+    expect(service.setScope).not.toHaveBeenCalled();
+    await expect(
+      api.setRejected({
+        fqdn: "api.service.example",
+        rejected: true,
+        publish: true,
+      } as never),
+    ).rejects.toThrow();
+    expect(service.setRejected).not.toHaveBeenCalled();
+    await expect(
+      api.setScope({ fqdn: "api.service.example", selectedScope: "site" }),
+    ).rejects.toThrow();
+  });
+
+  it("returns stable safe review reason codes without exposing internal error details", async () => {
+    const service = {
+      overview: vi.fn(() => overview()),
+      list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
+      setScope: vi.fn(() => {
+        throw new DomainCandidateReviewError("validation-in-progress");
+      }),
+      setRejected: vi.fn(() => {
+        throw new DomainCandidateReviewError("candidate-not-found");
+      }),
+      recheck: vi.fn(() => {
+        throw new DomainCandidateReviewError("policy-unavailable");
+      }),
+    };
+    const api = caller(service).domainIntelligence;
+
+    await expect(
+      api.setScope({ fqdn: "api.service.example", selectedScope: "exact" }),
+    ).resolves.toEqual({ ok: false, reason: "validation-in-progress" });
+    await expect(api.setRejected({ fqdn: "api.service.example", rejected: true })).resolves.toEqual(
+      { ok: false, reason: "candidate-not-found" },
+    );
+    await expect(api.recheck({ fqdn: "api.service.example" })).resolves.toEqual({
+      ok: false,
+      reason: "policy-unavailable",
+    });
   });
 });

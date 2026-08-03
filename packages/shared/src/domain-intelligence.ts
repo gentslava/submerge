@@ -76,6 +76,9 @@ const safeOriginSchema = z
 export const domainRuleScopeSchema = z.enum(["exact", "site"]);
 export type DomainRuleScope = z.infer<typeof domainRuleScopeSchema>;
 
+export const domainCandidateReviewStateSchema = z.enum(["active", "rejected"]);
+export type DomainCandidateReviewState = z.infer<typeof domainCandidateReviewStateSchema>;
+
 export const domainCandidateStatusSchema = z.enum([
   "queued",
   "pending",
@@ -310,6 +313,7 @@ export const domainCandidateReportItemSchema = z
     fqdn: fqdnSchema,
     siteGroup: fqdnSchema,
     bucket: z.enum(["candidate", "exclusion"]),
+    reviewState: domainCandidateReviewStateSchema,
     status: domainCandidateStatusSchema,
     selectedScope: domainRuleScopeSchema.nullable(),
     proposedRule: proposedRuleSchema.nullable(),
@@ -344,12 +348,23 @@ export const domainCandidateReportItemSchema = z
       context.addIssue({ code: "custom", message: "excluded candidate must use exclusion bucket" });
     }
     const expectedBucket =
-      item.status === "blocked" || item.status === "excluded" ? "exclusion" : "candidate";
+      item.reviewState === "rejected" || item.status === "blocked" || item.status === "excluded"
+        ? "exclusion"
+        : "candidate";
     if (item.bucket !== expectedBucket) {
       context.addIssue({ code: "custom", message: "candidate bucket does not match status" });
     }
     if ((item.bucket === "exclusion") !== (item.exclusionReason !== null)) {
       context.addIssue({ code: "custom", message: "exclusion bucket requires one safe reason" });
+    }
+    if (
+      item.reviewState === "rejected" &&
+      (item.exclusionReason !== "user-rejected" || item.nextValidationAt !== null)
+    ) {
+      context.addIssue({ code: "custom", message: "rejected candidate shape is inconsistent" });
+    }
+    if (item.reviewState === "active" && item.exclusionReason === "user-rejected") {
+      context.addIssue({ code: "custom", message: "active candidate cannot be user-rejected" });
     }
     if (item.status === "excluded") {
       if (
@@ -453,7 +468,7 @@ export const domainCandidateReportItemSchema = z
     ) {
       context.addIssue({ code: "custom", message: "blocked candidate requires a decision" });
     }
-    if (item.status === "blocked") {
+    if (item.status === "blocked" && item.reviewState === "active") {
       const expectedReason =
         item.decision?.reasons.find((reason) => BLOCKING_DECISION_REASONS.has(reason)) ??
         "invalid-evidence";
@@ -463,6 +478,78 @@ export const domainCandidateReportItemSchema = z
     }
   });
 export type DomainCandidateReportItem = z.infer<typeof domainCandidateReportItemSchema>;
+
+export const domainCandidateScopeActionInputSchema = z
+  .object({ fqdn: fqdnSchema, selectedScope: domainRuleScopeSchema })
+  .strict();
+export type DomainCandidateScopeActionInput = z.infer<typeof domainCandidateScopeActionInputSchema>;
+
+export const domainCandidateRejectionActionInputSchema = z
+  .object({ fqdn: fqdnSchema, rejected: z.boolean() })
+  .strict();
+export type DomainCandidateRejectionActionInput = z.infer<
+  typeof domainCandidateRejectionActionInputSchema
+>;
+
+export const domainCandidateRecheckActionInputSchema = z.object({ fqdn: fqdnSchema }).strict();
+export type DomainCandidateRecheckActionInput = z.infer<
+  typeof domainCandidateRecheckActionInputSchema
+>;
+
+export const domainCandidateReviewActionResultSchema = z
+  .object({
+    fqdn: fqdnSchema,
+    reviewState: domainCandidateReviewStateSchema,
+    status: domainCandidateStatusSchema,
+    selectedScope: domainRuleScopeSchema.nullable(),
+    proposedRule: proposedRuleSchema.nullable(),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if ((result.selectedScope === null) !== (result.proposedRule === null)) {
+      context.addIssue({ code: "custom", message: "scope and rule must be paired" });
+    }
+    if (result.status === "excluded" && result.selectedScope !== null) {
+      context.addIssue({ code: "custom", message: "excluded candidate cannot expose a rule" });
+    }
+    if (result.status !== "excluded" && result.selectedScope === null) {
+      context.addIssue({ code: "custom", message: "eligible candidate requires a rule" });
+    }
+    if (result.selectedScope === "exact" && result.proposedRule !== result.fqdn) {
+      context.addIssue({ code: "custom", message: "exact rule must match FQDN" });
+    }
+    if (
+      result.selectedScope === "site" &&
+      (result.proposedRule === null ||
+        !result.proposedRule.startsWith("+.") ||
+        !hasDomainSuffix(result.fqdn, result.proposedRule.slice(2)))
+    ) {
+      context.addIssue({ code: "custom", message: "site rule must cover FQDN" });
+    }
+  });
+export type DomainCandidateReviewActionResult = z.infer<
+  typeof domainCandidateReviewActionResultSchema
+>;
+
+export const domainCandidateReviewErrorReasonSchema = z.enum([
+  "candidate-not-found",
+  "candidate-rejected",
+  "candidate-excluded",
+  "policy-unavailable",
+  "scope-unavailable",
+  "validation-in-progress",
+]);
+export type DomainCandidateReviewErrorReason = z.infer<
+  typeof domainCandidateReviewErrorReasonSchema
+>;
+
+export const domainCandidateReviewMutationResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), candidate: domainCandidateReviewActionResultSchema }).strict(),
+  z.object({ ok: z.literal(false), reason: domainCandidateReviewErrorReasonSchema }).strict(),
+]);
+export type DomainCandidateReviewMutationResult = z.infer<
+  typeof domainCandidateReviewMutationResultSchema
+>;
 
 export const domainCandidateListInputSchema = z
   .object({
@@ -511,6 +598,12 @@ export const domainIntelligenceOverviewSchema = z
         excluded: countSchema,
       })
       .strict(),
+    bucketCounts: z
+      .object({
+        candidate: countSchema,
+        exclusion: countSchema,
+      })
+      .strict(),
     evidenceIntegrityCounts: z
       .object({
         missingDecisions: countSchema,
@@ -532,6 +625,31 @@ export const domainIntelligenceOverviewSchema = z
   .superRefine((overview, context) => {
     if (overview.period.from > overview.period.to || overview.period.to !== overview.generatedAt) {
       context.addIssue({ code: "custom", message: "report period is inconsistent" });
+    }
+    const lifecycleTotal = Object.values(overview.candidateCounts).reduce(
+      (total, count) => total + count,
+      0,
+    );
+    if (overview.bucketCounts.candidate + overview.bucketCounts.exclusion !== lifecycleTotal) {
+      context.addIssue({ code: "custom", message: "report bucket counts are inconsistent" });
+    }
+    const mandatoryExclusionTotal =
+      overview.candidateCounts.blocked + overview.candidateCounts.excluded;
+    if (overview.bucketCounts.exclusion < mandatoryExclusionTotal) {
+      context.addIssue({
+        code: "custom",
+        message: "blocked and excluded candidates require exclusion buckets",
+      });
+    }
+    const exclusionTotal = overview.exclusionCounts.reduce((total, item) => total + item.count, 0);
+    if (overview.bucketCounts.exclusion !== exclusionTotal) {
+      context.addIssue({ code: "custom", message: "exclusion counts are inconsistent" });
+    }
+    if (
+      new Set(overview.exclusionCounts.map((item) => item.reason)).size !==
+      overview.exclusionCounts.length
+    ) {
+      context.addIssue({ code: "custom", message: "exclusion reasons must be unique" });
     }
   });
 export type DomainIntelligenceOverview = z.infer<typeof domainIntelligenceOverviewSchema>;

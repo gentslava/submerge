@@ -32,7 +32,10 @@ import {
   pruneDomainIntelligence,
   queueDomainCandidate,
   readDomainIntelligenceFilterPolicy,
+  recheckDomainCandidate,
   recordObservation,
+  selectDomainCandidateScope,
+  setDomainCandidateRejection,
   startDomainValidationRun,
 } from "./service.js";
 
@@ -322,6 +325,7 @@ describe("domain intelligence admin read model", () => {
         blocked: 1,
         excluded: 1,
       },
+      bucketCounts: { candidate: 1, exclusion: 2 },
       exclusionCounts: [
         { reason: "proxy-unstable", count: 1 },
         { reason: "telemetry-pattern", count: 1 },
@@ -399,6 +403,333 @@ describe("domain intelligence admin read model", () => {
       ["blocked.service.example", "exclusion"],
       ["excluded.service.example", "exclusion"],
     ]);
+  });
+
+  it("keeps user-rejected candidates inert and distinct from system exclusions", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertCandidate(db, "rejected.service.example", now);
+    db.update(domainCandidates)
+      .set({ reviewState: "rejected" })
+      .where(eq(domainCandidates.fqdn, "rejected.service.example"))
+      .run();
+
+    expect(listDueDomainCandidates(db, { now, limit: 10 })).toEqual([]);
+    expect(
+      listDomainCandidateReport(db, { view: "candidates", limit: 10 }, FILTER_POLICY).items,
+    ).toEqual([]);
+    expect(
+      listDomainCandidateReport(db, { view: "exclusions", limit: 10 }, FILTER_POLICY).items,
+    ).toMatchObject([
+      {
+        fqdn: "rejected.service.example",
+        status: "queued",
+        reviewState: "rejected",
+        bucket: "exclusion",
+        exclusionReason: "user-rejected",
+        selectedScope: "exact",
+        proposedRule: "rejected.service.example",
+        nextValidationAt: null,
+      },
+    ]);
+    expect(
+      getDomainIntelligenceOverview(db, {
+        now,
+        health: {
+          status: "inactive",
+          reason: "disabled",
+          snapshotDomainConnections: 0,
+          correlatedConnections: 0,
+          updatedAt: now,
+        },
+      }),
+    ).toMatchObject({
+      candidateCounts: { queued: 1, excluded: 0 },
+      bucketCounts: { candidate: 0, exclusion: 1 },
+      exclusionCounts: [{ reason: "user-rejected", count: 1 }],
+    });
+  });
+
+  it("supports only scope, rejection/restore, and recheck review mutations", () => {
+    const db = migratedDb();
+    const observedAt = Date.parse("2026-08-03T12:00:00.000Z");
+    observeAndQueue(db, "api.service.example", observedAt);
+
+    expect(
+      selectDomainCandidateScope(db, {
+        fqdn: "api.service.example",
+        selectedScope: "exact",
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 1,
+      }),
+    ).toMatchObject({
+      fqdn: "api.service.example",
+      reviewState: "active",
+      status: "queued",
+      selectedScope: "exact",
+      proposedRule: "api.service.example",
+    });
+    expect(db.select().from(domainCandidates).get()).toMatchObject({
+      selectedScope: "exact",
+      proposedRule: "api.service.example",
+      nextValidationAt: observedAt + 1,
+      updatedAt: observedAt + 1,
+    });
+
+    expect(
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: true,
+        filterPolicy: null,
+        now: observedAt + 2,
+      }),
+    ).toMatchObject({ reviewState: "rejected", selectedScope: "exact" });
+    expect(listDueDomainCandidates(db, { now: observedAt + 2, limit: 10 })).toEqual([]);
+
+    expect(
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: false,
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 3,
+      }),
+    ).toMatchObject({ reviewState: "active", status: "queued" });
+    expect(
+      recheckDomainCandidate(db, {
+        fqdn: "api.service.example",
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 4,
+      }),
+    ).toMatchObject({ reviewState: "active", status: "queued", selectedScope: "exact" });
+  });
+
+  it("rejects unavailable scope and active-validation review races without changing the rule", () => {
+    const db = migratedDb();
+    const observedAt = Date.parse("2026-08-03T12:00:00.000Z");
+    observeAndQueue(db, "api.service.example", observedAt);
+
+    expect(() =>
+      selectDomainCandidateScope(db, {
+        fqdn: "api.service.example",
+        selectedScope: "site",
+        filterPolicy: {
+          ...FILTER_POLICY,
+          nonWidenableSuffixes: [...FILTER_POLICY.nonWidenableSuffixes, "service.example"],
+        },
+        now: observedAt + 1,
+      }),
+    ).toThrow();
+    try {
+      selectDomainCandidateScope(db, {
+        fqdn: "api.service.example",
+        selectedScope: "site",
+        filterPolicy: {
+          ...FILTER_POLICY,
+          nonWidenableSuffixes: [...FILTER_POLICY.nonWidenableSuffixes, "service.example"],
+        },
+        now: observedAt + 1,
+      });
+      throw new Error("expected unavailable scope");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "scope-unavailable" });
+    }
+
+    const lease = leaseDomainCandidate(db, {
+      fqdn: "api.service.example",
+      leaseId: "review_lease",
+      now: observedAt + 10,
+      leaseUntil: observedAt + 1_000,
+    });
+    expect(lease).not.toBeNull();
+    expect(() =>
+      selectDomainCandidateScope(db, {
+        fqdn: "api.service.example",
+        selectedScope: "exact",
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 20,
+      }),
+    ).toThrow();
+    try {
+      recheckDomainCandidate(db, {
+        fqdn: "api.service.example",
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 20,
+      });
+      throw new Error("expected validation conflict");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "validation-in-progress" });
+    }
+    expect(db.select().from(domainCandidates).get()).toMatchObject({
+      selectedScope: "site",
+      proposedRule: "+.service.example",
+      leaseId: "review_lease",
+    });
+  });
+
+  it("fences a claimed validation after rejection and restores only after its lease expires", () => {
+    const db = migratedDb();
+    const observedAt = Date.parse("2026-08-03T12:00:00.000Z");
+    observeAndQueue(db, "api.service.example", observedAt);
+    const lease = leaseDomainCandidate(db, {
+      fqdn: "api.service.example",
+      leaseId: "claimed_before_rejection",
+      now: observedAt + 10,
+      leaseUntil: observedAt + 1_000,
+    });
+    expect(lease).not.toBeNull();
+    if (!lease) throw new Error("missing review lease fixture");
+
+    setDomainCandidateRejection(db, {
+      fqdn: "api.service.example",
+      rejected: true,
+      filterPolicy: null,
+      now: observedAt + 20,
+    });
+    expect(() =>
+      startDomainValidationRun(db, {
+        id: "rejected_run",
+        fqdn: "api.service.example",
+        leaseId: lease.leaseId,
+        leaseGeneration: lease.leaseGeneration,
+        startedAt: observedAt + 30,
+      }),
+    ).toThrow(/lease/i);
+    expect(() =>
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: false,
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 40,
+      }),
+    ).toThrow();
+
+    expect(
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: false,
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 1_001,
+      }),
+    ).toMatchObject({ reviewState: "active", status: "queued" });
+    expect(db.select().from(domainCandidates).get()).toMatchObject({
+      reviewState: "active",
+      leaseId: null,
+      nextValidationAt: observedAt + 1_001,
+    });
+  });
+
+  it("lets an already-running validation finish without undoing a later rejection", () => {
+    const db = migratedDb();
+    const startedAt = Date.parse("2026-08-03T12:00:00.000Z");
+    observeAndQueue(db, "api.service.example", startedAt);
+    const lease = leaseAndStart(db, "api.service.example", "running_review", startedAt + 10);
+    setDomainCandidateRejection(db, {
+      fqdn: "api.service.example",
+      rejected: true,
+      filterPolicy: null,
+      now: startedAt + 20,
+    });
+
+    completeDomainValidationRun(db, completionInput("running_review", lease, startedAt + 10));
+
+    expect(db.select().from(domainCandidates).get()).toMatchObject({
+      reviewState: "rejected",
+      status: "pending",
+      leaseId: null,
+    });
+    expect(
+      listDueDomainCandidates(db, { now: startedAt + 3 * 60 * 60 * 1_000, limit: 10 }),
+    ).toEqual([]);
+  });
+
+  it("restores a rejected candidate as a system exclusion when current policy forbids it", () => {
+    const db = migratedDb();
+    const observedAt = Date.parse("2026-08-03T12:00:00.000Z");
+    observeAndQueue(db, "api.service.example", observedAt);
+    setDomainCandidateRejection(db, {
+      fqdn: "api.service.example",
+      rejected: true,
+      filterPolicy: null,
+      now: observedAt + 1,
+    });
+
+    expect(
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: false,
+        filterPolicy: { ...FILTER_POLICY, neverAddDomains: ["api.service.example"] },
+        now: observedAt + 2,
+      }),
+    ).toEqual({
+      fqdn: "api.service.example",
+      reviewState: "active",
+      status: "excluded",
+      selectedScope: null,
+      proposedRule: null,
+    });
+    expect(db.select().from(domainCandidates).get()).toMatchObject({
+      reviewState: "active",
+      status: "excluded",
+      exclusionReason: "never-add-domain",
+      nextValidationAt: 8_640_000_000_000_000,
+    });
+    expect(() =>
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: true,
+        filterPolicy: null,
+        now: observedAt + 3,
+      }),
+    ).toThrow();
+  });
+
+  it("preserves the reviewed site scope across policy exclusion and idempotent rejection", () => {
+    const db = migratedDb();
+    const observedAt = Date.parse("2026-08-03T12:00:00.000Z");
+    observeAndQueue(db, "api.service.example", observedAt);
+    setDomainCandidateRejection(db, {
+      fqdn: "api.service.example",
+      rejected: true,
+      filterPolicy: null,
+      now: observedAt + 1,
+    });
+
+    expect(
+      queueDomainCandidate(db, {
+        fqdn: "api.service.example",
+        filterPolicy: { ...FILTER_POLICY, neverAddDomains: ["api.service.example"] },
+        preferredScope: "exact",
+        now: observedAt + 2,
+      }),
+    ).toEqual({ status: "excluded", reason: "never-add-domain" });
+    expect(db.select().from(domainCandidates).get()).toMatchObject({
+      reviewState: "rejected",
+      status: "queued",
+      selectedScope: "site",
+      proposedRule: "+.service.example",
+    });
+    expect(
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: true,
+        filterPolicy: null,
+        now: observedAt + 3,
+      }),
+    ).toMatchObject({ reviewState: "rejected", selectedScope: "site" });
+    expect(
+      setDomainCandidateRejection(db, {
+        fqdn: "api.service.example",
+        rejected: false,
+        filterPolicy: FILTER_POLICY,
+        now: observedAt + 4,
+      }),
+    ).toEqual({
+      fqdn: "api.service.example",
+      reviewState: "active",
+      status: "queued",
+      selectedScope: "site",
+      proposedRule: "+.service.example",
+    });
   });
 
   it("reports a stale persisted site scope as invalid after the PSL boundary changes", () => {

@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   domainCandidateListInputSchema,
   domainCandidateListSchema,
+  domainCandidateRecheckActionInputSchema,
+  domainCandidateRejectionActionInputSchema,
+  domainCandidateReviewActionResultSchema,
+  domainCandidateReviewMutationResultSchema,
+  domainCandidateScopeActionInputSchema,
   domainIntelligenceOverviewSchema,
   domainProbeCategorySchema,
 } from "./domain-intelligence.js";
@@ -15,6 +20,82 @@ const health = {
 };
 
 describe("domain intelligence shared contracts", () => {
+  it("strictly validates the only three report-mode review actions", () => {
+    expect(
+      domainCandidateScopeActionInputSchema.parse({
+        fqdn: "api.service.example",
+        selectedScope: "site",
+      }),
+    ).toEqual({ fqdn: "api.service.example", selectedScope: "site" });
+    expect(
+      domainCandidateRejectionActionInputSchema.parse({
+        fqdn: "api.service.example",
+        rejected: true,
+      }),
+    ).toEqual({ fqdn: "api.service.example", rejected: true });
+    expect(domainCandidateRecheckActionInputSchema.parse({ fqdn: "api.service.example" })).toEqual({
+      fqdn: "api.service.example",
+    });
+    expect(
+      domainCandidateReviewActionResultSchema.parse({
+        fqdn: "api.service.example",
+        reviewState: "active",
+        status: "queued",
+        selectedScope: "site",
+        proposedRule: "+.service.example",
+      }),
+    ).toMatchObject({ reviewState: "active", proposedRule: "+.service.example" });
+    expect(
+      domainCandidateReviewMutationResultSchema.parse({
+        ok: true,
+        candidate: {
+          fqdn: "api.service.example",
+          reviewState: "active",
+          status: "queued",
+          selectedScope: "site",
+          proposedRule: "+.service.example",
+        },
+      }),
+    ).toMatchObject({ ok: true, candidate: { selectedScope: "site" } });
+    expect(
+      domainCandidateReviewMutationResultSchema.parse({
+        ok: false,
+        reason: "scope-unavailable",
+      }),
+    ).toEqual({ ok: false, reason: "scope-unavailable" });
+
+    expect(() =>
+      domainCandidateScopeActionInputSchema.parse({
+        fqdn: "api.service.example",
+        selectedScope: "site",
+        apply: true,
+      }),
+    ).toThrow();
+    expect(() =>
+      domainCandidateRejectionActionInputSchema.parse({
+        fqdn: "api.service.example",
+        rejected: "yes",
+      }),
+    ).toThrow();
+    expect(() => domainCandidateRecheckActionInputSchema.parse({ fqdn: "api.local" })).toThrow();
+    expect(() =>
+      domainCandidateReviewActionResultSchema.parse({
+        fqdn: "api.service.example",
+        reviewState: "active",
+        status: "queued",
+        selectedScope: "site",
+        proposedRule: "+.other.example",
+      }),
+    ).toThrow();
+    expect(() =>
+      domainCandidateReviewMutationResultSchema.parse({
+        ok: false,
+        reason: "scope-unavailable",
+        internalPolicy: true,
+      }),
+    ).toThrow();
+  });
+
   it("keeps every persisted safe probe category in the public enum", () => {
     expect(domainProbeCategorySchema.options).toEqual([
       "http_response",
@@ -61,13 +142,33 @@ describe("domain intelligence shared contracts", () => {
         blocked: 4,
         excluded: 5,
       },
-      exclusionCounts: [{ reason: "telemetry-pattern" as const, count: 5 }],
+      bucketCounts: { candidate: 6, exclusion: 9 },
+      exclusionCounts: [
+        { reason: "telemetry-pattern" as const, count: 5 },
+        { reason: "user-rejected" as const, count: 4 },
+      ],
       evidenceIntegrityCounts: { missingDecisions: 0, invalidDecisions: 0 },
     };
 
     expect(domainIntelligenceOverviewSchema.parse(overview)).toEqual(overview);
     expect(() =>
       domainIntelligenceOverviewSchema.parse({ ...overview, rawObservations: [] }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceOverviewSchema.parse({
+        ...overview,
+        bucketCounts: { candidate: 15, exclusion: 0 },
+        exclusionCounts: [],
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceOverviewSchema.parse({
+        ...overview,
+        exclusionCounts: [
+          { reason: "telemetry-pattern", count: 5 },
+          { reason: "telemetry-pattern", count: 4 },
+        ],
+      }),
     ).toThrow();
   });
 
@@ -78,6 +179,7 @@ describe("domain intelligence shared contracts", () => {
           fqdn: "api.service.example",
           siteGroup: "service.example",
           bucket: "candidate" as const,
+          reviewState: "active" as const,
           status: "pending" as const,
           selectedScope: "site" as const,
           proposedRule: "+.service.example",
@@ -139,6 +241,29 @@ describe("domain intelligence shared contracts", () => {
     };
 
     expect(domainCandidateListSchema.parse(list)).toEqual(list);
+    expect(
+      domainCandidateListSchema.parse({
+        ...list,
+        items: [
+          {
+            ...list.items[0],
+            bucket: "exclusion",
+            reviewState: "rejected",
+            exclusionReason: "user-rejected",
+            nextValidationAt: null,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      items: [
+        {
+          status: "pending",
+          bucket: "exclusion",
+          reviewState: "rejected",
+          exclusionReason: "user-rejected",
+        },
+      ],
+    });
     expect(() =>
       domainCandidateListSchema.parse({
         ...list,

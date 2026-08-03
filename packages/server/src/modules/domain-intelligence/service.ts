@@ -2,11 +2,14 @@ import { Buffer } from "node:buffer";
 import {
   type DomainCandidateList,
   type DomainCandidateListInput,
+  type DomainCandidateReviewActionResult,
+  type DomainCandidateReviewErrorReason,
   type DomainCandidateStatus,
   type DomainIntelligenceOverview,
   type DomainObserverHealth,
   type DomainReportExclusionReason,
   domainCandidateListSchema,
+  domainCandidateReviewActionResultSchema,
   domainIntelligenceOverviewSchema,
   MAX_SETTING_VALUE_BYTES,
 } from "@submerge/shared";
@@ -570,6 +573,19 @@ export function queueDomainCandidate(
       const reason = candidate.exclusionReason ?? "invalid-domain";
       if (existing && reason !== "invalid-domain") {
         cancelRunningForPolicyChange();
+        if (existing.reviewState === "rejected") {
+          tx.update(domainCandidates)
+            .set({
+              firstSeenAt: sql`min(${domainCandidates.firstSeenAt}, ${bounds.firstSeenAt})`,
+              lastSeenAt: sql`max(${domainCandidates.lastSeenAt}, ${bounds.lastSeenAt})`,
+              leaseId: null,
+              leaseUntil: null,
+              updatedAt: parsed.now,
+            })
+            .where(eq(domainCandidates.fqdn, candidate.fqdn))
+            .run();
+          return { status: "excluded", reason };
+        }
         tx.update(domainCandidates)
           .set({
             registrableSite: candidate.registrableSite,
@@ -637,6 +653,274 @@ export function queueDomainCandidate(
   });
 }
 
+export type DomainCandidateReviewErrorCode = DomainCandidateReviewErrorReason;
+
+export class DomainCandidateReviewError extends Error {
+  readonly code: DomainCandidateReviewErrorCode;
+
+  constructor(code: DomainCandidateReviewErrorCode) {
+    super(code);
+    this.name = "DomainCandidateReviewError";
+    this.code = code;
+  }
+}
+
+export interface SelectDomainCandidateScopeInput {
+  fqdn: string;
+  selectedScope: "exact" | "site";
+  filterPolicy: DomainFilterPolicy;
+  now: number;
+}
+
+export interface SetDomainCandidateRejectionInput {
+  fqdn: string;
+  rejected: boolean;
+  filterPolicy: DomainFilterPolicy | null;
+  now: number;
+}
+
+export interface RecheckDomainCandidateInput {
+  fqdn: string;
+  filterPolicy: DomainFilterPolicy;
+  now: number;
+}
+
+const candidateScopeActionSchema = z
+  .object({
+    fqdn: fqdnSchema,
+    selectedScope: ruleScopeSchema,
+    filterPolicy: filterPolicySchema,
+    now: timestampSchema,
+  })
+  .strict();
+
+const candidateRejectionActionSchema = z
+  .object({
+    fqdn: fqdnSchema,
+    rejected: z.boolean(),
+    filterPolicy: filterPolicySchema.nullable(),
+    now: timestampSchema,
+  })
+  .strict();
+
+const candidateRecheckActionSchema = z
+  .object({
+    fqdn: fqdnSchema,
+    filterPolicy: filterPolicySchema,
+    now: timestampSchema,
+  })
+  .strict();
+
+function reviewActionResult(
+  candidate: typeof domainCandidates.$inferSelect,
+): DomainCandidateReviewActionResult {
+  return domainCandidateReviewActionResultSchema.parse({
+    fqdn: candidate.fqdn,
+    reviewState: candidate.reviewState,
+    status: candidate.status,
+    selectedScope: candidate.selectedScope,
+    proposedRule: candidate.proposedRule,
+  });
+}
+
+function reviewCandidateOrThrow(
+  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
+  fqdn: string,
+): typeof domainCandidates.$inferSelect {
+  const candidate = tx.select().from(domainCandidates).where(eq(domainCandidates.fqdn, fqdn)).get();
+  if (!candidate) throw new DomainCandidateReviewError("candidate-not-found");
+  return candidate;
+}
+
+function assertReviewChronology(
+  candidate: typeof domainCandidates.$inferSelect,
+  now: number,
+): void {
+  if (now < candidate.updatedAt) {
+    throw new RangeError("review action timestamp violates lifecycle chronology");
+  }
+}
+
+function assertNoActiveDomainValidation(
+  tx: Parameters<Parameters<Db["transaction"]>[0]>[0],
+  candidate: typeof domainCandidates.$inferSelect,
+  now: number,
+): void {
+  const running = tx
+    .select({ id: domainValidationRuns.id })
+    .from(domainValidationRuns)
+    .where(
+      and(
+        eq(domainValidationRuns.fqdn, candidate.fqdn),
+        eq(domainValidationRuns.status, "running"),
+      ),
+    )
+    .get();
+  if (running || (candidate.leaseUntil !== null && candidate.leaseUntil > now)) {
+    throw new DomainCandidateReviewError("validation-in-progress");
+  }
+}
+
+export function selectDomainCandidateScope(
+  db: Db,
+  input: SelectDomainCandidateScopeInput,
+): DomainCandidateReviewActionResult {
+  const parsed = candidateScopeActionSchema.parse(input);
+  return db.transaction((tx) => {
+    const current = reviewCandidateOrThrow(tx, parsed.fqdn);
+    assertReviewChronology(current, parsed.now);
+    if (current.reviewState === "rejected") {
+      throw new DomainCandidateReviewError("candidate-rejected");
+    }
+    if (current.status === "excluded") {
+      throw new DomainCandidateReviewError("candidate-excluded");
+    }
+    const derived = deriveDomainCandidate(parsed.fqdn, parsed.filterPolicy, parsed.selectedScope);
+    if (!derived || derived.excluded || !derived.selectedScope || !derived.proposedRule) {
+      throw new DomainCandidateReviewError("candidate-excluded");
+    }
+    if (derived.selectedScope !== parsed.selectedScope) {
+      throw new DomainCandidateReviewError("scope-unavailable");
+    }
+    if (
+      current.selectedScope === derived.selectedScope &&
+      current.proposedRule === derived.proposedRule &&
+      current.registrableSite === derived.registrableSite
+    ) {
+      return reviewActionResult(current);
+    }
+    assertNoActiveDomainValidation(tx, current, parsed.now);
+    tx.update(domainCandidates)
+      .set({
+        registrableSite: derived.registrableSite,
+        selectedScope: derived.selectedScope,
+        proposedRule: derived.proposedRule,
+        exclusionReason: null,
+        status: "queued",
+        nextValidationAt: parsed.now,
+        failureStreak: 0,
+        leaseId: null,
+        leaseUntil: null,
+        updatedAt: parsed.now,
+      })
+      .where(eq(domainCandidates.fqdn, parsed.fqdn))
+      .run();
+    return reviewActionResult(reviewCandidateOrThrow(tx, parsed.fqdn));
+  });
+}
+
+export function setDomainCandidateRejection(
+  db: Db,
+  input: SetDomainCandidateRejectionInput,
+): DomainCandidateReviewActionResult {
+  const parsed = candidateRejectionActionSchema.parse(input);
+  return db.transaction((tx) => {
+    const current = reviewCandidateOrThrow(tx, parsed.fqdn);
+    assertReviewChronology(current, parsed.now);
+    if (parsed.rejected) {
+      if (current.reviewState === "rejected") return reviewActionResult(current);
+      if (current.status === "excluded") {
+        throw new DomainCandidateReviewError("candidate-excluded");
+      }
+      tx.update(domainCandidates)
+        .set({ reviewState: "rejected", updatedAt: parsed.now })
+        .where(eq(domainCandidates.fqdn, parsed.fqdn))
+        .run();
+      return reviewActionResult(reviewCandidateOrThrow(tx, parsed.fqdn));
+    }
+
+    if (current.reviewState === "active") return reviewActionResult(current);
+    if (!parsed.filterPolicy) {
+      throw new DomainCandidateReviewError("policy-unavailable");
+    }
+    assertNoActiveDomainValidation(tx, current, parsed.now);
+    const derived = deriveDomainCandidate(
+      parsed.fqdn,
+      parsed.filterPolicy,
+      current.selectedScope ?? "exact",
+    );
+    if (!derived) throw new DomainCandidateReviewError("candidate-excluded");
+    if (derived.excluded || !derived.selectedScope || !derived.proposedRule) {
+      tx.update(domainCandidates)
+        .set({
+          registrableSite: derived.registrableSite,
+          selectedScope: null,
+          proposedRule: null,
+          exclusionReason: derived.exclusionReason ?? "invalid-policy",
+          status: "excluded",
+          reviewState: "active",
+          nextValidationAt: MAX_DATE_MS,
+          failureStreak: 0,
+          leaseId: null,
+          leaseUntil: null,
+          updatedAt: parsed.now,
+        })
+        .where(eq(domainCandidates.fqdn, parsed.fqdn))
+        .run();
+    } else {
+      tx.update(domainCandidates)
+        .set({
+          registrableSite: derived.registrableSite,
+          selectedScope: derived.selectedScope,
+          proposedRule: derived.proposedRule,
+          exclusionReason: null,
+          status: "queued",
+          reviewState: "active",
+          nextValidationAt: parsed.now,
+          failureStreak: 0,
+          leaseId: null,
+          leaseUntil: null,
+          updatedAt: parsed.now,
+        })
+        .where(eq(domainCandidates.fqdn, parsed.fqdn))
+        .run();
+    }
+    return reviewActionResult(reviewCandidateOrThrow(tx, parsed.fqdn));
+  });
+}
+
+export function recheckDomainCandidate(
+  db: Db,
+  input: RecheckDomainCandidateInput,
+): DomainCandidateReviewActionResult {
+  const parsed = candidateRecheckActionSchema.parse(input);
+  return db.transaction((tx) => {
+    const current = reviewCandidateOrThrow(tx, parsed.fqdn);
+    assertReviewChronology(current, parsed.now);
+    if (current.reviewState === "rejected") {
+      throw new DomainCandidateReviewError("candidate-rejected");
+    }
+    if (current.status === "excluded") {
+      throw new DomainCandidateReviewError("candidate-excluded");
+    }
+    assertNoActiveDomainValidation(tx, current, parsed.now);
+    const derived = deriveDomainCandidate(
+      parsed.fqdn,
+      parsed.filterPolicy,
+      current.selectedScope ?? "exact",
+    );
+    if (!derived || derived.excluded || !derived.selectedScope || !derived.proposedRule) {
+      throw new DomainCandidateReviewError("candidate-excluded");
+    }
+    tx.update(domainCandidates)
+      .set({
+        registrableSite: derived.registrableSite,
+        selectedScope: derived.selectedScope,
+        proposedRule: derived.proposedRule,
+        exclusionReason: null,
+        status: "queued",
+        nextValidationAt: parsed.now,
+        failureStreak: 0,
+        leaseId: null,
+        leaseUntil: null,
+        updatedAt: parsed.now,
+      })
+      .where(eq(domainCandidates.fqdn, parsed.fqdn))
+      .run();
+    return reviewActionResult(reviewCandidateOrThrow(tx, parsed.fqdn));
+  });
+}
+
 const MAX_VALIDATION_LEASE_MS = 10 * 60_000;
 const leaseCandidateInputSchema = z
   .object({
@@ -669,6 +953,7 @@ export function leaseDomainCandidate(
       .where(
         and(
           eq(domainCandidates.fqdn, parsed.fqdn),
+          eq(domainCandidates.reviewState, "active"),
           ne(domainCandidates.status, "excluded"),
           lte(domainCandidates.nextValidationAt, parsed.now),
           lte(domainCandidates.updatedAt, parsed.now),
@@ -753,6 +1038,7 @@ export function listDueDomainCandidates(
       .from(domainCandidates)
       .where(
         and(
+          eq(domainCandidates.reviewState, "active"),
           ne(domainCandidates.status, "excluded"),
           isNotNull(domainCandidates.selectedScope),
           isNotNull(domainCandidates.proposedRule),
@@ -866,7 +1152,7 @@ export function startDomainValidationRun(
       .where(eq(domainCandidates.fqdn, parsed.fqdn))
       .get();
     if (
-      !candidate ||
+      candidate?.reviewState !== "active" ||
       candidate.status === "excluded" ||
       candidate.leaseId !== parsed.leaseId ||
       candidate.leaseGeneration !== parsed.leaseGeneration ||
@@ -972,6 +1258,7 @@ export function claimDomainValidationRun(
       .where(
         and(
           eq(domainCandidates.fqdn, parsed.fqdn),
+          eq(domainCandidates.reviewState, "active"),
           ne(domainCandidates.status, "excluded"),
           lte(domainCandidates.nextValidationAt, parsed.now),
           lte(domainCandidates.updatedAt, parsed.now),
@@ -1669,7 +1956,7 @@ export function getDomainIntelligenceOverview(
     .from(domainCandidates)
     .groupBy(domainCandidates.status)
     .all()) {
-    candidateCounts[row.status] = row.count;
+    candidateCounts[row.status] += row.count;
   }
 
   const exclusionCountByReason = new Map<DomainReportExclusionReason, number>();
@@ -1686,16 +1973,23 @@ export function getDomainIntelligenceOverview(
       count: sql<number>`cast(count(*) as integer)`,
     })
     .from(domainCandidates)
-    .where(eq(domainCandidates.status, "excluded"))
+    .where(and(eq(domainCandidates.reviewState, "active"), eq(domainCandidates.status, "excluded")))
     .groupBy(storedExclusionReason)
     .all()) {
     addExclusionCount(row.reason, row.count);
   }
+  const rejectedCount = db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(domainCandidates)
+    .where(eq(domainCandidates.reviewState, "rejected"))
+    .get()?.count;
+  if (rejectedCount) addExclusionCount("user-rejected", rejectedCount);
 
   let missingDecisions = 0;
   for (const row of db
     .select({
       status: domainCandidates.status,
+      reviewState: domainCandidates.reviewState,
       count: sql<number>`cast(count(*) as integer)`,
     })
     .from(domainCandidates)
@@ -1709,10 +2003,12 @@ export function getDomainIntelligenceOverview(
         )`,
       ),
     )
-    .groupBy(domainCandidates.status)
+    .groupBy(domainCandidates.status, domainCandidates.reviewState)
     .all()) {
     missingDecisions += row.count;
-    if (row.status === "blocked") addExclusionCount("invalid-evidence", row.count);
+    if (row.reviewState === "active" && row.status === "blocked") {
+      addExclusionCount("invalid-evidence", row.count);
+    }
   }
 
   let invalidDecisions = 0;
@@ -1739,6 +2035,7 @@ export function getDomainIntelligenceOverview(
     const decisionPage = db
       .select({
         candidateStatus: domainCandidates.status,
+        candidateReviewState: domainCandidates.reviewState,
         ...rawReportDecisionSelection,
       })
       .from(domainCandidates)
@@ -1753,8 +2050,10 @@ export function getDomainIntelligenceOverview(
         row.candidateStatus === "confirmed" || row.candidateStatus === "blocked";
       if (decision === null || (terminalStatus && decision.status !== row.candidateStatus)) {
         invalidDecisions += 1;
-        if (row.candidateStatus === "blocked") addExclusionCount("invalid-evidence");
-      } else if (row.candidateStatus === "blocked") {
+        if (row.candidateReviewState === "active" && row.candidateStatus === "blocked") {
+          addExclusionCount("invalid-evidence");
+        }
+      } else if (row.candidateReviewState === "active" && row.candidateStatus === "blocked") {
         addExclusionCount(firstBlockingReportReason(decision.reasons));
       }
     }
@@ -1765,6 +2064,12 @@ export function getDomainIntelligenceOverview(
   const exclusionCounts = [...exclusionCountByReason]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([reason, count]) => ({ reason, count }));
+  const lifecycleTotal = Object.values(candidateCounts).reduce((total, count) => total + count, 0);
+  const exclusionTotal = exclusionCounts.reduce((total, item) => total + item.count, 0);
+  const bucketCounts = {
+    candidate: lifecycleTotal - exclusionTotal,
+    exclusion: exclusionTotal,
+  };
 
   return domainIntelligenceOverviewSchema.parse({
     generatedAt: now,
@@ -1772,6 +2077,7 @@ export function getDomainIntelligenceOverview(
     health: input.health,
     dailyAggregates,
     candidateCounts,
+    bucketCounts,
     evidenceIntegrityCounts: { missingDecisions, invalidDecisions },
     exclusionCounts,
   });
@@ -1808,13 +2114,19 @@ export function listDomainCandidateReport(
   input: DomainCandidateListInput,
   filterPolicy: DomainReportFilterPolicy | null,
 ): DomainCandidateList {
-  const statusFilter =
+  const conditions = [
     input.view === "candidates"
-      ? (["queued", "pending", "confirmed"] as const)
+      ? and(
+          eq(domainCandidates.reviewState, "active"),
+          inArray(domainCandidates.status, ["queued", "pending", "confirmed"]),
+        )
       : input.view === "exclusions"
-        ? (["blocked", "excluded"] as const)
-        : CANDIDATE_STATUSES;
-  const conditions = [inArray(domainCandidates.status, statusFilter)];
+        ? or(
+            eq(domainCandidates.reviewState, "rejected"),
+            inArray(domainCandidates.status, ["blocked", "excluded"]),
+          )
+        : inArray(domainCandidates.status, CANDIDATE_STATUSES),
+  ];
   if (input.cursor !== undefined) conditions.push(gt(domainCandidates.fqdn, input.cursor));
   const rows = db
     .select({
@@ -1824,6 +2136,7 @@ export function listDomainCandidateReport(
       proposedRule: domainCandidates.proposedRule,
       exclusionReason: domainCandidates.exclusionReason,
       status: domainCandidates.status,
+      reviewState: domainCandidates.reviewState,
       firstSeenAt: domainCandidates.firstSeenAt,
       lastSeenAt: domainCandidates.lastSeenAt,
       nextValidationAt: domainCandidates.nextValidationAt,
@@ -1995,11 +2308,15 @@ export function listDomainCandidateReport(
             finalOrigin: attempt.finalOrigin,
           }
         : null;
-    const bucket = status === "blocked" || status === "excluded" ? "exclusion" : "candidate";
+    const bucket =
+      row.reviewState === "rejected" || status === "blocked" || status === "excluded"
+        ? "exclusion"
+        : "candidate";
     return {
       fqdn: row.fqdn,
       siteGroup: derived?.registrableSite ?? row.registrableSite ?? row.fqdn,
       bucket,
+      reviewState: row.reviewState,
       status,
       selectedScope: filterPolicy === null ? null : row.selectedScope,
       proposedRule: filterPolicy === null ? null : row.proposedRule,
@@ -2008,17 +2325,20 @@ export function listDomainCandidateReport(
       siteUnavailableReason,
       policyExclusionReason,
       exclusionReason:
-        status === "excluded"
-          ? row.exclusionReason
-          : status === "blocked"
-            ? decision
-              ? firstBlockingReportReason(decision.reasons)
-              : "invalid-evidence"
-            : null,
+        row.reviewState === "rejected"
+          ? "user-rejected"
+          : status === "excluded"
+            ? row.exclusionReason
+            : status === "blocked"
+              ? decision
+                ? firstBlockingReportReason(decision.reasons)
+                : "invalid-evidence"
+              : null,
       firstSeenAt: row.firstSeenAt,
       lastSeenAt: row.lastSeenAt,
       lastValidationAt: row.lastValidationAt,
-      nextValidationAt: row.status === "excluded" ? null : row.nextValidationAt,
+      nextValidationAt:
+        row.reviewState === "rejected" || row.status === "excluded" ? null : row.nextValidationAt,
       connectionCount: connectionCounts.get(row.fqdn) ?? 0,
       evidenceAvailable: decision !== null,
       evidenceIntegrityIssue,
