@@ -122,6 +122,11 @@ export function isPublicIpAddress(address: string): boolean {
   return !NON_GLOBAL_IPV6.check(canonical, "ipv6");
 }
 
+export function canonicalPublicIpAddress(address: string): string | null {
+  const canonical = canonicalIpAddress(address);
+  return canonical && isPublicIpAddress(canonical) ? canonical : null;
+}
+
 interface QueryResult {
   status: "answered" | "negative" | "failed";
   publicAddresses: string[];

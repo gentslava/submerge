@@ -153,6 +153,7 @@ export interface DirectProbeResult {
   transportSuccess: boolean;
   httpStatus: number | null;
   resolvedAddress: string | null;
+  availableAddressCount: number;
   connectDurationMs: number | null;
   tlsDurationMs: number | null;
   totalDurationMs: number;
@@ -735,6 +736,7 @@ async function probeHttps(
   let tlsDurationMs = 0;
   let hasConnectDuration = false;
   let hasTlsDuration = false;
+  let availableAddressCount = 0;
 
   const result = (
     category: ProbeCategory,
@@ -750,6 +752,7 @@ async function probeHttps(
     transportSuccess: input.transportSuccess ?? false,
     httpStatus: input.httpStatus ?? null,
     resolvedAddress: input.resolvedAddress ?? null,
+    availableAddressCount,
     connectDurationMs: hasConnectDuration ? connectDurationMs : null,
     tlsDurationMs: hasTlsDuration ? tlsDurationMs : null,
     totalDurationMs: safeDuration(now() - startedAt),
@@ -758,6 +761,7 @@ async function probeHttps(
   });
 
   while (true) {
+    availableAddressCount = 0;
     let resolution: PublicResolutionResult;
     try {
       resolution = await resolveImpl(target.hostname, options.resolverUrls, {
@@ -800,6 +804,7 @@ async function probeHttps(
     if (usableAddresses.length === 0) {
       return result("ipv6_unavailable", { finalOrigin: target.origin });
     }
+    availableAddressCount = usableAddresses.length;
     const selected = usableAddresses[addressSelectionIndex % usableAddresses.length];
     if (!selected) return result("infrastructure_error", { finalOrigin: target.origin });
 

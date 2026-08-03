@@ -228,10 +228,10 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] Three spaced qualifying DIRECT failures plus two stable PROXY HTTP successes are
+- [x] Three spaced qualifying DIRECT failures plus two stable PROXY HTTP successes are
       required in the trailing 24-hour window.
-- [ ] Application statuses including 401/403/404/429 count as transport success.
-- [ ] Coverage uncertainty, unhealthy observation, unstable PROXY, or invalid scope
+- [x] Application statuses including 401/403/404/429 count as transport success.
+- [x] Coverage uncertainty, unhealthy observation, unstable PROXY, or invalid scope
       blocks confirmation with a persisted reason code.
 
 ### Task 12: Schedule bounded validation and retention

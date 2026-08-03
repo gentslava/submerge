@@ -572,6 +572,7 @@ describe("probeDirectHttps", () => {
       transportSuccess: true,
       httpStatus: 404,
       resolvedAddress: "1.1.1.1",
+      availableAddressCount: 1,
       connectDurationMs: 6,
       tlsDurationMs: 10,
       totalDurationMs: 22,
@@ -694,7 +695,11 @@ describe("probeDirectHttps", () => {
     });
 
     expect(selected).toEqual(["1.1.1.1"]);
-    expect(result).toMatchObject({ category: "http_response", resolvedAddress: "1.1.1.1" });
+    expect(result).toMatchObject({
+      category: "http_response",
+      resolvedAddress: "1.1.1.1",
+      availableAddressCount: 2,
+    });
 
     const ipv6Only = await probeDirectHttps("api.service.example", {
       resolverUrls: ["https://resolver.example/dns-query"],
@@ -706,6 +711,7 @@ describe("probeDirectHttps", () => {
       category: "ipv6_unavailable",
       transportSuccess: false,
       resolvedAddress: null,
+      availableAddressCount: 0,
     });
   });
 

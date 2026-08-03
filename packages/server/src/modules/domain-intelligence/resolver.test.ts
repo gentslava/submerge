@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isPublicIpAddress, resolvePublicAddresses } from "./resolver.js";
+import { canonicalPublicIpAddress, isPublicIpAddress, resolvePublicAddresses } from "./resolver.js";
 
 describe("isPublicIpAddress", () => {
+  it("returns one canonical identity for equivalent public IPv6 addresses", () => {
+    expect(canonicalPublicIpAddress("2606:4700:4700:0:0:0:0:1111")).toBe("2606:4700:4700::1111");
+    expect(canonicalPublicIpAddress("2606:4700:4700::1111")).toBe("2606:4700:4700::1111");
+    expect(canonicalPublicIpAddress("10.0.0.1")).toBeNull();
+  });
+
   it.each([
     "8.8.8.8",
     "1.1.1.1",
