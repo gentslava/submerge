@@ -10,3 +10,4 @@ When a new significant decision is made, add a file `NNNN-short-name.md` with th
 - [0002](0002-hwid-per-source.md) — X-Hwid as a per-source option (off by default)
 - [0003](0003-v2-stack.md) — v2 stack: React + tRPC + Drizzle/SQLite, SPA without SSR
 - [0004](0004-anti-overengineering.md) — Minimal sufficient complexity (SQLite, pnpm monorepo, no Postgres/Nx/hexagonal)
+- [0005](0005-mihomo-native-domain-intelligence.md) — Mihomo-native domain intelligence as an optional Submerge background module
