@@ -111,7 +111,45 @@ export const selectNodeInput = z.object({ group: z.literal("PROXY"), name: z.str
 export type SelectNodeInput = z.infer<typeof selectNodeInput>;
 export const delayInput = z.object({ name: z.string().min(1) });
 export type DelayInput = z.infer<typeof delayInput>;
-export const setSettingInput = z.object({ key: z.string().min(1), value: z.string() });
+export const MAX_SETTING_KEY_BYTES = 128;
+export const MAX_SETTING_VALUE_BYTES = 1_048_576;
+function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint === undefined) continue;
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+function isWellFormedUtf16(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const trailing = value.charCodeAt(index + 1);
+      if (!(trailing >= 0xdc00 && trailing <= 0xdfff)) return false;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+const boundedSettingText = (maximumBytes: number) =>
+  z
+    .string()
+    .max(maximumBytes)
+    .refine(
+      (value) =>
+        !value.includes("\0") && isWellFormedUtf16(value) && utf8ByteLength(value) <= maximumBytes,
+      "setting text is malformed, exceeds its byte limit, or contains NUL",
+    );
+export const settingKeySchema = boundedSettingText(MAX_SETTING_KEY_BYTES).pipe(z.string().min(1));
+export const settingValueSchema = boundedSettingText(MAX_SETTING_VALUE_BYTES);
+export const setSettingInput = z.object({
+  key: settingKeySchema,
+  value: settingValueSchema,
+});
 export type SetSettingInput = z.infer<typeof setSettingInput>;
 export const setExcludedInput = z.object({ name: z.string().min(1), excluded: z.boolean() });
 export type SetExcludedInput = z.infer<typeof setExcludedInput>;

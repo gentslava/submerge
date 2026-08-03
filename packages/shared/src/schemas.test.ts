@@ -26,12 +26,34 @@ import {
   selectNodeInput,
   setChannelPolicyInput,
   setChannelPoolInput,
+  setSettingInput,
   sourceKindSchema,
   updateChannelInput,
   updateDirectInput,
 } from "./schemas.js";
 
 describe("schemas", () => {
+  it("bounds setting keys and values before persistence", () => {
+    expect(setSettingInput.safeParse({ key: "theme", value: "dark" }).success).toBe(true);
+    expect(setSettingInput.safeParse({ key: "k".repeat(129), value: "dark" }).success).toBe(false);
+    expect(
+      setSettingInput.safeParse({ key: "domainIntelligence", value: "x".repeat(1_048_577) })
+        .success,
+    ).toBe(false);
+    expect(setSettingInput.safeParse({ key: "nul\0key", value: "dark" }).success).toBe(false);
+    expect(
+      setSettingInput.safeParse({ key: "domainIntelligence", value: "{}\0garbage" }).success,
+    ).toBe(false);
+    expect(setSettingInput.safeParse({ key: "high-surrogate", value: "\uD800" }).success).toBe(
+      false,
+    );
+    expect(setSettingInput.safeParse({ key: "low-surrogate", value: "\uDC00" }).success).toBe(
+      false,
+    );
+    expect(setSettingInput.safeParse({ key: "😀".repeat(32), value: "dark" }).success).toBe(true);
+    expect(setSettingInput.safeParse({ key: "😀".repeat(33), value: "dark" }).success).toBe(false);
+  });
+
   it("accepts a valid kind", () => {
     expect(sourceKindSchema.parse("sub")).toBe("sub");
   });

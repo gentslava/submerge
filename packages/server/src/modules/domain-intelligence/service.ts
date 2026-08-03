@@ -1,4 +1,31 @@
-import { and, desc, eq, gt, gte, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { Buffer } from "node:buffer";
+import {
+  type DomainCandidateList,
+  type DomainCandidateListInput,
+  type DomainCandidateStatus,
+  type DomainIntelligenceOverview,
+  type DomainObserverHealth,
+  type DomainReportExclusionReason,
+  domainCandidateListSchema,
+  domainIntelligenceOverviewSchema,
+  MAX_SETTING_VALUE_BYTES,
+} from "@submerge/shared";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../../db/client.js";
 import type { DomainValidationRunErrorCategory } from "../../db/schema.js";
@@ -11,7 +38,9 @@ import {
   domainValidationAttempts,
   domainValidationRuns,
 } from "../../db/schema.js";
+import { getSetting } from "../settings/service.js";
 import {
+  CANDIDATE_DECISION_BLOCKING_REASONS,
   CANDIDATE_DECISION_CONFIDENCES,
   CANDIDATE_DECISION_REASONS,
   CANDIDATE_DECISION_STATUSES,
@@ -1481,19 +1510,104 @@ const persistedDecisionRowSchema = z
     }
     if (row.selectedScope === "site" && row.proposedRule !== null) {
       const site = row.proposedRule.startsWith("+.") ? row.proposedRule.slice(2) : "";
-      try {
-        if (
-          !site ||
-          serializeDomainRule({ fqdn: row.fqdn, registrableSite: site }, "site") !==
-            row.proposedRule
-        ) {
-          throw new Error("site rule mismatch");
-        }
-      } catch {
+      if (
+        !site ||
+        normalizeObservedFqdn(site) !== site ||
+        (row.fqdn !== site && !row.fqdn.endsWith(`.${site}`))
+      ) {
         context.addIssue({ code: "custom", message: "site decision rule does not cover FQDN" });
       }
     }
   });
+
+interface RawReportDecisionRow {
+  id: string;
+  fqdn: string;
+  evaluatedAt: number;
+  status: (typeof CANDIDATE_DECISION_STATUSES)[number];
+  confidence: (typeof CANDIDATE_DECISION_CONFIDENCES)[number];
+  reasonsJson: string;
+  reasonsLength: number;
+  reasonsNulOffset: number;
+  reasonsStorageType: string;
+  windowStart: number | null;
+  evidenceJson: string;
+  evidenceLength: number;
+  evidenceNulOffset: number;
+  evidenceStorageType: string;
+  selectedScope: "exact" | "site" | null;
+  proposedRule: string | null;
+}
+
+const MAX_DECISION_REASONS_JSON_LENGTH = 1_024;
+const MAX_DECISION_EVIDENCE_JSON_LENGTH = 2_048;
+
+const rawReportDecisionSelection = {
+  id: domainDecisions.id,
+  fqdn: domainDecisions.fqdn,
+  evaluatedAt: domainDecisions.evaluatedAt,
+  status: domainDecisions.status,
+  confidence: domainDecisions.confidence,
+  reasonsJson: sql<string>`cast(substr(
+    cast(${domainDecisions.reasons} as blob),
+    1,
+    ${MAX_DECISION_REASONS_JSON_LENGTH + 1}
+  ) as text)`,
+  reasonsLength: sql<number>`length(cast(${domainDecisions.reasons} as blob))`,
+  reasonsNulOffset: sql<number>`instr(cast(${domainDecisions.reasons} as blob), x'00')`,
+  reasonsStorageType: sql<string>`typeof(${domainDecisions.reasons})`,
+  windowStart: domainDecisions.windowStart,
+  evidenceJson: sql<string>`cast(substr(
+    cast(${domainDecisions.evidence} as blob),
+    1,
+    ${MAX_DECISION_EVIDENCE_JSON_LENGTH + 1}
+  ) as text)`,
+  evidenceLength: sql<number>`length(cast(${domainDecisions.evidence} as blob))`,
+  evidenceNulOffset: sql<number>`instr(cast(${domainDecisions.evidence} as blob), x'00')`,
+  evidenceStorageType: sql<string>`typeof(${domainDecisions.evidence})`,
+  selectedScope: domainDecisions.selectedScope,
+  proposedRule: domainDecisions.proposedRule,
+} as const;
+
+function parseRawReportDecision(
+  row: RawReportDecisionRow,
+): z.infer<typeof persistedDecisionRowSchema> | null {
+  if (
+    row.reasonsStorageType !== "text" ||
+    !Number.isSafeInteger(row.reasonsLength) ||
+    row.reasonsLength < 2 ||
+    row.reasonsLength > MAX_DECISION_REASONS_JSON_LENGTH ||
+    row.reasonsNulOffset !== 0 ||
+    Buffer.byteLength(row.reasonsJson, "utf8") !== row.reasonsLength ||
+    row.evidenceStorageType !== "text" ||
+    !Number.isSafeInteger(row.evidenceLength) ||
+    row.evidenceLength < 2 ||
+    row.evidenceLength > MAX_DECISION_EVIDENCE_JSON_LENGTH ||
+    row.evidenceNulOffset !== 0 ||
+    Buffer.byteLength(row.evidenceJson, "utf8") !== row.evidenceLength
+  ) {
+    return null;
+  }
+  try {
+    const reasons: unknown = JSON.parse(row.reasonsJson);
+    const evidence: unknown = JSON.parse(row.evidenceJson);
+    const parsed = persistedDecisionRowSchema.safeParse({
+      id: row.id,
+      fqdn: row.fqdn,
+      evaluatedAt: row.evaluatedAt,
+      status: row.status,
+      confidence: row.confidence,
+      reasons,
+      windowStart: row.windowStart,
+      evidence,
+      selectedScope: row.selectedScope,
+      proposedRule: row.proposedRule,
+    });
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 
 export function getDomainDecision(
   db: Db,
@@ -1502,6 +1616,433 @@ export function getDomainDecision(
   const parsedId = identifierSchema.parse(decisionId);
   const row = db.select().from(domainDecisions).where(eq(domainDecisions.id, parsedId)).get();
   return row === undefined ? undefined : persistedDecisionRowSchema.parse(row);
+}
+
+const DOMAIN_REPORT_DAYS = 14;
+const CANDIDATE_STATUSES = ["queued", "pending", "confirmed", "blocked", "excluded"] as const;
+const BLOCKING_REPORT_REASONS = new Set<string>(CANDIDATE_DECISION_BLOCKING_REASONS);
+
+function firstBlockingReportReason(
+  reasons: readonly (typeof CANDIDATE_DECISION_REASONS)[number][],
+): DomainReportExclusionReason {
+  return reasons.find((reason) => BLOCKING_REPORT_REASONS.has(reason)) ?? "invalid-evidence";
+}
+
+export interface DomainIntelligenceOverviewInput {
+  now: number;
+  health: DomainObserverHealth;
+}
+
+export function getDomainIntelligenceOverview(
+  db: Db,
+  input: DomainIntelligenceOverviewInput,
+): DomainIntelligenceOverview {
+  const now = timestampSchema.parse(input.now);
+  const dayStart = Date.parse(`${utcDay(now)}T00:00:00.000Z`);
+  const from = Math.max(0, dayStart - (DOMAIN_REPORT_DAYS - 1) * DAY_MS);
+  const fromDay = utcDay(from);
+  const toDay = utcDay(now);
+  const dailyAggregates = db
+    .select({
+      day: domainDailyStats.day,
+      connectionCount: sql<number>`cast(sum(${domainDailyStats.connectionCount}) as integer)`,
+      uniqueDomainCount: sql<number>`cast(count(*) as integer)`,
+    })
+    .from(domainDailyStats)
+    .where(and(gte(domainDailyStats.day, fromDay), lte(domainDailyStats.day, toDay)))
+    .groupBy(domainDailyStats.day)
+    .orderBy(domainDailyStats.day)
+    .all();
+
+  const candidateCounts: Record<DomainCandidateStatus, number> = {
+    queued: 0,
+    pending: 0,
+    confirmed: 0,
+    blocked: 0,
+    excluded: 0,
+  };
+  for (const row of db
+    .select({
+      status: domainCandidates.status,
+      count: sql<number>`cast(count(*) as integer)`,
+    })
+    .from(domainCandidates)
+    .groupBy(domainCandidates.status)
+    .all()) {
+    candidateCounts[row.status] = row.count;
+  }
+
+  const exclusionCountByReason = new Map<DomainReportExclusionReason, number>();
+  const addExclusionCount = (reason: DomainReportExclusionReason, count = 1): void => {
+    exclusionCountByReason.set(reason, (exclusionCountByReason.get(reason) ?? 0) + count);
+  };
+  const storedExclusionReason = sql<DomainReportExclusionReason>`coalesce(
+    ${domainCandidates.exclusionReason},
+    'invalid-policy'
+  )`;
+  for (const row of db
+    .select({
+      reason: storedExclusionReason,
+      count: sql<number>`cast(count(*) as integer)`,
+    })
+    .from(domainCandidates)
+    .where(eq(domainCandidates.status, "excluded"))
+    .groupBy(storedExclusionReason)
+    .all()) {
+    addExclusionCount(row.reason, row.count);
+  }
+
+  let missingDecisions = 0;
+  for (const row of db
+    .select({
+      status: domainCandidates.status,
+      count: sql<number>`cast(count(*) as integer)`,
+    })
+    .from(domainCandidates)
+    .where(
+      and(
+        inArray(domainCandidates.status, ["confirmed", "blocked"]),
+        sql`not exists (
+          select 1
+          from domain_decisions integrity_decision
+          where integrity_decision.fqdn = ${domainCandidates.fqdn}
+        )`,
+      ),
+    )
+    .groupBy(domainCandidates.status)
+    .all()) {
+    missingDecisions += row.count;
+    if (row.status === "blocked") addExclusionCount("invalid-evidence", row.count);
+  }
+
+  let invalidDecisions = 0;
+  let decisionCursor: string | undefined;
+  const decisionPageSize = 250;
+  for (;;) {
+    const decisionConditions = [
+      sql`not exists (
+        select 1
+        from domain_decisions newer_integrity_decision
+        where newer_integrity_decision.fqdn = ${domainDecisions.fqdn}
+          and (
+            newer_integrity_decision.evaluated_at > ${domainDecisions.evaluatedAt}
+            or (
+              newer_integrity_decision.evaluated_at = ${domainDecisions.evaluatedAt}
+              and newer_integrity_decision.id > ${domainDecisions.id}
+            )
+          )
+      )`,
+    ];
+    if (decisionCursor !== undefined) {
+      decisionConditions.push(gt(domainCandidates.fqdn, decisionCursor));
+    }
+    const decisionPage = db
+      .select({
+        candidateStatus: domainCandidates.status,
+        ...rawReportDecisionSelection,
+      })
+      .from(domainCandidates)
+      .innerJoin(domainDecisions, eq(domainDecisions.fqdn, domainCandidates.fqdn))
+      .where(and(...decisionConditions))
+      .orderBy(domainCandidates.fqdn)
+      .limit(decisionPageSize)
+      .all();
+    for (const row of decisionPage) {
+      const decision = parseRawReportDecision(row);
+      const terminalStatus =
+        row.candidateStatus === "confirmed" || row.candidateStatus === "blocked";
+      if (decision === null || (terminalStatus && decision.status !== row.candidateStatus)) {
+        invalidDecisions += 1;
+        if (row.candidateStatus === "blocked") addExclusionCount("invalid-evidence");
+      } else if (row.candidateStatus === "blocked") {
+        addExclusionCount(firstBlockingReportReason(decision.reasons));
+      }
+    }
+    if (decisionPage.length < decisionPageSize) break;
+    decisionCursor = decisionPage.at(-1)?.fqdn;
+    if (decisionCursor === undefined) break;
+  }
+  const exclusionCounts = [...exclusionCountByReason]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([reason, count]) => ({ reason, count }));
+
+  return domainIntelligenceOverviewSchema.parse({
+    generatedAt: now,
+    period: { from, to: now },
+    health: input.health,
+    dailyAggregates,
+    candidateCounts,
+    evidenceIntegrityCounts: { missingDecisions, invalidDecisions },
+    exclusionCounts,
+  });
+}
+
+type DomainReportFilterPolicy = DomainFilterPolicy;
+
+export function readDomainIntelligenceFilterPolicy(db: Db): DomainFilterPolicy | null {
+  const raw = getSetting(db, "domainIntelligence");
+  if (!raw) return null;
+  if (raw.includes("\0") || Buffer.byteLength(raw, "utf8") > MAX_SETTING_VALUE_BYTES) {
+    return null;
+  }
+  let stored: unknown;
+  try {
+    stored = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) return null;
+  const record = stored as Record<string, unknown>;
+  const parsed = filterPolicySchema.safeParse({
+    excludedTlds: record.excludedTlds,
+    neverAddDomains: record.neverAddDomains,
+    neverAddSuffixes: record.neverAddSuffixes,
+    nonWidenableSuffixes: record.nonWidenableSuffixes,
+    telemetryPatterns: record.telemetryPatterns,
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+export function listDomainCandidateReport(
+  db: Db,
+  input: DomainCandidateListInput,
+  filterPolicy: DomainReportFilterPolicy | null,
+): DomainCandidateList {
+  const statusFilter =
+    input.view === "candidates"
+      ? (["queued", "pending", "confirmed"] as const)
+      : input.view === "exclusions"
+        ? (["blocked", "excluded"] as const)
+        : CANDIDATE_STATUSES;
+  const conditions = [inArray(domainCandidates.status, statusFilter)];
+  if (input.cursor !== undefined) conditions.push(gt(domainCandidates.fqdn, input.cursor));
+  const rows = db
+    .select({
+      fqdn: domainCandidates.fqdn,
+      registrableSite: domainCandidates.registrableSite,
+      selectedScope: domainCandidates.selectedScope,
+      proposedRule: domainCandidates.proposedRule,
+      exclusionReason: domainCandidates.exclusionReason,
+      status: domainCandidates.status,
+      firstSeenAt: domainCandidates.firstSeenAt,
+      lastSeenAt: domainCandidates.lastSeenAt,
+      nextValidationAt: domainCandidates.nextValidationAt,
+      lastValidationAt: domainCandidates.lastValidationAt,
+    })
+    .from(domainCandidates)
+    .where(and(...conditions))
+    .orderBy(domainCandidates.fqdn)
+    .limit(input.limit + 1)
+    .all();
+  const page = rows.slice(0, input.limit);
+  const fqdns = page.map((row) => row.fqdn);
+
+  const connectionCounts = new Map<string, number>();
+  const latestDecisions = new Map<string, RawReportDecisionRow>();
+  const latestAttempts = new Map<
+    string,
+    Omit<typeof domainValidationAttempts.$inferSelect, "resolvedAddress" | "availableAddressCount">
+  >();
+  if (fqdns.length > 0) {
+    for (const row of db
+      .select({
+        fqdn: domainDailyStats.fqdn,
+        count: sql<number>`cast(sum(${domainDailyStats.connectionCount}) as integer)`,
+      })
+      .from(domainDailyStats)
+      .where(inArray(domainDailyStats.fqdn, fqdns))
+      .groupBy(domainDailyStats.fqdn)
+      .all()) {
+      connectionCounts.set(row.fqdn, row.count);
+    }
+    for (const row of db
+      .select(rawReportDecisionSelection)
+      .from(domainDecisions)
+      .where(
+        and(
+          inArray(domainDecisions.fqdn, fqdns),
+          sql`not exists (
+            select 1
+            from domain_decisions newer_domain_decision
+            where newer_domain_decision.fqdn = ${domainDecisions.fqdn}
+              and (
+                newer_domain_decision.evaluated_at > ${domainDecisions.evaluatedAt}
+                or (
+                  newer_domain_decision.evaluated_at = ${domainDecisions.evaluatedAt}
+                  and newer_domain_decision.id > ${domainDecisions.id}
+                )
+              )
+          )`,
+        ),
+      )
+      .orderBy(
+        asc(domainDecisions.fqdn),
+        desc(domainDecisions.evaluatedAt),
+        desc(domainDecisions.id),
+      )
+      .limit(fqdns.length)
+      .all()) {
+      if (!latestDecisions.has(row.fqdn)) latestDecisions.set(row.fqdn, row);
+    }
+    for (const row of db
+      .select({
+        fqdn: domainValidationRuns.fqdn,
+        id: domainValidationAttempts.id,
+        runId: domainValidationAttempts.runId,
+        direction: domainValidationAttempts.direction,
+        attemptedAt: domainValidationAttempts.attemptedAt,
+        category: domainValidationAttempts.category,
+        transportSuccess: domainValidationAttempts.transportSuccess,
+        httpStatus: domainValidationAttempts.httpStatus,
+        connectDurationMs: domainValidationAttempts.connectDurationMs,
+        tlsDurationMs: domainValidationAttempts.tlsDurationMs,
+        totalDurationMs: domainValidationAttempts.totalDurationMs,
+        redirectCount: domainValidationAttempts.redirectCount,
+        finalOrigin: domainValidationAttempts.finalOrigin,
+      })
+      .from(domainValidationAttempts)
+      .innerJoin(domainValidationRuns, eq(domainValidationRuns.id, domainValidationAttempts.runId))
+      .where(
+        and(
+          inArray(domainValidationRuns.fqdn, fqdns),
+          sql`not exists (
+            select 1
+            from domain_validation_attempts newer_domain_attempt
+            inner join domain_validation_runs newer_domain_run
+              on newer_domain_run.id = newer_domain_attempt.run_id
+            where newer_domain_run.fqdn = ${domainValidationRuns.fqdn}
+              and newer_domain_attempt.direction = ${domainValidationAttempts.direction}
+              and (
+                newer_domain_attempt.attempted_at > ${domainValidationAttempts.attemptedAt}
+                or (
+                  newer_domain_attempt.attempted_at = ${domainValidationAttempts.attemptedAt}
+                  and newer_domain_attempt.id > ${domainValidationAttempts.id}
+                )
+              )
+          )`,
+        ),
+      )
+      .orderBy(
+        asc(domainValidationRuns.fqdn),
+        desc(domainValidationAttempts.attemptedAt),
+        desc(domainValidationAttempts.id),
+      )
+      .limit(fqdns.length * 2)
+      .all()) {
+      const key = `${row.fqdn}:${row.direction}`;
+      if (latestAttempts.has(key)) continue;
+      const { fqdn: _fqdn, ...attempt } = row;
+      latestAttempts.set(key, attempt);
+    }
+  }
+
+  const items = page.map((row) => {
+    const derived = filterPolicy
+      ? deriveDomainCandidate(row.fqdn, filterPolicy, row.selectedScope ?? "exact")
+      : null;
+    const eligibleScopes =
+      row.status === "excluded" ? [] : derived && !derived.excluded ? derived.eligibleScopes : [];
+    const policyExclusionReason =
+      derived?.excluded === true ? (derived.exclusionReason ?? "invalid-policy") : null;
+    const siteUnavailableReason =
+      filterPolicy === null
+        ? "policy-unavailable"
+        : derived?.excluded
+          ? "policy-excluded"
+          : (derived?.siteUnavailableReason ?? null);
+    const expectedRule =
+      row.selectedScope === "exact"
+        ? row.fqdn
+        : derived?.registrableSite
+          ? `+.${derived.registrableSite}`
+          : null;
+    const scopeValid =
+      row.status !== "excluded" &&
+      derived !== null &&
+      !derived.excluded &&
+      row.selectedScope !== null &&
+      row.proposedRule === expectedRule &&
+      eligibleScopes.some((scope) => scope === row.selectedScope);
+    const status = row.status;
+    const decisionRow = latestDecisions.get(row.fqdn);
+    const parsedDecision = decisionRow ? parseRawReportDecision(decisionRow) : null;
+    const terminalStatus = status === "confirmed" || status === "blocked";
+    const decision =
+      parsedDecision !== null && (!terminalStatus || parsedDecision.status === status)
+        ? parsedDecision
+        : null;
+    const evidenceIntegrityIssue =
+      decisionRow === undefined
+        ? terminalStatus
+          ? ("missing-decision" as const)
+          : null
+        : decision === null
+          ? ("invalid-decision" as const)
+          : null;
+    const direct = latestAttempts.get(`${row.fqdn}:direct`);
+    const proxy = latestAttempts.get(`${row.fqdn}:proxy`);
+    const attemptView = (attempt: typeof direct) =>
+      attempt
+        ? {
+            attemptedAt: attempt.attemptedAt,
+            category: attempt.category,
+            transportSuccess: attempt.transportSuccess,
+            httpStatus: attempt.httpStatus,
+            connectDurationMs: attempt.connectDurationMs,
+            tlsDurationMs: attempt.tlsDurationMs,
+            totalDurationMs: attempt.totalDurationMs,
+            redirectCount: attempt.redirectCount,
+            finalOrigin: attempt.finalOrigin,
+          }
+        : null;
+    const bucket = status === "blocked" || status === "excluded" ? "exclusion" : "candidate";
+    return {
+      fqdn: row.fqdn,
+      siteGroup: derived?.registrableSite ?? row.registrableSite ?? row.fqdn,
+      bucket,
+      status,
+      selectedScope: filterPolicy === null ? null : row.selectedScope,
+      proposedRule: filterPolicy === null ? null : row.proposedRule,
+      eligibleScopes,
+      scopeValid,
+      siteUnavailableReason,
+      policyExclusionReason,
+      exclusionReason:
+        status === "excluded"
+          ? row.exclusionReason
+          : status === "blocked"
+            ? decision
+              ? firstBlockingReportReason(decision.reasons)
+              : "invalid-evidence"
+            : null,
+      firstSeenAt: row.firstSeenAt,
+      lastSeenAt: row.lastSeenAt,
+      lastValidationAt: row.lastValidationAt,
+      nextValidationAt: row.status === "excluded" ? null : row.nextValidationAt,
+      connectionCount: connectionCounts.get(row.fqdn) ?? 0,
+      evidenceAvailable: decision !== null,
+      evidenceIntegrityIssue,
+      decision: decision
+        ? {
+            evaluatedAt: decision.evaluatedAt,
+            status: decision.status,
+            confidence: decision.confidence,
+            reasons: decision.reasons,
+            windowStart: decision.windowStart,
+            evidence: decision.evidence,
+          }
+        : null,
+      latestAttempts: {
+        direct: attemptView(direct),
+        proxy: attemptView(proxy),
+      },
+    };
+  });
+
+  return domainCandidateListSchema.parse({
+    items,
+    nextCursor: rows.length > input.limit ? (page.at(-1)?.fqdn ?? null) : null,
+  });
 }
 
 export function pruneDomainIntelligence(db: Db, now: number): DomainRetentionResult {

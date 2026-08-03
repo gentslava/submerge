@@ -1,4 +1,6 @@
+import { Buffer } from "node:buffer";
 import { fileURLToPath } from "node:url";
+import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
@@ -9,6 +11,7 @@ import {
   domainObservations,
   domainValidationAttempts,
   domainValidationRuns,
+  settings,
 } from "../../db/schema.js";
 import {
   type DomainObservation,
@@ -21,11 +24,14 @@ import {
   domainValidationCircuitState,
   failDomainValidationRun,
   getDomainDecision,
+  getDomainIntelligenceOverview,
   leaseDomainCandidate,
+  listDomainCandidateReport,
   listDomainValidationAttempts,
   listDueDomainCandidates,
   pruneDomainIntelligence,
   queueDomainCandidate,
+  readDomainIntelligenceFilterPolicy,
   recordObservation,
   startDomainValidationRun,
 } from "./service.js";
@@ -195,6 +201,663 @@ function leaseAndStart(
   });
   return { leaseId, leaseGeneration: lease.leaseGeneration };
 }
+
+describe("domain intelligence admin read model", () => {
+  it("reads only a complete stored filter policy and fails closed otherwise", () => {
+    const db = migratedDb();
+    expect(readDomainIntelligenceFilterPolicy(db)).toBeNull();
+
+    db.insert(settings)
+      .values({
+        key: "domainIntelligence",
+        value: JSON.stringify({ enabled: true, ...FILTER_POLICY }),
+      })
+      .run();
+    expect(readDomainIntelligenceFilterPolicy(db)).toEqual(FILTER_POLICY);
+
+    db.update(settings)
+      .set({ value: JSON.stringify({ enabled: true, neverAddDomains: [] }) })
+      .where(eq(settings.key, "domainIntelligence"))
+      .run();
+    expect(readDomainIntelligenceFilterPolicy(db)).toBeNull();
+  });
+
+  it("aggregates a bounded overview without exposing observations", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    db.insert(domainDailyStats)
+      .values([
+        {
+          day: "2026-08-02",
+          fqdn: "api.service.example",
+          connectionCount: 3,
+          firstSeenAt: now - 30 * 60 * 60 * 1_000,
+          lastSeenAt: now - 29 * 60 * 60 * 1_000,
+        },
+        {
+          day: "2026-08-03",
+          fqdn: "api.service.example",
+          connectionCount: 4,
+          firstSeenAt: now - 2 * 60 * 60 * 1_000,
+          lastSeenAt: now - 60 * 60 * 1_000,
+        },
+        {
+          day: "2026-08-03",
+          fqdn: "cdn.service.example",
+          connectionCount: 5,
+          firstSeenAt: now - 90 * 60_000,
+          lastSeenAt: now - 30 * 60_000,
+        },
+      ])
+      .run();
+    insertCandidate(db, "queued.service.example", now);
+    insertCandidate(db, "blocked.service.example", now);
+    db.update(domainCandidates)
+      .set({ status: "blocked" })
+      .where(eq(domainCandidates.fqdn, "blocked.service.example"))
+      .run();
+    db.insert(domainDecisions)
+      .values({
+        id: "blocked_decision",
+        fqdn: "blocked.service.example",
+        evaluatedAt: now,
+        status: "blocked",
+        confidence: "none",
+        reasons: ["insufficient-observations", "proxy-unstable"],
+        windowStart: now - 24 * 60 * 60 * 1_000,
+        evidence: {
+          directQualifyingFailures: 3,
+          directSpacedFailures: 3,
+          directAddressDiversityRequired: false,
+          directAddressDiversitySatisfied: true,
+          proxyHttpSuccesses: 1,
+          proxyTransportFailures: 1,
+          proxyUncertainFailures: 0,
+        },
+        selectedScope: "exact",
+        proposedRule: "blocked.service.example",
+      })
+      .run();
+    insertCandidate(db, "telemetry.service.example", now);
+    db.update(domainCandidates)
+      .set({
+        status: "excluded",
+        selectedScope: null,
+        proposedRule: null,
+        exclusionReason: "telemetry-pattern",
+        nextValidationAt: 8_640_000_000_000_000,
+      })
+      .where(eq(domainCandidates.fqdn, "telemetry.service.example"))
+      .run();
+
+    expect(
+      getDomainIntelligenceOverview(db, {
+        now,
+        health: {
+          status: "healthy",
+          reason: "correlated",
+          snapshotDomainConnections: 12,
+          correlatedConnections: 10,
+          updatedAt: now,
+        },
+      }),
+    ).toEqual({
+      generatedAt: now,
+      period: { from: Date.parse("2026-07-21T00:00:00.000Z"), to: now },
+      health: {
+        status: "healthy",
+        reason: "correlated",
+        snapshotDomainConnections: 12,
+        correlatedConnections: 10,
+        updatedAt: now,
+      },
+      dailyAggregates: [
+        { day: "2026-08-02", connectionCount: 3, uniqueDomainCount: 1 },
+        { day: "2026-08-03", connectionCount: 9, uniqueDomainCount: 2 },
+      ],
+      candidateCounts: {
+        queued: 1,
+        pending: 0,
+        confirmed: 0,
+        blocked: 1,
+        excluded: 1,
+      },
+      exclusionCounts: [
+        { reason: "proxy-unstable", count: 1 },
+        { reason: "telemetry-pattern", count: 1 },
+      ],
+      evidenceIntegrityCounts: { missingDecisions: 0, invalidDecisions: 0 },
+    });
+  });
+
+  it("paginates candidates with only safe latest evidence and current scope eligibility", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    observeAndQueue(db, "api.service.example", now - 60_000);
+    recordObservation(db, observation(now - 30_000, "mihomo-log", "api.service.example"));
+    const lease = leaseAndStart(db, "api.service.example", "report_run", now);
+    completeDomainValidationRun(db, completionInput("report_run", lease, now));
+    insertCandidate(db, "beta.service.example", now);
+    insertCandidate(db, "blocked.service.example", now);
+    db.update(domainCandidates)
+      .set({ status: "blocked" })
+      .where(eq(domainCandidates.fqdn, "blocked.service.example"))
+      .run();
+    insertCandidate(db, "excluded.service.example", now);
+    db.update(domainCandidates)
+      .set({
+        status: "excluded",
+        selectedScope: null,
+        proposedRule: null,
+        exclusionReason: "never-add-domain",
+        nextValidationAt: 8_640_000_000_000_000,
+      })
+      .where(eq(domainCandidates.fqdn, "excluded.service.example"))
+      .run();
+
+    const first = listDomainCandidateReport(db, { view: "candidates", limit: 1 }, FILTER_POLICY);
+    expect(first.nextCursor).toBe("api.service.example");
+    expect(first.items).toMatchObject([
+      {
+        fqdn: "api.service.example",
+        siteGroup: "service.example",
+        bucket: "candidate",
+        status: "pending",
+        selectedScope: "site",
+        proposedRule: "+.service.example",
+        eligibleScopes: ["exact", "site"],
+        scopeValid: true,
+        siteUnavailableReason: null,
+        exclusionReason: null,
+        connectionCount: 2,
+        decision: {
+          status: "pending",
+          confidence: "low",
+          reasons: ["insufficient-direct-failures"],
+        },
+        latestAttempts: {
+          direct: { category: "connect_timeout", httpStatus: null },
+          proxy: { category: "http_response", httpStatus: 403 },
+        },
+      },
+    ]);
+    expect(first.items[0]).not.toHaveProperty("leaseId");
+    expect(first.items[0]?.latestAttempts.direct).not.toHaveProperty("resolvedAddress");
+
+    expect(
+      listDomainCandidateReport(
+        db,
+        { view: "candidates", cursor: first.nextCursor ?? undefined, limit: 10 },
+        FILTER_POLICY,
+      ).items.map((item) => item.fqdn),
+    ).toEqual(["beta.service.example"]);
+    expect(
+      listDomainCandidateReport(db, { view: "exclusions", limit: 10 }, FILTER_POLICY).items.map(
+        (item) => [item.fqdn, item.bucket],
+      ),
+    ).toEqual([
+      ["blocked.service.example", "exclusion"],
+      ["excluded.service.example", "exclusion"],
+    ]);
+  });
+
+  it("reports a stale persisted site scope as invalid after the PSL boundary changes", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    db.insert(domainCandidates)
+      .values({
+        fqdn: "foo.example.co.uk",
+        registrableSite: "co.uk",
+        selectedScope: "site",
+        proposedRule: "+.co.uk",
+        status: "pending",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        nextValidationAt: now,
+        lastValidationAt: null,
+        failureStreak: 0,
+        leaseId: null,
+        leaseUntil: null,
+        updatedAt: now,
+      })
+      .run();
+    db.insert(domainDecisions)
+      .values({
+        id: "stale_site_decision",
+        fqdn: "foo.example.co.uk",
+        evaluatedAt: now,
+        status: "pending",
+        confidence: "low",
+        reasons: ["insufficient-direct-failures"],
+        windowStart: now - 24 * 60 * 60 * 1_000,
+        evidence: {
+          directQualifyingFailures: 1,
+          directSpacedFailures: 1,
+          directAddressDiversityRequired: false,
+          directAddressDiversitySatisfied: true,
+          proxyHttpSuccesses: 1,
+          proxyTransportFailures: 0,
+          proxyUncertainFailures: 0,
+        },
+        selectedScope: "site",
+        proposedRule: "+.co.uk",
+      })
+      .run();
+
+    expect(
+      listDomainCandidateReport(db, { view: "all", limit: 10 }, FILTER_POLICY).items,
+    ).toMatchObject([
+      {
+        fqdn: "foo.example.co.uk",
+        siteGroup: "example.co.uk",
+        selectedScope: "site",
+        proposedRule: "+.co.uk",
+        eligibleScopes: ["exact", "site"],
+        scopeValid: false,
+        evidenceAvailable: true,
+        decision: { status: "pending" },
+      },
+    ]);
+  });
+
+  it("keeps a confirmed candidate without retained evidence in the same counts and view", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertCandidate(db, "confirmed.service.example", now);
+    db.update(domainCandidates)
+      .set({ status: "confirmed", lastValidationAt: now })
+      .where(eq(domainCandidates.fqdn, "confirmed.service.example"))
+      .run();
+    const health = {
+      status: "inactive" as const,
+      reason: "disabled" as const,
+      snapshotDomainConnections: 0,
+      correlatedConnections: 0,
+      updatedAt: now,
+    };
+
+    expect(getDomainIntelligenceOverview(db, { now, health })).toMatchObject({
+      candidateCounts: { confirmed: 1, blocked: 0 },
+      exclusionCounts: [],
+      evidenceIntegrityCounts: { missingDecisions: 1 },
+    });
+    expect(
+      listDomainCandidateReport(db, { view: "candidates", limit: 10 }, FILTER_POLICY).items,
+    ).toMatchObject([
+      {
+        fqdn: "confirmed.service.example",
+        status: "confirmed",
+        bucket: "candidate",
+        exclusionReason: null,
+        evidenceAvailable: false,
+        evidenceIntegrityIssue: "missing-decision",
+        decision: null,
+      },
+    ]);
+    expect(
+      listDomainCandidateReport(db, { view: "exclusions", limit: 10 }, FILTER_POLICY).items,
+    ).toEqual([]);
+  });
+
+  it("fails closed when terminal candidate status disagrees with the latest decision", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertCandidate(db, "blocked.service.example", now);
+    insertCandidate(db, "confirmed.service.example", now);
+    insertCandidate(db, "corrupt.service.example", now);
+    insertCandidate(db, "pending-corrupt.service.example", now);
+    db.update(domainCandidates)
+      .set({ status: "blocked", lastValidationAt: now })
+      .where(eq(domainCandidates.fqdn, "blocked.service.example"))
+      .run();
+    db.update(domainCandidates)
+      .set({ status: "confirmed", lastValidationAt: now })
+      .where(eq(domainCandidates.fqdn, "confirmed.service.example"))
+      .run();
+    db.update(domainCandidates)
+      .set({ status: "blocked", lastValidationAt: now })
+      .where(eq(domainCandidates.fqdn, "corrupt.service.example"))
+      .run();
+    db.update(domainCandidates)
+      .set({ status: "pending", lastValidationAt: now })
+      .where(eq(domainCandidates.fqdn, "pending-corrupt.service.example"))
+      .run();
+    db.insert(domainDecisions)
+      .values([
+        {
+          id: "blocked_pending_decision",
+          fqdn: "blocked.service.example",
+          evaluatedAt: now,
+          status: "pending",
+          confidence: "low",
+          reasons: ["insufficient-direct-failures"],
+          windowStart: now - 24 * 60 * 60 * 1_000,
+          evidence: {
+            directQualifyingFailures: 1,
+            directSpacedFailures: 1,
+            directAddressDiversityRequired: false,
+            directAddressDiversitySatisfied: true,
+            proxyHttpSuccesses: 1,
+            proxyTransportFailures: 0,
+            proxyUncertainFailures: 0,
+          },
+          selectedScope: "exact",
+          proposedRule: "blocked.service.example",
+        },
+        {
+          id: "confirmed_blocked_decision",
+          fqdn: "confirmed.service.example",
+          evaluatedAt: now,
+          status: "blocked",
+          confidence: "none",
+          reasons: ["invalid-evidence"],
+          windowStart: null,
+          evidence: {
+            directQualifyingFailures: 0,
+            directSpacedFailures: 0,
+            directAddressDiversityRequired: false,
+            directAddressDiversitySatisfied: false,
+            proxyHttpSuccesses: 0,
+            proxyTransportFailures: 0,
+            proxyUncertainFailures: 0,
+          },
+          selectedScope: "exact",
+          proposedRule: "confirmed.service.example",
+        },
+      ])
+      .run();
+    db.$client.pragma("ignore_check_constraints = ON");
+    db.$client
+      .prepare(
+        "INSERT INTO domain_decisions (id, fqdn, evaluated_at, status, confidence, reasons, window_start, evidence, selected_scope, proposed_rule) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "corrupt_decision_json",
+        "corrupt.service.example",
+        now,
+        "blocked",
+        "none",
+        `["invalid-evidence"]\0${"x".repeat(4_096)}`,
+        null,
+        JSON.stringify({
+          directQualifyingFailures: 0,
+          directSpacedFailures: 0,
+          directAddressDiversityRequired: false,
+          directAddressDiversitySatisfied: false,
+          proxyHttpSuccesses: 0,
+          proxyTransportFailures: 0,
+          proxyUncertainFailures: 0,
+        }),
+        "exact",
+        "corrupt.service.example",
+      );
+    db.$client
+      .prepare(
+        "INSERT INTO domain_decisions (id, fqdn, evaluated_at, status, confidence, reasons, window_start, evidence, selected_scope, proposed_rule) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "pending_corrupt_decision_json",
+        "pending-corrupt.service.example",
+        now,
+        "pending",
+        "low",
+        "not-json",
+        now - 24 * 60 * 60 * 1_000,
+        JSON.stringify({
+          directQualifyingFailures: 1,
+          directSpacedFailures: 1,
+          directAddressDiversityRequired: false,
+          directAddressDiversitySatisfied: true,
+          proxyHttpSuccesses: 1,
+          proxyTransportFailures: 0,
+          proxyUncertainFailures: 0,
+        }),
+        "exact",
+        "pending-corrupt.service.example",
+      );
+    db.$client.pragma("ignore_check_constraints = OFF");
+    const health = {
+      status: "inactive" as const,
+      reason: "disabled" as const,
+      snapshotDomainConnections: 0,
+      correlatedConnections: 0,
+      updatedAt: now,
+    };
+
+    expect(getDomainIntelligenceOverview(db, { now, health })).toMatchObject({
+      candidateCounts: { confirmed: 1, blocked: 2 },
+      exclusionCounts: [{ reason: "invalid-evidence", count: 2 }],
+      evidenceIntegrityCounts: { missingDecisions: 0, invalidDecisions: 4 },
+    });
+    expect(
+      listDomainCandidateReport(db, { view: "all", limit: 10 }, FILTER_POLICY).items,
+    ).toMatchObject([
+      {
+        fqdn: "blocked.service.example",
+        status: "blocked",
+        bucket: "exclusion",
+        exclusionReason: "invalid-evidence",
+        evidenceAvailable: false,
+        evidenceIntegrityIssue: "invalid-decision",
+        decision: null,
+      },
+      {
+        fqdn: "confirmed.service.example",
+        status: "confirmed",
+        bucket: "candidate",
+        exclusionReason: null,
+        evidenceAvailable: false,
+        evidenceIntegrityIssue: "invalid-decision",
+        decision: null,
+      },
+      {
+        fqdn: "corrupt.service.example",
+        status: "blocked",
+        bucket: "exclusion",
+        exclusionReason: "invalid-evidence",
+        evidenceAvailable: false,
+        evidenceIntegrityIssue: "invalid-decision",
+        decision: null,
+      },
+      {
+        fqdn: "pending-corrupt.service.example",
+        status: "pending",
+        bucket: "candidate",
+        exclusionReason: null,
+        evidenceAvailable: false,
+        evidenceIntegrityIssue: "invalid-decision",
+        decision: null,
+      },
+    ]);
+  });
+
+  it("fails closed when decision JSON is stored with the BLOB storage class", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertCandidate(db, "blob.service.example", now);
+    db.update(domainCandidates)
+      .set({ status: "blocked", lastValidationAt: now })
+      .where(eq(domainCandidates.fqdn, "blob.service.example"))
+      .run();
+    db.$client
+      .prepare(
+        "INSERT INTO domain_decisions (id, fqdn, evaluated_at, status, confidence, reasons, window_start, evidence, selected_scope, proposed_rule) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        "blob_decision_json",
+        "blob.service.example",
+        now,
+        "blocked",
+        "none",
+        Buffer.from('["invalid-evidence"]'),
+        null,
+        Buffer.from(
+          JSON.stringify({
+            directQualifyingFailures: 0,
+            directSpacedFailures: 0,
+            directAddressDiversityRequired: false,
+            directAddressDiversitySatisfied: false,
+            proxyHttpSuccesses: 0,
+            proxyTransportFailures: 0,
+            proxyUncertainFailures: 0,
+          }),
+        ),
+        "exact",
+        "blob.service.example",
+      );
+    const health = {
+      status: "inactive" as const,
+      reason: "disabled" as const,
+      snapshotDomainConnections: 0,
+      correlatedConnections: 0,
+      updatedAt: now,
+    };
+
+    expect(getDomainIntelligenceOverview(db, { now, health })).toMatchObject({
+      candidateCounts: { blocked: 1 },
+      exclusionCounts: [{ reason: "invalid-evidence", count: 1 }],
+      evidenceIntegrityCounts: { missingDecisions: 0, invalidDecisions: 1 },
+    });
+    expect(
+      listDomainCandidateReport(db, { view: "exclusions", limit: 10 }, FILTER_POLICY).items,
+    ).toMatchObject([
+      {
+        fqdn: "blob.service.example",
+        status: "blocked",
+        evidenceAvailable: false,
+        evidenceIntegrityIssue: "invalid-decision",
+        decision: null,
+      },
+    ]);
+  });
+
+  it("reports an excluded candidate with a historical site decision after a PSL change", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertCandidate(db, "old.foo.example.co.uk", now);
+    db.update(domainCandidates)
+      .set({
+        status: "excluded",
+        selectedScope: null,
+        proposedRule: null,
+        exclusionReason: "never-add-domain",
+        nextValidationAt: 8_640_000_000_000_000,
+      })
+      .where(eq(domainCandidates.fqdn, "old.foo.example.co.uk"))
+      .run();
+    db.insert(domainDecisions)
+      .values({
+        id: "excluded_stale_site_decision",
+        fqdn: "old.foo.example.co.uk",
+        evaluatedAt: now,
+        status: "pending",
+        confidence: "low",
+        reasons: ["insufficient-direct-failures"],
+        windowStart: now - 24 * 60 * 60 * 1_000,
+        evidence: {
+          directQualifyingFailures: 1,
+          directSpacedFailures: 1,
+          directAddressDiversityRequired: false,
+          directAddressDiversitySatisfied: true,
+          proxyHttpSuccesses: 1,
+          proxyTransportFailures: 0,
+          proxyUncertainFailures: 0,
+        },
+        selectedScope: "site",
+        proposedRule: "+.co.uk",
+      })
+      .run();
+
+    expect(
+      listDomainCandidateReport(db, { view: "exclusions", limit: 10 }, FILTER_POLICY).items,
+    ).toMatchObject([
+      {
+        fqdn: "old.foo.example.co.uk",
+        status: "excluded",
+        bucket: "exclusion",
+        evidenceAvailable: true,
+        decision: { status: "pending" },
+      },
+    ]);
+  });
+
+  it("exposes no eligible scope while current policy excludes or cannot classify a candidate", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertCandidate(db, "api.service.example", now);
+    const neverAddPolicy = {
+      ...FILTER_POLICY,
+      neverAddDomains: ["api.service.example"],
+    };
+
+    expect(
+      listDomainCandidateReport(db, { view: "all", limit: 10 }, neverAddPolicy).items,
+    ).toMatchObject([
+      {
+        fqdn: "api.service.example",
+        eligibleScopes: [],
+        scopeValid: false,
+        siteUnavailableReason: "policy-excluded",
+        policyExclusionReason: "never-add-domain",
+      },
+    ]);
+    expect(listDomainCandidateReport(db, { view: "all", limit: 10 }, null).items).toMatchObject([
+      {
+        fqdn: "api.service.example",
+        eligibleScopes: [],
+        scopeValid: false,
+        siteUnavailableReason: "policy-unavailable",
+        policyExclusionReason: null,
+        selectedScope: null,
+        proposedRule: null,
+      },
+    ]);
+  });
+
+  it("aggregates more exclusions than SQLite can bind as one IN clause", () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    const candidateCount = 33_000;
+    db.transaction((tx) => {
+      for (let index = 0; index < candidateCount; index += 1) {
+        const fqdn = `c${index}.bulk.example`;
+        tx.insert(domainCandidates)
+          .values({
+            fqdn,
+            registrableSite: "bulk.example",
+            selectedScope: "exact",
+            proposedRule: fqdn,
+            status: "blocked",
+            firstSeenAt: now,
+            lastSeenAt: now,
+            nextValidationAt: now,
+            lastValidationAt: null,
+            failureStreak: 0,
+            leaseId: null,
+            leaseUntil: null,
+            updatedAt: now,
+          })
+          .run();
+      }
+    });
+
+    expect(
+      getDomainIntelligenceOverview(db, {
+        now,
+        health: {
+          status: "inactive",
+          reason: "disabled",
+          snapshotDomainConnections: 0,
+          correlatedConnections: 0,
+          updatedAt: now,
+        },
+      }),
+    ).toMatchObject({
+      candidateCounts: { blocked: candidateCount },
+      exclusionCounts: [{ reason: "invalid-evidence", count: candidateCount }],
+    });
+  }, 20_000);
+});
 
 describe("domain observation persistence", () => {
   it("stores one privacy-bounded observation and UTC daily aggregate", () => {
@@ -1016,13 +1679,13 @@ describe("domain observation persistence", () => {
         "INSERT INTO domain_decisions (id, fqdn, evaluated_at, status, confidence, reasons, window_start, evidence, selected_scope, proposed_rule) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
-        "unsafe_public_suffix",
+        "unsafe_site_rule",
         "foo.example.co.uk",
         startedAt,
         "confirmed",
         "high",
         "[]",
-        startedAt - 1,
+        startedAt - 60 * 60 * 1_000,
         JSON.stringify({
           directQualifyingFailures: 3,
           directSpacedFailures: 3,
@@ -1033,9 +1696,9 @@ describe("domain observation persistence", () => {
           proxyUncertainFailures: 0,
         }),
         "site",
-        "+.co.uk",
+        "+.unrelated.example",
       );
-    expect(() => getDomainDecision(db, "unsafe_public_suffix")).toThrow(/rule/i);
+    expect(() => getDomainDecision(db, "unsafe_site_rule")).toThrow(/rule/i);
 
     db.$client
       .prepare(

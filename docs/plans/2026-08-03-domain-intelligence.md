@@ -270,7 +270,7 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] Protected procedures expose health, aggregates, exclusions, candidates, selected
+- [x] Protected procedures expose health, aggregates, exclusions, candidates, selected
       scopes, evidence summaries, and safe reason codes without raw observations.
 - [ ] Review actions support scope selection, rejection, and recheck only; they cannot
       mutate Git, providers, active config, or channels.

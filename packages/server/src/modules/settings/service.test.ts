@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,7 +27,9 @@ describe("settings service", () => {
     expect(getSetting(db, "theme")).toBe("dark");
     expect(getSetting(db, "missing")).toBeUndefined();
     setSetting(db, "poll", "5");
-    expect(getAllSettings(db)).toEqual({ theme: "dark", poll: "5" });
+    setSetting(db, "empty", "");
+    expect(getSetting(db, "empty")).toBe("");
+    expect(getAllSettings(db)).toEqual({ theme: "dark", poll: "5", empty: "" });
   });
 
   it("upserts an existing key", () => {
@@ -34,6 +37,48 @@ describe("settings service", () => {
     setSetting(db, "theme", "dark");
     setSetting(db, "theme", "light");
     expect(getSetting(db, "theme")).toBe("light");
+  });
+
+  it("rejects oversized writes and does not materialize oversized corrupt values", () => {
+    const db = freshDb();
+    const oversized = "x".repeat(1_048_577);
+
+    expect(() => setSetting(db, "domainIntelligence", oversized)).toThrow();
+    expect(() => setSetting(db, "nulSetting", "{}\0garbage")).toThrow();
+    db.$client
+      .prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
+      .run("domainIntelligence", oversized);
+    db.$client
+      .prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
+      .run("nulSetting", `{}\0${"x".repeat(1_048_577)}`);
+    db.$client
+      .prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
+      .run("blobSetting", Buffer.from("dark"));
+    db.$client
+      .prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
+      .run(Buffer.from("blobKey"), "dark");
+    setSetting(db, "�", "replacement-value");
+    db.$client.exec(
+      "INSERT INTO settings (key, value) VALUES ('invalidUtf8Value', cast(x'80' as text))",
+    );
+    db.$client.exec(
+      "INSERT INTO settings (key, value) VALUES (cast(x'80' as text), 'invalid-key-value')",
+    );
+    expect(getSetting(db, "domainIntelligence")).toBeUndefined();
+    expect(getSetting(db, "nulSetting")).toBeUndefined();
+    expect(getSetting(db, "blobSetting")).toBeUndefined();
+    expect(getSetting(db, "blobKey")).toBeUndefined();
+    expect(getSetting(db, "\uD800")).toBeUndefined();
+    expect(getSetting(db, "\uDC00")).toBeUndefined();
+    expect(getSetting(db, "�")).toBe("replacement-value");
+    expect(getSetting(db, "invalidUtf8Value")).toBeUndefined();
+    expect(getAllSettings(db)).not.toHaveProperty("domainIntelligence");
+    expect(getAllSettings(db)).not.toHaveProperty("nulSetting");
+    expect(getAllSettings(db)).not.toHaveProperty("blobSetting");
+    expect(getAllSettings(db)).not.toHaveProperty("blobKey");
+    expect(getAllSettings(db)).not.toHaveProperty("invalidUtf8Value");
+    expect(getAllSettings(db)).toMatchObject({ "�": "replacement-value" });
+    expect(Object.values(getAllSettings(db))).not.toContain("invalid-key-value");
   });
 
   it("persists internal secrets without exposing them in the settings API view", () => {
