@@ -1,14 +1,18 @@
 import { setSettingInput } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { setMihomoSecret } from "../../clients/mihomo.js";
 import { db } from "../../db/client.js";
 import { operationalLog } from "../../log.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import { applyConfig } from "../nodes/service.js";
-import { getSettingsView, setSetting } from "./service.js";
+import { getSettingsView, isInternalSettingKey, setSetting } from "./service.js";
 
 export const settingsRouter = router({
   get: protectedProcedure.query(() => getSettingsView(db)),
   set: protectedProcedure.input(setSettingInput).mutation(async ({ input }) => {
+    if (isInternalSettingKey(input.key)) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "internal settings are read-only" });
+    }
     setSetting(db, input.key, input.value);
     // The secret is editable: it's written into the regenerated config (rotating a
     // sidecar engine) AND it's the panel's client credential. reloadConfig authenticates
@@ -27,6 +31,13 @@ export const settingsRouter = router({
         applied = false;
       } finally {
         setMihomoSecret(input.value);
+      }
+    } else if (input.key === "domainIntelligence") {
+      try {
+        ({ applied } = await applyConfig(db));
+      } catch (err) {
+        operationalLog("domain-validation-config-write-failed", {}, err);
+        applied = false;
       }
     }
     return { ok: true as const, applied };

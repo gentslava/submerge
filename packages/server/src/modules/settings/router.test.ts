@@ -15,6 +15,7 @@ vi.mock("../../log.js", () => ({
 vi.mock("../nodes/service.js", () => ({ applyConfig: vi.fn() }));
 vi.mock("./service.js", () => ({
   getSettingsView: vi.fn(() => ({})),
+  isInternalSettingKey: vi.fn((key: string) => key.startsWith("internal.")),
   setSetting: vi.fn(),
 }));
 
@@ -27,9 +28,34 @@ const caller = createCallerFactory(router({ settings: settingsRouter }))({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(applyConfig).mockReset();
 });
 
 describe("settings router operational events", () => {
+  it("does not allow API callers to overwrite internal secrets", async () => {
+    await expect(
+      caller.settings.set({
+        key: "internal.domainValidationProxyPassword",
+        value: "attacker-selected",
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(setSetting).not.toHaveBeenCalled();
+  });
+
+  it("reapplies mihomo immediately when domain-intelligence routing changes", async () => {
+    vi.mocked(applyConfig).mockResolvedValueOnce({ nodes: 2, applied: true });
+    const value = JSON.stringify({ enabled: true, customTargetChannelId: "media" });
+
+    await expect(caller.settings.set({ key: "domainIntelligence", value })).resolves.toEqual({
+      ok: true,
+      applied: true,
+    });
+
+    expect(setSetting).toHaveBeenCalledWith({}, "domainIntelligence", value);
+    expect(applyConfig).toHaveBeenCalledWith({});
+    expect(setMihomoSecret).not.toHaveBeenCalled();
+  });
+
   it("reports a config write failure after secret rotation without exposing the secret", async () => {
     const err = new Error("read-only mount");
     vi.mocked(applyConfig).mockRejectedValueOnce(err);

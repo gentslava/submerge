@@ -4,7 +4,14 @@ import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it } from "vitest";
 import { createDb } from "../../db/client.js";
-import { getAllSettings, getOrCreateHwid, getSetting, setSetting } from "./service.js";
+import {
+  getAllSettings,
+  getOrCreateHwid,
+  getOrCreateInternalSecret,
+  getSetting,
+  getSettingsView,
+  setSetting,
+} from "./service.js";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -27,6 +34,21 @@ describe("settings service", () => {
     setSetting(db, "theme", "dark");
     setSetting(db, "theme", "light");
     expect(getSetting(db, "theme")).toBe("light");
+  });
+
+  it("persists internal secrets without exposing them in the settings API view", () => {
+    const db = freshDb();
+    const key = "internal.domainValidationProxyPassword";
+    const secret = getOrCreateInternalSecret(db, key);
+
+    expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(getOrCreateInternalSecret(db, key)).toBe(secret);
+    expect(getSetting(db, key)).toBe(secret);
+    expect(getSettingsView(db)).not.toHaveProperty(key);
+    expect(JSON.stringify(getSettingsView(db))).not.toContain(secret);
+    expect(() => getOrCreateInternalSecret(db, "public-setting")).toThrow(
+      "internal secret key is not protected",
+    );
   });
 
   it("generates a hwid, persists it, and mirrors it to the file", () => {

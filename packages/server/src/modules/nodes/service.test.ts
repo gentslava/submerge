@@ -22,6 +22,7 @@ import {
   readDefaultChannel,
   updateChannel,
 } from "../channels/service.js";
+import { getSetting, getSettingsView, setSetting } from "../settings/service.js";
 import {
   applyConfig,
   collectProxies,
@@ -150,6 +151,85 @@ describe("collectProxies", () => {
 });
 
 describe("applyConfig", () => {
+  it("keeps the validation listener and its credential absent while the feature is off", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(cfg.listeners).toBeUndefined();
+    expect(getSetting(db, "internal.domainValidationProxyPassword")).toBeUndefined();
+  });
+
+  it("targets the selected generated channel with a stable non-public credential", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    setSetting(
+      db,
+      "domainIntelligence",
+      JSON.stringify({ enabled: true, customTargetChannelId: "default" }),
+    );
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    const password = getSetting(db, "internal.domainValidationProxyPassword");
+    expect(password).toMatch(/^[A-Za-z0-9_-]{43}$/u);
+    expect(cfg.listeners).toEqual([
+      {
+        name: "submerge-domain-validation",
+        type: "http",
+        listen: "0.0.0.0",
+        port: 7891,
+        users: [{ username: "submerge-domain-validation", password }],
+        proxy: "AUTO",
+      },
+    ]);
+    expect(getSettingsView(db)).not.toHaveProperty("internal.domainValidationProxyPassword");
+    expect(JSON.stringify(getSettingsView(db))).not.toContain(password);
+  });
+
+  it("fails closed without minting a credential when the target channel is unavailable", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    setSetting(
+      db,
+      "domainIntelligence",
+      JSON.stringify({ enabled: true, customTargetChannelId: "missing" }),
+    );
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml");
+
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(cfg.listeners).toBeUndefined();
+    expect(getSetting(db, "internal.domainValidationProxyPassword")).toBeUndefined();
+  });
+
   it("defines the whole inventory in PROXY but races only the Default pool", async () => {
     const db = freshDb();
     const nodes = [

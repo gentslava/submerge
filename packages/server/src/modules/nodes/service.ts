@@ -9,6 +9,7 @@ import {
 } from "@submerge/shared";
 import { TRPCError } from "@trpc/server";
 import { asc, eq } from "drizzle-orm";
+import { z } from "zod";
 import type { MihomoProxy, ProxiesResponse } from "../../clients/mihomo.js";
 import {
   getDelay,
@@ -24,10 +25,50 @@ import { operationalLog } from "../../log.js";
 import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
-import { getSetting } from "../settings/service.js";
+import { getOrCreateInternalSecret, getSetting } from "../settings/service.js";
 import { groupProxies } from "./config.js";
-import type { ChannelConfigInput } from "./multiConfig.js";
+import type {
+  ChannelConfigInput,
+  DomainValidationListenerInput,
+  ProxyChannelConfigInput,
+} from "./multiConfig.js";
 import { buildMultiConfig } from "./multiConfig.js";
+
+const DOMAIN_INTELLIGENCE_SETTING_KEY = "domainIntelligence";
+const DOMAIN_VALIDATION_PASSWORD_KEY = "internal.domainValidationProxyPassword";
+const domainValidationSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    customTargetChannelId: z.string().min(1),
+  })
+  .passthrough();
+
+function domainValidationListener(
+  db: Db,
+  inputs: readonly ChannelConfigInput[],
+): DomainValidationListenerInput | undefined {
+  const raw = getSetting(db, DOMAIN_INTELLIGENCE_SETTING_KEY);
+  if (!raw) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const settings = domainValidationSettingsSchema.safeParse(parsed);
+  if (!settings.success || !settings.data.enabled) return undefined;
+  const target = inputs.find(
+    (input): input is ProxyChannelConfigInput =>
+      input.target === "proxy" && input.id === settings.data.customTargetChannelId,
+  );
+  if (!target || (target.race ?? target.proxies).length === 0) return undefined;
+  return {
+    listen: env.DOMAIN_VALIDATION_LISTEN,
+    port: env.DOMAIN_VALIDATION_PORT,
+    password: getOrCreateInternalSecret(db, DOMAIN_VALIDATION_PASSWORD_KEY),
+    targetGroupName: target.groupName,
+  };
+}
 
 // The mihomo API secret — a Settings value wins over the env default (env only seeds it
 // on first run). Used BOTH as the panel's client credential AND as the `secret:` written
@@ -154,7 +195,11 @@ export async function applyConfig(
         ? { ...proxyBase, proxies: inventory, race: pool }
         : { ...proxyBase, proxies: pool };
     });
-  const content = buildMultiConfig(inputs, readMihomoSecret(db));
+  const content = buildMultiConfig(
+    inputs,
+    readMihomoSecret(db),
+    domainValidationListener(db, inputs),
+  );
   // Unchanged config → skip the write + the destructive reload so mihomo keeps its
   // delay history (the charts don't blank on every no-op apply — rename, re-saved
   // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and

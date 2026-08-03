@@ -6,6 +6,7 @@ export type OperationalEventKey =
   | "boot-config-apply-failed"
   | "config-reload-failed"
   | "secret-rotation-write-failed"
+  | "domain-validation-config-write-failed"
   | "mihomo-live-failed"
   | "source-refresh-failed"
   | "source-refresh-scheduler-failed";
@@ -47,6 +48,12 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     level: "warning",
     uiMessage: "Не удалось записать конфигурацию после смены секрета mihomo",
     stdoutMessage: "config write after secret rotation failed",
+    fields: noFields,
+  },
+  "domain-validation-config-write-failed": {
+    level: "warning",
+    uiMessage: "Не удалось обновить защищённый маршрут проверки доменов",
+    stdoutMessage: "domain validation config write failed",
     fields: noFields,
   },
   "mihomo-live-failed": {

@@ -532,6 +532,75 @@ describe("buildMultiConfig — multiple channels", () => {
   });
 });
 
+describe("buildMultiConfig — domain validation listener", () => {
+  const listener = {
+    listen: "0.0.0.0",
+    port: 7891,
+    password: "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG",
+    targetGroupName: "ch-media",
+  };
+
+  it("forces an authenticated private HTTP listener directly into the selected group", () => {
+    const cfg = parse(
+      buildMultiConfig(
+        [
+          channel({ proxies: [px("A", "a.example")] }),
+          channel({
+            id: "media",
+            groupName: "ch-media",
+            isDefault: false,
+            policy: sticky,
+            domains: [],
+            proxies: [px("B", "b.example")],
+          }),
+        ],
+        "panel-secret",
+        listener,
+      ),
+    );
+
+    expect(cfg.listeners).toEqual([
+      {
+        name: "submerge-domain-validation",
+        type: "http",
+        listen: "0.0.0.0",
+        port: 7891,
+        users: [
+          {
+            username: "submerge-domain-validation",
+            password: listener.password,
+          },
+        ],
+        proxy: "ch-media",
+      },
+    ]);
+  });
+
+  it("rejects missing and DIRECT-fallback target groups", () => {
+    expect(() =>
+      buildMultiConfig([channel({ proxies: [px("A")] })], "panel-secret", listener),
+    ).toThrow("validation target group is unavailable");
+
+    expect(() =>
+      buildMultiConfig(
+        [
+          channel({ proxies: [px("A")] }),
+          channel({
+            id: "media",
+            groupName: "ch-media",
+            isDefault: false,
+            policy: sticky,
+            domains: [],
+            proxies: [],
+          }),
+        ],
+        "panel-secret",
+        listener,
+      ),
+    ).toThrow("validation target group is unavailable");
+  });
+});
+
 describe("buildMultiConfig — native Direct channel", () => {
   it("protects every config shape from an upstream fake-IP resolver", () => {
     const expectedDns = {

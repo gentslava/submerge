@@ -7,32 +7,61 @@ import { z } from "zod";
 const serverRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const defaultDbPath = resolve(serverRoot, "data/submerge.db");
 
-const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(3000),
-  HOST: z.string().min(1).default("0.0.0.0"),
-  DB_PATH: z.string().default(defaultDbPath),
-  MIHOMO_API: z.url().default("http://mihomo:9090"),
-  // mihomo's mixed (HTTP/SOCKS) proxy port, as the SERVER reaches it — used only by
-  // the on-demand speed test to download a payload through a chosen node. Inside
-  // compose the server talks to the mihomo service directly (not the host mapping).
-  MIHOMO_PROXY: z.url().default("http://mihomo:7890"),
-  MIHOMO_SECRET: z.string().default(""),
-  HAPP_DECODER_URL: z.url().default("http://happ-decoder:8080"),
-  // Local SOCKS/HTTP proxy address shown in the UI (editable in Settings). Default is the
-  // host-published mihomo mixed-port; override per topology (e.g. mihomo:7890 inside compose).
-  PROXY_ENDPOINT: z.string().default("127.0.0.1:7890"),
-  ADMIN_PASSWORD: z.string().optional(),
-  // "true"/"false" env string → boolean; absent defaults to false (z.stringbool handles "false"→false correctly, unlike z.coerce.boolean which coerces any non-empty string to true).
-  COOKIE_SECURE: z.stringbool().default(false),
-  // Where the server writes the generated mihomo config (shared volume in compose).
-  MIHOMO_CONFIG_PATH: z.string().default("/mihomo/config.yaml"),
-  // Path as mihomo sees it, sent in the reload body (PUT /configs).
-  MIHOMO_CONFIG_TARGET: z.string().default("/root/.config/mihomo/config.yaml"),
-  // Stable HWID is mirrored here so happ-decoder (unchanged) and the server agree.
-  HWID_FILE: z.string().default("/mihomo/hwid.txt"),
-  // Directory of the built web SPA to serve (dev default; container overrides to an absolute path).
-  WEB_DIST: z.string().default("../web/dist"),
-});
+const envSchema = z
+  .object({
+    PORT: z.coerce.number().int().positive().default(3000),
+    HOST: z.string().min(1).default("0.0.0.0"),
+    DB_PATH: z.string().default(defaultDbPath),
+    MIHOMO_API: z.url().default("http://mihomo:9090"),
+    // mihomo's mixed (HTTP/SOCKS) proxy port, as the SERVER reaches it — used only by
+    // the on-demand speed test to download a payload through a chosen node. Inside
+    // compose the server talks to the mihomo service directly (not the host mapping).
+    MIHOMO_PROXY: z.url().default("http://mihomo:7890"),
+    MIHOMO_SECRET: z.string().default(""),
+    HAPP_DECODER_URL: z.url().default("http://happ-decoder:8080"),
+    // Local SOCKS/HTTP proxy address shown in the UI (editable in Settings). Default is the
+    // host-published mihomo mixed-port; override per topology (e.g. mihomo:7890 inside compose).
+    PROXY_ENDPOINT: z.string().default("127.0.0.1:7890"),
+    ADMIN_PASSWORD: z.string().optional(),
+    // "true"/"false" env string → boolean; absent defaults to false (z.stringbool handles "false"→false correctly, unlike z.coerce.boolean which coerces any non-empty string to true).
+    COOKIE_SECURE: z.stringbool().default(false),
+    // Where the server writes the generated mihomo config (shared volume in compose).
+    MIHOMO_CONFIG_PATH: z.string().default("/mihomo/config.yaml"),
+    // Path as mihomo sees it, sent in the reload body (PUT /configs).
+    MIHOMO_CONFIG_TARGET: z.string().default("/root/.config/mihomo/config.yaml"),
+    // Stable HWID is mirrored here so happ-decoder (unchanged) and the server agree.
+    HWID_FILE: z.string().default("/mihomo/hwid.txt"),
+    // Directory of the built web SPA to serve (dev default; container overrides to an absolute path).
+    WEB_DIST: z.string().default("../web/dist"),
+    DOMAIN_VALIDATION_TOPOLOGY: z.enum(["compose", "host"]).default("compose"),
+    DOMAIN_VALIDATION_PROXY_ENDPOINT: z.url().default("http://mihomo:7891"),
+    DOMAIN_VALIDATION_LISTEN: z.union([z.ipv4(), z.ipv6()]).default("0.0.0.0"),
+    DOMAIN_VALIDATION_PORT: z.coerce.number().int().min(1).max(65_535).default(7891),
+  })
+  .superRefine((value, context) => {
+    const endpoint = new URL(value.DOMAIN_VALIDATION_PROXY_ENDPOINT);
+    const validShape =
+      endpoint.protocol === "http:" &&
+      !endpoint.username &&
+      !endpoint.password &&
+      endpoint.pathname === "/" &&
+      !endpoint.search &&
+      !endpoint.hash &&
+      endpoint.port === String(value.DOMAIN_VALIDATION_PORT) &&
+      value.DOMAIN_VALIDATION_PORT !== 7890 &&
+      value.DOMAIN_VALIDATION_PORT !== 9090;
+    const validAuthority =
+      value.DOMAIN_VALIDATION_TOPOLOGY === "compose"
+        ? endpoint.hostname === "mihomo"
+        : endpoint.hostname === "127.0.0.1" || endpoint.hostname === "[::1]";
+    if (!validShape || !validAuthority) {
+      context.addIssue({
+        code: "custom",
+        path: ["DOMAIN_VALIDATION_PROXY_ENDPOINT"],
+        message: "validation proxy endpoint does not match the selected private topology",
+      });
+    }
+  });
 
 export type Env = z.infer<typeof envSchema>;
 

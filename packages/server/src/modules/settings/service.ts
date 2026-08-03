@@ -5,6 +5,12 @@ import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { settings } from "../../db/schema.js";
 
+const INTERNAL_SETTING_PREFIX = "internal.";
+
+export function isInternalSettingKey(key: string): boolean {
+  return key.startsWith(INTERNAL_SETTING_PREFIX);
+}
+
 export function getSetting(db: Db, key: string): string | undefined {
   const row = db.select().from(settings).where(eq(settings.key, key)).get();
   return row?.value;
@@ -19,8 +25,11 @@ export function getAllSettings(db: Db): Record<string, string> {
 // secret falls back to env until set and is admin-viewable (single-admin tool) — keep
 // the panel behind ADMIN_PASSWORD if it's network-exposed (see the deploy notes).
 export function getSettingsView(db: Db): Record<string, string> {
+  const publicSettings = Object.fromEntries(
+    Object.entries(getAllSettings(db)).filter(([key]) => !isInternalSettingKey(key)),
+  );
   return {
-    ...getAllSettings(db),
+    ...publicSettings,
     hwid: getOrCreateHwid(db),
     mihomoSecret: getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET,
     proxyEndpoint: getSetting(db, "proxyEndpoint") || env.PROXY_ENDPOINT,
@@ -32,6 +41,15 @@ export function setSetting(db: Db, key: string, value: string): void {
     .values({ key, value })
     .onConflictDoUpdate({ target: settings.key, set: { value } })
     .run();
+}
+
+export function getOrCreateInternalSecret(db: Db, key: string): string {
+  if (!isInternalSettingKey(key)) throw new Error("internal secret key is not protected");
+  const existing = getSetting(db, key);
+  if (existing && /^[A-Za-z0-9_-]{43}$/u.test(existing)) return existing;
+  const secret = randomBytes(32).toString("base64url");
+  setSetting(db, key, secret);
+  return secret;
 }
 
 // Stable per-instance HWID (ADR-0002). Prefer DB, then the mirror file, else

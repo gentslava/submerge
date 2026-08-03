@@ -200,10 +200,10 @@ enables the feature in a deployment.
 
 **Acceptance criteria:**
 
-- [ ] The authenticated listener targets the selected generated channel group directly.
-- [ ] Compose uses an un-published private-network endpoint; host development accepts
+- [x] The authenticated listener targets the selected generated channel group directly.
+- [x] Compose uses an un-published private-network endpoint; host development accepts
       only a validated loopback endpoint.
-- [ ] Credentials never enter generated URLs, API responses, reports, or logs.
+- [x] Credentials never enter generated URLs, API responses, reports, or logs.
 
 ### Task 10: Probe PROXY and prove the forced route
 

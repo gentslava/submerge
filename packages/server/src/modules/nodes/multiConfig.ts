@@ -1,6 +1,7 @@
 // Generate a multi-channel mihomo config.yaml. The default channel owns the
 // canonical, unprefixed proxy and group names.
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import {
   type ChannelPolicy,
   cidrVersion,
@@ -51,6 +52,16 @@ export interface DirectChannelConfigInput extends MatcherConfigInput {
 }
 
 export type ChannelConfigInput = ProxyChannelConfigInput | DirectChannelConfigInput;
+
+export const DOMAIN_VALIDATION_LISTENER_NAME = "submerge-domain-validation";
+export const DOMAIN_VALIDATION_USERNAME = "submerge-domain-validation";
+
+export interface DomainValidationListenerInput {
+  listen: string;
+  port: number;
+  password: string;
+  targetGroupName: string;
+}
 
 // A channel's top-level member is either a shared proxy (referenced by its index
 // into the global proxy list, so the final post-dedupe name resolves) or a
@@ -272,6 +283,7 @@ function buildRules(
 export function buildMultiConfig(
   channels: ChannelConfigInput[],
   secret: string = env.MIHOMO_SECRET,
+  domainValidation?: DomainValidationListenerInput,
 ): string {
   const proxyChannels = channels.filter(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
@@ -418,6 +430,37 @@ export function buildMultiConfig(
   const hasProviders = Object.keys(ruleProviders).length > 0;
   const geo = noProxies ? null : geoTopLevel(nonDefault);
 
+  let validationListeners: Record<string, unknown>[] = [];
+  if (domainValidation) {
+    const target = [...builds.values()].find(
+      (build) => build.channel.groupName === domainValidation.targetGroupName,
+    );
+    if (!target || raceNames(target).length === 0) {
+      throw new Error("validation target group is unavailable");
+    }
+    if (
+      isIP(domainValidation.listen) === 0 ||
+      !Number.isInteger(domainValidation.port) ||
+      domainValidation.port < 1 ||
+      domainValidation.port > 65_535 ||
+      domainValidation.port === 7890 ||
+      domainValidation.port === 9090 ||
+      !/^[A-Za-z0-9_-]{32,128}$/u.test(domainValidation.password)
+    ) {
+      throw new Error("invalid domain validation listener configuration");
+    }
+    validationListeners = [
+      {
+        name: DOMAIN_VALIDATION_LISTENER_NAME,
+        type: "http",
+        listen: domainValidation.listen,
+        port: domainValidation.port,
+        users: [{ username: DOMAIN_VALIDATION_USERNAME, password: domainValidation.password }],
+        proxy: domainValidation.targetGroupName,
+      },
+    ];
+  }
+
   const cfg = {
     "mixed-port": 7890,
     "allow-lan": true,
@@ -427,6 +470,7 @@ export function buildMultiConfig(
     ipv6: false,
     "external-controller": "0.0.0.0:9090",
     secret,
+    ...(validationListeners.length > 0 ? { listeners: validationListeners } : {}),
     // Keep the host resolver for LAN/split DNS, but reject fake IPs owned by
     // another mihomo instance. Native DIRECT needs a real destination or a
     // router → fake-IP → submerge loop is possible.
