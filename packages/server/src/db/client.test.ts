@@ -9,10 +9,14 @@ import { createDb } from "./client.js";
 import {
   channelPool,
   channels,
+  domainAutomaticBudgets,
+  domainAutomaticConsents,
   domainCandidates,
   domainDailyStats,
   domainDecisions,
   domainObservations,
+  domainRuleOperations,
+  domainRuleOwnership,
   domainValidationAttempts,
   domainValidationRuns,
   settings,
@@ -48,6 +52,7 @@ const preRefreshMigrationsFolder = () => migrationsThrough(7, "pre-refresh");
 const preDomainMigrationsFolder = () => migrationsThrough(8, "pre-domain");
 const preDomainEvidenceMigrationsFolder = () => migrationsThrough(9, "pre-domain-evidence");
 const preDomainReviewMigrationsFolder = () => migrationsThrough(10, "pre-domain-review");
+const preDomainApplyMigrationsFolder = () => migrationsThrough(11, "pre-domain-apply");
 
 describe("db", () => {
   it("creates and reads a source in an in-memory DB", () => {
@@ -281,6 +286,185 @@ describe("db", () => {
         .prepare("UPDATE domain_candidates SET review_state = 'invalid' WHERE fqdn = ?")
         .run("api.service.example"),
     ).toThrow(/check constraint/i);
+    expect(testDb.$client.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
+  });
+
+  it("adds the domain apply journal without changing existing candidates or application rows", () => {
+    const testDb = createDb(":memory:");
+    migrate(testDb, { migrationsFolder: preDomainApplyMigrationsFolder() });
+    testDb
+      .insert(sources)
+      .values({ kind: "sub", value: "https://provider.example/sub", label: "Existing" })
+      .run();
+    testDb.insert(settings).values({ key: "existing", value: "preserved" }).run();
+    testDb
+      .insert(domainCandidates)
+      .values({
+        fqdn: "api.service.example",
+        registrableSite: "service.example",
+        selectedScope: "site",
+        proposedRule: "+.service.example",
+        status: "confirmed",
+        reviewState: "active",
+        firstSeenAt: 100,
+        lastSeenAt: 200,
+        nextValidationAt: 300,
+        lastValidationAt: 200,
+        failureStreak: 0,
+        leaseId: null,
+        leaseUntil: null,
+        leaseGeneration: 0,
+        updatedAt: 200,
+      })
+      .run();
+
+    migrate(testDb, { migrationsFolder });
+
+    expect(testDb.select().from(sources).get()?.label).toBe("Existing");
+    expect(testDb.select().from(settings).get()).toEqual({
+      key: "existing",
+      value: "preserved",
+    });
+    expect(testDb.select().from(domainCandidates).get()).toMatchObject({
+      fqdn: "api.service.example",
+      status: "confirmed",
+      reviewState: "active",
+    });
+    expect(testDb.select().from(domainRuleOperations).all()).toEqual([]);
+    expect(testDb.select().from(domainAutomaticBudgets).all()).toEqual([]);
+    expect(testDb.select().from(domainAutomaticConsents).all()).toEqual([]);
+    expect(testDb.select().from(domainRuleOwnership).all()).toEqual([]);
+    const baseOperation = {
+      expectedParentCommit: "1".repeat(40),
+      intendedContentSha256: "a".repeat(64),
+      proposedRule: "api.service.example",
+      ownershipDelta: {
+        upserts: [{ rule: "api.service.example", ownership: "manual" as const }],
+        deletes: [],
+      },
+      createdAt: 100,
+      updatedAt: 200,
+    };
+    expect(() =>
+      testDb
+        .insert(domainRuleOperations)
+        .values({
+          ...baseOperation,
+          id: "invalid-committed",
+          idempotencyKey: "invalid-committed",
+          action: "manual-add",
+          phase: "committed",
+        })
+        .run(),
+    ).toThrow(/phase_commit_check/u);
+    expect(() =>
+      testDb
+        .insert(domainRuleOperations)
+        .values({
+          ...baseOperation,
+          id: "invalid-rollback-target",
+          idempotencyKey: "invalid-rollback-target",
+          action: "rollback",
+          phase: "prepared",
+        })
+        .run(),
+    ).toThrow(/rollback_target_check/u);
+    expect(() =>
+      testDb
+        .insert(domainRuleOperations)
+        .values({
+          ...baseOperation,
+          id: "invalid-half-commit",
+          idempotencyKey: "invalid-half-commit",
+          action: "manual-add",
+          phase: "committed",
+          commitSha: "2".repeat(40),
+        })
+        .run(),
+    ).toThrow(/commit_pair_check/u);
+    expect(() =>
+      testDb
+        .insert(domainRuleOperations)
+        .values({
+          ...baseOperation,
+          id: "invalid-completed",
+          idempotencyKey: "invalid-completed",
+          action: "manual-add",
+          phase: "completed",
+          commitSha: "2".repeat(40),
+          committedContentSha256: "a".repeat(64),
+          activationStatus: "succeeded",
+          activationAttemptCount: 1,
+          lastActivationAttemptAt: 200,
+        })
+        .run(),
+    ).toThrow(/completion_check/u);
+    expect(() =>
+      testDb
+        .insert(domainRuleOperations)
+        .values({
+          ...baseOperation,
+          id: "invalid-activation-time",
+          idempotencyKey: "invalid-activation-time",
+          action: "manual-add",
+          phase: "partial",
+          commitSha: "2".repeat(40),
+          committedContentSha256: "a".repeat(64),
+          activationStatus: "failed",
+          activationAttemptCount: 1,
+          lastActivationAttemptAt: 50,
+          activationErrorCategory: "route-proof-failure",
+        })
+        .run(),
+    ).toThrow(/timestamp_check/u);
+    expect(() =>
+      testDb
+        .insert(domainRuleOperations)
+        .values({
+          ...baseOperation,
+          id: "invalid-failed-reason",
+          idempotencyKey: "invalid-failed-reason",
+          action: "manual-add",
+          phase: "partial",
+          commitSha: "2".repeat(40),
+          committedContentSha256: "a".repeat(64),
+          activationStatus: "failed",
+          activationAttemptCount: 1,
+          lastActivationAttemptAt: 200,
+        })
+        .run(),
+    ).toThrow(/activation_shape_check/u);
+    expect(() =>
+      testDb
+        .insert(domainAutomaticConsents)
+        .values({
+          id: "invalid-consent",
+          revision: `domain-auto-v1:sha256:${"z".repeat(64)}`,
+          enabledAt: 100,
+          revokedAt: null,
+        })
+        .run(),
+    ).toThrow(/revision_check/u);
+    testDb
+      .insert(domainAutomaticConsents)
+      .values({
+        id: "active-consent",
+        revision: `domain-auto-v1:sha256:${"a".repeat(64)}`,
+        enabledAt: 100,
+        revokedAt: null,
+      })
+      .run();
+    expect(() =>
+      testDb
+        .insert(domainAutomaticConsents)
+        .values({
+          id: "second-active-consent",
+          revision: `domain-auto-v1:sha256:${"b".repeat(64)}`,
+          enabledAt: 100,
+          revokedAt: null,
+        })
+        .run(),
+    ).toThrow(/unique/u);
     expect(testDb.$client.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
   });
 

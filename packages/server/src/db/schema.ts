@@ -478,3 +478,228 @@ export const domainDecisions = sqliteTable(
     index("domain_decisions_retention_idx").on(t.evaluatedAt),
   ],
 );
+
+export const DOMAIN_RULE_OPERATION_ACTIONS = [
+  "automatic-add",
+  "manual-add",
+  "manual-edit",
+  "manual-delete",
+  "rollback",
+] as const;
+export type DomainRuleOperationAction = (typeof DOMAIN_RULE_OPERATION_ACTIONS)[number];
+
+export const DOMAIN_RULE_OPERATION_PHASES = [
+  "prepared",
+  "committed",
+  "activating",
+  "completed",
+  "partial",
+  "aborted",
+  "reconciliation-required",
+] as const;
+export type DomainRuleOperationPhase = (typeof DOMAIN_RULE_OPERATION_PHASES)[number];
+
+export const DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES = [
+  "shutdown",
+  "materialization-failure",
+  "config-reload-failure",
+  "provider-proof-failure",
+  "coverage-proof-failure",
+  "route-proof-failure",
+  "infrastructure-failure",
+] as const;
+export type DomainRuleActivationErrorCategory =
+  (typeof DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES)[number];
+
+export type DomainRuleOwnershipKind = "automatic" | "manual";
+export interface DomainRuleOwnershipDeltaJson {
+  upserts: Array<{ rule: string; ownership: DomainRuleOwnershipKind }>;
+  deletes: string[];
+}
+
+// Durable bridge between SQLite intent and the attested local Git commit. Audit
+// rows are retained independently from the 14-day observation/evidence window.
+export const domainRuleOperations = sqliteTable(
+  "domain_rule_operations",
+  {
+    id: text("id").primaryKey(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    action: text("action").$type<DomainRuleOperationAction>().notNull(),
+    phase: text("phase").$type<DomainRuleOperationPhase>().notNull().default("prepared"),
+    rollbackTargetCommit: text("rollback_target_commit"),
+    candidateFqdn: text("candidate_fqdn"),
+    expectedParentCommit: text("expected_parent_commit").notNull(),
+    intendedContentSha256: text("intended_content_sha256").notNull(),
+    proposedRule: text("proposed_rule"),
+    ownershipDelta: text("ownership_delta", { mode: "json" })
+      .$type<DomainRuleOwnershipDeltaJson>()
+      .notNull(),
+    automaticConsentId: text("automatic_consent_id").references(() => domainAutomaticConsents.id),
+    automaticConsentRevision: text("automatic_consent_revision"),
+    automaticBudgetDay: text("automatic_budget_day"),
+    automaticBudgetSlots: integer("automatic_budget_slots").notNull().default(0),
+    commitSha: text("commit_sha"),
+    committedContentSha256: text("committed_content_sha256"),
+    activationStatus: text("activation_status", {
+      enum: ["not-started", "in-progress", "succeeded", "failed"],
+    })
+      .notNull()
+      .default("not-started"),
+    activationAttemptCount: integer("activation_attempt_count").notNull().default(0),
+    lastActivationAttemptAt: integer("last_activation_attempt_at"),
+    activationErrorCategory: text(
+      "activation_error_category",
+    ).$type<DomainRuleActivationErrorCategory>(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    completedAt: integer("completed_at"),
+  },
+  (t) => [
+    check("domain_rule_operations_id_length_check", sql`length(${t.id}) between 1 and 128`),
+    check(
+      "domain_rule_operations_idempotency_length_check",
+      sql`length(${t.idempotencyKey}) between 1 and 128`,
+    ),
+    check(
+      "domain_rule_operations_action_check",
+      sql`${t.action} in ('automatic-add', 'manual-add', 'manual-edit', 'manual-delete', 'rollback')`,
+    ),
+    check(
+      "domain_rule_operations_phase_check",
+      sql`${t.phase} in ('prepared', 'committed', 'activating', 'completed', 'partial', 'aborted', 'reconciliation-required')`,
+    ),
+    check(
+      "domain_rule_operations_rollback_target_check",
+      sql`(${t.action} = 'rollback' and ${t.rollbackTargetCommit} is not null and length(${t.rollbackTargetCommit}) = 40) or (${t.action} != 'rollback' and ${t.rollbackTargetCommit} is null)`,
+    ),
+    check(
+      "domain_rule_operations_candidate_length_check",
+      sql`${t.candidateFqdn} is null or length(${t.candidateFqdn}) between 3 and 253`,
+    ),
+    check(
+      "domain_rule_operations_parent_length_check",
+      sql`length(${t.expectedParentCommit}) = 40`,
+    ),
+    check(
+      "domain_rule_operations_intended_digest_length_check",
+      sql`length(${t.intendedContentSha256}) = 64`,
+    ),
+    check(
+      "domain_rule_operations_rule_length_check",
+      sql`${t.proposedRule} is null or length(${t.proposedRule}) between 3 and 255`,
+    ),
+    check(
+      "domain_rule_operations_ownership_delta_length_check",
+      sql`length(${t.ownershipDelta}) between 27 and 65536`,
+    ),
+    check(
+      "domain_rule_operations_budget_check",
+      sql`(${t.action} = 'automatic-add' and ${t.automaticBudgetDay} is not null and length(${t.automaticBudgetDay}) = 10 and ${t.automaticBudgetSlots} = 1) or (${t.action} != 'automatic-add' and ${t.automaticBudgetDay} is null and ${t.automaticBudgetSlots} = 0)`,
+    ),
+    check(
+      "domain_rule_operations_consent_check",
+      sql`(${t.action} = 'automatic-add' and ${t.automaticConsentId} is not null and length(${t.automaticConsentId}) between 1 and 128 and ${t.automaticConsentRevision} is not null and length(${t.automaticConsentRevision}) = 86) or (${t.action} != 'automatic-add' and ${t.automaticConsentId} is null and ${t.automaticConsentRevision} is null)`,
+    ),
+    check(
+      "domain_rule_operations_commit_pair_check",
+      sql`(${t.commitSha} is null and ${t.committedContentSha256} is null) or (${t.commitSha} is not null and ${t.committedContentSha256} is not null and length(${t.commitSha}) = 40 and length(${t.committedContentSha256}) = 64)`,
+    ),
+    check(
+      "domain_rule_operations_phase_commit_check",
+      sql`(${t.phase} in ('prepared', 'aborted') and ${t.commitSha} is null) or (${t.phase} in ('committed', 'activating', 'completed', 'partial') and ${t.commitSha} is not null) or ${t.phase} = 'reconciliation-required'`,
+    ),
+    check(
+      "domain_rule_operations_activation_shape_check",
+      sql`(${t.activationStatus} = 'not-started' and ${t.activationAttemptCount} = 0 and ${t.lastActivationAttemptAt} is null and ${t.activationErrorCategory} is null) or (${t.activationStatus} = 'in-progress' and ${t.activationAttemptCount} between 1 and 1000000 and ${t.lastActivationAttemptAt} is not null and ${t.activationErrorCategory} is null) or (${t.activationStatus} = 'succeeded' and ${t.activationAttemptCount} between 1 and 1000000 and ${t.lastActivationAttemptAt} is not null and ${t.activationErrorCategory} is null) or (${t.activationStatus} = 'failed' and ${t.activationAttemptCount} between 1 and 1000000 and ${t.lastActivationAttemptAt} is not null and ${t.activationErrorCategory} is not null and ${t.activationErrorCategory} in ('shutdown', 'materialization-failure', 'config-reload-failure', 'provider-proof-failure', 'coverage-proof-failure', 'route-proof-failure', 'infrastructure-failure'))`,
+    ),
+    check(
+      "domain_rule_operations_phase_activation_check",
+      sql`(${t.phase} in ('prepared', 'committed', 'aborted') and ${t.activationStatus} = 'not-started') or (${t.phase} = 'activating' and ${t.activationStatus} = 'in-progress') or (${t.phase} = 'completed' and ${t.activationStatus} = 'succeeded') or (${t.phase} = 'partial' and ${t.activationStatus} = 'failed') or (${t.phase} = 'reconciliation-required' and ${t.activationStatus} in ('not-started', 'failed'))`,
+    ),
+    check(
+      "domain_rule_operations_timestamp_check",
+      sql`${t.createdAt} between 0 and ${MAX_DATE_SQL} and ${t.updatedAt} between ${t.createdAt} and ${MAX_DATE_SQL} and (${t.lastActivationAttemptAt} is null or ${t.lastActivationAttemptAt} between ${t.createdAt} and ${t.updatedAt}) and (${t.completedAt} is null or ${t.completedAt} between ${t.createdAt} and ${t.updatedAt})`,
+    ),
+    check(
+      "domain_rule_operations_completion_check",
+      sql`(${t.phase} in ('completed', 'aborted', 'reconciliation-required') and ${t.completedAt} is not null) or (${t.phase} not in ('completed', 'aborted', 'reconciliation-required') and ${t.completedAt} is null)`,
+    ),
+    index("domain_rule_operations_recovery_idx").on(t.phase, t.createdAt),
+    uniqueIndex("domain_rule_operations_commit_unique_idx")
+      .on(t.commitSha)
+      .where(sql`${t.commitSha} is not null`),
+  ],
+);
+
+// Consent is an append-only audit stream. At most one consent can be active;
+// preference changes invalidate it by fingerprint without rewriting history.
+export const domainAutomaticConsents = sqliteTable(
+  "domain_automatic_consents",
+  {
+    id: text("id").primaryKey(),
+    revision: text("revision").notNull(),
+    enabledAt: integer("enabled_at").notNull(),
+    revokedAt: integer("revoked_at"),
+  },
+  (t) => [
+    check("domain_automatic_consents_id_length_check", sql`length(${t.id}) between 1 and 128`),
+    check(
+      "domain_automatic_consents_revision_check",
+      sql`length(${t.revision}) = 86 and substr(${t.revision}, 1, 22) = 'domain-auto-v1:sha256:' and substr(${t.revision}, 23) not glob '*[^0-9a-f]*'`,
+    ),
+    check(
+      "domain_automatic_consents_timestamp_check",
+      sql`${t.enabledAt} between 0 and ${MAX_DATE_SQL} and (${t.revokedAt} is null or ${t.revokedAt} between ${t.enabledAt} and ${MAX_DATE_SQL})`,
+    ),
+    uniqueIndex("domain_automatic_consents_active_unique_idx")
+      .on(sql`1`)
+      .where(sql`${t.revokedAt} is null`),
+  ],
+);
+
+// Reservations and consumption are separate so a pre-commit abort can release
+// its slot while a committed operation consumes it even if activation is partial.
+export const domainAutomaticBudgets = sqliteTable(
+  "domain_automatic_budgets",
+  {
+    day: text("day").primaryKey(),
+    reservedSlots: integer("reserved_slots").notNull().default(0),
+    consumedSlots: integer("consumed_slots").notNull().default(0),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    check("domain_automatic_budgets_day_check", sql`length(${t.day}) = 10`),
+    check("domain_automatic_budgets_reserved_check", sql`${t.reservedSlots} between 0 and 1000000`),
+    check("domain_automatic_budgets_consumed_check", sql`${t.consumedSlots} between 0 and 1000000`),
+    check(
+      "domain_automatic_budgets_updated_check",
+      sql`${t.updatedAt} between 0 and ${MAX_DATE_SQL}`,
+    ),
+  ],
+);
+
+// Current mutable ownership read model. The immutable operation row keeps the
+// ownership delta and commit audit after an edit or delete replaces this row.
+export const domainRuleOwnership = sqliteTable(
+  "domain_rule_ownership",
+  {
+    rule: text("rule").primaryKey(),
+    ownership: text("ownership", { enum: ["automatic", "manual"] }).notNull(),
+    operationId: text("operation_id")
+      .notNull()
+      .references(() => domainRuleOperations.id),
+    commitSha: text("commit_sha").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    check("domain_rule_ownership_rule_length_check", sql`length(${t.rule}) between 3 and 255`),
+    check("domain_rule_ownership_kind_check", sql`${t.ownership} in ('automatic', 'manual')`),
+    check("domain_rule_ownership_commit_length_check", sql`length(${t.commitSha}) = 40`),
+    check(
+      "domain_rule_ownership_timestamp_check",
+      sql`${t.createdAt} between 0 and ${MAX_DATE_SQL} and ${t.updatedAt} between ${t.createdAt} and ${MAX_DATE_SQL}`,
+    ),
+    index("domain_rule_ownership_operation_idx").on(t.operationId),
+  ],
+);

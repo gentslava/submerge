@@ -7,13 +7,18 @@ import { SUBMERGE_VERSION } from "../version.js";
 import { appRouter } from "./router.js";
 import { createCallerFactory } from "./trpc.js";
 
+const testDbEnv = vi.hoisted(() => {
+  const previousDbPath = process.env.DB_PATH;
+  process.env.DB_PATH = ":memory:";
+  return { previousDbPath };
+});
+
 const createCaller = createCallerFactory(appRouter);
 const caller = () =>
   createCaller({ authed: true, authRequired: false, req: {} as never, res: {} as never });
 
-// The settings/sources routers use the singleton db (a real file at env.DB_PATH).
-// Apply migrations so the tables exist regardless of the file's prior state
-// (migrate is idempotent — a no-op if already applied).
+// The settings/sources routers use the singleton DB. DB_PATH is hoisted to an
+// isolated in-memory database before the client module is evaluated.
 beforeAll(() => {
   migrate(db, { migrationsFolder: new URL("../../drizzle", import.meta.url).pathname });
 });
@@ -24,6 +29,8 @@ afterEach(() => vi.unstubAllGlobals());
 // and the next run genuinely exercises the write→read path against the singleton db.
 afterAll(() => {
   db.delete(settings).where(eq(settings.key, "__router_test__")).run();
+  if (testDbEnv.previousDbPath === undefined) delete process.env.DB_PATH;
+  else process.env.DB_PATH = testDbEnv.previousDbPath;
 });
 
 describe("appRouter", () => {
