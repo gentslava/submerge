@@ -142,6 +142,26 @@ export interface CommitManagedDomainRulesInput {
   trustedParentPath: string;
 }
 
+export interface AttestLocalDomainRuleOperationStateInput extends LocalRuleRepositoryOptions {
+  committedContentSha256: string;
+  expectedParent: string;
+  operationId: string;
+  repositoryPath: string;
+}
+
+export type AttestedLocalDomainRuleOperationState =
+  | {
+      state: "parent";
+      contentSha256: string;
+      head: string;
+    }
+  | {
+      state: "committed";
+      contentSha256: string;
+      head: string;
+      parent: string;
+    };
+
 export interface CommittedDomainRules {
   changed: boolean;
   contentSha256: string;
@@ -2451,4 +2471,54 @@ export async function commitManagedDomainRules(
   assertTrustedGitBinary();
   const context = resolveRepositoryContext(input.repositoryPath, input.trustedParentPath);
   return withRepositoryLock(context, () => commitManagedDomainRulesUnlocked(input, context));
+}
+
+export async function attestLocalDomainRuleOperationState(
+  input: AttestLocalDomainRuleOperationStateInput,
+): Promise<AttestedLocalDomainRuleOperationState> {
+  assertNotAborted(input.signal);
+  assertTrustedGitBinary();
+  if (
+    !OPERATION_ID_PATTERN.test(input.operationId) ||
+    !COMMIT_SHA_PATTERN.test(input.expectedParent) ||
+    !/^[0-9a-f]{64}$/u.test(input.committedContentSha256)
+  ) {
+    throw new Error("invalid domain-rule operation attestation input");
+  }
+  const context = resolveRepositoryContext(input.repositoryPath, input.trustedParentPath);
+  return withRepositoryLock(context, async () => {
+    const attested = await validateExistingLocalRuleRepository(context, input.signal, false);
+    if (attested.head === input.expectedParent) {
+      return {
+        state: "parent",
+        contentSha256: attested.contentSha256,
+        head: attested.head,
+      };
+    }
+    if (attested.contentSha256 !== input.committedContentSha256) {
+      throw new Error("unexpected local Git state");
+    }
+    await assertCommit(
+      context.repositoryIdentity.canonicalPath,
+      attested.head,
+      input.expectedParent,
+      input.operationId,
+      attested.content,
+      input.signal,
+    );
+    const reattested = await validateExistingLocalRuleRepository(context, input.signal, false);
+    if (
+      reattested.head !== attested.head ||
+      reattested.contentSha256 !== attested.contentSha256 ||
+      reattested.content !== attested.content
+    ) {
+      throw new Error("local domain-rule repository changed during operation attestation");
+    }
+    return {
+      state: "committed",
+      contentSha256: reattested.contentSha256,
+      head: reattested.head,
+      parent: input.expectedParent,
+    };
+  });
 }

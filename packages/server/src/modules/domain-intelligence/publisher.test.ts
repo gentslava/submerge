@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   mkdirSync,
@@ -14,6 +15,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  attestLocalDomainRuleOperationState as attestLocalDomainRuleOperationStateImpl,
   commitManagedDomainRules as commitManagedDomainRulesImpl,
   hasLocalRuleHistoryCapacity,
   prepareLocalRuleRepositoryDirectories,
@@ -23,6 +25,10 @@ import {
 } from "./publisher.js";
 
 const temporaryDirectories: string[] = [];
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 vi.setConfig({ testTimeout: 15_000 });
 
@@ -124,6 +130,15 @@ function commitManagedDomainRules(input: Omit<CommitInput, "trustedParentPath">)
     trustedParentPath: dirname(input.repositoryPath),
     ...input,
   } as CommitInput);
+}
+
+function attestLocalDomainRuleOperationState(
+  input: Omit<Parameters<typeof attestLocalDomainRuleOperationStateImpl>[0], "trustedParentPath">,
+) {
+  return attestLocalDomainRuleOperationStateImpl({
+    trustedParentPath: dirname(input.repositoryPath),
+    ...input,
+  });
 }
 
 describe("updateManagedDomainRules", () => {
@@ -1532,5 +1547,133 @@ describe("commitManagedDomainRules", () => {
     expect(readFileSync(join(repositoryPath, "custom.txt"), "utf8")).toContain(
       "api.service.example",
     );
+  });
+});
+
+describe("attestLocalDomainRuleOperationState", () => {
+  it("reports an unchanged expected parent without mutating repository state", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+
+    await expect(
+      attestLocalDomainRuleOperationState({
+        committedContentSha256: "1".repeat(64),
+        expectedParent: baseline.head,
+        operationId: "op-not-committed",
+        repositoryPath,
+      }),
+    ).resolves.toEqual({
+      state: "parent",
+      contentSha256: baseline.contentSha256,
+      head: baseline.head,
+    });
+    expect(git(repositoryPath, ["rev-list", "--count", "HEAD"]).trim()).toBe("1");
+    expect(git(repositoryPath, ["status", "--porcelain=v1"])).toBe("");
+  });
+
+  it("attests the exact child commit for the journaled operation", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+    const committed = await commitManagedDomainRules({
+      expectedParent: baseline.head,
+      operationId: "op-attested-child",
+      repositoryPath,
+      rules: ["+.service.example"],
+    });
+
+    await expect(
+      attestLocalDomainRuleOperationState({
+        committedContentSha256: committed.contentSha256,
+        expectedParent: baseline.head,
+        operationId: "op-attested-child",
+        repositoryPath,
+      }),
+    ).resolves.toEqual({
+      state: "committed",
+      contentSha256: committed.contentSha256,
+      head: committed.head,
+      parent: baseline.head,
+    });
+  });
+
+  it("rejects a child commit whose operation trailer does not match the journal", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+    const committed = await commitManagedDomainRules({
+      expectedParent: baseline.head,
+      operationId: "op-real-child",
+      repositoryPath,
+      rules: ["+.service.example"],
+    });
+
+    await expect(
+      attestLocalDomainRuleOperationState({
+        committedContentSha256: committed.contentSha256,
+        expectedParent: baseline.head,
+        operationId: "op-wrong-child",
+        repositoryPath,
+      }),
+    ).rejects.toThrow("local domain-rule commit attestation failed");
+  });
+
+  it("rejects a later head instead of accepting an operation found only in history", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+    const first = await commitManagedDomainRules({
+      expectedParent: baseline.head,
+      operationId: "op-first-child",
+      repositoryPath,
+      rules: ["+.first.example"],
+    });
+    await commitManagedDomainRules({
+      expectedParent: first.head,
+      operationId: "op-later-child",
+      repositoryPath,
+      rules: ["+.first.example", "+.later.example"],
+    });
+
+    await expect(
+      attestLocalDomainRuleOperationState({
+        committedContentSha256: first.contentSha256,
+        expectedParent: baseline.head,
+        operationId: "op-first-child",
+        repositoryPath,
+      }),
+    ).rejects.toThrow("unexpected local Git state");
+  });
+
+  it("does not initialize missing Git metadata while reconciling a journaled operation", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    writeFileSync(join(repositoryPath, "custom.txt"), "# operator\n", { mode: 0o600 });
+
+    await expect(
+      attestLocalDomainRuleOperationState({
+        committedContentSha256: sha256("# operator\n"),
+        expectedParent: "1".repeat(40),
+        operationId: "op-missing-git",
+        repositoryPath,
+      }),
+    ).rejects.toThrow("unexpected local Git state");
+    expect(() => statSync(join(repositoryPath, ".git"))).toThrow();
   });
 });
