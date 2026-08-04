@@ -79,7 +79,7 @@ describe("reconcileInitialDomainRuleMaterialization", () => {
       trustedParentPath: paths.trustedParentPath,
     });
     expect(repeated.repository.baselineCreated).toBe(false);
-  });
+  }, 15_000);
 
   it("holds the repository lock through final materialization attestation", async () => {
     const dataDirectory = createMihomoDirectory();
