@@ -55,6 +55,30 @@ export type MihomoProxy = z.infer<typeof mihomoProxySchema>;
 const proxiesResponseSchema = z.object({ proxies: z.record(z.string(), mihomoProxySchema) });
 export type ProxiesResponse = z.infer<typeof proxiesResponseSchema>;
 
+const ruleProviderSchema = z.object({
+  behavior: z.string().min(1),
+  format: z.string().min(1),
+  name: z.string().min(1),
+  ruleCount: z.number().int().nonnegative(),
+  type: z.string().min(1),
+  vehicleType: z.string().min(1),
+});
+const ruleProvidersResponseSchema = z.object({
+  providers: z.record(z.string().min(1), ruleProviderSchema),
+});
+export type RuleProvidersResponse = z.infer<typeof ruleProvidersResponseSchema>;
+
+const activeRuleSchema = z.object({
+  index: z.number().int().nonnegative(),
+  type: z.string().min(1),
+  payload: z.string(),
+  proxy: z.string().min(1),
+  size: z.number().int().min(-1),
+  extra: z.object({ disabled: z.boolean().default(false) }).default({ disabled: false }),
+});
+const activeRulesResponseSchema = z.object({ rules: z.array(activeRuleSchema) });
+export type ActiveRulesResponse = z.infer<typeof activeRulesResponseSchema>;
+
 // The delay series to read for a node under a given test URL. mihomo keeps a
 // per-URL history in `extra[url]`; use it when present and non-empty, else the
 // shared `history` (fallback: a fresh node, right after a reload, or a cleared
@@ -211,6 +235,18 @@ export async function getProxies(signal?: AbortSignal): Promise<ProxiesResponse>
   const r = await call("/proxies", {}, signal);
   if (!r.ok) throw new Error(`mihomo /proxies returned HTTP ${r.status}`);
   return proxiesResponseSchema.parse(await r.json());
+}
+
+export async function getRuleProviders(signal?: AbortSignal): Promise<RuleProvidersResponse> {
+  const r = await call("/providers/rules", {}, signal);
+  if (!r.ok) throw new Error(`mihomo /providers/rules returned HTTP ${r.status}`);
+  return ruleProvidersResponseSchema.parse(await r.json());
+}
+
+export async function getRules(signal?: AbortSignal): Promise<ActiveRulesResponse> {
+  const r = await call("/rules", {}, signal);
+  if (!r.ok) throw new Error(`mihomo /rules returned HTTP ${r.status}`);
+  return activeRulesResponseSchema.parse(await r.json());
 }
 
 // `url` defaults to the built-in probe endpoint; callers pass the AUTO group's

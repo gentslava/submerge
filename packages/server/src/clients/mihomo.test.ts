@@ -20,6 +20,8 @@ import {
   getDelay,
   getExternalIpTrace,
   getProxies,
+  getRuleProviders,
+  getRules,
   getRuntimeConfig,
   getTotals,
   getVersion,
@@ -128,6 +130,101 @@ describe("mihomo client", () => {
     const res = await getProxies();
     expect(res.proxies.PROXY?.now).toBe("A");
     expect(seenAuth).toMatch(/^Bearer/);
+  });
+
+  it("parses active rule providers without exposing unbounded response fields", async () => {
+    mockFetch((url) => {
+      expect(url).toContain("/providers/rules");
+      return json({
+        providers: {
+          "submerge-custom": {
+            behavior: "domain",
+            format: "Text",
+            name: "submerge-custom",
+            ruleCount: 2,
+            type: "Rule",
+            vehicleType: "File",
+            updatedAt: "2026-08-04T00:00:00Z",
+            ignored: { secret: "must-not-cross-the-client-boundary" },
+          },
+        },
+      });
+    });
+
+    await expect(getRuleProviders()).resolves.toEqual({
+      providers: {
+        "submerge-custom": {
+          behavior: "domain",
+          format: "Text",
+          name: "submerge-custom",
+          ruleCount: 2,
+          type: "Rule",
+          vehicleType: "File",
+        },
+      },
+    });
+
+    mockFetch(() =>
+      json({
+        providers: {
+          "submerge-custom": {
+            behavior: "domain",
+            format: "Text",
+            name: "submerge-custom",
+            ruleCount: -1,
+            type: "Rule",
+            vehicleType: "File",
+          },
+        },
+      }),
+    );
+    await expect(getRuleProviders()).rejects.toThrow();
+  });
+
+  it("parses the active rule route returned by Mihomo", async () => {
+    mockFetch((url) => {
+      expect(url).toMatch(/\/rules$/u);
+      return json({
+        rules: [
+          {
+            index: 1,
+            type: "RuleSet",
+            payload: "submerge-custom",
+            proxy: "AUTO",
+            // Mihomo uses -1 for rules whose match size is not enumerable.
+            size: -1,
+            extra: { disabled: false, hitCount: 4 },
+          },
+        ],
+      });
+    });
+
+    await expect(getRules()).resolves.toEqual({
+      rules: [
+        {
+          index: 1,
+          type: "RuleSet",
+          payload: "submerge-custom",
+          proxy: "AUTO",
+          size: -1,
+          extra: { disabled: false },
+        },
+      ],
+    });
+
+    mockFetch(() =>
+      json({
+        rules: [{ index: 0, type: "RuleSet", payload: 7, proxy: "AUTO", size: -1 }],
+      }),
+    );
+    await expect(getRules()).rejects.toThrow();
+
+    mockFetch(() =>
+      json({
+        rules: [{ index: 0, type: "RuleSet", payload: "x", proxy: "AUTO", size: -2 }],
+      }),
+    );
+    await expect(getRules()).rejects.toThrow();
   });
 
   it("parses a delay response", async () => {
