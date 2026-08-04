@@ -10,7 +10,7 @@
     "dev": "tsx --conditions=development --watch src/index.ts",
     "build": "tsc -b",
     "test": "vitest run",
-    "domain-intelligence": "tsx src/domain-intelligence-cli.ts",
+    "domain-intelligence": "tsx --conditions=development src/domain-intelligence-cli.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },
