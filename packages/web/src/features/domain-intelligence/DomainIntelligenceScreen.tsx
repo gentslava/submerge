@@ -870,7 +870,7 @@ function CandidateRow({
     : "Добавление из интерфейса ещё не подключено";
   const identity = (
     <>
-      <div className="domain-candidate-rule flex min-w-0 items-center gap-2">
+      <div className="domain-candidate-rule min-w-0">
         <span
           title={item.fqdn}
           className="domain-observed-name min-w-0 font-mono text-sub text-text-secondary"
@@ -882,7 +882,7 @@ function CandidateRow({
           <span className="domain-observed-suffix">{observedDomain.suffix}</span>
         </span>
         {item.proposedRule ? (
-          <span className="domain-generated-group inline-flex min-w-0 items-center gap-2">
+          <span className="domain-generated-group min-w-0">
             <ArrowRight aria-hidden="true" size={13} className="shrink-0 text-text-disabled" />
             <code className="domain-generated-rule font-mono text-sub font-semibold text-text-primary">
               {item.proposedRule}
@@ -929,7 +929,7 @@ function CandidateRow({
     <article className="domain-candidate-item min-w-0">
       <div
         className={cn(
-          "domain-candidate-row flex min-w-0 items-center gap-3.5 px-[18px] py-[13px]",
+          "domain-candidate-row min-w-0 px-[18px] py-[13px]",
           expanded && "bg-elevated",
         )}
       >
@@ -945,7 +945,7 @@ function CandidateRow({
             />
           ) : null}
         </div>
-        <div className="domain-candidate-actions domain-candidate-review-actions flex shrink-0 items-center gap-2">
+        <div className="domain-candidate-actions domain-candidate-review-actions shrink-0">
           {item.bucket === "candidate" ? (
             <>
               <Button
@@ -954,7 +954,7 @@ function CandidateRow({
                 disabled={rejectionPending}
                 aria-label={`Не добавлять ${item.fqdn}`}
                 onClick={() => onReject(true)}
-                className="domain-candidate-reject-action"
+                className="domain-candidate-reject-action border border-transparent"
               >
                 Не добавлять
               </Button>

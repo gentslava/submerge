@@ -87,16 +87,23 @@
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .domain-generated-group {
+  display: inline-grid;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
   overflow: hidden;
 }
 
 .domain-observed-name {
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
   min-width: 0;
   max-width: 100%;
@@ -105,14 +112,30 @@
 }
 
 .domain-candidate-rule {
-  flex-wrap: wrap;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
   overflow: hidden;
+}
+
+.domain-candidate-list {
+  --domain-candidate-actions-width: 18rem;
+}
+
+.domain-candidate-list > .domain-candidate-item > .domain-candidate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--domain-candidate-actions-width);
+  align-items: center;
+  gap: 0.875rem;
 }
 
 .domain-candidate-review-actions {
   display: grid;
-  width: 18rem;
+  width: var(--domain-candidate-actions-width);
   grid-template-columns: 7.5rem 7.5rem 2rem;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .domain-candidate-reject-action {
@@ -368,6 +391,11 @@
     flex-direction: column;
   }
 
+  .domain-candidate-list > .domain-candidate-item > .domain-candidate-row {
+    display: flex;
+    gap: 0.875rem;
+  }
+
   .domain-mode-card {
     gap: 0.75rem;
   }
@@ -435,8 +463,18 @@
   }
 
   .domain-candidate-rule {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
     align-items: center;
     flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .domain-candidate-copy {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .domain-candidate-rule > .domain-observed-name {
@@ -480,8 +518,11 @@
     align-self: flex-start;
   }
 
-  .domain-candidate-actions > button:not(.domain-candidate-expand) {
+  .domain-candidate-actions > button:not(.domain-candidate-expand),
+  .domain-candidate-actions > [role="status"] {
     min-height: 2.75rem;
+    min-width: 0;
+    width: auto;
     flex: 1 1 0;
   }
 

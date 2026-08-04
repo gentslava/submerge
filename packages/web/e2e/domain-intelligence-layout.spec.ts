@@ -285,8 +285,19 @@ for (const width of [984, 1440, 1915]) {
       eligibleScopes: ["exact"],
       siteUnavailableReason: "non-widenable-suffix",
     };
+    const crowdedExactCandidate: DomainCandidateList["items"][number] = {
+      ...pendingExactCandidate,
+      fqdn: "content-autofill.googleapis.com",
+      proposedRule: "content-autofill.googleapis.com",
+    };
     const candidateItems: DomainCandidateList = {
-      items: [candidateBase, pendingCandidate, longExactCandidate, pendingExactCandidate],
+      items: [
+        candidateBase,
+        pendingCandidate,
+        longExactCandidate,
+        pendingExactCandidate,
+        crowdedExactCandidate,
+      ],
       nextCursor: null,
     };
     await openDomainIntelligence(page, settings, overview, {
@@ -309,6 +320,8 @@ for (const width of [984, 1440, 1915]) {
       );
     expect(baselineActions).not.toBeNull();
     for (const row of await rows.all()) {
+      await expect(row).toHaveCSS("display", "grid");
+      await expect(row.locator(".domain-candidate-actions")).toHaveCSS("display", "grid");
       const copy = await row.locator(".domain-candidate-copy").boundingBox();
       const actions = await row.locator(".domain-candidate-actions").boundingBox();
       expect(copy).not.toBeNull();
@@ -363,6 +376,53 @@ for (const width of [984, 1440, 1915]) {
           );
         }),
       ).toBe(true);
+      expect(
+        await row.locator(".domain-candidate-rule").evaluate((element) => {
+          const boundary = element.getBoundingClientRect();
+          const visibleText = Array.from(
+            element.querySelectorAll<HTMLElement>(
+              ".domain-observed-name, .domain-generated-rule, .domain-rule-scope",
+            ),
+          );
+          return visibleText.every((child) => {
+            const rect = child.getBoundingClientRect();
+            return rect.left >= boundary.left - 1 && rect.right <= boundary.right + 1;
+          });
+        }),
+      ).toBe(true);
+    }
+
+    if (width === 984) {
+      expect(
+        await rows
+          .first()
+          .locator(".domain-candidate-rule")
+          .evaluate((element) => {
+            const centers = Array.from(element.children, (child) => {
+              const rect = child.getBoundingClientRect();
+              return rect.top + rect.height / 2;
+            });
+            return Math.max(...centers) - Math.min(...centers) <= 1;
+          }),
+      ).toBe(true);
+    }
+
+    if (width === 1440) {
+      const longRow = rows.nth(3);
+      expect(
+        await longRow
+          .locator(".domain-observed-prefix")
+          .evaluate((element) => element.scrollWidth > element.clientWidth),
+      ).toBe(true);
+      expect(
+        await longRow.locator(".domain-candidate-rule").evaluate((element) => {
+          const centers = Array.from(element.children, (child) => {
+            const rect = child.getBoundingClientRect();
+            return rect.top + rect.height / 2;
+          });
+          return Math.max(...centers) - Math.min(...centers) <= 1;
+        }),
+      ).toBe(true);
     }
 
     if (width === 1915) {
@@ -376,6 +436,45 @@ for (const width of [984, 1440, 1915]) {
       "display",
       "flex",
     );
+    await expectNoDocumentOverflow(page);
+  });
+}
+
+for (const width of [320, 390, 425, 768, 983]) {
+  test(`pending candidate keeps equal compact action slots at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const pendingCandidate: DomainCandidateList["items"][number] = {
+      ...candidateBase,
+      fqdn: "api.pending.service.example",
+      status: "pending",
+      decision: {
+        ...decision,
+        status: "pending",
+        confidence: "low",
+        reasons: ["insufficient-direct-failures"],
+      },
+    };
+    await openDomainIntelligence(page, settings, overview, {
+      "domainIntelligence.list": listFixture(
+        { items: [pendingCandidate], nextCursor: null },
+        exclusions,
+      ),
+    });
+
+    const row = page
+      .locator(".domain-candidate-item")
+      .filter({ hasText: pendingCandidate.fqdn })
+      .locator(".domain-candidate-row");
+    const reject = row.getByRole("button", { name: `Не добавлять ${pendingCandidate.fqdn}` });
+    const status = row.getByRole("status", { name: "Проверяется" });
+    const [rejectBox, statusBox] = await Promise.all([reject.boundingBox(), status.boundingBox()]);
+
+    expect(rejectBox).not.toBeNull();
+    expect(statusBox).not.toBeNull();
+    expect(rejectBox?.height).toBeGreaterThanOrEqual(44);
+    expect(statusBox?.height).toBeGreaterThanOrEqual(44);
+    expect(Math.abs((rejectBox?.width ?? 0) - (statusBox?.width ?? 0))).toBeLessThanOrEqual(1);
+    expect((rejectBox?.x ?? 0) + (rejectBox?.width ?? 0)).toBeLessThanOrEqual(statusBox?.x ?? 0);
     await expectNoDocumentOverflow(page);
   });
 }
@@ -773,9 +872,16 @@ for (const width of [320, 390, 425, 768, 983, 984, 1024, 1440]) {
       const prefix = page.locator(".domain-observed-prefix").last();
       const suffix = page.locator(".domain-observed-suffix").last();
       await expect(suffix).toHaveText("product.example");
-      expect(await prefix.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
-        true,
-      );
+      expect(
+        await prefix.evaluate((element) => {
+          const rule = element.closest<HTMLElement>(".domain-candidate-rule");
+          const copy = element.closest<HTMLElement>(".domain-candidate-copy");
+          return {
+            prefixIsTruncated: element.scrollWidth > element.clientWidth,
+            ruleFitsCopy: (rule?.clientWidth ?? 0) <= (copy?.clientWidth ?? 0),
+          };
+        }),
+      ).toEqual({ prefixIsTruncated: true, ruleFitsCopy: true });
     }
     if (width === 390 || width === 1440) {
       const longCardDetails = page.getByRole("button", {
