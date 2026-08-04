@@ -1,12 +1,13 @@
-import type {
-  DomainCandidateReportItem,
-  DomainCandidateReviewErrorReason,
-  DomainCandidateReviewMutationResult,
-  DomainIntelligenceApplyReadiness,
-  DomainIntelligenceReportSettings,
-  DomainProbeCategory,
-  DomainReportExclusionReason,
-  DomainRuleScope,
+import {
+  type DomainCandidateReportItem,
+  type DomainCandidateReviewErrorReason,
+  type DomainCandidateReviewMutationResult,
+  type DomainIntelligenceApplyReadiness,
+  type DomainIntelligenceReportSettings,
+  type DomainProbeCategory,
+  type DomainReportExclusionReason,
+  type DomainRuleScope,
+  domainIntelligenceDeploymentCapabilitySchema,
 } from "@submerge/shared";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -45,6 +46,33 @@ const MODE_DESCRIPTIONS = {
     "Submerge предлагает правила и ждёт. В custom.txt ничего не попадает без вашего подтверждения.",
   automatic: "Подтверждённые правила публикуются сами в пределах дневного лимита.",
 } as const;
+
+const REPORT_ONLY_APPLY_READINESS = {
+  available: false,
+  reason: "deployment-report-only",
+} as const satisfies DomainIntelligenceApplyReadiness;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resolveApplyReadiness(settingsView: unknown): DomainIntelligenceApplyReadiness | null {
+  if (!isRecord(settingsView)) return null;
+  if (Object.hasOwn(settingsView, "deployment")) {
+    const parsed = domainIntelligenceDeploymentCapabilitySchema.safeParse(settingsView.deployment);
+    return parsed.success ? parsed.data.apply : null;
+  }
+  const automatic = settingsView.automatic;
+  if (
+    !isRecord(automatic) ||
+    Object.keys(automatic).length !== 2 ||
+    automatic.available !== false ||
+    automatic.reason !== "publisher-unavailable"
+  ) {
+    return null;
+  }
+  return REPORT_ONLY_APPLY_READINESS;
+}
 
 export function DomainIntelligenceScreen() {
   const trpc = useTRPC();
@@ -109,6 +137,9 @@ export function DomainIntelligenceScreen() {
   const failed = settingsQuery.isError || overviewQuery.isError;
   const settingsView = settingsQuery.data;
   const overview = overviewQuery.data;
+  // A Vite client can briefly outlive the exact previous server contract during a local
+  // restart. Only that legacy shape falls back; malformed current capabilities stay errors.
+  const applyReadiness = resolveApplyReadiness(settingsView);
   const candidateItems = candidatesQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const exclusionItems = exclusionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const currentUtcDay = new Date(overview?.period.to ?? 0).toISOString().slice(0, 10);
@@ -162,7 +193,7 @@ export function DomainIntelligenceScreen() {
 
       {loading ? (
         <LoadingState />
-      ) : failed || !settingsView || !overview ? (
+      ) : failed || !settingsView || !overview || !applyReadiness ? (
         <ErrorState
           onRetry={() => {
             void settingsQuery.refetch();
@@ -187,7 +218,7 @@ export function DomainIntelligenceScreen() {
           ) : (
             <ModeCard
               settings={settingsView.settings}
-              applyReadiness={settingsView.deployment.apply}
+              applyReadiness={applyReadiness}
               seenToday={seenToday}
               health={overview.health.status}
               pending={settingsMutation.isPending}
@@ -210,7 +241,7 @@ export function DomainIntelligenceScreen() {
             exclusionsHaveMore={exclusionsQuery.hasNextPage}
             exclusionsLoadingMore={exclusionsQuery.isFetchingNextPage}
             expanded={expanded}
-            applyReadiness={settingsView.deployment.apply}
+            applyReadiness={applyReadiness}
             scopePending={scopeMutation.isPending}
             rejectionPending={rejectionMutation.isPending}
             recheckPending={recheckMutation.isPending}
@@ -225,7 +256,7 @@ export function DomainIntelligenceScreen() {
             onLoadMoreExclusions={() => void exclusionsQuery.fetchNextPage()}
           />
 
-          <PublisherStatusCard applyReadiness={settingsView.deployment.apply} />
+          <PublisherStatusCard applyReadiness={applyReadiness} />
         </>
       )}
     </div>

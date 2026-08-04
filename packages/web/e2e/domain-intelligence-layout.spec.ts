@@ -254,6 +254,22 @@ test("populated dark desktop matches the approved Auto Rules hierarchy", async (
   await expectNoDocumentOverflow(page);
 });
 
+test("an older settings payload without deployment capability fails closed", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  const legacySettings = {
+    configurationState: settings.configurationState,
+    settings: settings.settings,
+    automatic: { available: false, reason: "publisher-unavailable" },
+  } as DomainIntelligenceSettingsView;
+
+  await openDomainIntelligence(page, legacySettings);
+
+  await expect(page.getByText("только отчёт", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Добавить" }).first()).toHaveAccessibleDescription(
+    "Применение недоступно, пока сервер работает в режиме только отчёта",
+  );
+});
+
 for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
   test(`desktop candidate actions stay aligned and long identities never overlap at ${width}px`, async ({
     page,

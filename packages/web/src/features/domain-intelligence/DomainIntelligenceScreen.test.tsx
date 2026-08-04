@@ -355,6 +355,33 @@ describe("DomainIntelligenceScreen", () => {
     );
   });
 
+  it("fails closed when an older server response has no deployment capability", () => {
+    const legacyView: Partial<DomainIntelligenceSettingsView> = settingsView();
+    delete legacyView.deployment;
+    Object.assign(legacyView, {
+      automatic: { available: false, reason: "publisher-unavailable" },
+    });
+    arrange(legacyView as DomainIntelligenceSettingsView);
+
+    expect(() => render(<DomainIntelligenceScreen />)).not.toThrow();
+    expect(screen.getByText("только отчёт", { exact: true })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAccessibleDescription(
+      "Применение недоступно, пока сервер работает в режиме только отчёта",
+    );
+  });
+
+  it("shows an error instead of masking a malformed current deployment capability", () => {
+    arrange({
+      ...settingsView(),
+      deployment: null,
+    } as unknown as DomainIntelligenceSettingsView);
+
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText("Не удалось загрузить карту доменов")).toBeInTheDocument();
+    expect(screen.queryByText("только отчёт", { exact: true })).toBeNull();
+  });
+
   it("shows the actual apply provisioning blocker instead of report-only copy", () => {
     arrange(
       settingsView({
