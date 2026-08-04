@@ -131,6 +131,9 @@ function connection(id: string, start: string, host = "api.service.example"): Mi
       destinationPort: "443",
       sourceIP: "192.0.2.10",
       process: "",
+      inboundName: "",
+      inboundUser: "",
+      inboundPort: "",
     },
     upload: 0,
     download: 0,
@@ -550,6 +553,94 @@ describe("DomainValidationScheduler", () => {
       failureStreak: 2,
       nextValidationAt: now + 4 * HOUR_MS,
     });
+  });
+
+  it("reports the safe executor failure category without exposing the source error", async () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    insertDueCandidate(db, "api.service.example", now);
+    const onError = vi.fn();
+    const sourceError = Object.assign(new DomainValidationSchedulerError("proxy-probe-failure"), {
+      cause: new Error("https://private.example/path?token=private-token"),
+      fqdn: "private.example",
+      secret: "private-secret",
+    });
+    const scheduler = new DomainValidationScheduler({
+      db,
+      isEnabled: () => true,
+      execute: async () => {
+        throw sourceError;
+      },
+      now: () => now,
+      maxConcurrency: 1,
+      jitterMs: () => 0,
+      onError,
+      idFactory: sequentialIds(),
+    });
+
+    await scheduler.runOnce();
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "DomainValidationSchedulerError",
+        message: "domain validation operation failed",
+        category: "proxy-probe-failure",
+      }),
+    );
+    const reported = onError.mock.calls[0]?.[0];
+    expect(reported).not.toBe(sourceError);
+    const serialized = JSON.stringify({
+      ...(reported instanceof Error
+        ? { name: reported.name, message: reported.message, stack: reported.stack }
+        : {}),
+      error: reported,
+    });
+    for (const privateValue of ["private.example", "private-token", "private-secret"]) {
+      expect(serialized).not.toContain(privateValue);
+    }
+    expect(db.select().from(domainValidationRuns).get()).toMatchObject({
+      status: "failed",
+      errorCategory: "proxy-probe-failure",
+    });
+  });
+
+  it("suppresses repeated failures until a successful validation resets reporting", async () => {
+    const db = migratedDb();
+    const now = Date.parse("2026-08-03T12:00:00.000Z");
+    for (const fqdn of [
+      "a.service.example",
+      "b.service.example",
+      "c.service.example",
+      "d.service.example",
+    ]) {
+      insertDueCandidate(db, fqdn, now);
+    }
+    let call = 0;
+    const onError = vi.fn();
+    const scheduler = new DomainValidationScheduler({
+      db,
+      isEnabled: () => true,
+      execute: async (candidate) => {
+        call += 1;
+        if (call <= 2) throw new DomainValidationSchedulerError("proxy-probe-failure");
+        if (call === 4) throw new DomainValidationSchedulerError("direct-probe-failure");
+        return validationExecution(candidate.fqdn, now);
+      },
+      now: () => now,
+      maxConcurrency: 1,
+      circuitFailureThreshold: 100,
+      jitterMs: () => 0,
+      onError,
+      idFactory: sequentialIds(),
+    });
+
+    await scheduler.runOnce();
+
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(
+      onError.mock.calls.map(([error]) => (error as DomainValidationSchedulerError).category),
+    ).toEqual(["proxy-probe-failure", "direct-probe-failure"]);
   });
 
   it("aborts bounded work on shutdown and starts no additional due candidate", async () => {

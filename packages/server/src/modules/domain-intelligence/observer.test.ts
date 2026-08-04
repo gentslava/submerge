@@ -28,6 +28,9 @@ function connection(overrides: Partial<MihomoConnection> = {}): MihomoConnection
       destinationPort: "443",
       sourceIP: "192.0.2.10",
       process: "",
+      inboundName: "",
+      inboundUser: "",
+      inboundPort: "",
     },
     upload: 0,
     download: 0,
@@ -178,6 +181,9 @@ describe("Mihomo observation adapter", () => {
         destinationPort: "private-destination-port",
         sourceIP: "private-source-ip",
         process: "private-process",
+        inboundName: "private-inbound-name",
+        inboundUser: "private-inbound-user",
+        inboundPort: "private-inbound-port",
       },
       chains: ["private-chain"],
     });
@@ -189,6 +195,9 @@ describe("Mihomo observation adapter", () => {
       input.metadata.destinationPort,
       input.metadata.sourceIP,
       input.metadata.process,
+      input.metadata.inboundName,
+      input.metadata.inboundUser,
+      input.metadata.inboundPort,
       input.chains[0],
     ]) {
       expect(serialized).not.toContain(privateValue);

@@ -1,4 +1,5 @@
 import type { LogLevel } from "@submerge/shared";
+import type { DomainValidationExecutorFailureCategory } from "../domain-intelligence/scheduler.js";
 import type { LogDraft } from "./hub.js";
 
 export type OperationalEventKey =
@@ -20,6 +21,14 @@ interface OperationalEventDefinition {
 }
 
 const noFields = (): undefined => undefined;
+const domainValidationFailureCategories = {
+  "coverage-failure": true,
+  "direct-probe-failure": true,
+  "proxy-probe-failure": true,
+  "decision-failure": true,
+  "policy-changed": true,
+  "infrastructure-failure": true,
+} satisfies Record<DomainValidationExecutorFailureCategory, true>;
 
 const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
   "server-listening": {
@@ -61,7 +70,11 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     level: "warning",
     uiMessage: "Фоновая проверка доменов временно остановлена",
     stdoutMessage: "domain validation scheduler failed",
-    fields: noFields,
+    fields: (input) =>
+      typeof input.category === "string" &&
+      Object.hasOwn(domainValidationFailureCategories, input.category)
+        ? { category: input.category }
+        : undefined,
   },
   "mihomo-live-failed": {
     level: "warning",

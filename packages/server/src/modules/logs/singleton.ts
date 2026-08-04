@@ -13,6 +13,7 @@ import { DomainIntelligenceRuntimeCoordinator } from "../domain-intelligence/run
 import {
   DomainIntelligenceScheduler,
   DomainValidationScheduler,
+  DomainValidationSchedulerError,
 } from "../domain-intelligence/scheduler.js";
 import { getDomainIntelligenceSettingsView } from "../domain-intelligence/service.js";
 import {
@@ -61,7 +62,17 @@ export const domainValidationScheduler = new DomainValidationScheduler({
       : { maximumCandidatesPerRun: 1, maxConcurrency: 1 };
   },
   execute: (candidate, signal) => domainValidationExecutor.execute(candidate, signal),
-  onError: (error) => operationalLog("domain-validation-scheduler-failed", {}, error),
+  onError: (error) =>
+    operationalLog(
+      "domain-validation-scheduler-failed",
+      {
+        category:
+          error instanceof DomainValidationSchedulerError
+            ? error.category
+            : "infrastructure-failure",
+      },
+      error,
+    ),
 });
 wakeDomainValidation = () => domainValidationScheduler.wake();
 const domainIntelligenceRuntimeLifecycle = new DomainIntelligenceRuntimeLifecycle(

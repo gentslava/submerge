@@ -510,7 +510,7 @@ export class DomainValidationScheduler {
     const controller = new AbortController();
     this.controller = controller;
     this.wakeRequested = false;
-    void this.run(generation, controller).catch(() => this.reportFailure());
+    void this.run(generation, controller).catch((error) => this.reportFailure(error));
     this.scheduleNext(controller, generation);
   }
 
@@ -590,14 +590,14 @@ export class DomainValidationScheduler {
       }
       if (!this.wakeRequested) return;
       this.wakeRequested = false;
-      await this.run(generation, controller).catch(() => this.reportFailure());
+      await this.run(generation, controller).catch((error) => this.reportFailure(error));
     }
   }
 
   private scheduleNext(controller: AbortController, generation: number): void {
     this.timer = setTimeout(async () => {
       this.timer = null;
-      await this.run(generation, controller).catch(() => this.reportFailure());
+      await this.run(generation, controller).catch((error) => this.reportFailure(error));
       if (!this.cleanupFailed && this.controller === controller && this.generation === generation) {
         this.scheduleNext(controller, generation);
       }
@@ -814,10 +814,13 @@ export class DomainValidationScheduler {
           failureStreak,
         });
       } catch {
-        if (!shutdown) this.reportFailure();
         persistenceFailed = true;
       }
-      if (!shutdown) this.reportFailure();
+      if (!shutdown) {
+        this.reportFailure(
+          persistenceFailed ? new DomainValidationSchedulerError("infrastructure-failure") : error,
+        );
+      }
       if (!(await this.waitForCleanup(executionPromise))) {
         this.latchCleanupFailure();
         throw new DomainValidationCleanupError();
@@ -872,11 +875,13 @@ export class DomainValidationScheduler {
     this.scheduleMaintenanceNext();
   }
 
-  private reportFailure(): void {
+  private reportFailure(error?: unknown): void {
     if (this.failureReported) return;
     this.failureReported = true;
+    const category =
+      error instanceof DomainValidationSchedulerError ? error.category : "infrastructure-failure";
     try {
-      this.onError?.(new Error("domain validation scheduler failed"));
+      this.onError?.(new DomainValidationSchedulerError(category));
     } catch {
       // Reporting must not escape into a scheduler pulse or reveal the source error.
     }

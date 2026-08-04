@@ -62,10 +62,23 @@ describe("operational event registry", () => {
     "config-reload-failed",
     "secret-rotation-write-failed",
     "domain-validation-config-write-failed",
-    "domain-validation-scheduler-failed",
     "source-refresh-scheduler-failed",
   ])("does not expose context fields for %s", (key) => {
     expect(makeOperationalEvent(key, toxicFields).draft.fields).toBeUndefined();
+  });
+
+  it("exposes only the safe domain validation failure category", () => {
+    expect(
+      makeOperationalEvent("domain-validation-scheduler-failed", {
+        ...toxicFields,
+        category: "proxy-probe-failure",
+      }).draft.fields,
+    ).toEqual({ category: "proxy-probe-failure" });
+    expect(
+      makeOperationalEvent("domain-validation-scheduler-failed", {
+        category: "private-upstream-message",
+      }).draft.fields,
+    ).toBeUndefined();
   });
 
   it("allows only the finite mihomo live scope enum", () => {
