@@ -5,6 +5,7 @@ import {
   type DomainRuleDeploymentControllerDeps,
 } from "./deployment-controller.js";
 import { DomainRuleProvisioningError } from "./provisioning.js";
+import { DomainIntelligenceRuntimeCoordinator } from "./runtime.js";
 
 const applied: ApplyResult = { nodes: 2, applied: true, activationVerified: true };
 
@@ -196,6 +197,45 @@ describe("DomainRuleDeploymentController", () => {
     await expect(controller.coordinateConfigApply(apply)).resolves.toEqual(applied);
     expect(events).toEqual(["coordinator-enter", "reload:AUTO", "proof", "coordinator-exit"]);
     expect(apply).toHaveBeenCalledWith({ targetGroupName: "AUTO" });
+  });
+
+  it("serializes committed-rule activation behind the current config mutation", async () => {
+    const currentApply = deferred<void>();
+    const currentApplyStarted = deferred<void>();
+    const deps = dependencies();
+    let controller!: DomainRuleDeploymentController;
+    const runtimeCoordinator = new DomainIntelligenceRuntimeCoordinator({
+      readSettings: () =>
+        ({
+          configurationState: "unconfigured",
+          settings: {
+            enabled: false,
+            defaultRuleScope: null,
+            automationMode: "off",
+          },
+        }) as never,
+      applyCurrentConfig: () => controller.applyCurrentConfig(),
+      setRuntimeEnabled: vi.fn(),
+    });
+    deps.runConfigApply = (apply) => runtimeCoordinator.runConfigApply(apply);
+    controller = new DomainRuleDeploymentController("apply", deps);
+    await controller.reconcile();
+    vi.clearAllMocks();
+
+    const occupied = runtimeCoordinator.runConfigApply(async () => {
+      currentApplyStarted.resolve();
+      await currentApply.promise;
+      return applied;
+    });
+    await currentApplyStarted.promise;
+    const activation = controller.activateCommittedRules();
+    await Promise.resolve();
+
+    expect(deps.applyConfigDirect).not.toHaveBeenCalled();
+    currentApply.resolve();
+    await expect(occupied).resolves.toEqual(applied);
+    await expect(activation).resolves.toEqual(applied);
+    expect(deps.applyConfigDirect).toHaveBeenCalledOnce();
   });
 
   it("revokes existing readiness when a later config apply loses activation", async () => {

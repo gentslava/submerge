@@ -137,6 +137,12 @@ export class DomainRuleDeploymentController {
     }
   }
 
+  activateCommittedRules(): Promise<ApplyResult> {
+    return this.coordinateConfigApply((managedDomainRules) =>
+      this.applyConfigDirect(managedDomainRules),
+    );
+  }
+
   async applyCurrentConfig(): Promise<ApplyResult> {
     const capabilityEpoch =
       this.activeCoordinatedTransition?.epoch ?? this.capabilitySource.reserveCapabilityEpoch();

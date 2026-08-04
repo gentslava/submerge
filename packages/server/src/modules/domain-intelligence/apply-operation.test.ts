@@ -95,6 +95,9 @@ function prepareAutomatic(db: Db, id = "automatic-add-1") {
 
 function successfulDependencies(events: string[] = []): DomainRuleApplyOperationDependencies {
   return {
+    assertExecutionAllowed: vi.fn(async () => {
+      events.push("allowed");
+    }),
     preflightPrepared: vi.fn(async () => {
       events.push("preflight");
     }),
@@ -145,7 +148,7 @@ describe("executeDomainRuleOperation", () => {
       activationAttempt: 1,
     });
 
-    expect(events).toEqual(["attest", "preflight", "commit", "materialize", "activate"]);
+    expect(events).toEqual(["allowed", "attest", "preflight", "commit", "materialize", "activate"]);
     expect(dependencies.commitPrepared).toHaveBeenCalledWith(
       expect.objectContaining({
         operationId: "manual-add-1",
@@ -186,7 +189,7 @@ describe("executeDomainRuleOperation", () => {
 
     await executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW });
 
-    expect(events).toEqual(["attest", "materialize", "activate"]);
+    expect(events).toEqual(["allowed", "attest", "materialize", "activate"]);
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "completed",
@@ -308,7 +311,7 @@ describe("executeDomainRuleOperation", () => {
 
     await executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW });
 
-    expect(events).toEqual(["materialize", "activate"]);
+    expect(events).toEqual(["allowed", "materialize", "activate"]);
     expect(dependencies.preflightPrepared).not.toHaveBeenCalled();
     expect(dependencies.attestOperation).not.toHaveBeenCalled();
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();

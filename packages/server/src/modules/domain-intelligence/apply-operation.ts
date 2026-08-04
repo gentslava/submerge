@@ -37,6 +37,8 @@ export type DomainRuleActivationOutcome =
     };
 
 export interface DomainRuleApplyOperationDependencies {
+  /** Require the deployment mutation mode before any non-terminal recovery side effect. */
+  assertExecutionAllowed: (signal?: AbortSignal) => void | Promise<void>;
   /** Revalidate mutable policy, coverage, topology, and capability under the global apply lock. */
   preflightPrepared: (operation: DomainRuleOperation, signal?: AbortSignal) => Promise<void>;
   /** Attest whether HEAD is still the prepared parent or the exact journaled child commit. */
@@ -104,6 +106,7 @@ function assertDependencies(
 ): DomainRuleApplyOperationDependencies {
   if (
     !dependencies ||
+    typeof dependencies.assertExecutionAllowed !== "function" ||
     typeof dependencies.preflightPrepared !== "function" ||
     typeof dependencies.attestOperation !== "function" ||
     typeof dependencies.commitPrepared !== "function" ||
@@ -302,6 +305,9 @@ export async function executeDomainRuleOperation(
       activationAttempt: operation.activationAttemptCount,
     };
   }
+
+  await dependencies.assertExecutionAllowed(options.signal);
+  options.signal?.throwIfAborted();
 
   if (operation.phase === "prepared") {
     if (operation.action === "rollback") {
