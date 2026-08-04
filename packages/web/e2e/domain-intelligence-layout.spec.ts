@@ -372,6 +372,11 @@ for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
           Math.abs(action.width - (baselineActionColumns[index]?.width ?? 0)),
         ).toBeLessThanOrEqual(1);
       }
+      await expect(row.locator(".domain-candidate-reject-action")).toHaveCSS("grid-column", "1");
+      await expect(row.locator(".domain-candidate-apply-action")).toHaveCSS("grid-column", "2");
+      await expect(
+        row.locator(".domain-candidate-expand, .domain-candidate-expand-spacer"),
+      ).toHaveCSS("grid-column", "3");
       expect(
         await row
           .locator(".domain-candidate-rule")

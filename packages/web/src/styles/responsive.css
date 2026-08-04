@@ -119,12 +119,12 @@
 }
 
 .domain-candidate-rule--with-proposal {
-  display: grid;
-  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  display: flex;
 }
 
 .domain-candidate-proposal {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -153,11 +153,22 @@
 }
 
 .domain-candidate-reject-action {
+  grid-column: 1;
   width: 100%;
 }
 
 .domain-candidate-apply-action {
+  grid-column: 2;
   width: 100%;
+}
+
+.domain-candidate-expand,
+.domain-candidate-expand-spacer {
+  grid-column: 3;
+}
+
+.domain-candidate-copy {
+  overflow: hidden;
 }
 
 .domain-observed-eye {
