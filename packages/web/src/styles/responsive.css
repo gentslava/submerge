@@ -120,13 +120,16 @@
 
 .domain-candidate-rule--with-proposal {
   display: flex;
+  align-items: start;
+  flex-wrap: wrap;
 }
 
 .domain-candidate-proposal {
   display: flex;
   flex: 1 1 auto;
+  min-width: 0;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.5rem;
   overflow: hidden;
 }

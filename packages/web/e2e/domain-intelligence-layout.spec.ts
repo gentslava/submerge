@@ -355,6 +355,9 @@ for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
         expect(
           Math.abs((actions?.y ?? 0) - (rowBox?.y ?? 0) - baselineActionOffset),
         ).toBeLessThanOrEqual(1);
+        const observed = await row.locator(".domain-observed-name").boundingBox();
+        expect(observed).not.toBeNull();
+        expect(Math.abs((actions?.y ?? 0) - (observed?.y ?? 0))).toBeLessThanOrEqual(1);
       }
       const actionColumns = await row
         .locator(".domain-candidate-actions")
@@ -436,32 +439,56 @@ for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
       ).toBe(true);
     }
 
-    if (width === 984) {
-      expect(
-        await rows
-          .first()
-          .locator(".domain-candidate-rule")
-          .evaluate((element) => {
-            const centers = Array.from(element.children, (child) => {
-              const rect = child.getBoundingClientRect();
-              return rect.top + rect.height / 2;
-            });
-            return Math.max(...centers) - Math.min(...centers) <= 1;
-          }),
-      ).toBe(true);
-    }
-
     if (width === 1440) {
       const longRow = rows.nth(3);
+      const longIdentityGeometry = await longRow
+        .locator(".domain-candidate-rule")
+        .evaluate((element) => {
+          const observed = element.querySelector<HTMLElement>(".domain-observed-name");
+          const generated = element.querySelector<HTMLElement>(".domain-generated-group");
+          const actions = element
+            .closest<HTMLElement>(".domain-candidate-row")
+            ?.querySelector<HTMLElement>(".domain-candidate-actions");
+          if (!observed || !generated || !actions) return null;
+          const observedRect = observed.getBoundingClientRect();
+          const generatedRect = generated.getBoundingClientRect();
+          const actionsRect = actions.getBoundingClientRect();
+          return {
+            observedTop: observedRect.top,
+            generatedTop: generatedRect.top,
+            actionsTop: actionsRect.top,
+          };
+        });
+      expect(longIdentityGeometry).not.toBeNull();
+      expect(longIdentityGeometry?.generatedTop ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(
+        (longIdentityGeometry?.observedTop ?? Number.POSITIVE_INFINITY) - 1,
+      );
       expect(
-        await longRow.locator(".domain-candidate-rule").evaluate((element) => {
-          const centers = Array.from(element.children, (child) => {
-            const rect = child.getBoundingClientRect();
-            return rect.top + rect.height / 2;
-          });
-          return Math.max(...centers) - Math.min(...centers) <= 1;
-        }),
-      ).toBe(true);
+        Math.abs(
+          (longIdentityGeometry?.observedTop ?? 0) - (longIdentityGeometry?.actionsTop ?? 0),
+        ),
+      ).toBeLessThanOrEqual(1);
+    }
+
+    if (width === 984 || width === 1272) {
+      const constrainedLongRule = await rows
+        .nth(3)
+        .locator(".domain-candidate-rule")
+        .evaluate((element) => {
+          const observed = element.querySelector<HTMLElement>(".domain-observed-name");
+          const generated = element.querySelector<HTMLElement>(".domain-generated-group");
+          if (!observed || !generated) return null;
+          const observedRect = observed.getBoundingClientRect();
+          const generatedRect = generated.getBoundingClientRect();
+          return {
+            observedBottom: observedRect.bottom,
+            generatedTop: generatedRect.top,
+          };
+        });
+      expect(constrainedLongRule).not.toBeNull();
+      expect(constrainedLongRule?.generatedTop ?? 0).toBeGreaterThan(
+        constrainedLongRule?.observedBottom ?? Number.POSITIVE_INFINITY,
+      );
     }
 
     await page.screenshot({ path: `/tmp/submerge-domain-candidate-actions-${width}.png` });
