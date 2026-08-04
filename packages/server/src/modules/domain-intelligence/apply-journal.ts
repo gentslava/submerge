@@ -9,6 +9,8 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../../db/client.js";
 import {
+  DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES,
+  type DomainRuleActivationErrorCategory,
   type DomainRuleOperationPhase,
   type DomainRuleOwnershipDeltaJson,
   domainAutomaticBudgets,
@@ -219,6 +221,23 @@ const finalizeInputSchema = z.object({
   commitSha: sha1Schema,
   committedContentSha256: sha256Schema,
 });
+const activationResultInputSchema = z.discriminatedUnion("outcome", [
+  z
+    .object({
+      operationId: operationIdSchema,
+      attempt: z.number().int().min(1).max(1_000_000),
+      outcome: z.literal("succeeded"),
+    })
+    .strict(),
+  z
+    .object({
+      operationId: operationIdSchema,
+      attempt: z.number().int().min(1).max(1_000_000),
+      outcome: z.literal("failed"),
+      errorCategory: z.enum(DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES),
+    })
+    .strict(),
+]);
 
 interface PrepareDomainRuleOperationBase {
   id: string;
@@ -271,6 +290,15 @@ export interface FinalizeDomainRuleCommitInput {
   commitSha: string;
   committedContentSha256: string;
 }
+
+export type CompleteDomainRuleActivationInput =
+  | { operationId: string; attempt: number; outcome: "succeeded" }
+  | {
+      operationId: string;
+      attempt: number;
+      outcome: "failed";
+      errorCategory: DomainRuleActivationErrorCategory;
+    };
 
 export interface DomainRuleJournalOptions {
   clock?: () => number;
@@ -644,6 +672,124 @@ export function finalizeDomainRuleCommit(
       )
       .run();
     return { changed: true, phase: "committed" };
+  });
+}
+
+export function beginDomainRuleActivation(
+  db: Db,
+  operationId: string,
+  options: DomainRuleJournalOptions = {},
+): { changed: boolean; phase: DomainRuleOperationPhase; attempt: number } {
+  const parsedId = operationIdSchema.parse(operationId);
+  const now = journalNow(options);
+
+  return db.transaction((tx) => {
+    const operation = tx
+      .select()
+      .from(domainRuleOperations)
+      .where(eq(domainRuleOperations.id, parsedId))
+      .get();
+    if (!operation) throw new Error("domain-rule operation not found");
+    if (operation.phase === "activating") {
+      return {
+        changed: false,
+        phase: operation.phase,
+        attempt: operation.activationAttemptCount,
+      };
+    }
+    if (operation.phase === "completed") {
+      return {
+        changed: false,
+        phase: operation.phase,
+        attempt: operation.activationAttemptCount,
+      };
+    }
+    if (operation.phase !== "committed" && operation.phase !== "partial") {
+      throw new Error("domain-rule operation cannot begin activation");
+    }
+    if (now < operation.updatedAt) throw new Error("domain-rule journal clock moved backwards");
+
+    const attempt = operation.activationAttemptCount + 1;
+    tx.update(domainRuleOperations)
+      .set({
+        phase: "activating",
+        activationStatus: "in-progress",
+        activationAttemptCount: attempt,
+        lastActivationAttemptAt: now,
+        activationErrorCategory: null,
+        updatedAt: now,
+        completedAt: null,
+      })
+      .where(
+        and(
+          eq(domainRuleOperations.id, operation.id),
+          eq(domainRuleOperations.phase, operation.phase),
+        ),
+      )
+      .run();
+    return { changed: true, phase: "activating", attempt };
+  });
+}
+
+export function completeDomainRuleActivation(
+  db: Db,
+  rawInput: CompleteDomainRuleActivationInput,
+  options: DomainRuleJournalOptions = {},
+): { changed: boolean; phase: DomainRuleOperationPhase; attempt: number } {
+  const input = activationResultInputSchema.parse(rawInput);
+  const now = journalNow(options);
+
+  return db.transaction((tx) => {
+    const operation = tx
+      .select()
+      .from(domainRuleOperations)
+      .where(eq(domainRuleOperations.id, input.operationId))
+      .get();
+    if (!operation) throw new Error("domain-rule operation not found");
+    if (operation.phase === "completed" || operation.phase === "partial") {
+      if (operation.activationAttemptCount !== input.attempt) {
+        throw new Error("domain-rule activation attempt is stale");
+      }
+      const matches =
+        (operation.phase === "completed" && input.outcome === "succeeded") ||
+        (operation.phase === "partial" &&
+          input.outcome === "failed" &&
+          operation.activationErrorCategory === input.errorCategory);
+      if (!matches) {
+        throw new Error("domain-rule activation result conflicts with stored terminal state");
+      }
+      return {
+        changed: false,
+        phase: operation.phase,
+        attempt: operation.activationAttemptCount,
+      };
+    }
+    if (operation.phase !== "activating" || operation.activationAttemptCount < 1) {
+      throw new Error("domain-rule operation cannot complete activation");
+    }
+    if (operation.activationAttemptCount !== input.attempt) {
+      throw new Error("domain-rule activation attempt is stale");
+    }
+    if (now < operation.updatedAt) throw new Error("domain-rule journal clock moved backwards");
+
+    const phase = input.outcome === "succeeded" ? "completed" : "partial";
+    tx.update(domainRuleOperations)
+      .set({
+        phase,
+        activationStatus: input.outcome,
+        activationErrorCategory: input.outcome === "failed" ? input.errorCategory : null,
+        updatedAt: now,
+        completedAt: input.outcome === "succeeded" ? now : null,
+      })
+      .where(
+        and(
+          eq(domainRuleOperations.id, operation.id),
+          eq(domainRuleOperations.phase, "activating"),
+          eq(domainRuleOperations.activationAttemptCount, input.attempt),
+        ),
+      )
+      .run();
+    return { changed: true, phase, attempt: operation.activationAttemptCount };
   });
 }
 

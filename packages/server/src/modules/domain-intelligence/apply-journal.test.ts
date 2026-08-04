@@ -17,7 +17,9 @@ import {
 import {
   abortPreparedDomainRuleOperation,
   assertPreparedAutomaticOperationAuthorized,
+  beginDomainRuleActivation,
   buildDomainAutomaticConsentRevision,
+  completeDomainRuleActivation,
   finalizeDomainRuleCommit,
   listUnfinishedDomainRuleOperations,
   prepareDomainRuleOperation,
@@ -513,6 +515,209 @@ describe("domain-rule apply journal", () => {
         { clock: () => DAY_START + 400 },
       ),
     ).toEqual({ changed: false, phase: "partial" });
+  });
+
+  it("records activation success exactly once after a committed mutation", () => {
+    const db = migratedDb();
+    prepareAutomatic(db);
+    finalizeDomainRuleCommit(
+      db,
+      {
+        operationId: "auto-2026-08-05-1",
+        commitSha: COMMIT_SHA,
+        committedContentSha256: CONTENT_SHA,
+      },
+      { clock: () => DAY_START + 200 },
+    );
+
+    expect(
+      beginDomainRuleActivation(db, "auto-2026-08-05-1", {
+        clock: () => DAY_START + 300,
+      }),
+    ).toEqual({ changed: true, phase: "activating", attempt: 1 });
+    expect(
+      beginDomainRuleActivation(db, "auto-2026-08-05-1", {
+        clock: () => DAY_START + 350,
+      }),
+    ).toEqual({ changed: false, phase: "activating", attempt: 1 });
+    expect(
+      completeDomainRuleActivation(
+        db,
+        { operationId: "auto-2026-08-05-1", attempt: 1, outcome: "succeeded" },
+        { clock: () => DAY_START + 400 },
+      ),
+    ).toEqual({ changed: true, phase: "completed", attempt: 1 });
+    expect(
+      completeDomainRuleActivation(
+        db,
+        { operationId: "auto-2026-08-05-1", attempt: 1, outcome: "succeeded" },
+        { clock: () => DAY_START + 450 },
+      ),
+    ).toEqual({ changed: false, phase: "completed", attempt: 1 });
+
+    expect(
+      db
+        .select()
+        .from(domainRuleOperations)
+        .where(eq(domainRuleOperations.id, "auto-2026-08-05-1"))
+        .get(),
+    ).toMatchObject({
+      phase: "completed",
+      activationStatus: "succeeded",
+      activationAttemptCount: 1,
+      lastActivationAttemptAt: DAY_START + 300,
+      activationErrorCategory: null,
+      completedAt: DAY_START + 400,
+    });
+    expect(listUnfinishedDomainRuleOperations(db)).toEqual([]);
+  });
+
+  it("persists a failed activation and increments the attempt on retry", () => {
+    const db = migratedDb();
+    prepareAutomatic(db);
+    finalizeDomainRuleCommit(
+      db,
+      {
+        operationId: "auto-2026-08-05-1",
+        commitSha: COMMIT_SHA,
+        committedContentSha256: CONTENT_SHA,
+      },
+      { clock: () => DAY_START + 200 },
+    );
+    beginDomainRuleActivation(db, "auto-2026-08-05-1", {
+      clock: () => DAY_START + 300,
+    });
+
+    expect(
+      completeDomainRuleActivation(
+        db,
+        {
+          operationId: "auto-2026-08-05-1",
+          attempt: 1,
+          outcome: "failed",
+          errorCategory: "route-proof-failure",
+        },
+        { clock: () => DAY_START + 400 },
+      ),
+    ).toEqual({ changed: true, phase: "partial", attempt: 1 });
+    expect(
+      completeDomainRuleActivation(
+        db,
+        {
+          operationId: "auto-2026-08-05-1",
+          attempt: 1,
+          outcome: "failed",
+          errorCategory: "route-proof-failure",
+        },
+        { clock: () => DAY_START + 450 },
+      ),
+    ).toEqual({ changed: false, phase: "partial", attempt: 1 });
+    expect(
+      beginDomainRuleActivation(db, "auto-2026-08-05-1", {
+        clock: () => DAY_START + 500,
+      }),
+    ).toEqual({ changed: true, phase: "activating", attempt: 2 });
+    expect(
+      completeDomainRuleActivation(
+        db,
+        { operationId: "auto-2026-08-05-1", attempt: 2, outcome: "succeeded" },
+        { clock: () => DAY_START + 600 },
+      ),
+    ).toEqual({ changed: true, phase: "completed", attempt: 2 });
+  });
+
+  it("rejects activation transitions before commit and mismatched terminal retries", () => {
+    const db = migratedDb();
+    prepareAutomatic(db);
+
+    expect(() => beginDomainRuleActivation(db, "auto-2026-08-05-1")).toThrow(
+      "domain-rule operation cannot begin activation",
+    );
+    expect(() =>
+      completeDomainRuleActivation(db, {
+        operationId: "auto-2026-08-05-1",
+        attempt: 1,
+        outcome: "failed",
+        errorCategory: "config-reload-failure",
+      }),
+    ).toThrow("domain-rule operation cannot complete activation");
+
+    finalizeDomainRuleCommit(
+      db,
+      {
+        operationId: "auto-2026-08-05-1",
+        commitSha: COMMIT_SHA,
+        committedContentSha256: CONTENT_SHA,
+      },
+      { clock: () => DAY_START + 200 },
+    );
+    beginDomainRuleActivation(db, "auto-2026-08-05-1", {
+      clock: () => DAY_START + 300,
+    });
+    completeDomainRuleActivation(
+      db,
+      { operationId: "auto-2026-08-05-1", attempt: 1, outcome: "succeeded" },
+      { clock: () => DAY_START + 400 },
+    );
+
+    expect(() =>
+      completeDomainRuleActivation(db, {
+        operationId: "auto-2026-08-05-1",
+        attempt: 1,
+        outcome: "failed",
+        errorCategory: "config-reload-failure",
+      }),
+    ).toThrow("domain-rule activation result conflicts with stored terminal state");
+  });
+
+  it("rejects a stale completion after a newer activation attempt starts", () => {
+    const db = migratedDb();
+    prepareAutomatic(db);
+    finalizeDomainRuleCommit(
+      db,
+      {
+        operationId: "auto-2026-08-05-1",
+        commitSha: COMMIT_SHA,
+        committedContentSha256: CONTENT_SHA,
+      },
+      { clock: () => DAY_START + 200 },
+    );
+    beginDomainRuleActivation(db, "auto-2026-08-05-1", {
+      clock: () => DAY_START + 300,
+    });
+    completeDomainRuleActivation(
+      db,
+      {
+        operationId: "auto-2026-08-05-1",
+        attempt: 1,
+        outcome: "failed",
+        errorCategory: "config-reload-failure",
+      },
+      { clock: () => DAY_START + 400 },
+    );
+    beginDomainRuleActivation(db, "auto-2026-08-05-1", {
+      clock: () => DAY_START + 500,
+    });
+
+    expect(() =>
+      completeDomainRuleActivation(
+        db,
+        { operationId: "auto-2026-08-05-1", attempt: 1, outcome: "succeeded" },
+        { clock: () => DAY_START + 600 },
+      ),
+    ).toThrow("domain-rule activation attempt is stale");
+    expect(
+      db
+        .select()
+        .from(domainRuleOperations)
+        .where(eq(domainRuleOperations.id, "auto-2026-08-05-1"))
+        .get(),
+    ).toMatchObject({
+      phase: "activating",
+      activationStatus: "in-progress",
+      activationAttemptCount: 2,
+      lastActivationAttemptAt: DAY_START + 500,
+    });
   });
 
   it("vetoes automatic replacement of manual ownership before reservation and at finalize", () => {
