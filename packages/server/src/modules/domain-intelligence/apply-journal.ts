@@ -587,6 +587,9 @@ export function finalizeDomainRuleCommit(
     if (operation.intendedContentSha256 !== input.committedContentSha256) {
       throw new Error("domain-rule committed content does not match prepared intent");
     }
+    if (operation.expectedParentCommit === input.commitSha) {
+      throw new Error("domain-rule commit must be a child of the prepared parent");
+    }
     if (operation.phase !== "prepared") {
       if (
         ["committed", "activating", "completed", "partial"].includes(operation.phase) &&
@@ -790,6 +793,48 @@ export function completeDomainRuleActivation(
       )
       .run();
     return { changed: true, phase, attempt: operation.activationAttemptCount };
+  });
+}
+
+export function markDomainRuleOperationReconciliationRequired(
+  db: Db,
+  operationId: string,
+  options: DomainRuleJournalOptions = {},
+): { changed: boolean; phase: "reconciliation-required" } {
+  const parsedId = operationIdSchema.parse(operationId);
+  const now = journalNow(options);
+
+  return db.transaction((tx) => {
+    const operation = tx
+      .select()
+      .from(domainRuleOperations)
+      .where(eq(domainRuleOperations.id, parsedId))
+      .get();
+    if (!operation) throw new Error("domain-rule operation not found");
+    if (operation.phase === "reconciliation-required") {
+      return { changed: false, phase: "reconciliation-required" };
+    }
+    if (operation.phase === "completed" || operation.phase === "aborted") {
+      throw new Error("terminal domain-rule operation cannot require reconciliation");
+    }
+    if (now < operation.updatedAt) throw new Error("domain-rule journal clock moved backwards");
+
+    const activating = operation.phase === "activating";
+    tx.update(domainRuleOperations)
+      .set({
+        phase: "reconciliation-required",
+        ...(activating
+          ? {
+              activationStatus: "failed" as const,
+              activationErrorCategory: "infrastructure-failure" as const,
+            }
+          : {}),
+        updatedAt: now,
+        completedAt: now,
+      })
+      .where(eq(domainRuleOperations.id, operation.id))
+      .run();
+    return { changed: true, phase: "reconciliation-required" };
   });
 }
 

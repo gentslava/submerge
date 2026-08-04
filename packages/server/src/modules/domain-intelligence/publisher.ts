@@ -754,6 +754,22 @@ function shouldRetainRepositoryLock(error: unknown): boolean {
   );
 }
 
+const LOCAL_DOMAIN_RULE_RECONCILIATION_MESSAGES = new Set([
+  "unexpected local Git state",
+  "local domain-rule commit attestation failed",
+  "local domain-rule file changed concurrently",
+  "local domain-rule repository changed during materialization",
+  "local domain-rule repository changed during operation attestation",
+  "local domain-rule repository is busy",
+]);
+
+export function isLocalDomainRuleReconciliationFailure(error: unknown): boolean {
+  return (
+    shouldRetainRepositoryLock(error) ||
+    (error instanceof Error && LOCAL_DOMAIN_RULE_RECONCILIATION_MESSAGES.has(error.message))
+  );
+}
+
 function retainRepositoryLock(error: unknown): Error {
   const retainedError =
     error instanceof Error ? error : new Error("local domain-rule transaction failed");

@@ -428,6 +428,35 @@ describe("domain-rule apply journal", () => {
     });
   });
 
+  it("rejects the prepared parent as an operation commit without consuming durable intent", () => {
+    const db = migratedDb();
+    prepareAutomatic(db);
+
+    expect(() =>
+      finalizeDomainRuleCommit(
+        db,
+        {
+          operationId: "auto-2026-08-05-1",
+          commitSha: PARENT_SHA,
+          committedContentSha256: CONTENT_SHA,
+        },
+        { clock: () => DAY_START + 200 },
+      ),
+    ).toThrow("domain-rule commit must be a child of the prepared parent");
+    expect(
+      db
+        .select()
+        .from(domainRuleOperations)
+        .where(eq(domainRuleOperations.id, "auto-2026-08-05-1"))
+        .get(),
+    ).toMatchObject({ phase: "prepared", commitSha: null });
+    expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
+      reservedSlots: 1,
+      consumedSlots: 0,
+    });
+    expect(db.select().from(domainRuleOwnership).all()).toEqual([]);
+  });
+
   it("atomically transfers manual ownership and deletes removed ownership", () => {
     const db = migratedDb();
     prepareAutomatic(db);
