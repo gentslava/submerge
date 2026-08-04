@@ -870,7 +870,12 @@ function CandidateRow({
     : "Добавление из интерфейса ещё не подключено";
   const identity = (
     <>
-      <div className="domain-candidate-rule min-w-0">
+      <div
+        className={cn(
+          "domain-candidate-rule min-w-0",
+          item.proposedRule && "domain-candidate-rule--with-proposal",
+        )}
+      >
         <span
           title={item.fqdn}
           className="domain-observed-name min-w-0 font-mono text-sub text-text-secondary"
@@ -882,21 +887,23 @@ function CandidateRow({
           <span className="domain-observed-suffix">{observedDomain.suffix}</span>
         </span>
         {item.proposedRule ? (
-          <span className="domain-generated-group min-w-0">
-            <ArrowRight aria-hidden="true" size={13} className="shrink-0 text-text-disabled" />
-            <code className="domain-generated-rule font-mono text-sub font-semibold text-text-primary">
-              {item.proposedRule}
-            </code>
-          </span>
-        ) : null}
-        {scopeLabel ? (
-          <span
-            className={cn(
-              "domain-rule-scope inline-flex shrink-0 items-center rounded-full px-[7px] py-0.5 text-micro font-medium",
-              exactOnly ? "bg-slow-bg text-slow" : "bg-hover text-text-secondary",
-            )}
-          >
-            {scopeLabel}
+          <span className="domain-candidate-proposal min-w-0">
+            <span className="domain-generated-group min-w-0">
+              <ArrowRight aria-hidden="true" size={13} className="shrink-0 text-text-disabled" />
+              <code className="domain-generated-rule font-mono text-sub font-semibold text-text-primary">
+                {item.proposedRule}
+              </code>
+            </span>
+            {scopeLabel ? (
+              <span
+                className={cn(
+                  "domain-rule-scope inline-flex shrink-0 items-center rounded-full px-[7px] py-0.5 text-micro font-medium",
+                  exactOnly ? "bg-slow-bg text-slow" : "bg-hover text-text-secondary",
+                )}
+              >
+                {scopeLabel}
+              </span>
+            ) : null}
           </span>
         ) : null}
       </div>

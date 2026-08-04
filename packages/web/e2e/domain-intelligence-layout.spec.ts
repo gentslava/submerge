@@ -251,7 +251,7 @@ test("populated dark desktop matches the approved Auto Rules hierarchy", async (
   await expectNoDocumentOverflow(page);
 });
 
-for (const width of [984, 1440, 1915]) {
+for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
   test(`desktop candidate actions stay aligned and long identities never overlap at ${width}px`, async ({
     page,
   }) => {
@@ -307,7 +307,22 @@ for (const width of [984, 1440, 1915]) {
     const rows = page.locator(
       ".domain-candidate-list > .domain-candidate-item > .domain-candidate-row",
     );
+    const pageContainerInlineSize = await page
+      .locator(".responsive-page--domain-intelligence")
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        return (
+          element.clientWidth -
+          Number.parseFloat(style.paddingLeft) -
+          Number.parseFloat(style.paddingRight)
+        );
+      });
+    const usesIntermediateStack = pageContainerInlineSize < 60 * 16;
+    if (width === 1271) expect(pageContainerInlineSize).toBeLessThan(60 * 16);
+    if (width === 1272) expect(pageContainerInlineSize).toBeGreaterThanOrEqual(60 * 16);
     const baselineActions = await rows.first().locator(".domain-candidate-actions").boundingBox();
+    const baselineRow = await rows.first().boundingBox();
+    const baselineActionOffset = (baselineActions?.y ?? 0) - (baselineRow?.y ?? 0);
     const baselineActionColumns = await rows
       .first()
       .locator(".domain-candidate-actions")
@@ -324,13 +339,23 @@ for (const width of [984, 1440, 1915]) {
       await expect(row.locator(".domain-candidate-actions")).toHaveCSS("display", "grid");
       const copy = await row.locator(".domain-candidate-copy").boundingBox();
       const actions = await row.locator(".domain-candidate-actions").boundingBox();
+      const rowBox = await row.boundingBox();
       expect(copy).not.toBeNull();
       expect(actions).not.toBeNull();
+      expect(rowBox).not.toBeNull();
       expect(Math.abs((actions?.x ?? 0) - (baselineActions?.x ?? 0))).toBeLessThanOrEqual(1);
       expect(Math.abs((actions?.width ?? 0) - (baselineActions?.width ?? 0))).toBeLessThanOrEqual(
         1,
       );
-      expect((copy?.x ?? 0) + (copy?.width ?? 0)).toBeLessThanOrEqual(actions?.x ?? 0);
+      const copyEndsBeforeActions = (copy?.x ?? 0) + (copy?.width ?? 0) <= (actions?.x ?? 0) + 1;
+      const copyEndsAboveActions = (copy?.y ?? 0) + (copy?.height ?? 0) <= (actions?.y ?? 0) + 1;
+      expect(copyEndsAboveActions).toBe(usesIntermediateStack);
+      expect(copyEndsBeforeActions).toBe(!usesIntermediateStack);
+      if (!usesIntermediateStack) {
+        expect(
+          Math.abs((actions?.y ?? 0) - (rowBox?.y ?? 0) - baselineActionOffset),
+        ).toBeLessThanOrEqual(1);
+      }
       const actionColumns = await row
         .locator(".domain-candidate-actions")
         .locator(":scope > :not(.sr-only)")
@@ -377,6 +402,20 @@ for (const width of [984, 1440, 1915]) {
         }),
       ).toBe(true);
       expect(
+        await row.locator(".domain-candidate-proposal").evaluate((element) => {
+          const boundary = element.getBoundingClientRect();
+          return Array.from(element.children).every((child) => {
+            const rect = child.getBoundingClientRect();
+            return (
+              rect.left >= boundary.left - 1 &&
+              rect.right <= boundary.right + 1 &&
+              rect.top >= boundary.top - 1 &&
+              rect.bottom <= boundary.bottom + 1
+            );
+          });
+        }),
+      ).toBe(true);
+      expect(
         await row.locator(".domain-candidate-rule").evaluate((element) => {
           const boundary = element.getBoundingClientRect();
           const visibleText = Array.from(
@@ -410,11 +449,6 @@ for (const width of [984, 1440, 1915]) {
     if (width === 1440) {
       const longRow = rows.nth(3);
       expect(
-        await longRow
-          .locator(".domain-observed-prefix")
-          .evaluate((element) => element.scrollWidth > element.clientWidth),
-      ).toBe(true);
-      expect(
         await longRow.locator(".domain-candidate-rule").evaluate((element) => {
           const centers = Array.from(element.children, (child) => {
             const rect = child.getBoundingClientRect();
@@ -425,9 +459,7 @@ for (const width of [984, 1440, 1915]) {
       ).toBe(true);
     }
 
-    if (width === 1915) {
-      await page.screenshot({ path: "/tmp/submerge-domain-candidate-actions-1915.png" });
-    }
+    await page.screenshot({ path: `/tmp/submerge-domain-candidate-actions-${width}.png` });
 
     await page
       .getByRole("button", { name: `Исключения · ${overview.bucketCounts.exclusion}` })

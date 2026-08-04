@@ -106,7 +106,7 @@
   flex: 0 1 auto;
   align-items: center;
   min-width: 0;
-  max-width: 100%;
+  max-width: 20rem;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -114,7 +114,19 @@
 .domain-candidate-rule {
   display: flex;
   align-items: center;
-  flex-wrap: nowrap;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.domain-candidate-rule--with-proposal {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+}
+
+.domain-candidate-proposal {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   overflow: hidden;
 }
@@ -126,7 +138,7 @@
 .domain-candidate-list > .domain-candidate-item > .domain-candidate-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--domain-candidate-actions-width);
-  align-items: center;
+  align-items: start;
   gap: 0.875rem;
 }
 
@@ -135,6 +147,8 @@
   width: var(--domain-candidate-actions-width);
   grid-template-columns: 7.5rem 7.5rem 2rem;
   align-items: center;
+  align-self: start;
+  justify-self: end;
   gap: 0.5rem;
 }
 
@@ -362,6 +376,21 @@
   display: none;
 }
 
+@container app-page (min-width: 42rem) and (max-width: 59.999rem) {
+  .domain-candidate-list > .domain-candidate-item > .domain-candidate-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .domain-candidate-copy {
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .domain-candidate-review-actions {
+    justify-self: end;
+  }
+}
+
 @container app-page (max-width: 41.999rem) {
   .responsive-page--domain-intelligence .page-header {
     align-items: flex-start;
@@ -469,6 +498,10 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+
+  .domain-candidate-proposal {
+    display: contents;
   }
 
   .domain-candidate-copy {
