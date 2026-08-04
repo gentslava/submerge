@@ -27,10 +27,12 @@ import {
   getVersion,
   openLogStream,
   prepareForcedRouteProof,
+  probeMihomoCredential,
   probeThroughProxy,
   reloadConfig,
   selectProxy,
   setMihomoSecret,
+  setMihomoSecretRecovery,
   streamTraffic,
 } from "./mihomo.js";
 
@@ -93,6 +95,64 @@ describe("mihomo client", () => {
 
     mockFetch(() => json({ version: 11912 }));
     await expect(getVersion()).rejects.toThrow();
+  });
+
+  it("uses the previous controller secret only as an authentication fallback", async () => {
+    const authenticatedWithNext = vi.fn();
+    setMihomoSecretRecovery("next-secret", "previous-secret", authenticatedWithNext);
+    const authorizations: string[] = [];
+    mockFetch((_url, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? "";
+      authorizations.push(authorization);
+      return authorization === "Bearer next-secret"
+        ? json({ message: "unauthorized" }, { status: 401 })
+        : json({ version: "v1.19.12" });
+    });
+
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    expect(authorizations).toEqual(["Bearer next-secret", "Bearer previous-secret"]);
+    expect(authenticatedWithNext).not.toHaveBeenCalled();
+
+    mockFetch((_url, init) => {
+      authorizations.push(new Headers(init?.headers).get("authorization") ?? "");
+      return json({ version: "v1.19.12" });
+    });
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    expect(authorizations.at(-1)).toBe("Bearer next-secret");
+    expect(authenticatedWithNext).toHaveBeenCalledOnce();
+  });
+
+  it("retries durable credential finalization after a transient callback failure", async () => {
+    const finalize = vi
+      .fn<() => boolean>()
+      .mockImplementationOnce(() => {
+        throw new Error("sqlite busy");
+      })
+      .mockReturnValue(true);
+    setMihomoSecretRecovery("next-secret", "previous-secret", finalize);
+    mockFetch(() => json({ version: "v1.19.12" }));
+
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+
+    expect(finalize).toHaveBeenCalledTimes(2);
+  });
+
+  it("probes a candidate controller secret without changing the live credential", async () => {
+    setMihomoSecret("live-secret");
+    const authorizations: string[] = [];
+    mockFetch((_url, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? "";
+      authorizations.push(authorization);
+      return authorization === "Bearer candidate-secret"
+        ? json({ version: "v1.19.12" })
+        : json({ message: "unauthorized" }, { status: 401 });
+    });
+
+    await expect(probeMihomoCredential("candidate-secret")).resolves.toBe(true);
+    await expect(getVersion()).rejects.toThrow("HTTP 401");
+    expect(authorizations).toEqual(["Bearer candidate-secret", "Bearer live-secret"]);
   });
 
   it("parses nullable runtime config fields without inventing defaults", async () => {

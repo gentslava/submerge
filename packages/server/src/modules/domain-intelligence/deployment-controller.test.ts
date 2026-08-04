@@ -88,8 +88,8 @@ describe("DomainRuleDeploymentController", () => {
 
     await expect(controller.reconcile()).resolves.toEqual(applied);
     expect(events).toEqual([
-      "store",
       "coordinator-enter",
+      "store",
       "reload:AUTO",
       "proof",
       "coordinator-exit",

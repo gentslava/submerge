@@ -17,11 +17,37 @@ const TEST_URL = "https://www.gstatic.com/generate_204";
 const TRACE_URL = "https://www.cloudflare.com/cdn-cgi/trace";
 const DIAGNOSTIC_BODY_MAX_BYTES = 8192;
 
-// The mihomo API secret can be set/rotated from Settings; the live value lives here
-// (init from env, overridden at boot from the DB, updated after a rotation reload).
-let mihomoSecret = env.MIHOMO_SECRET;
+// The mihomo API secret can be set/rotated from Settings. A durable pending
+// rotation may leave either the old or new credential active after a process
+// crash, so recovery temporarily carries both without weakening the API: only an
+// explicit 401/403 is retried with the previous secret.
+interface MihomoCredentialState {
+  fallback?: string;
+  notified: boolean;
+  onPrimaryAuthenticated?: () => boolean;
+  primary: string;
+}
+
+let mihomoCredentials: MihomoCredentialState = {
+  notified: false,
+  primary: env.MIHOMO_SECRET,
+};
+
 export function setMihomoSecret(secret: string): void {
-  mihomoSecret = secret;
+  mihomoCredentials = { notified: false, primary: secret };
+}
+
+export function setMihomoSecretRecovery(
+  primary: string,
+  fallback: string,
+  onPrimaryAuthenticated?: () => boolean,
+): void {
+  mihomoCredentials = {
+    ...(fallback === primary ? {} : { fallback }),
+    notified: false,
+    ...(onPrimaryAuthenticated === undefined ? {} : { onPrimaryAuthenticated }),
+    primary,
+  };
 }
 
 const historyEntrySchema = z.object({ time: z.string(), delay: z.number() });
@@ -206,23 +232,75 @@ function boundedSignal(
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
+function authenticatedHeaders(init: RequestInit, secret: string): Headers {
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${secret}`);
+  return headers;
+}
+
+function isAuthenticationFailure(response: Response): boolean {
+  return response.status === 401 || response.status === 403;
+}
+
+function reportPrimaryAuthentication(state: MihomoCredentialState): void {
+  if (mihomoCredentials !== state || state.notified || !state.onPrimaryAuthenticated) return;
+  try {
+    state.notified = state.onPrimaryAuthenticated();
+  } catch {
+    // Keep the callback retryable. A successful controller request must not fail
+    // because SQLite was transiently busy, but the durable journal still needs a
+    // later authenticated request to finish its promotion.
+  }
+}
+
+async function callWithCredentials(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal,
+): Promise<Response> {
+  const credentials = mihomoCredentials;
+  const requestWith = (secret: string) =>
+    fetch(`${env.MIHOMO_API}${path}`, {
+      ...init,
+      signal,
+      headers: authenticatedHeaders(init, secret),
+    });
+  const primary = await requestWith(credentials.primary);
+  if (!isAuthenticationFailure(primary)) {
+    reportPrimaryAuthentication(credentials);
+    return primary;
+  }
+  if (credentials.fallback === undefined) return primary;
+  return requestWith(credentials.fallback);
+}
+
 function call(
   path: string,
   init: RequestInit = {},
   signal?: AbortSignal,
   timeoutMs: number = TIMEOUT_MS,
 ): Promise<Response> {
-  return fetch(`${env.MIHOMO_API}${path}`, {
-    ...init,
-    signal: boundedSignal(signal, timeoutMs),
-    headers: { ...(init.headers ?? {}), Authorization: `Bearer ${mihomoSecret}` },
-  });
+  return callWithCredentials(path, init, boundedSignal(signal, timeoutMs));
 }
 
 export async function getVersion(signal?: AbortSignal): Promise<MihomoVersion> {
   const r = await call("/version", {}, signal);
   if (!r.ok) throw new Error(`mihomo /version returned HTTP ${r.status}`);
   return mihomoVersionSchema.parse(await r.json());
+}
+
+export async function probeMihomoCredential(
+  secret: string,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const r = await fetch(`${env.MIHOMO_API}/version`, {
+    signal: boundedSignal(signal),
+    headers: authenticatedHeaders({}, secret),
+  });
+  if (isAuthenticationFailure(r)) return false;
+  if (!r.ok) throw new Error(`mihomo credential probe returned HTTP ${r.status}`);
+  mihomoVersionSchema.parse(await r.json());
+  return true;
 }
 
 export async function getRuntimeConfig(signal?: AbortSignal): Promise<MihomoRuntimeConfig> {
@@ -725,10 +803,7 @@ async function* readLogStream(
 // Keeping the opener separate from the generator lets the hub switch to `live`
 // immediately after headers, even when no log line has arrived yet.
 export async function openLogStream(signal: AbortSignal): Promise<AsyncGenerator<MihomoLogFrame>> {
-  const response = await fetch(`${env.MIHOMO_API}/logs?level=info&format=structured`, {
-    signal,
-    headers: { Authorization: `Bearer ${mihomoSecret}` },
-  });
+  const response = await callWithCredentials("/logs?level=info&format=structured", {}, signal);
   if (!response.ok) throw new Error(`mihomo /logs returned HTTP ${response.status}`);
   if (!response.body) throw new Error("mihomo /logs returned no readable body");
   return readLogStream(response.body, signal);
@@ -755,10 +830,7 @@ function parseTrafficLine(line: string): TrafficSample | null {
 // upstream closes. Caller owns the lifecycle (re-open on error). NOTE: uses
 // fetch directly (NOT call()) because /traffic is long-lived — no 5 s timeout.
 export async function* streamTraffic(signal: AbortSignal): AsyncGenerator<TrafficSample> {
-  const r = await fetch(`${env.MIHOMO_API}/traffic`, {
-    signal,
-    headers: { Authorization: `Bearer ${mihomoSecret}` },
-  });
+  const r = await callWithCredentials("/traffic", {}, signal);
   if (!r.ok || !r.body) throw new Error(`mihomo /traffic returned HTTP ${r.status}`);
   const stream = r.body.pipeThrough(new TextDecoderStream());
   let buf = "";

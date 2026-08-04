@@ -25,6 +25,10 @@ import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
 import { getDomainIntelligenceSettingsView } from "../domain-intelligence/service.js";
+import {
+  confirmPendingMihomoSecretRotation,
+  prepareMihomoSecretForConfig,
+} from "../settings/secret-rotation.js";
 import { getOrCreateInternalSecret, getSetting } from "../settings/service.js";
 import { groupProxies } from "./config.js";
 import type {
@@ -116,11 +120,43 @@ type ConfigApplyCoordinator = (
 ) => Promise<ApplyResult>;
 let configApplyCoordinator: ConfigApplyCoordinator | null = null;
 
+export type ForcedConfigApply = (input: {
+  force: true;
+  managedDomainRules?: ManagedDomainRulesProviderInput;
+}) => Promise<ApplyResult>;
+
+interface ConfigApplyOwnerBinding {
+  configPath?: string;
+  db: Db;
+  targetPath?: string;
+}
+
+interface ConfigApplyOwnerComposition<T> {
+  coordinator: ConfigApplyCoordinator;
+  owner: T;
+}
+
 export function registerConfigApplyCoordinator(coordinator: ConfigApplyCoordinator): () => void {
   if (configApplyCoordinator) throw new Error("config apply coordinator is already registered");
   configApplyCoordinator = coordinator;
   return () => {
     if (configApplyCoordinator === coordinator) configApplyCoordinator = null;
+  };
+}
+
+export function registerConfigApplyOwner<T>(
+  binding: ConfigApplyOwnerBinding,
+  compose: (applyDirect: ForcedConfigApply) => ConfigApplyOwnerComposition<T>,
+): { owner: T; unregister: () => void } {
+  if (configApplyCoordinator) throw new Error("config apply coordinator is already registered");
+  const configPath = binding.configPath ?? env.MIHOMO_CONFIG_PATH;
+  const targetPath = binding.targetPath ?? env.MIHOMO_CONFIG_TARGET;
+  const applyDirect: ForcedConfigApply = (input) =>
+    applyConfigNow(binding.db, configPath, targetPath, input);
+  const composition = compose(applyDirect);
+  return {
+    owner: composition.owner,
+    unregister: registerConfigApplyCoordinator(composition.coordinator),
   };
 }
 
@@ -214,21 +250,25 @@ export async function applyConfig(
   configPath: string = env.MIHOMO_CONFIG_PATH,
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
   opts: {
+    afterConfigActivationAttempt?: (
+      result: Pick<ApplyResult, "applied" | "activationVerified">,
+    ) => void;
     force?: boolean;
-    skipRuntimeReconciliation?: boolean;
+    stageConfigMutation?: () => () => void;
   } = {},
 ): Promise<ApplyResult> {
-  if (!opts.skipRuntimeReconciliation && configApplyCoordinator) {
-    return configApplyCoordinator((managedDomainRules) =>
-      applyConfigNow(db, configPath, targetPath, {
-        ...(opts.force === undefined ? {} : { force: opts.force }),
-        ...(managedDomainRules === undefined ? {} : { managedDomainRules }),
-      }),
-    );
-  }
-  return applyConfigNow(db, configPath, targetPath, {
-    ...(opts.force === undefined ? {} : { force: opts.force }),
-  });
+  const apply = (managedDomainRules?: ManagedDomainRulesProviderInput) =>
+    applyConfigNow(db, configPath, targetPath, {
+      ...(opts.afterConfigActivationAttempt === undefined
+        ? {}
+        : { afterConfigActivationAttempt: opts.afterConfigActivationAttempt }),
+      ...(opts.force === undefined ? {} : { force: opts.force }),
+      ...(managedDomainRules === undefined ? {} : { managedDomainRules }),
+      ...(opts.stageConfigMutation === undefined
+        ? {}
+        : { stageConfigMutation: opts.stageConfigMutation }),
+    });
+  return configApplyCoordinator ? configApplyCoordinator(apply) : apply();
 }
 
 async function applyConfigNow(
@@ -236,8 +276,12 @@ async function applyConfigNow(
   configPath: string,
   targetPath: string,
   opts: {
+    afterConfigActivationAttempt?: (
+      result: Pick<ApplyResult, "applied" | "activationVerified">,
+    ) => void;
     force?: boolean;
     managedDomainRules?: ManagedDomainRulesProviderInput;
+    stageConfigMutation?: () => () => void;
   } = {},
 ): Promise<ApplyResult> {
   const { inputs, inventory } = collectActiveRoutingInputs(db);
@@ -245,7 +289,8 @@ async function applyConfigNow(
   mkdirSync(dirname(configPath), { recursive: true });
   // The config's `secret:` is the editable panel secret (seeded from env on first run):
   // the panel owns mihomo's config, so editing the secret rotates the engine too. The
-  // settings router re-points the client in a `finally`, so a failed reload can't lock out.
+  // settings router stages that mutation in this serialized apply and re-points the
+  // client only after a no-op/reload activation attempt; pre-reload failures roll it back.
   //
   // Write atomically (temp file + rename) so mihomo never reads a half-written config on
   // reload: an in-place writeFileSync truncates first, and mihomo can catch that empty
@@ -253,31 +298,63 @@ async function applyConfigNow(
   // A disabled non-default channel is dropped from routing entirely — no group,
   // no DOMAIN-SUFFIX rules — until re-enabled. The Default is the catch-all and
   // stays active regardless of its own `enabled` flag.
-  const content = buildMultiConfig(
-    inputs,
-    readMihomoSecret(db),
-    domainValidationListener(db, inputs),
-    opts.managedDomainRules,
-  );
-  // Unchanged config → skip the write + the destructive reload so mihomo keeps its
-  // delay history (the charts don't blank on every no-op apply — rename, re-saved
-  // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and
-  // still reload. `force` (reconnect recovery) always pushes.
-  if (!opts.force && readExistingConfig(configPath) === content) {
-    return { nodes: inventory.length, applied: true, activationVerified: false };
-  }
-  const tmpPath = `${configPath}.tmp`;
-  writeFileSync(tmpPath, content, "utf8");
-  renameSync(tmpPath, configPath);
-  // The reload is the only network step — its failure must not read as "not saved":
-  // the DB row and the config file are already updated. fs errors above still throw.
+  let rollbackConfigMutation: (() => void) | undefined;
+  let activationAttempted = false;
+  let rollbackSafe = true;
   try {
-    await reloadConfig(targetPath);
-  } catch (err) {
-    operationalLog("config-reload-failed", {}, err);
-    return { nodes: inventory.length, applied: false, activationVerified: false };
+    rollbackConfigMutation = opts.stageConfigMutation?.();
+    const secretPreparation = await prepareMihomoSecretForConfig(db);
+    rollbackSafe = secretPreparation.rollbackSafe;
+    const content = buildMultiConfig(
+      inputs,
+      secretPreparation.secret,
+      domainValidationListener(db, inputs),
+      opts.managedDomainRules,
+    );
+    // Unchanged config → skip the write + the destructive reload so mihomo keeps its
+    // delay history (the charts don't blank on every no-op apply — rename, re-saved
+    // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and
+    // still reload. `force` (reconnect recovery) always pushes.
+    if (!opts.force && readExistingConfig(configPath) === content) {
+      activationAttempted = true;
+      const pendingSecretConfirmed =
+        !secretPreparation.pending || (await confirmPendingMihomoSecretRotation(db));
+      if (pendingSecretConfirmed) {
+        opts.afterConfigActivationAttempt?.({ applied: true, activationVerified: false });
+        return { nodes: inventory.length, applied: true, activationVerified: false };
+      }
+      // Bytes alone are insufficient during a rotation: a previous attempt may
+      // have written the new file but failed before Mihomo accepted it. Continue
+      // through the reload path until the new credential authenticates.
+    }
+    const tmpPath = `${configPath}.tmp`;
+    writeFileSync(tmpPath, content, "utf8");
+    renameSync(tmpPath, configPath);
+    // The reload is the only network step — its failure must not read as "not saved":
+    // the DB row and the config file are already updated. fs errors above still throw.
+    try {
+      // Once the request is sent, a lost response cannot prove whether Mihomo
+      // accepted the new secret. Keep the durable rotation journal in that
+      // ambiguous state; recovery probes both credentials on the next apply.
+      activationAttempted = true;
+      await reloadConfig(targetPath);
+    } catch (err) {
+      operationalLog("config-reload-failed", {}, err);
+      await confirmPendingMihomoSecretRotation(db);
+      opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+      return { nodes: inventory.length, applied: false, activationVerified: false };
+    }
+    const pendingSecretConfirmed = await confirmPendingMihomoSecretRotation(db);
+    if (secretPreparation.pending && !pendingSecretConfirmed) {
+      opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+      return { nodes: inventory.length, applied: false, activationVerified: false };
+    }
+    opts.afterConfigActivationAttempt?.({ applied: true, activationVerified: true });
+    return { nodes: inventory.length, applied: true, activationVerified: true };
+  } catch (error) {
+    if (!activationAttempted && rollbackSafe) rollbackConfigMutation?.();
+    throw error;
   }
-  return { nodes: inventory.length, applied: true, activationVerified: true };
 }
 
 // Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose

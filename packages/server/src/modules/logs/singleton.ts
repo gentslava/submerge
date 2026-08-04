@@ -1,6 +1,10 @@
 import { getConnections, openLogStream } from "../../clients/mihomo.js";
+import { registerDomainRulesDeploymentCapabilitySource } from "../../config/domain-rules.js";
+import { env } from "../../config/env.js";
 import { db } from "../../db/client.js";
 import { log, operationalLog } from "../../log.js";
+import { DomainRuleDeploymentLifecycle } from "../domain-intelligence/deployment-lifecycle.js";
+import { createProductionDomainRuleDeploymentController } from "../domain-intelligence/deployment-production.js";
 import {
   DomainIntelligenceObserver,
   DomainIntelligenceRuntimeLifecycle,
@@ -16,11 +20,7 @@ import {
   DomainValidationSchedulerError,
 } from "../domain-intelligence/scheduler.js";
 import { getDomainIntelligenceSettingsView } from "../domain-intelligence/service.js";
-import {
-  applyConfig,
-  hasDomainValidationRoute,
-  registerConfigApplyCoordinator,
-} from "../nodes/service.js";
+import { hasDomainValidationRoute, registerConfigApplyOwner } from "../nodes/service.js";
 import { LogHub } from "./hub.js";
 
 let wakeDomainValidation = (): void => undefined;
@@ -85,24 +85,49 @@ export function setDomainIntelligenceRuntimeEnabled(enabled: boolean): Promise<v
   return domainIntelligenceRuntimeLifecycle.setEnabled(enabled);
 }
 
-export const domainIntelligenceRuntimeCoordinator = new DomainIntelligenceRuntimeCoordinator({
-  readSettings: () => getDomainIntelligenceSettingsView(db),
-  applyCurrentConfig: () =>
-    applyConfig(db, undefined, undefined, {
-      force: true,
-      skipRuntimeReconciliation: true,
-    }),
-  canEnableRuntime: () => hasDomainValidationRoute(db),
-  setRuntimeEnabled: setDomainIntelligenceRuntimeEnabled,
-  onError: (error) => operationalLog("domain-validation-config-write-failed", {}, error),
+const deploymentOwnership = registerConfigApplyOwner({ db }, (applyConfigDirect) => {
+  let deploymentController: ReturnType<typeof createProductionDomainRuleDeploymentController>;
+  const runtimeCoordinator = new DomainIntelligenceRuntimeCoordinator({
+    readSettings: () => getDomainIntelligenceSettingsView(db),
+    applyCurrentConfig: () => deploymentController.applyCurrentConfig(),
+    canEnableRuntime: () => hasDomainValidationRoute(db),
+    setRuntimeEnabled: setDomainIntelligenceRuntimeEnabled,
+    onError: (error) => operationalLog("domain-validation-config-write-failed", {}, error),
+  });
+  deploymentController = createProductionDomainRuleDeploymentController({
+    applyConfigDirect,
+    databasePath: env.DB_PATH,
+    db,
+    mihomoConfigPath: env.MIHOMO_CONFIG_PATH,
+    mode: env.DOMAIN_RULES_MODE,
+    runConfigApply: (apply) => runtimeCoordinator.runConfigApply(apply),
+  });
+  return {
+    coordinator: (apply) => deploymentController.coordinateConfigApply(apply),
+    owner: { deploymentController, runtimeCoordinator },
+  };
 });
-registerConfigApplyCoordinator((apply) =>
-  domainIntelligenceRuntimeCoordinator.runConfigApply(apply),
+export const domainIntelligenceRuntimeCoordinator = deploymentOwnership.owner.runtimeCoordinator;
+const domainRuleDeploymentController = deploymentOwnership.owner.deploymentController;
+registerDomainRulesDeploymentCapabilitySource(domainRuleDeploymentController.capabilitySource);
+const domainRuleDeploymentLifecycle = new DomainRuleDeploymentLifecycle(
+  domainRuleDeploymentController,
 );
+
+export function reconcileDomainRuleDeployment() {
+  return domainRuleDeploymentLifecycle.reconcile();
+}
+
+export function recoverDomainRuleDeploymentIfNeeded() {
+  return domainRuleDeploymentLifecycle.recoverIfNeeded();
+}
 
 export function shutdownDomainIntelligenceRuntime(): Promise<void> {
   domainIntelligenceRuntimeLifecycle.beginShutdown();
-  return domainIntelligenceRuntimeCoordinator.stop();
+  return Promise.allSettled([
+    domainRuleDeploymentLifecycle.stop(),
+    domainIntelligenceRuntimeCoordinator.stop(),
+  ]).then(() => undefined);
 }
 
 export const logHub = new LogHub({

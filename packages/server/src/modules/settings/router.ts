@@ -1,11 +1,16 @@
 import { setSettingInput } from "@submerge/shared";
 import { TRPCError } from "@trpc/server";
-import { setMihomoSecret } from "../../clients/mihomo.js";
 import { db } from "../../db/client.js";
 import { operationalLog } from "../../log.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
-import { domainIntelligenceRuntimeCoordinator } from "../logs/singleton.js";
+import { reconcileDomainRuleDeployment } from "../logs/singleton.js";
 import { applyConfig } from "../nodes/service.js";
+import {
+  beginMihomoSecretRotation,
+  getMihomoSecretRotationPersistenceState,
+  type MihomoSecretRotationAttempt,
+  rollbackMihomoSecretRotation,
+} from "./secret-rotation.js";
 import { getSettingsView, isInternalSettingKey, setSetting } from "./service.js";
 
 export const settingsRouter = router({
@@ -14,31 +19,39 @@ export const settingsRouter = router({
     if (isInternalSettingKey(input.key) || input.key === "domainIntelligence") {
       throw new TRPCError({ code: "FORBIDDEN", message: "managed settings are read-only" });
     }
-    setSetting(db, input.key, input.value);
-    // The secret is editable: it's written into the regenerated config (rotating a
-    // sidecar engine) AND it's the panel's client credential. reloadConfig authenticates
-    // with the CURRENT (old) secret. The serialized callback re-points the client after
-    // the reload attempt but before domain-intelligence runtime resumption. A reload
-    // failure still re-points the client, so re-entering the prior secret can recover.
+    if (input.key !== "mihomoSecret") setSetting(db, input.key, input.value);
+    // The secret is editable, but the confirmed DB value must stay unchanged until
+    // Mihomo authenticates with the replacement. The serialized raw apply creates a
+    // durable internal journal; config generation/reload owns proof and promotion.
+    // Rejection before the callback creates no journal, while a pre-activation failure
+    // invokes the returned rollback. Ambiguous reload failures deliberately retain the
+    // journal so a restart can probe both credentials instead of guessing.
     let applied = true;
     if (input.key === "mihomoSecret") {
+      let rotationAttempt: MihomoSecretRotationAttempt | null = null;
       try {
-        const result = await domainIntelligenceRuntimeCoordinator.runConfigApply(async () => {
-          try {
-            return await applyConfig(db, undefined, undefined, {
-              skipRuntimeReconciliation: true,
-            });
-          } finally {
-            // The reload above authenticates with the old secret. Re-point the client
-            // before this serialized callback resolves so the runtime cannot issue its
-            // first /connections request with stale credentials.
-            setMihomoSecret(input.value);
-          }
+        const result = await applyConfig(db, undefined, undefined, {
+          stageConfigMutation: () => {
+            rotationAttempt = beginMihomoSecretRotation(db, input.value);
+            return () => {
+              if (rotationAttempt) rollbackMihomoSecretRotation(db, rotationAttempt);
+            };
+          },
         });
         applied = result.applied;
       } catch (err) {
         operationalLog("secret-rotation-write-failed", {}, err);
-        applied = false;
+        const persistence =
+          rotationAttempt === null
+            ? "absent"
+            : getMihomoSecretRotationPersistenceState(db, rotationAttempt);
+        if (persistence === "absent") {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Не удалось сохранить секрет mihomo",
+          });
+        }
+        applied = persistence === "committed";
       }
     }
     return { ok: true as const, applied };
@@ -52,7 +65,7 @@ export const settingsRouter = router({
   // after a previous reload failed and left the engine stale). The coordinator owns
   // that forced apply and keeps the domain observer disabled until it succeeds.
   reload: protectedProcedure.mutation(async () => {
-    const { applied } = await domainIntelligenceRuntimeCoordinator.reconcile();
+    const { applied } = await reconcileDomainRuleDeployment();
     return { ok: true as const, applied };
   }),
 });

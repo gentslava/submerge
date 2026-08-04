@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -24,6 +24,7 @@ import {
   readDefaultChannel,
   updateChannel,
 } from "../channels/service.js";
+import { beginMihomoSecretRotation } from "../settings/secret-rotation.js";
 import { getSetting, getSettingsView, setSetting } from "../settings/service.js";
 import {
   applyConfig,
@@ -34,6 +35,7 @@ import {
   mergeDbInventory,
   type ProxyMeta,
   registerConfigApplyCoordinator,
+  registerConfigApplyOwner,
   selectNode,
   setExcluded,
   testDelay,
@@ -342,6 +344,144 @@ describe("applyConfig", () => {
     expect(readdirSync(dir)).toEqual(["config.yaml"]);
   });
 
+  it("writes and confirms a pending secret without changing the confirmed DB value early", async () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "old-secret");
+    beginMihomoSecretRotation(db, "new-secret");
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    let activeSecret = "old-secret";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const authorization = new Headers(init?.headers).get("authorization");
+        const supplied = authorization?.replace(/^Bearer /u, "") ?? "";
+        if (String(url).includes("/version")) {
+          return supplied === activeSecret
+            ? json({ version: "v1.19.12" })
+            : json({ message: "unauthorized" }, { status: 401 });
+        }
+        if (String(url).includes("/configs")) {
+          if (supplied !== activeSecret) {
+            return json({ message: "unauthorized" }, { status: 401 });
+          }
+          activeSecret = "new-secret";
+          return new Response(null, { status: 204 });
+        }
+        throw new Error(`unexpected URL ${String(url)}`);
+      }),
+    );
+
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml"),
+    ).resolves.toMatchObject({ applied: true, activationVerified: true });
+
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const config = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(config.secret).toBe("new-secret");
+    expect(getSetting(db, "mihomoSecret")).toBe("new-secret");
+    expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+  });
+
+  it("keeps the pending journal when the new credential works but config persistence fails", async () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "old-secret");
+    beginMihomoSecretRotation(db, "new-secret");
+    const directory = mkdtempSync(join(tmpdir(), "submerge-"));
+    const blockingTarget = join(directory, "config-target");
+    mkdirSync(blockingTarget);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        expect(String(url)).toContain("/version");
+        const supplied = new Headers(init?.headers).get("authorization")?.replace(/^Bearer /u, "");
+        return supplied === "new-secret"
+          ? json({ version: "v1.19.12" })
+          : json({ message: "unauthorized" }, { status: 401 });
+      }),
+    );
+
+    await expect(
+      applyConfig(db, blockingTarget, "/root/.config/mihomo/config.yaml"),
+    ).rejects.toBeInstanceOf(Error);
+
+    expect(getSetting(db, "mihomoSecret")).toBe("old-secret");
+    expect(getSetting(db, "internal.mihomoSecretRotation")).toBeDefined();
+  });
+
+  it("retries reload when pending secret bytes are durable but the engine still uses the old secret", async () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "old-secret");
+    beginMihomoSecretRotation(db, "new-secret");
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    let activeSecret = "old-secret";
+    let authenticatedReloads = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const supplied =
+          new Headers(init?.headers).get("authorization")?.replace(/^Bearer /u, "") ?? "";
+        if (String(url).includes("/version")) {
+          return supplied === activeSecret
+            ? json({ version: "v1.19.12" })
+            : json({ message: "unauthorized" }, { status: 401 });
+        }
+        if (String(url).includes("/configs")) {
+          if (supplied !== activeSecret) {
+            return json({ message: "unauthorized" }, { status: 401 });
+          }
+          authenticatedReloads += 1;
+          if (authenticatedReloads === 1) return new Response(null, { status: 503 });
+          activeSecret = "new-secret";
+          return new Response(null, { status: 204 });
+        }
+        throw new Error(`unexpected URL ${String(url)}`);
+      }),
+    );
+
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml"),
+    ).resolves.toMatchObject({ applied: false, activationVerified: false });
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml"),
+    ).resolves.toMatchObject({ applied: true, activationVerified: true });
+
+    expect(authenticatedReloads).toBe(2);
+    expect(activeSecret).toBe("new-secret");
+    expect(getSetting(db, "mihomoSecret")).toBe("new-secret");
+    expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+  });
+
+  it("does not report activation when reload succeeds but the new secret still fails its probe", async () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "old-secret");
+    beginMihomoSecretRotation(db, "new-secret");
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        const supplied =
+          new Headers(init?.headers).get("authorization")?.replace(/^Bearer /u, "") ?? "";
+        if (String(url).includes("/version")) {
+          return supplied === "old-secret"
+            ? json({ version: "v1.19.12" })
+            : json({ message: "unauthorized" }, { status: 401 });
+        }
+        if (String(url).includes("/configs")) {
+          return supplied === "old-secret"
+            ? new Response(null, { status: 204 })
+            : json({ message: "unauthorized" }, { status: 401 });
+        }
+        throw new Error(`unexpected URL ${String(url)}`);
+      }),
+    );
+
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml"),
+    ).resolves.toMatchObject({ applied: false, activationVerified: false });
+    expect(getSetting(db, "mihomoSecret")).toBe("old-secret");
+    expect(getSetting(db, "internal.mihomoSecretRotation")).toBeDefined();
+  });
+
   it("skips the write+reload when the generated config is byte-identical to what's on disk", async () => {
     const db = freshDb();
     db.insert(sources)
@@ -423,6 +563,92 @@ describe("applyConfig", () => {
     ]);
     expect(coordinator).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives only the registered owner a forced direct apply for deployment recovery", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+
+    const registration = registerConfigApplyOwner(
+      { configPath, db, targetPath: "/root/.config/mihomo/config.yaml" },
+      (applyDirect) => ({
+        coordinator: async (apply) => apply(),
+        owner: { applyDirect },
+      }),
+    );
+    unregisterConfigApplyCoordinator = registration.unregister;
+
+    await expect(
+      registration.owner.applyDirect({
+        force: true,
+        managedDomainRules: { targetGroupName: "AUTO" },
+      }),
+    ).resolves.toEqual({ nodes: 1, applied: true, activationVerified: true });
+
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(cfg.rules.slice(0, 2)).toEqual([
+      `DOMAIN,${SPEED_TEST_HOST},PROBE`,
+      "RULE-SET,submerge-custom,AUTO",
+    ]);
+  });
+
+  it("runs the post-apply hook before the coordinator regains control", async () => {
+    const db = freshDb();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    const events: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        events.push("reload");
+        return new Response(null, { status: 204 });
+      }),
+    );
+    unregisterConfigApplyCoordinator = registerConfigApplyCoordinator(async (apply) => {
+      events.push("coordinator-enter");
+      const result = await apply();
+      events.push("coordinator-exit");
+      return result;
+    });
+
+    await applyConfig(db, configPath, "/root/.config/mihomo/config.yaml", {
+      afterConfigActivationAttempt: () => events.push("credential"),
+    });
+
+    expect(events).toEqual(["coordinator-enter", "reload", "credential", "coordinator-exit"]);
+  });
+
+  it("does not run the activation hook when filesystem preparation fails before reload", async () => {
+    const db = freshDb();
+    const directory = mkdtempSync(join(tmpdir(), "submerge-"));
+    const blockingTarget = join(directory, "config-target");
+    mkdirSync(blockingTarget);
+    const afterConfigActivationAttempt = vi.fn();
+    let staged = false;
+    vi.stubGlobal("fetch", vi.fn());
+
+    await expect(
+      applyConfig(db, blockingTarget, "/root/.config/mihomo/config.yaml", {
+        afterConfigActivationAttempt,
+        stageConfigMutation: () => {
+          staged = true;
+          return () => {
+            staged = false;
+          };
+        },
+      }),
+    ).rejects.toBeInstanceOf(Error);
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(afterConfigActivationAttempt).not.toHaveBeenCalled();
+    expect(staged).toBe(false);
   });
 
   it("still reloads when the config actually changes between applies", async () => {

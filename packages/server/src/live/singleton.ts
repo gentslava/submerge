@@ -4,7 +4,11 @@ import { db } from "../db/client.js";
 import { operationalLog } from "../log.js";
 import { registry } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
-import { domainIntelligenceRuntimeCoordinator } from "../modules/logs/singleton.js";
+import {
+  domainIntelligenceRuntimeCoordinator,
+  reconcileDomainRuleDeployment,
+  recoverDomainRuleDeploymentIfNeeded,
+} from "../modules/logs/singleton.js";
 import { recordPassiveBandwidth } from "../modules/nodes/passiveBandwidth.js";
 import {
   collectProxies,
@@ -61,12 +65,13 @@ export const liveHub = new LiveHub({
   // If the boot-time forced apply ran before mihomo was available, retry it
   // exactly once on first availability. No-op when boot already succeeded.
   onFirstConnect: async () => {
+    await recoverDomainRuleDeploymentIfNeeded();
     await domainIntelligenceRuntimeCoordinator.recoverIfNeeded();
   },
   // mihomo restarting under submerge (image update, crash) loses its config —
   // the boot-time apply only covers a submerge restart, so a genuine engine
   // reconnect also needs one. Best-effort: the hub already guards this call.
   onReconnect: async () => {
-    await domainIntelligenceRuntimeCoordinator.reconcile();
+    await reconcileDomainRuleDeployment();
   },
 });

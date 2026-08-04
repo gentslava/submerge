@@ -4,7 +4,6 @@ import { resolve } from "node:path";
 import { createHTTPHandler } from "@trpc/server/adapters/standalone";
 import { createAppContext } from "./auth/context.js";
 import { pruneExpiredSessions } from "./auth/service.js";
-import { setMihomoSecret } from "./clients/mihomo.js";
 import { env } from "./config/env.js";
 import { db } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
@@ -12,11 +11,11 @@ import { liveHub } from "./live/singleton.js";
 import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
 import {
-  domainIntelligenceRuntimeCoordinator,
   logHub,
+  reconcileDomainRuleDeployment,
   shutdownDomainIntelligenceRuntime,
 } from "./modules/logs/singleton.js";
-import { readMihomoSecret } from "./modules/nodes/service.js";
+import { restorePendingMihomoSecretRotation } from "./modules/settings/secret-rotation.js";
 import { sourceRefreshScheduler } from "./modules/sources/instance.js";
 import { startSchedulerAfter } from "./modules/sources/scheduler.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
@@ -63,8 +62,10 @@ backfillSubUrls(db);
 // again — sweep the expired ones on boot so the table can't grow unbounded.
 pruneExpiredSessions(db);
 
-// Use the panel-set mihomo secret (if any) before talking to the engine.
-setMihomoSecret(readMihomoSecret(db));
+// Restore both credential candidates before any engine call. A crash can happen
+// after Mihomo accepts a rotated secret but before SQLite promotes it; the durable
+// journal keeps boot able to authenticate in either state without exposing either.
+restorePendingMihomoSecretRotation(db);
 
 // Only explicitly curated operational events enter the browser-visible ring.
 setUiEventSink((draft) => logHub.push(draft));
@@ -81,9 +82,9 @@ logHub.start();
 // reads the fresh file on its own start); the reload is best-effort and fire-and-forget
 // so a not-yet-ready engine can't block or crash boot — the live loop keeps it in sync.
 const shutdownController = new AbortController();
-const bootConfigApply = domainIntelligenceRuntimeCoordinator
-  .reconcile()
-  .catch((err) => operationalLog("boot-config-apply-failed", {}, err));
+const bootConfigApply = reconcileDomainRuleDeployment().catch((err) =>
+  operationalLog("boot-config-apply-failed", {}, err),
+);
 void startSchedulerAfter(bootConfigApply, sourceRefreshScheduler, shutdownController.signal);
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers

@@ -102,7 +102,10 @@ describe("production domain-rule deployment", () => {
         db: createDb(":memory:"),
         mihomoConfigPath: "/mihomo/config.yaml",
         mode: "apply",
-        runConfigApply: async (apply) => apply(),
+        runConfigApply: async (apply) => {
+          events.push("suspend");
+          return apply();
+        },
       },
       deps,
     );
@@ -110,6 +113,7 @@ describe("production domain-rule deployment", () => {
     await expect(controller.reconcile()).resolves.toEqual(applied);
 
     expect(events).toEqual([
+      "suspend",
       "prepare:/data",
       "store:/mihomo/config.yaml",
       "target",

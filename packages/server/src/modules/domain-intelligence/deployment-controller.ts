@@ -47,6 +47,7 @@ function supersededApplyResult(): ApplyResult {
 export class DomainRuleDeploymentController {
   readonly capabilitySource: DomainRuleDeploymentProvisioner;
   private activeCoordinatedTransition: { epoch: number } | null = null;
+  private reconciliationTransitionActive = false;
   private storeProvisioned = false;
   private provisioningApplyResult: ApplyResult | null = null;
   private reconciliationGeneration = 0;
@@ -90,30 +91,27 @@ export class DomainRuleDeploymentController {
   private async reconcileNow(generation: number, signal?: AbortSignal): Promise<ApplyResult> {
     signal?.throwIfAborted();
     if (generation !== this.reconciliationGeneration) return supersededApplyResult();
-    if (this.mode === "report") {
-      const coordinated = await this.deps.runConfigApply(async () =>
-        this.applyManagedConfig(
-          (managedDomainRules) => this.applyConfigDirect(managedDomainRules),
-          false,
-          signal,
-        ),
-      );
+    const coordinated = await this.deps.runConfigApply(async () => {
       signal?.throwIfAborted();
-      const result = publicApplyResult(coordinated);
-      return generation === this.reconciliationGeneration ? result : supersededApplyResult();
-    }
-    this.provisioningApplyResult = null;
-    await this.capabilitySource.reconcile(signal);
-    signal?.throwIfAborted();
-    if (generation !== this.reconciliationGeneration) return supersededApplyResult();
-    if (this.provisioningApplyResult) return this.provisioningApplyResult;
-    const coordinated = await this.deps.runConfigApply(async () =>
-      this.applyManagedConfig(
+      if (generation !== this.reconciliationGeneration) return supersededApplyResult();
+      if (this.mode === "apply") {
+        this.provisioningApplyResult = null;
+        this.reconciliationTransitionActive = true;
+        try {
+          await this.capabilitySource.reconcile(signal);
+        } finally {
+          this.reconciliationTransitionActive = false;
+        }
+        signal?.throwIfAborted();
+        if (generation !== this.reconciliationGeneration) return supersededApplyResult();
+        if (this.provisioningApplyResult) return this.provisioningApplyResult;
+      }
+      return this.applyManagedConfig(
         (managedDomainRules) => this.applyConfigDirect(managedDomainRules),
         false,
         signal,
-      ),
-    );
+      );
+    });
     signal?.throwIfAborted();
     const result = publicApplyResult(coordinated);
     return generation === this.reconciliationGeneration ? result : supersededApplyResult();
@@ -162,12 +160,13 @@ export class DomainRuleDeploymentController {
   private async forceApplyAndVerifyManagedProvider(
     signal?: AbortSignal,
   ): Promise<ManagedDomainRuleActivationProof> {
-    const result = await this.deps.runConfigApply(() =>
-      this.applyManagedConfig(
-        (managedDomainRules) => this.applyConfigDirect(managedDomainRules),
-        false,
-        signal,
-      ),
+    if (!this.reconciliationTransitionActive) {
+      throw new DomainRuleProvisioningError("provider-inactive");
+    }
+    const result = await this.applyManagedConfig(
+      (managedDomainRules) => this.applyConfigDirect(managedDomainRules),
+      false,
+      signal,
     );
     this.provisioningApplyResult = publicApplyResult(result);
     if (result.managedActivationFailureReason === "target-channel-unavailable") {
