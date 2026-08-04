@@ -601,6 +601,107 @@ describe("buildMultiConfig — domain validation listener", () => {
   });
 });
 
+describe("buildMultiConfig — managed local domain rules", () => {
+  const managedRules = { targetGroupName: "ch-media" };
+
+  it("emits the code-owned file provider before user routing rules", () => {
+    const cfg = parse(
+      buildMultiConfig(
+        [
+          channel({ proxies: [px("A", "a.example")] }),
+          channel({
+            id: "media",
+            groupName: "ch-media",
+            isDefault: false,
+            policy: sticky,
+            domains: ["existing.example"],
+            proxies: [px("B", "b.example")],
+          }),
+        ],
+        "panel-secret",
+        undefined,
+        managedRules,
+      ),
+    );
+
+    expect(cfg["rule-providers"]).toEqual({
+      "submerge-custom": {
+        type: "file",
+        behavior: "domain",
+        format: "text",
+        path: "./domain-rules/custom.txt",
+      },
+    });
+    expect(cfg.rules).toEqual([
+      PROBE_RULE,
+      "RULE-SET,submerge-custom,ch-media",
+      "DOMAIN-SUFFIX,existing.example,ch-media",
+      "MATCH,AUTO",
+    ]);
+  });
+
+  it("keeps external providers alongside the managed provider", () => {
+    const cfg = parse(
+      buildMultiConfig(
+        [
+          channel({ proxies: [px("A", "a.example")] }),
+          channel({
+            id: "media",
+            groupName: "ch-media",
+            isDefault: false,
+            policy: sticky,
+            ruleProviders: [{ url: "https://example.com/existing.txt", behavior: "domain" }],
+            proxies: [px("B", "b.example")],
+          }),
+        ],
+        "panel-secret",
+        undefined,
+        managedRules,
+      ),
+    );
+
+    const providerNames = Object.keys(cfg["rule-providers"]);
+    expect(providerNames).toHaveLength(2);
+    expect(cfg["rule-providers"]["submerge-custom"]).toMatchObject({
+      type: "file",
+      path: "./domain-rules/custom.txt",
+    });
+    const externalProviderName = providerNames.find((name) => name.startsWith("rp-"));
+    expect(externalProviderName).toBeDefined();
+    expect(cfg.rules).toEqual([
+      PROBE_RULE,
+      "RULE-SET,submerge-custom,ch-media",
+      `RULE-SET,${externalProviderName},ch-media`,
+      "MATCH,AUTO",
+    ]);
+  });
+
+  it("rejects a missing or DIRECT-fallback target group", () => {
+    expect(() =>
+      buildMultiConfig([channel({ proxies: [px("A")] })], "panel-secret", undefined, managedRules),
+    ).toThrow("managed domain rules target group is unavailable");
+
+    expect(() =>
+      buildMultiConfig(
+        [
+          channel({ proxies: [px("A")] }),
+          channel({
+            id: "media",
+            groupName: "ch-media",
+            isDefault: false,
+            policy: sticky,
+            domains: [],
+            proxies: [],
+          }),
+        ],
+        "panel-secret",
+        undefined,
+        managedRules,
+      ),
+    ).toThrow("managed domain rules target group is unavailable");
+  });
+});
+
 describe("buildMultiConfig — native Direct channel", () => {
   it("protects every config shape from an upstream fake-IP resolver", () => {
     const expectedDns = {

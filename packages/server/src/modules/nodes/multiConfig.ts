@@ -63,6 +63,13 @@ export interface DomainValidationListenerInput {
   targetGroupName: string;
 }
 
+export const MANAGED_DOMAIN_RULE_PROVIDER_NAME = "submerge-custom";
+export const MANAGED_DOMAIN_RULE_PROVIDER_PATH = "./domain-rules/custom.txt";
+
+export interface ManagedDomainRulesProviderInput {
+  targetGroupName: string;
+}
+
 // A channel's top-level member is either a shared proxy (referenced by its index
 // into the global proxy list, so the final post-dedupe name resolves) or a
 // channel-scoped collapsed subgroup (referenced by its unique group name). Each
@@ -167,7 +174,10 @@ export function ruleProviderRelativePath(ref: RuleProviderRef): string {
 // configures — and caches it under the mihomo Home Dir (`./providers/...`, gitignored).
 export const RULE_PROVIDER_REFRESH_INTERVAL_SECONDS = 86_400;
 
-function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, unknown> {
+function buildRuleProviders(
+  nonDefault: ChannelConfigInput[],
+  managedDomainRules?: ManagedDomainRulesProviderInput,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const channel of nonDefault) {
     for (const ref of channel.ruleProviders ?? []) {
@@ -185,6 +195,14 @@ function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, un
         "size-limit": 0,
       };
     }
+  }
+  if (managedDomainRules) {
+    out[MANAGED_DOMAIN_RULE_PROVIDER_NAME] = {
+      type: "file",
+      behavior: "domain",
+      format: "text",
+      path: MANAGED_DOMAIN_RULE_PROVIDER_PATH,
+    };
   }
   return out;
 }
@@ -242,10 +260,16 @@ function buildRules(
   noProxies: boolean,
   defaultGroupName: string,
   nonDefaultProxyCount: number,
+  managedDomainRules?: ManagedDomainRulesProviderInput,
 ): string[] {
   // With no exit nodes anywhere there is nothing to route — everything is DIRECT.
   if (noProxies) return ["MATCH,DIRECT"];
   const rules: string[] = [];
+  if (managedDomainRules) {
+    rules.push(
+      `RULE-SET,${MANAGED_DOMAIN_RULE_PROVIDER_NAME},${managedDomainRules.targetGroupName}`,
+    );
+  }
   // Per channel, in priority order: keyword, domain-suffix, then rule-set — all
   // point at the channel's own group, so intra-channel order is irrelevant;
   // cross-channel precedence is the channel order (= priority).
@@ -291,6 +315,7 @@ export function buildMultiConfig(
   channels: ChannelConfigInput[],
   secret: string = env.MIHOMO_SECRET,
   domainValidation?: DomainValidationListenerInput,
+  managedDomainRules?: ManagedDomainRulesProviderInput,
 ): string {
   const proxyChannels = channels.filter(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
@@ -433,7 +458,15 @@ export function buildMultiConfig(
   // With no exit nodes the config is all-DIRECT (buildRules short-circuits and
   // emits no RULE-SET lines), so defined providers would be dead weight — skip them.
   const noProxies = unique.length === 0;
-  const ruleProviders = noProxies ? {} : buildRuleProviders(nonDefault);
+  if (managedDomainRules) {
+    const target = [...builds.values()].find(
+      (build) => build.channel.groupName === managedDomainRules.targetGroupName,
+    );
+    if (!target || raceNames(target).length === 0) {
+      throw new Error("managed domain rules target group is unavailable");
+    }
+  }
+  const ruleProviders = noProxies ? {} : buildRuleProviders(nonDefault, managedDomainRules);
   const hasProviders = Object.keys(ruleProviders).length > 0;
   const geo = noProxies ? null : geoTopLevel(nonDefault);
 
@@ -506,7 +539,13 @@ export function buildMultiConfig(
       ...probeGroup,
     ],
     rules: probeRules(noProxies).concat(
-      buildRules(nonDefault, noProxies, defaultGroupName, nonDefaultProxy.length),
+      buildRules(
+        nonDefault,
+        noProxies,
+        defaultGroupName,
+        nonDefaultProxy.length,
+        managedDomainRules,
+      ),
     ),
   };
   return yaml.dump(cfg, { lineWidth: -1 });
