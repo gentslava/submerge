@@ -83,7 +83,16 @@
 }
 
 .domain-generated-rule {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow-wrap: anywhere;
+}
+
+.domain-generated-group {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .domain-observed-name {
@@ -97,11 +106,17 @@
 
 .domain-candidate-rule {
   flex-wrap: wrap;
+  overflow: hidden;
 }
 
 .domain-candidate-review-actions {
   display: grid;
-  grid-template-columns: auto minmax(7.5rem, auto) 2rem;
+  width: 18rem;
+  grid-template-columns: 7.5rem 7.5rem 2rem;
+}
+
+.domain-candidate-reject-action {
+  width: 100%;
 }
 
 .domain-candidate-apply-action {

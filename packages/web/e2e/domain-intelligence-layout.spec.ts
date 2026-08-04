@@ -251,7 +251,7 @@ test("populated dark desktop matches the approved Auto Rules hierarchy", async (
   await expectNoDocumentOverflow(page);
 });
 
-for (const width of [984, 1440]) {
+for (const width of [984, 1440, 1915]) {
   test(`desktop candidate actions stay aligned and long identities never overlap at ${width}px`, async ({
     page,
   }) => {
@@ -269,19 +269,19 @@ for (const width of [984, 1440]) {
     };
     const longExactCandidate: DomainCandidateList["items"][number] = {
       ...candidateBase,
-      fqdn: "prod-lt-playstoregatewayadapter-pa.googleapis.com",
-      siteGroup: "googleapis.com",
+      fqdn: "avatars.githubusercontent.com",
+      siteGroup: "githubusercontent.com",
       selectedScope: "exact",
-      proposedRule: "prod-lt-playstoregatewayadapter-pa.googleapis.com",
+      proposedRule: "avatars.githubusercontent.com",
       eligibleScopes: ["exact"],
       siteUnavailableReason: "non-widenable-suffix",
     };
     const pendingExactCandidate: DomainCandidateList["items"][number] = {
       ...pendingCandidate,
-      fqdn: "avatars.githubusercontent.com",
-      siteGroup: "githubusercontent.com",
+      fqdn: "prod-lt-playstoregatewayadapter-pa.googleapis.com",
+      siteGroup: "googleapis.com",
       selectedScope: "exact",
-      proposedRule: "avatars.githubusercontent.com",
+      proposedRule: "prod-lt-playstoregatewayadapter-pa.googleapis.com",
       eligibleScopes: ["exact"],
       siteUnavailableReason: "non-widenable-suffix",
     };
@@ -297,6 +297,16 @@ for (const width of [984, 1440]) {
       ".domain-candidate-list > .domain-candidate-item > .domain-candidate-row",
     );
     const baselineActions = await rows.first().locator(".domain-candidate-actions").boundingBox();
+    const baselineActionColumns = await rows
+      .first()
+      .locator(".domain-candidate-actions")
+      .locator(":scope > :not(.sr-only)")
+      .evaluateAll((elements) =>
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return { x: rect.x, width: rect.width };
+        }),
+      );
     expect(baselineActions).not.toBeNull();
     for (const row of await rows.all()) {
       const copy = await row.locator(".domain-candidate-copy").boundingBox();
@@ -308,11 +318,55 @@ for (const width of [984, 1440]) {
         1,
       );
       expect((copy?.x ?? 0) + (copy?.width ?? 0)).toBeLessThanOrEqual(actions?.x ?? 0);
+      const actionColumns = await row
+        .locator(".domain-candidate-actions")
+        .locator(":scope > :not(.sr-only)")
+        .evaluateAll((elements) =>
+          elements.map((element) => {
+            const rect = element.getBoundingClientRect();
+            return { x: rect.x, width: rect.width };
+          }),
+        );
+      expect(actionColumns).toHaveLength(baselineActionColumns.length);
+      for (const [index, action] of actionColumns.entries()) {
+        expect(Math.abs(action.x - (baselineActionColumns[index]?.x ?? 0))).toBeLessThanOrEqual(1);
+        expect(
+          Math.abs(action.width - (baselineActionColumns[index]?.width ?? 0)),
+        ).toBeLessThanOrEqual(1);
+      }
       expect(
         await row
           .locator(".domain-candidate-rule")
           .evaluate((element) => element.scrollWidth <= element.clientWidth),
       ).toBe(true);
+      for (const text of await row.locator(".domain-generated-rule").all()) {
+        expect(await text.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+          true,
+        );
+      }
+      expect(
+        await row.locator(".domain-candidate-rule").evaluate((element) => {
+          const textRects = Array.from(
+            element.querySelectorAll<HTMLElement>(
+              ".domain-observed-name, .domain-generated-group, .domain-rule-scope",
+            ),
+            (child) => child.getBoundingClientRect(),
+          );
+          return textRects.every((rect, index) =>
+            textRects.slice(index + 1).every((other) => {
+              const overlapWidth =
+                Math.min(rect.right, other.right) - Math.max(rect.left, other.left);
+              const overlapHeight =
+                Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top);
+              return overlapWidth <= 0 || overlapHeight <= 0;
+            }),
+          );
+        }),
+      ).toBe(true);
+    }
+
+    if (width === 1915) {
+      await page.screenshot({ path: "/tmp/submerge-domain-candidate-actions-1915.png" });
     }
 
     await page
