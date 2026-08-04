@@ -865,6 +865,9 @@ function CandidateRow({
       : item.selectedScope === "site"
         ? "сайт целиком"
         : "только точный адрес";
+  const addUnavailableMessage = !publisherAvailable
+    ? "Применение недоступно, пока сервер работает в режиме только отчёта"
+    : "Добавление из интерфейса ещё не подключено";
   const identity = (
     <>
       <div className="domain-candidate-rule flex min-w-0 items-center gap-2">
@@ -879,7 +882,7 @@ function CandidateRow({
           <span className="domain-observed-suffix">{observedDomain.suffix}</span>
         </span>
         {item.proposedRule ? (
-          <span className="domain-generated-group inline-flex min-w-0 shrink-0 items-center gap-2">
+          <span className="domain-generated-group inline-flex min-w-0 items-center gap-2">
             <ArrowRight aria-hidden="true" size={13} className="shrink-0 text-text-disabled" />
             <code className="domain-generated-rule font-mono text-sub font-semibold text-text-primary">
               {item.proposedRule}
@@ -942,7 +945,7 @@ function CandidateRow({
             />
           ) : null}
         </div>
-        <div className="domain-candidate-actions flex shrink-0 items-center gap-2">
+        <div className="domain-candidate-actions domain-candidate-review-actions flex shrink-0 items-center gap-2">
           {item.bucket === "candidate" ? (
             <>
               <Button
@@ -951,37 +954,39 @@ function CandidateRow({
                 disabled={rejectionPending}
                 aria-label={`Не добавлять ${item.fqdn}`}
                 onClick={() => onReject(true)}
+                className="domain-candidate-reject-action"
               >
                 Не добавлять
               </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled
-                aria-describedby={`domain-add-state-${item.fqdn}`}
-                className="disabled:border-border-subtle disabled:bg-hover disabled:text-text-disabled disabled:opacity-100 [&_svg]:text-text-disabled"
-                title={
-                  !publisherAvailable
-                    ? "Применение недоступно: DOMAIN_RULES_MODE=report"
-                    : "Добавление из интерфейса ещё не подключено"
-                }
-              >
-                {item.status === "confirmed" ? (
-                  <>
-                    <Plus aria-hidden="true" size={14} />
-                    Добавить
-                  </>
-                ) : (
-                  "Проверяется"
-                )}
-              </Button>
-              <span id={`domain-add-state-${item.fqdn}`} className="sr-only">
-                {item.status === "confirmed"
-                  ? publisherAvailable
-                    ? "Добавление из интерфейса ещё не подключено"
-                    : "Применение недоступно, пока сервер работает в режиме только отчёта"
-                  : "Добавление станет доступно после завершения проверок"}
-              </span>
+              {item.status === "confirmed" ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-disabled="true"
+                  aria-describedby={`domain-add-state-${item.fqdn}`}
+                  className="domain-candidate-apply-action cursor-not-allowed border-border-subtle bg-hover text-text-disabled hover:bg-hover [&_svg]:text-text-disabled"
+                  onClick={() => toast.info(addUnavailableMessage)}
+                >
+                  <Plus aria-hidden="true" size={14} />
+                  Добавить
+                </Button>
+              ) : (
+                <span
+                  role="status"
+                  aria-label="Проверяется"
+                  className={cn(
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                    "domain-candidate-apply-action cursor-default border-border-subtle bg-hover text-text-disabled",
+                  )}
+                >
+                  Проверяется
+                </span>
+              )}
+              {item.status === "confirmed" ? (
+                <span id={`domain-add-state-${item.fqdn}`} className="sr-only">
+                  {addUnavailableMessage}
+                </span>
+              ) : null}
             </>
           ) : (
             <ExclusionAction
@@ -1005,6 +1010,8 @@ function CandidateRow({
                 className={cn("transition-transform", expanded && "rotate-180")}
               />
             </button>
+          ) : item.bucket === "candidate" ? (
+            <span aria-hidden="true" className="domain-candidate-expand-spacer h-8 w-8" />
           ) : null}
         </div>
       </div>

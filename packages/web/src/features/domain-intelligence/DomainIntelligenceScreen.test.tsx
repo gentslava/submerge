@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   mutationOptions: vi.fn((kind: string, options: unknown) => ({ kind, options })),
   invalidateQueries: vi.fn(),
   setQueryData: vi.fn(),
-  toast: { error: vi.fn(), success: vi.fn() },
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -313,6 +313,7 @@ beforeEach(() => {
   mocks.invalidateQueries.mockClear();
   mocks.setQueryData.mockReset();
   mocks.toast.error.mockReset();
+  mocks.toast.info.mockReset();
   mocks.toast.success.mockReset();
 });
 
@@ -338,10 +339,15 @@ describe("DomainIntelligenceScreen", () => {
     render(<DomainIntelligenceScreen />);
 
     const addButton = screen.getAllByRole("button", { name: "Добавить" })[0];
-    expect(addButton).toBeDisabled();
-    expect(addButton).toHaveClass("disabled:opacity-100");
-    expect(addButton).toHaveClass("disabled:text-text-disabled");
+    expect(addButton).toHaveAttribute("aria-disabled", "true");
+    expect(addButton).not.toBeDisabled();
+    addButton?.focus();
+    expect(addButton).toHaveFocus();
     expect(addButton).toHaveAccessibleDescription(
+      "Применение недоступно, пока сервер работает в режиме только отчёта",
+    );
+    fireEvent.click(addButton as HTMLElement);
+    expect(mocks.toast.info).toHaveBeenCalledWith(
       "Применение недоступно, пока сервер работает в режиме только отчёта",
     );
   });
@@ -359,7 +365,8 @@ describe("DomainIntelligenceScreen", () => {
     );
     render(<DomainIntelligenceScreen />);
 
-    expect(screen.getByRole("button", { name: "Проверяется" })).toBeDisabled();
+    expect(screen.getByRole("status", { name: "Проверяется" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Проверяется" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Добавить" })).toBeNull();
     const details = screen.getByRole("button", {
       name: "Открыть детали www.service.example",
@@ -394,7 +401,10 @@ describe("DomainIntelligenceScreen", () => {
       fqdn: "www.service.example",
       rejected: true,
     });
-    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("requires an explicit first-install scope before observation can start", () => {

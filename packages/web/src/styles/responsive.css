@@ -83,14 +83,29 @@
 }
 
 .domain-generated-rule {
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .domain-observed-name {
   display: flex;
   align-items: center;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   white-space: nowrap;
+}
+
+.domain-candidate-rule {
+  flex-wrap: wrap;
+}
+
+.domain-candidate-review-actions {
+  display: grid;
+  grid-template-columns: auto minmax(7.5rem, auto) 2rem;
+}
+
+.domain-candidate-apply-action {
+  width: 100%;
 }
 
 .domain-observed-eye {
@@ -438,7 +453,12 @@
   }
 
   .domain-candidate-actions {
+    display: flex;
     width: 100%;
+  }
+
+  .domain-candidate-expand-spacer {
+    display: none;
   }
 
   .domain-exclusion-reason {

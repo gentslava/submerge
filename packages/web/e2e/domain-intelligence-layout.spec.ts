@@ -251,6 +251,81 @@ test("populated dark desktop matches the approved Auto Rules hierarchy", async (
   await expectNoDocumentOverflow(page);
 });
 
+for (const width of [984, 1440]) {
+  test(`desktop candidate actions stay aligned and long identities never overlap at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1024 });
+    const pendingCandidate: DomainCandidateList["items"][number] = {
+      ...candidateBase,
+      fqdn: "api.pending.service.example",
+      status: "pending",
+      decision: {
+        ...decision,
+        status: "pending",
+        confidence: "low",
+        reasons: ["insufficient-direct-failures"],
+      },
+    };
+    const longExactCandidate: DomainCandidateList["items"][number] = {
+      ...candidateBase,
+      fqdn: "prod-lt-playstoregatewayadapter-pa.googleapis.com",
+      siteGroup: "googleapis.com",
+      selectedScope: "exact",
+      proposedRule: "prod-lt-playstoregatewayadapter-pa.googleapis.com",
+      eligibleScopes: ["exact"],
+      siteUnavailableReason: "non-widenable-suffix",
+    };
+    const pendingExactCandidate: DomainCandidateList["items"][number] = {
+      ...pendingCandidate,
+      fqdn: "avatars.githubusercontent.com",
+      siteGroup: "githubusercontent.com",
+      selectedScope: "exact",
+      proposedRule: "avatars.githubusercontent.com",
+      eligibleScopes: ["exact"],
+      siteUnavailableReason: "non-widenable-suffix",
+    };
+    const candidateItems: DomainCandidateList = {
+      items: [candidateBase, pendingCandidate, longExactCandidate, pendingExactCandidate],
+      nextCursor: null,
+    };
+    await openDomainIntelligence(page, settings, overview, {
+      "domainIntelligence.list": listFixture(candidateItems, exclusions),
+    });
+
+    const rows = page.locator(
+      ".domain-candidate-list > .domain-candidate-item > .domain-candidate-row",
+    );
+    const baselineActions = await rows.first().locator(".domain-candidate-actions").boundingBox();
+    expect(baselineActions).not.toBeNull();
+    for (const row of await rows.all()) {
+      const copy = await row.locator(".domain-candidate-copy").boundingBox();
+      const actions = await row.locator(".domain-candidate-actions").boundingBox();
+      expect(copy).not.toBeNull();
+      expect(actions).not.toBeNull();
+      expect(Math.abs((actions?.x ?? 0) - (baselineActions?.x ?? 0))).toBeLessThanOrEqual(1);
+      expect(Math.abs((actions?.width ?? 0) - (baselineActions?.width ?? 0))).toBeLessThanOrEqual(
+        1,
+      );
+      expect((copy?.x ?? 0) + (copy?.width ?? 0)).toBeLessThanOrEqual(actions?.x ?? 0);
+      expect(
+        await row
+          .locator(".domain-candidate-rule")
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      ).toBe(true);
+    }
+
+    await page
+      .getByRole("button", { name: `Исключения · ${overview.bucketCounts.exclusion}` })
+      .click();
+    await expect(page.locator("#domain-exclusions .domain-candidate-actions").first()).toHaveCSS(
+      "display",
+      "flex",
+    );
+    await expectNoDocumentOverflow(page);
+  });
+}
+
 test("first install requires a visible scope choice", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openDomainIntelligence(page, {
