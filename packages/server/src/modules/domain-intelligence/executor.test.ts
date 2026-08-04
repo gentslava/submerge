@@ -20,7 +20,10 @@ function readyView(): DomainIntelligenceSettingsView {
       automationMode: "review",
       defaultRuleScope: "exact",
     },
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment: {
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    },
   };
 }
 

@@ -16,7 +16,10 @@ const view: DomainIntelligenceSettingsView = {
     neverAddSuffixes: ["telemetry.example"],
     nonWidenableSuffixes: ["vercel.app", "pages.example"],
   },
-  automatic: { available: false, reason: "publisher-unavailable" },
+  deployment: {
+    mode: "report",
+    apply: { available: false, reason: "deployment-report-only" },
+  },
 };
 
 const mocks = vi.hoisted(() => ({
@@ -112,7 +115,10 @@ describe("DomainIntelligenceSettingsSection", () => {
       data: {
         configurationState: "unconfigured",
         settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-        automatic: { available: false, reason: "publisher-unavailable" },
+        deployment: {
+          mode: "report",
+          apply: { available: false, reason: "deployment-report-only" },
+        },
       },
     };
     render(<DomainIntelligenceSettingsSection />);
@@ -130,7 +136,10 @@ describe("DomainIntelligenceSettingsSection", () => {
       data: {
         configurationState: "invalid",
         settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-        automatic: { available: false, reason: "publisher-unavailable" },
+        deployment: {
+          mode: "report",
+          apply: { available: false, reason: "deployment-report-only" },
+        },
       },
     };
     render(<DomainIntelligenceSettingsSection />);

@@ -127,7 +127,10 @@ const responses: Record<string, unknown> = {
       ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
       defaultRuleScope: "site",
     },
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment: {
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    },
   } satisfies DomainIntelligenceSettingsView,
   "domainIntelligence.overview": {
     generatedAt: Date.parse("2026-08-04T12:00:00.000Z"),

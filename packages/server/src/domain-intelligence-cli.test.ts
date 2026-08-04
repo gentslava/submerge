@@ -63,7 +63,7 @@ const report = {
       fqdn: "private-report.example",
     },
   ],
-  applyReadiness: { available: false, reason: "publisher-unavailable" },
+  applyReadiness: { available: false, reason: "deployment-report-only" },
 } as unknown as DomainIntelligenceReport;
 
 function deps(): DomainIntelligenceCliDeps {

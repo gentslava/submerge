@@ -214,16 +214,88 @@ export const DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS = {
   applyEnabled: false,
 } as const satisfies DomainIntelligenceReportSettings;
 
+export const domainIntelligenceApplyUnavailableReasonSchema = z.enum([
+  "deployment-report-only",
+  "local-store-unavailable",
+  "local-store-unsafe",
+  "local-store-migration-required",
+  "local-store-reconciliation-required",
+  "provider-inactive",
+  "target-channel-unavailable",
+]);
+export type DomainIntelligenceApplyUnavailableReason = z.infer<
+  typeof domainIntelligenceApplyUnavailableReasonSchema
+>;
+
+export const domainIntelligenceApplyModeUnavailableReasonSchema = z.enum([
+  "local-store-unavailable",
+  "local-store-unsafe",
+  "local-store-migration-required",
+  "local-store-reconciliation-required",
+  "provider-inactive",
+  "target-channel-unavailable",
+]);
+
+const domainIntelligenceApplyReadySchema = z
+  .object({
+    available: z.literal(true),
+    repository: z.literal("local"),
+    branch: z.literal("main"),
+    path: z.literal("custom.txt"),
+    providerName: z.literal("submerge-custom"),
+    providerPath: z.literal("./domain-rules/custom.txt"),
+  })
+  .strict();
+
+export const domainIntelligenceApplyReadinessSchema = z.discriminatedUnion("available", [
+  z
+    .object({
+      available: z.literal(false),
+      reason: domainIntelligenceApplyUnavailableReasonSchema,
+    })
+    .strict(),
+  domainIntelligenceApplyReadySchema,
+]);
+export type DomainIntelligenceApplyReadiness = z.infer<
+  typeof domainIntelligenceApplyReadinessSchema
+>;
+
+export const domainIntelligenceDeploymentCapabilitySchema = z.discriminatedUnion("mode", [
+  z
+    .object({
+      mode: z.literal("report"),
+      apply: z
+        .object({
+          available: z.literal(false),
+          reason: z.literal("deployment-report-only"),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      mode: z.literal("apply"),
+      apply: z.discriminatedUnion("available", [
+        z
+          .object({
+            available: z.literal(false),
+            reason: domainIntelligenceApplyModeUnavailableReasonSchema,
+          })
+          .strict(),
+        domainIntelligenceApplyReadySchema,
+      ]),
+    })
+    .strict(),
+]);
+export type DomainIntelligenceDeploymentCapability = z.infer<
+  typeof domainIntelligenceDeploymentCapabilitySchema
+>;
+
 export const domainIntelligenceSettingsViewSchema = z
   .object({
     configurationState: z.enum(["unconfigured", "ready", "invalid"]),
     settings: domainIntelligenceReportSettingsSchema,
-    automatic: z
-      .object({
-        available: z.literal(false),
-        reason: z.literal("publisher-unavailable"),
-      })
-      .strict(),
+    deployment: domainIntelligenceDeploymentCapabilitySchema,
   })
   .strict()
   .superRefine((view, context) => {

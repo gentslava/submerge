@@ -6,6 +6,7 @@ import {
   type DomainCandidateReviewActionResult,
   type DomainCandidateReviewErrorReason,
   type DomainCandidateStatus,
+  type DomainIntelligenceDeploymentCapability,
   type DomainIntelligenceOverview,
   type DomainIntelligenceReportSettings,
   type DomainIntelligenceSettingsMutationResult,
@@ -37,6 +38,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
+import { domainRulesDeploymentCapability } from "../../config/domain-rules.js";
 import type { Db } from "../../db/client.js";
 import type { DomainValidationRunErrorCategory } from "../../db/schema.js";
 import {
@@ -2189,7 +2191,10 @@ function safeDefaultDomainIntelligenceSettings(): DomainIntelligenceReportSettin
   return domainIntelligenceReportSettingsSchema.parse(DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS);
 }
 
-export function getDomainIntelligenceSettingsView(db: Db): DomainIntelligenceSettingsView {
+export function getDomainIntelligenceSettingsView(
+  db: Db,
+  deployment: DomainIntelligenceDeploymentCapability = domainRulesDeploymentCapability,
+): DomainIntelligenceSettingsView {
   const raw = getSetting(db, "domainIntelligence");
   if (raw === undefined) {
     const storedRow = db
@@ -2200,14 +2205,14 @@ export function getDomainIntelligenceSettingsView(db: Db): DomainIntelligenceSet
     return domainIntelligenceSettingsViewSchema.parse({
       configurationState: storedRow ? "invalid" : "unconfigured",
       settings: safeDefaultDomainIntelligenceSettings(),
-      automatic: { available: false, reason: "publisher-unavailable" },
+      deployment,
     });
   }
   if (raw.includes("\0") || Buffer.byteLength(raw, "utf8") > MAX_SETTING_VALUE_BYTES) {
     return domainIntelligenceSettingsViewSchema.parse({
       configurationState: "invalid",
       settings: safeDefaultDomainIntelligenceSettings(),
-      automatic: { available: false, reason: "publisher-unavailable" },
+      deployment,
     });
   }
   let stored: unknown;
@@ -2224,13 +2229,14 @@ export function getDomainIntelligenceSettingsView(db: Db): DomainIntelligenceSet
         : "ready"
       : "invalid",
     settings: parsed.success ? parsed.data : safeDefaultDomainIntelligenceSettings(),
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment,
   });
 }
 
 export function setDomainIntelligenceReportSettings(
   db: Db,
   input: DomainIntelligenceReportSettings,
+  deployment: DomainIntelligenceDeploymentCapability = domainRulesDeploymentCapability,
 ): DomainIntelligenceSettingsView {
   const parsed = domainIntelligenceReportSettingsSchema.parse(input);
   const value = JSON.stringify(parsed);
@@ -2305,7 +2311,7 @@ export function setDomainIntelligenceReportSettings(
   return domainIntelligenceSettingsViewSchema.parse({
     configurationState: parsed.defaultRuleScope === null ? "unconfigured" : "ready",
     settings: parsed,
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment,
   });
 }
 

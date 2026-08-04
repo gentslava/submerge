@@ -60,7 +60,10 @@ function settingsView(): DomainIntelligenceSettingsView {
   return {
     configurationState: "unconfigured",
     settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment: {
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    },
   };
 }
 
@@ -101,7 +104,10 @@ describe("domain intelligence router", () => {
     const ready: DomainIntelligenceSettingsView = {
       configurationState: "ready",
       settings: configured,
-      automatic: { available: false, reason: "publisher-unavailable" },
+      deployment: {
+        mode: "report",
+        apply: { available: false, reason: "deployment-report-only" },
+      },
     };
     const service = {
       settings: vi.fn(() => ready),

@@ -2,6 +2,7 @@ import type {
   DomainCandidateReportItem,
   DomainCandidateReviewErrorReason,
   DomainCandidateReviewMutationResult,
+  DomainIntelligenceApplyReadiness,
   DomainIntelligenceReportSettings,
   DomainProbeCategory,
   DomainReportExclusionReason,
@@ -186,7 +187,7 @@ export function DomainIntelligenceScreen() {
           ) : (
             <ModeCard
               settings={settingsView.settings}
-              automaticAvailable={settingsView.automatic.available}
+              applyReadiness={settingsView.deployment.apply}
               seenToday={seenToday}
               health={overview.health.status}
               pending={settingsMutation.isPending}
@@ -209,7 +210,7 @@ export function DomainIntelligenceScreen() {
             exclusionsHaveMore={exclusionsQuery.hasNextPage}
             exclusionsLoadingMore={exclusionsQuery.isFetchingNextPage}
             expanded={expanded}
-            publisherAvailable={settingsView.automatic.available}
+            applyReadiness={settingsView.deployment.apply}
             scopePending={scopeMutation.isPending}
             rejectionPending={rejectionMutation.isPending}
             recheckPending={recheckMutation.isPending}
@@ -224,7 +225,7 @@ export function DomainIntelligenceScreen() {
             onLoadMoreExclusions={() => void exclusionsQuery.fetchNextPage()}
           />
 
-          <PublisherUnavailableCard />
+          <PublisherStatusCard applyReadiness={settingsView.deployment.apply} />
         </>
       )}
     </div>
@@ -299,14 +300,14 @@ function FirstInstallCard({
 
 function ModeCard({
   settings,
-  automaticAvailable,
+  applyReadiness,
   seenToday,
   health,
   pending,
   onSelect,
 }: {
   settings: DomainIntelligenceReportSettings;
-  automaticAvailable: boolean;
+  applyReadiness: DomainIntelligenceApplyReadiness;
   seenToday: number;
   health: "inactive" | "accumulating" | "healthy" | "degraded";
   pending: boolean;
@@ -314,6 +315,9 @@ function ModeCard({
 }) {
   const mode = settings.automationMode;
   const [modeEditorOpen, setModeEditorOpen] = useState(false);
+  const automaticUnavailableMessage = applyReadiness.available
+    ? "Автоматический режим ещё не подключён в интерфейсе"
+    : applyActionUnavailableMessage(applyReadiness);
   const statusLabel = (() => {
     if (!settings.enabled) return "Наблюдение выключено";
     if (health === "degraded") return "Наблюдение неполное";
@@ -336,13 +340,7 @@ function ModeCard({
                 type="button"
                 disabled={disabled}
                 aria-current={mode === option ? "true" : undefined}
-                title={
-                  option === "automatic"
-                    ? automaticAvailable
-                      ? "Автоматический режим ещё не подключён в интерфейсе"
-                      : "Publisher не настроен на сервере"
-                    : undefined
-                }
+                title={option === "automatic" ? automaticUnavailableMessage : undefined}
                 onClick={() => option !== "automatic" && onSelect(option)}
                 className={cn(
                   "whitespace-nowrap rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:text-text-disabled",
@@ -375,9 +373,9 @@ function ModeCard({
         <p className="domain-mode-description text-meta text-text-tertiary">
           {MODE_DESCRIPTIONS[mode]}
         </p>
-        {!automaticAvailable ? (
+        {!applyReadiness.available ? (
           <p className="domain-mode-capability text-fine text-text-tertiary">
-            Автоматический режим недоступен: нет подтверждённой Git-capability.
+            {automaticUnavailableMessage}
           </p>
         ) : null}
       </div>
@@ -421,13 +419,7 @@ function ModeCard({
                   type="button"
                   disabled={disabled}
                   aria-pressed={selected}
-                  title={
-                    option === "automatic"
-                      ? automaticAvailable
-                        ? "Автоматический режим ещё не подключён в интерфейсе"
-                        : "Publisher не настроен на сервере"
-                      : undefined
-                  }
+                  title={option === "automatic" ? automaticUnavailableMessage : undefined}
                   className={cn(
                     "flex min-h-14 w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors disabled:opacity-50",
                     selected
@@ -482,7 +474,7 @@ function CandidatePanel({
   exclusionsHaveMore,
   exclusionsLoadingMore,
   expanded,
-  publisherAvailable,
+  applyReadiness,
   scopePending,
   rejectionPending,
   recheckPending,
@@ -510,7 +502,7 @@ function CandidatePanel({
   exclusionsHaveMore: boolean;
   exclusionsLoadingMore: boolean;
   expanded: string | null;
-  publisherAvailable: boolean;
+  applyReadiness: DomainIntelligenceApplyReadiness;
   scopePending: boolean;
   rejectionPending: boolean;
   recheckPending: boolean;
@@ -597,7 +589,7 @@ function CandidatePanel({
               hasMore={exclusionsHaveMore}
               loadingMore={exclusionsLoadingMore}
               expanded={expanded}
-              publisherAvailable={publisherAvailable}
+              applyReadiness={applyReadiness}
               scopePending={scopePending}
               rejectionPending={rejectionPending}
               recheckPending={recheckPending}
@@ -642,7 +634,7 @@ function CandidatePanel({
             hasMore={candidatesHaveMore}
             loadingMore={candidatesLoadingMore}
             expanded={expanded}
-            publisherAvailable={publisherAvailable}
+            applyReadiness={applyReadiness}
             scopePending={scopePending}
             rejectionPending={rejectionPending}
             recheckPending={recheckPending}
@@ -676,7 +668,7 @@ function CandidateListBody({
   hasMore,
   loadingMore,
   expanded,
-  publisherAvailable,
+  applyReadiness,
   scopePending,
   rejectionPending,
   recheckPending,
@@ -694,7 +686,7 @@ function CandidateListBody({
   hasMore: boolean;
   loadingMore: boolean;
   expanded: string | null;
-  publisherAvailable: boolean;
+  applyReadiness: DomainIntelligenceApplyReadiness;
   scopePending: boolean;
   rejectionPending: boolean;
   recheckPending: boolean;
@@ -754,7 +746,7 @@ function CandidateListBody({
               key={item.fqdn}
               item={item}
               expanded={expanded === item.fqdn}
-              publisherAvailable={publisherAvailable}
+              applyReadiness={applyReadiness}
               scopePending={scopePending}
               rejectionPending={rejectionPending}
               recheckPending={recheckPending}
@@ -837,7 +829,7 @@ function domainCountLabel(count: number): string {
 function CandidateRow({
   item,
   expanded,
-  publisherAvailable,
+  applyReadiness,
   scopePending,
   rejectionPending,
   recheckPending,
@@ -848,7 +840,7 @@ function CandidateRow({
 }: {
   item: DomainCandidateReportItem;
   expanded: boolean;
-  publisherAvailable: boolean;
+  applyReadiness: DomainIntelligenceApplyReadiness;
   scopePending: boolean;
   rejectionPending: boolean;
   recheckPending: boolean;
@@ -865,9 +857,9 @@ function CandidateRow({
       : item.selectedScope === "site"
         ? "сайт целиком"
         : "только точный адрес";
-  const addUnavailableMessage = !publisherAvailable
-    ? "Применение недоступно, пока сервер работает в режиме только отчёта"
-    : "Добавление из интерфейса ещё не подключено";
+  const addUnavailableMessage = applyReadiness.available
+    ? "Добавление из интерфейса ещё не подключено"
+    : applyActionUnavailableMessage(applyReadiness);
   const identity = (
     <>
       <div
@@ -1245,17 +1237,89 @@ function DetailRow({
   );
 }
 
-function PublisherUnavailableCard() {
+function applyActionUnavailableMessage(applyReadiness: DomainIntelligenceApplyReadiness): string {
+  if (applyReadiness.available) return "Добавление из интерфейса ещё не подключено";
+  switch (applyReadiness.reason) {
+    case "deployment-report-only":
+      return "Применение недоступно, пока сервер работает в режиме только отчёта";
+    case "local-store-unavailable":
+      return "Применение недоступно: локальное хранилище правил не подготовлено";
+    case "local-store-unsafe":
+      return "Применение недоступно: локальное хранилище правил не прошло проверку безопасности";
+    case "local-store-migration-required":
+      return "Применение недоступно: требуется перенос существующего списка custom";
+    case "local-store-reconciliation-required":
+      return "Применение недоступно: локальный список требует восстановления";
+    case "provider-inactive":
+      return "Применение недоступно: Mihomo не подтвердил локальный provider";
+    case "target-channel-unavailable":
+      return "Применение недоступно: целевой VPN-канал не готов";
+  }
+}
+
+function publisherStatusCopy(applyReadiness: DomainIntelligenceApplyReadiness): {
+  badge: string;
+  description: string;
+} {
+  if (applyReadiness.available) {
+    return {
+      badge: "готово",
+      description: "Локальный список готов к применению.",
+    };
+  }
+  switch (applyReadiness.reason) {
+    case "deployment-report-only":
+      return {
+        badge: "только отчёт",
+        description: "Применение отключено в конфигурации сервера. Отчёт и проверки работают.",
+      };
+    case "local-store-unavailable":
+      return {
+        badge: "не готово",
+        description: "Локальное хранилище правил ещё не подготовлено.",
+      };
+    case "local-store-unsafe":
+      return {
+        badge: "требует внимания",
+        description: "Локальное хранилище правил не прошло проверку безопасности.",
+      };
+    case "local-store-migration-required":
+      return {
+        badge: "нужен перенос",
+        description: "Перед применением нужно безопасно перенести существующий список custom.",
+      };
+    case "local-store-reconciliation-required":
+      return {
+        badge: "нужно восстановление",
+        description: "Локальный список требует восстановления перед применением.",
+      };
+    case "provider-inactive":
+      return {
+        badge: "provider не активен",
+        description: "Mihomo ещё не подтвердил локальный provider.",
+      };
+    case "target-channel-unavailable":
+      return {
+        badge: "канал не готов",
+        description: "Целевой VPN-канал недоступен для применения правил.",
+      };
+  }
+}
+
+function PublisherStatusCard({
+  applyReadiness,
+}: {
+  applyReadiness: DomainIntelligenceApplyReadiness;
+}) {
+  const copy = publisherStatusCopy(applyReadiness);
   return (
     <section className="flex min-w-0 items-center justify-between gap-4 rounded-lg border border-border-subtle bg-surface px-[18px] py-4">
       <div className="flex min-w-0 flex-col gap-1">
         <h2 className="text-label font-semibold text-text-primary">Список custom</h2>
-        <p className="text-sub text-text-secondary">
-          Publisher ещё не настроен на сервере. Отчёт и проверки работают, применение заблокировано.
-        </p>
+        <p className="text-sub text-text-secondary">{copy.description}</p>
       </div>
       <span className="shrink-0 rounded-full bg-hover px-2.5 py-1 text-fine font-medium text-text-tertiary">
-        только отчёт
+        {copy.badge}
       </span>
     </section>
   );

@@ -9,6 +9,7 @@ import {
   type DomainIntelligenceSettingsView,
   domainCandidateListSchema,
   domainCandidateReportItemSchema,
+  domainIntelligenceApplyReadinessSchema,
   domainIntelligenceOverviewSchema,
   domainIntelligenceSettingsViewSchema,
 } from "@submerge/shared";
@@ -50,12 +51,7 @@ export const domainIntelligenceReportSchema = z
       })
       .strict(),
     candidates: z.array(domainCandidateReportItemSchema).max(MAX_REPORT_CANDIDATES),
-    applyReadiness: z
-      .object({
-        available: z.literal(false),
-        reason: z.literal("publisher-unavailable"),
-      })
-      .strict(),
+    applyReadiness: domainIntelligenceApplyReadinessSchema,
   })
   .strict()
   .superRefine((report, context) => {
@@ -120,7 +116,7 @@ export function buildDomainIntelligenceReport(
       exclusions: overview.exclusionCounts,
     },
     candidates,
-    applyReadiness: settingsView.automatic,
+    applyReadiness: settingsView.deployment.apply,
   });
 }
 
@@ -215,7 +211,9 @@ export function renderDomainIntelligenceMarkdown(report: DomainIntelligenceRepor
       ? `Observer: ${parsed.observer.health.status} (${parsed.observer.health.reason})`
       : `Observer: unavailable (${parsed.observer.reason})`,
     `Candidates: ${parsed.counts.buckets.candidate}; exclusions: ${parsed.counts.buckets.exclusion}`,
-    `Apply: unavailable (${parsed.applyReadiness.reason})`,
+    parsed.applyReadiness.available
+      ? "Apply: available (private local repository)"
+      : `Apply: unavailable (${parsed.applyReadiness.reason})`,
     "",
     "## Domains",
     "",

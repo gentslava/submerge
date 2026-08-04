@@ -308,17 +308,25 @@ interface DomainIntelligencePreferences {
 }
 
 type DomainIntelligenceDeploymentCapability =
-  | { mode: "report"; apply: { available: false; reason: ApplyUnavailableReason } }
+  | {
+      mode: "report";
+      apply: { available: false; reason: "deployment-report-only" };
+    }
   | {
       mode: "apply";
-      apply: {
-        available: true;
-        repository: "local";
-        branch: "main";
-        path: "custom.txt";
-        providerName: "submerge-custom";
-        providerPath: "./domain-rules/custom.txt";
-      };
+      apply:
+        | {
+            available: false;
+            reason: Exclude<ApplyUnavailableReason, "deployment-report-only">;
+          }
+        | {
+            available: true;
+            repository: "local";
+            branch: "main";
+            path: "custom.txt";
+            providerName: "submerge-custom";
+            providerPath: "./domain-rules/custom.txt";
+          };
     };
 
 type ApplyUnavailableReason =
@@ -400,7 +408,8 @@ operator authorization for a separate boot reconciliation:
 6. mint `apply.available` only after all proofs succeed.
 
 Provisioning is not candidate apply and cannot reserve an automatic budget or change rule
-ownership. A failure leaves the capability in report mode with one exact reason above.
+ownership. In `apply` deployment mode, a failure leaves apply unavailable with one exact reason
+above; effective behavior therefore remains report-only without misreporting the configured mode.
 
 Default exclusions include `ru`, `su`, `xn--p1ai`, private/local/reverse zones, telemetry,
 advertising/tracking names, and infrastructure hostnames that are not meaningful routing

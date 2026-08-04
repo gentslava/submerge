@@ -218,14 +218,20 @@ describe("domain intelligence admin read model", () => {
     expect(getDomainIntelligenceSettingsView(db)).toEqual({
       configurationState: "unconfigured",
       settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-      automatic: { available: false, reason: "publisher-unavailable" },
+      deployment: {
+        mode: "report",
+        apply: { available: false, reason: "deployment-report-only" },
+      },
     });
 
     db.insert(settings).values({ key: "domainIntelligence", value: '{"enabled":true}' }).run();
     expect(getDomainIntelligenceSettingsView(db)).toMatchObject({
       configurationState: "invalid",
       settings: { enabled: false, defaultRuleScope: null, automationMode: "off" },
-      automatic: { available: false, reason: "publisher-unavailable" },
+      deployment: {
+        mode: "report",
+        apply: { available: false, reason: "deployment-report-only" },
+      },
     });
 
     db.update(settings)
@@ -235,6 +241,21 @@ describe("domain intelligence admin read model", () => {
     expect(getDomainIntelligenceSettingsView(db)).toMatchObject({
       configurationState: "invalid",
       settings: { enabled: false, defaultRuleScope: null },
+    });
+  });
+
+  it("exposes an injected apply deployment without inventing readiness", () => {
+    const db = migratedDb();
+    expect(
+      getDomainIntelligenceSettingsView(db, {
+        mode: "apply",
+        apply: { available: false, reason: "local-store-unavailable" },
+      }),
+    ).toMatchObject({
+      deployment: {
+        mode: "apply",
+        apply: { available: false, reason: "local-store-unavailable" },
+      },
     });
   });
 

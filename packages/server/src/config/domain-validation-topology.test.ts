@@ -41,4 +41,15 @@ describe("domain validation topology", () => {
     expect(devEnv).toContain("DOMAIN_VALIDATION_TOPOLOGY=host\n");
     expect(devEnv).toContain("DOMAIN_VALIDATION_PROXY_ENDPOINT=http://127.0.0.1:7891\n");
   });
+
+  it("keeps domain-rule mutation disabled in deployment defaults", () => {
+    const config = compose("docker-compose.yml");
+    const reportOnlyInterpolation = ["$", "{DOMAIN_RULES_MODE:-report}"].join("");
+    expect(config.services.submerge?.environment).toMatchObject({
+      DOMAIN_RULES_MODE: reportOnlyInterpolation,
+    });
+
+    const examplePath = fileURLToPath(new URL("../../../../.env.example", import.meta.url));
+    expect(readFileSync(examplePath, "utf8")).toContain("DOMAIN_RULES_MODE=report\n");
+  });
 });

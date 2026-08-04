@@ -134,6 +134,7 @@ cp .env.example .env
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS, otherwise the browser drops the session cookie. Don't leave blank. |
 | `SUBMERGE_BIND` | `127.0.0.1` | Host address for port 3000. Keep loopback and front it with TLS; `0.0.0.0` only for deliberate direct exposure. |
 | `MIHOMO_SECRET` | `poc` | Secret for the internal mihomo REST API — change it from the default. |
+| `DOMAIN_RULES_MODE` | `report` | Local rule publisher capability: `report` or `apply`. Keep `report` until the separate apply installation/migration procedure is complete; the switch alone never makes apply ready. |
 
 On **Linux hosts** the `submerge` container runs as uid 999 and writes the shared mihomo
 config into the bind-mounted `./mihomo` — make it writable: `chown -R 999:999 mihomo`

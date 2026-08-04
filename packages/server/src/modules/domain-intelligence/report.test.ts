@@ -25,7 +25,10 @@ function settingsView(): DomainIntelligenceSettingsView {
       ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
       defaultRuleScope: "exact",
     },
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment: {
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    },
   };
 }
 
@@ -107,7 +110,10 @@ describe("domain intelligence report", () => {
     expect(first.version).toBe(1);
     expect(first.configurationRevision).toMatch(/^sha256:[a-f0-9]{64}$/u);
     expect(first.observer).toEqual({ available: true, health: overview().health });
-    expect(first.applyReadiness).toEqual({ available: false, reason: "publisher-unavailable" });
+    expect(first.applyReadiness).toEqual({
+      available: false,
+      reason: "deployment-report-only",
+    });
     expect(first.candidates[0]?.fqdn).toBe("api.service.example");
   });
 

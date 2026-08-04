@@ -118,7 +118,10 @@ function settingsView(
       defaultRuleScope: "site",
       automationMode: "review",
     },
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment: {
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    },
     ...overrides,
   };
 }
@@ -349,6 +352,48 @@ describe("DomainIntelligenceScreen", () => {
     fireEvent.click(addButton as HTMLElement);
     expect(mocks.toast.info).toHaveBeenCalledWith(
       "Применение недоступно, пока сервер работает в режиме только отчёта",
+    );
+  });
+
+  it("shows the actual apply provisioning blocker instead of report-only copy", () => {
+    arrange(
+      settingsView({
+        deployment: {
+          mode: "apply",
+          apply: { available: false, reason: "local-store-unavailable" },
+        },
+      }),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText("Локальное хранилище правил ещё не подготовлено.")).toBeInTheDocument();
+    expect(screen.queryByText("только отчёт", { exact: true })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAccessibleDescription(
+      "Применение недоступно: локальное хранилище правил не подготовлено",
+    );
+  });
+
+  it("keeps the unfinished UI action honest when deployment apply is ready", () => {
+    arrange(
+      settingsView({
+        deployment: {
+          mode: "apply",
+          apply: {
+            available: true,
+            repository: "local",
+            branch: "main",
+            path: "custom.txt",
+            providerName: "submerge-custom",
+            providerPath: "./domain-rules/custom.txt",
+          },
+        },
+      }),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText("Локальный список готов к применению.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAccessibleDescription(
+      "Добавление из интерфейса ещё не подключено",
     );
   });
 

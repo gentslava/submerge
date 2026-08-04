@@ -12,6 +12,7 @@ describe("parseEnv", () => {
     expect(env.HOST).toBe("0.0.0.0");
     expect(env.DB_PATH).toBe(resolve(serverRoot, "data/submerge.db"));
     expect(env.ADMIN_PASSWORD).toBeUndefined();
+    expect(env.DOMAIN_RULES_MODE).toBe("report");
   });
   it("parses PORT from a string", () => {
     expect(parseEnv({ PORT: "8080" }).PORT).toBe(8080);
@@ -34,6 +35,14 @@ describe("parseEnv", () => {
   });
   it("overrides config path from the environment", () => {
     expect(parseEnv({ MIHOMO_CONFIG_PATH: "/tmp/c.yaml" }).MIHOMO_CONFIG_PATH).toBe("/tmp/c.yaml");
+  });
+
+  it("accepts only the explicit domain-rules deployment modes", () => {
+    expect(parseEnv({ DOMAIN_RULES_MODE: "report" }).DOMAIN_RULES_MODE).toBe("report");
+    expect(parseEnv({ DOMAIN_RULES_MODE: "apply" }).DOMAIN_RULES_MODE).toBe("apply");
+    for (const value of ["", "true", "automatic", "APPLY"]) {
+      expect(() => parseEnv({ DOMAIN_RULES_MODE: value })).toThrow();
+    }
   });
 
   it("accepts only a literal loopback validation endpoint for host development", () => {

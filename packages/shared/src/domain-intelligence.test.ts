@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DomainIntelligenceDeploymentCapability } from "./domain-intelligence.js";
 import {
   DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
   domainCandidateListInputSchema,
@@ -8,6 +9,7 @@ import {
   domainCandidateReviewActionResultSchema,
   domainCandidateReviewMutationResultSchema,
   domainCandidateScopeActionInputSchema,
+  domainIntelligenceDeploymentCapabilitySchema,
   domainIntelligenceOverviewSchema,
   domainIntelligenceReportSettingsSchema,
   domainIntelligenceSettingsMutationResultSchema,
@@ -29,12 +31,15 @@ describe("domain intelligence shared contracts", () => {
       domainIntelligenceSettingsViewSchema.parse({
         configurationState: "unconfigured",
         settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-        automatic: { available: false, reason: "publisher-unavailable" },
+        deployment: {
+          mode: "report",
+          apply: { available: false, reason: "deployment-report-only" },
+        },
       }),
     ).toMatchObject({
       configurationState: "unconfigured",
       settings: { enabled: false, mode: "report", defaultRuleScope: null },
-      automatic: { available: false },
+      deployment: { mode: "report", apply: { available: false } },
     });
 
     expect(() =>
@@ -104,14 +109,27 @@ describe("domain intelligence shared contracts", () => {
       domainIntelligenceSettingsViewSchema.parse({
         configurationState: "ready",
         settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-        automatic: { available: false, reason: "publisher-unavailable" },
+        deployment: {
+          mode: "report",
+          apply: { available: false, reason: "deployment-report-only" },
+        },
       }),
     ).toThrow();
     expect(() =>
       domainIntelligenceSettingsViewSchema.parse({
         configurationState: "ready",
         settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-        automatic: { available: true, reason: null },
+        deployment: {
+          mode: "report",
+          apply: {
+            available: true,
+            repository: "local",
+            branch: "main",
+            path: "custom.txt",
+            providerName: "submerge-custom",
+            providerPath: "./domain-rules/custom.txt",
+          },
+        },
       }),
     ).toThrow();
   });
@@ -126,7 +144,10 @@ describe("domain intelligence shared contracts", () => {
     const view = {
       configurationState: "ready" as const,
       settings: enabled,
-      automatic: { available: false as const, reason: "publisher-unavailable" as const },
+      deployment: {
+        mode: "report" as const,
+        apply: { available: false as const, reason: "deployment-report-only" as const },
+      },
     };
 
     expect(domainIntelligenceSettingsMutationResultSchema.parse({ view, applied: true })).toEqual({
@@ -144,6 +165,63 @@ describe("domain intelligence shared contracts", () => {
         view,
         applied: true,
         repositoryToken: "secret",
+      }),
+    ).toThrow();
+  });
+
+  it("keeps deployment capability server-owned and internally consistent", () => {
+    const invalidApplyCapability: DomainIntelligenceDeploymentCapability = {
+      mode: "apply",
+      apply: {
+        available: false,
+        // @ts-expect-error report-only is not an apply-mode unavailable reason
+        reason: "deployment-report-only",
+      },
+    };
+
+    expect(() =>
+      domainIntelligenceDeploymentCapabilitySchema.parse(invalidApplyCapability),
+    ).toThrow();
+    expect(
+      domainIntelligenceDeploymentCapabilitySchema.parse({
+        mode: "apply",
+        apply: { available: false, reason: "local-store-unavailable" },
+      }),
+    ).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "local-store-unavailable" },
+    });
+    expect(
+      domainIntelligenceDeploymentCapabilitySchema.parse({
+        mode: "apply",
+        apply: {
+          available: true,
+          repository: "local",
+          branch: "main",
+          path: "custom.txt",
+          providerName: "submerge-custom",
+          providerPath: "./domain-rules/custom.txt",
+        },
+      }),
+    ).toMatchObject({ mode: "apply", apply: { available: true, repository: "local" } });
+
+    expect(() =>
+      domainIntelligenceDeploymentCapabilitySchema.parse({
+        mode: "report",
+        apply: { available: false, reason: "local-store-unavailable" },
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceDeploymentCapabilitySchema.parse({
+        mode: "report",
+        apply: {
+          available: true,
+          repository: "local",
+          branch: "main",
+          path: "custom.txt",
+          providerName: "submerge-custom",
+          providerPath: "./domain-rules/custom.txt",
+        },
       }),
     ).toThrow();
   });

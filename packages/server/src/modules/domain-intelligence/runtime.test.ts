@@ -14,7 +14,10 @@ function settingsView(enabled: boolean): DomainIntelligenceSettingsView {
       defaultRuleScope: "exact",
       automationMode: enabled ? "review" : "off",
     },
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment: {
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    },
   };
 }
 

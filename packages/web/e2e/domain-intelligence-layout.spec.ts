@@ -24,7 +24,10 @@ const settings: DomainIntelligenceSettingsView = {
     defaultRuleScope: "site",
     automationMode: "review",
   },
-  automatic: { available: false, reason: "publisher-unavailable" },
+  deployment: {
+    mode: "report",
+    apply: { available: false, reason: "deployment-report-only" },
+  },
 };
 
 const overview: DomainIntelligenceOverview = {
@@ -548,7 +551,10 @@ test("first install requires a visible scope choice", async ({ page }) => {
   await openDomainIntelligence(page, {
     configurationState: "unconfigured",
     settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
-    automatic: { available: false, reason: "publisher-unavailable" },
+    deployment: {
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    },
   });
 
   const enable = page.getByRole("button", { name: "Включить наблюдение" });
