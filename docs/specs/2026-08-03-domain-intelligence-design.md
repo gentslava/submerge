@@ -692,6 +692,16 @@ Required behavior:
   PROXY evidence can be checked again, existing coverage opens the covering rule, and a
   telemetry/advertising match opens the relevant filter. An exact-only suffix is not an
   exclusion.
+- `Exceptions` is a separate state of the candidate panel, not an accordion appended below
+  it. Opening it replaces the candidate body, moves focus to the visible back control, and
+  `Back to candidates` restores both the previous view and focus to the visible desktop or
+  mobile trigger. Exception rows show the FQDN, a reason chip, and the reason-specific action;
+  they never repeat the candidate's proposed rule or scope control.
+- Expanded desktop candidates use compact DIRECT, PROXY, coverage, and scope rows rather than
+  nested evidence cards. On compact layouts candidates become standalone rounded cards with
+  rule-first identity, observed FQDN, two primary actions, and no third inline expand icon;
+  their copy area remains the details trigger. An exact-only card explains the restriction in
+  its summary and does not append a separate shield strip.
 - Removing a rule or narrowing `site` to `exact` states only that matching destinations
   will lose coverage from this rule. It must not promise that they will route DIRECT,
   because another active rule/provider may cover them.

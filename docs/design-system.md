@@ -177,6 +177,10 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
   Logs 10/12, Settings 16/16, More 14/16, and Routing 12/20.
   At the wide app-main boundary the common page gap is 22px; Connections and Routing
   retain their measured 20px gap, Settings 26px, and More 16px.
+- **Skip link**: the first keyboard-focusable control is hidden off-canvas until focus,
+  then appears over the desktop brand area (or at the compact screen's top edge). Its
+  visible label is `Перейти к содержимому`; activation moves focus to `#main-content`
+  without navigating away from the current route.
 - **Mobile tab bar:** `bg-surface` + top `border-subtle`; 8px top / 12px bottom inset;
   each item is 48px high with a 21px icon, 4px icon/label gap and 11px label
   (`text-tertiary` 500, active `accent-text` 600).

@@ -82789,7 +82789,7 @@
                   "fill": "$text-tertiary",
                   "textGrowth": "fixed-width",
                   "width": "fill_container",
-                  "content": "Раскрытие ссылки «Исключения» из шапки кандидатов. Действие зависит от причины: вернуть в кандидаты можно только то, что вы отклонили сами.",
+                  "content": "Отдельное состояние панели кандидатов: содержимое заменяется списком исключений, стрелка возвращает к кандидатам без перезагрузки. Действие зависит от причины; вернуть можно только то, что вы отклонили сами.",
                   "fontFamily": "$font-sans",
                   "fontSize": 12,
                   "fontWeight": "normal"
@@ -82799,7 +82799,7 @@
             {
               "type": "frame",
               "id": "zjNrK",
-              "name": "Исключения",
+              "name": "Исключения — отдельное состояние панели",
               "clip": true,
               "width": "fill_container",
               "fill": "$bg-surface",
@@ -82839,7 +82839,7 @@
                           "name": "i",
                           "width": 15,
                           "height": 15,
-                          "icon": "chevron-down",
+                          "icon": "chevron-left",
                           "library": "lucide",
                           "fill": "$text-secondary"
                         },
