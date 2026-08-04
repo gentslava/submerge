@@ -58,6 +58,116 @@
   gap: 1rem;
 }
 
+.domain-candidate-detail,
+.domain-evidence-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.domain-generated-rule {
+  overflow-wrap: anywhere;
+}
+
+.domain-observed-name {
+  display: flex;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.domain-observed-prefix {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.domain-observed-suffix {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.domain-filter-editor-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container app-page (max-width: 41.999rem) {
+  .responsive-page--domain-intelligence .page-header {
+    align-items: flex-start;
+  }
+
+  .responsive-page--domain-intelligence .page-header-copy {
+    max-width: calc(100% - 3.5rem);
+  }
+
+  .responsive-page--domain-intelligence .page-header-subtitle {
+    white-space: normal;
+  }
+
+  .domain-settings-link {
+    width: var(--mobile-header-action-size);
+    height: var(--mobile-header-action-size);
+    padding-inline: 0;
+    font-size: 0;
+  }
+
+  .domain-mode-card,
+  .domain-candidate-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .domain-mode-status {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .domain-mode-segmented,
+  .domain-mode-segmented > button {
+    width: 100%;
+  }
+
+  .domain-mode-segmented > button {
+    min-height: 2.75rem;
+    flex: 1 1 100%;
+  }
+
+  .domain-candidate-rule {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .domain-observed-name {
+    max-width: calc(100% - 1.5rem);
+  }
+
+  .domain-generated-rule {
+    order: 3;
+    width: 100%;
+  }
+
+  .domain-candidate-rule > span:last-child {
+    order: 4;
+  }
+
+  .domain-candidate-actions {
+    width: 100%;
+  }
+
+  .domain-candidate-actions > button:not(:last-child) {
+    min-height: 2.75rem;
+    flex: 1 1 0;
+  }
+
+  .domain-candidate-action {
+    min-height: 2.75rem;
+    flex: 1 1 0;
+  }
+
+  .domain-candidate-actions > button:last-child {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+}
+
 @container app-main (min-width: 42rem) {
   .page-content {
     padding-top: 1.625rem;
@@ -334,6 +444,16 @@
 }
 
 @container app-page (min-width: 42rem) {
+  .domain-filter-editor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .domain-candidate-detail {
+    grid-template-columns: minmax(0, 1.5fr) minmax(16rem, 1fr);
+  }
+
+  .domain-evidence-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   .responsive-page--diagnostics .page-header {
     flex-direction: row;
     align-items: center;

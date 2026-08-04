@@ -16,6 +16,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
 import { PolicyEditor } from "@/features/channels/PolicyEditor";
+import { DomainIntelligenceSettingsSection } from "@/features/domain-intelligence/DomainIntelligenceSettingsSection";
 import { liveIndicator } from "@/features/live/status";
 import { warnIfNotApplied } from "@/lib/apply-toast";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -169,6 +170,8 @@ export function SettingsScreen() {
               )}
             </div>
           </Section>
+
+          <DomainIntelligenceSettingsSection />
 
           <Section title="Подключение" desc="Доступ к API mihomo и локальному прокси.">
             <Row label="Состояние движка" sub="Связь панели с ядром mihomo">

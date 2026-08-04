@@ -54,6 +54,12 @@ describe("domain intelligence shared contracts", () => {
     expect(() =>
       domainIntelligenceReportSettingsSchema.parse({
         ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+        maximumAutomaticRulesPerDay: 4,
+      }),
+    ).toThrow();
+    expect(() =>
+      domainIntelligenceReportSettingsSchema.parse({
+        ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
         mode: "apply",
         applyEnabled: true,
       }),

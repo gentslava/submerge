@@ -127,7 +127,7 @@ export const domainIntelligenceReportSettingsSchema = z
     minimumProxySuccesses: z.number().int().min(2).max(24),
     maximumProxyTransportFailures: z.literal(0),
     maximumCandidatesPerRun: z.number().int().min(1).max(20),
-    maximumAutomaticRulesPerDay: z.number().int().min(1).max(100),
+    maximumAutomaticRulesPerDay: z.number().int().min(1).max(3),
     maxConcurrency: z.number().int().min(1).max(2),
     requestTimeoutMs: z.number().int().min(1_000).max(30_000),
     defaultRuleScope: domainRuleScopeSchema.nullable(),

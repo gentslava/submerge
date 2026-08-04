@@ -1,5 +1,12 @@
 import { expect, type Page } from "@playwright/test";
-import type { DiagnosticsResult, DirectChannel, ProxyChannel } from "@submerge/shared";
+import {
+  DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+  type DiagnosticsResult,
+  type DirectChannel,
+  type DomainIntelligenceOverview,
+  type DomainIntelligenceSettingsView,
+  type ProxyChannel,
+} from "@submerge/shared";
 
 const defaultPolicy = {
   kind: "speed",
@@ -114,6 +121,34 @@ const responses: Record<string, unknown> = {
       errorCode: null,
     },
   } satisfies DiagnosticsResult,
+  "domainIntelligence.settings": {
+    configurationState: "ready",
+    settings: {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      defaultRuleScope: "site",
+    },
+    automatic: { available: false, reason: "publisher-unavailable" },
+  } satisfies DomainIntelligenceSettingsView,
+  "domainIntelligence.overview": {
+    generatedAt: Date.parse("2026-08-04T12:00:00.000Z"),
+    period: {
+      from: Date.parse("2026-08-03T12:00:00.000Z"),
+      to: Date.parse("2026-08-04T12:00:00.000Z"),
+    },
+    health: {
+      status: "inactive",
+      reason: "disabled",
+      snapshotDomainConnections: 0,
+      correlatedConnections: 0,
+      updatedAt: Date.parse("2026-08-04T12:00:00.000Z"),
+    },
+    dailyAggregates: [],
+    candidateCounts: { queued: 0, pending: 0, confirmed: 0, blocked: 0, excluded: 0 },
+    bucketCounts: { candidate: 0, exclusion: 0 },
+    evidenceIntegrityCounts: { missingDecisions: 0, invalidDecisions: 0 },
+    exclusionCounts: [],
+  } satisfies DomainIntelligenceOverview,
+  "domainIntelligence.list": { items: [], nextCursor: null },
 };
 
 export type FixtureOverrides = Record<string, unknown>;
@@ -124,8 +159,17 @@ interface TrpcFixtureSequence {
   index: number;
 }
 
+interface TrpcFixtureResolver {
+  fixtureResolver: true;
+  resolve: (input: unknown) => unknown;
+}
+
 export function trpcFixtureSequence(first: unknown, ...rest: unknown[]): TrpcFixtureSequence {
   return { fixtureSequence: true, values: [first, ...rest], index: 0 };
+}
+
+export function trpcFixtureByInput(resolve: (input: unknown) => unknown): TrpcFixtureResolver {
+  return { fixtureResolver: true, resolve };
 }
 
 export interface TrpcFixtureOptions {
@@ -166,9 +210,25 @@ function isTrpcFixtureSequence(value: unknown): value is TrpcFixtureSequence {
   );
 }
 
-function responseFor(procedure: string, overrides: FixtureOverrides): unknown {
+function isTrpcFixtureResolver(value: unknown): value is TrpcFixtureResolver {
+  return (
+    typeof value === "object" &&
+    value != null &&
+    "fixtureResolver" in value &&
+    value.fixtureResolver === true &&
+    "resolve" in value &&
+    typeof value.resolve === "function"
+  );
+}
+
+function responseFor(procedure: string, overrides: FixtureOverrides, input: unknown): unknown {
   if (Object.hasOwn(overrides, procedure)) {
     const override = overrides[procedure];
+    if (isTrpcFixtureResolver(override)) {
+      if (input === undefined)
+        throw new Error(`Missing tRPC input for fixture resolver: ${procedure}`);
+      return override.resolve(input);
+    }
     if (!isTrpcFixtureSequence(override)) return override;
     const index = Math.min(override.index, override.values.length - 1);
     const response = override.values[index];
@@ -177,6 +237,26 @@ function responseFor(procedure: string, overrides: FixtureOverrides): unknown {
   }
   if (Object.hasOwn(responses, procedure)) return responses[procedure];
   throw new Error(`Unknown tRPC fixture procedure: ${procedure}`);
+}
+
+function requestInputAt(url: URL, index: number): unknown {
+  const rawInput = url.searchParams.get("input");
+  if (rawInput === null) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawInput);
+  } catch {
+    throw new Error("Malformed tRPC fixture input");
+  }
+
+  const indexed =
+    typeof parsed === "object" && parsed !== null && String(index) in parsed
+      ? (parsed as Record<string, unknown>)[String(index)]
+      : parsed;
+  return typeof indexed === "object" && indexed !== null && "json" in indexed
+    ? (indexed as { json: unknown }).json
+    : indexed;
 }
 
 export async function installTrpcFixture(
@@ -213,8 +293,8 @@ export async function installTrpcFixture(
       return;
     }
 
-    const body = path.split(",").map((procedure) => {
-      const response = responseFor(procedure, overrides);
+    const body = path.split(",").map((procedure, index) => {
+      const response = responseFor(procedure, overrides, requestInputAt(url, index));
       if (isTrpcFixtureError(response)) {
         return {
           error: {

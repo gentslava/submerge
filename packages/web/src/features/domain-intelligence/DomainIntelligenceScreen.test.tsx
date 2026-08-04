@@ -1,0 +1,604 @@
+import {
+  DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+  type DomainCandidateList,
+  type DomainIntelligenceOverview,
+  type DomainIntelligenceSettingsView,
+} from "@submerge/shared";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DomainIntelligenceScreen } from "./DomainIntelligenceScreen";
+
+const now = Date.parse("2026-08-04T12:00:00.000Z");
+
+const mocks = vi.hoisted(() => ({
+  queryStates: new Map<string, unknown>(),
+  mutationStates: new Map<
+    string,
+    {
+      mutate: ReturnType<typeof vi.fn>;
+      isPending: boolean;
+      callbacks?: { onSuccess?: (result: unknown) => void; onError?: () => void };
+    }
+  >(),
+  queryOptions: vi.fn((kind: string) => ({ kind })),
+  listQueryOptions: vi.fn((input: unknown) => ({ kind: "list", input })),
+  mutationOptions: vi.fn((kind: string, options: unknown) => ({ kind, options })),
+  invalidateQueries: vi.fn(),
+  setQueryData: vi.fn(),
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+vi.mock("@tanstack/react-query", () => ({
+  useQuery: (options: { kind: string; input?: { view?: string } }) =>
+    mocks.queryStates.get(
+      options.kind === "list" ? `list:${options.input?.view ?? "unknown"}` : options.kind,
+    ),
+  useInfiniteQuery: (options: { kind: string; input?: { view?: string } }) => {
+    const state = mocks.queryStates.get(
+      options.kind === "list" ? `list:${options.input?.view ?? "unknown"}` : options.kind,
+    ) as
+      | {
+          data?: DomainCandidateList;
+          isLoading: boolean;
+          isError: boolean;
+          isFetching: boolean;
+          refetch: ReturnType<typeof vi.fn>;
+          fetchNextPage?: ReturnType<typeof vi.fn>;
+        }
+      | undefined;
+    if (!state) return state;
+    return {
+      ...state,
+      data: state.data ? { pages: [state.data], pageParams: [undefined] } : undefined,
+      hasNextPage: state.data?.nextCursor != null,
+      isFetchingNextPage: false,
+      fetchNextPage: state.fetchNextPage ?? vi.fn(),
+    };
+  },
+  useMutation: (options: {
+    kind: string;
+    options?: { onSuccess?: (result: unknown) => void; onError?: () => void };
+  }) => {
+    const state = mocks.mutationStates.get(options.kind);
+    if (state && options.options) state.callbacks = options.options;
+    return state;
+  },
+  useQueryClient: () => ({
+    invalidateQueries: mocks.invalidateQueries,
+    setQueryData: mocks.setQueryData,
+  }),
+}));
+
+vi.mock("sonner", () => ({ toast: mocks.toast }));
+
+vi.mock("@/lib/trpc", () => ({
+  useTRPC: () => ({
+    domainIntelligence: {
+      settings: {
+        queryOptions: () => mocks.queryOptions("settings"),
+        queryKey: () => ["domain-intelligence", "settings"],
+      },
+      overview: {
+        queryOptions: () => mocks.queryOptions("overview"),
+        queryKey: () => ["domain-intelligence", "overview"],
+      },
+      list: {
+        infiniteQueryOptions: mocks.listQueryOptions,
+        infiniteQueryKey: () => ["domain-intelligence", "list", "infinite"],
+      },
+      setSettings: {
+        mutationOptions: (options: unknown) => mocks.mutationOptions("settings", options),
+      },
+      setScope: { mutationOptions: (options: unknown) => mocks.mutationOptions("scope", options) },
+      setRejected: {
+        mutationOptions: (options: unknown) => mocks.mutationOptions("rejected", options),
+      },
+      recheck: { mutationOptions: (options: unknown) => mocks.mutationOptions("recheck", options) },
+    },
+  }),
+}));
+
+vi.mock("@tanstack/react-router", () => ({
+  Link: ({ children, to, ...props }: { children: ReactNode; to: string }) => (
+    <a href={to} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
+function settingsView(
+  overrides: Partial<DomainIntelligenceSettingsView> = {},
+): DomainIntelligenceSettingsView {
+  return {
+    configurationState: "ready",
+    settings: {
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "site",
+      automationMode: "review",
+    },
+    automatic: { available: false, reason: "publisher-unavailable" },
+    ...overrides,
+  };
+}
+
+const overview: DomainIntelligenceOverview = {
+  generatedAt: now,
+  period: { from: now - 24 * 60 * 60 * 1_000, to: now },
+  health: {
+    status: "healthy",
+    reason: "correlated",
+    snapshotDomainConnections: 12,
+    correlatedConnections: 10,
+    updatedAt: now,
+  },
+  dailyAggregates: [{ day: "2026-08-04", connectionCount: 67, uniqueDomainCount: 18 }],
+  candidateCounts: { queued: 0, pending: 0, confirmed: 2, blocked: 1, excluded: 1 },
+  bucketCounts: { candidate: 2, exclusion: 2 },
+  evidenceIntegrityCounts: { missingDecisions: 0, invalidDecisions: 0 },
+  exclusionCounts: [
+    { reason: "proxy-unstable", count: 1 },
+    { reason: "telemetry-pattern", count: 1 },
+  ],
+};
+
+const confirmedDecision = {
+  evaluatedAt: now,
+  status: "confirmed" as const,
+  confidence: "high" as const,
+  reasons: [],
+  windowStart: now - 24 * 60 * 60 * 1_000,
+  evidence: {
+    directQualifyingFailures: 3,
+    directSpacedFailures: 3,
+    directAddressDiversityRequired: false,
+    directAddressDiversitySatisfied: true,
+    proxyHttpSuccesses: 2,
+    proxyTransportFailures: 0,
+    proxyUncertainFailures: 0,
+  },
+};
+
+const candidates: DomainCandidateList = {
+  nextCursor: null,
+  items: [
+    {
+      fqdn: "www.service.example",
+      siteGroup: "service.example",
+      bucket: "candidate",
+      reviewState: "active",
+      status: "confirmed",
+      selectedScope: "site",
+      proposedRule: "+.service.example",
+      eligibleScopes: ["exact", "site"],
+      scopeValid: true,
+      siteUnavailableReason: null,
+      exclusionReason: null,
+      policyExclusionReason: null,
+      firstSeenAt: now - 24 * 60 * 60 * 1_000,
+      lastSeenAt: now,
+      lastValidationAt: now,
+      nextValidationAt: now + 60_000,
+      connectionCount: 47,
+      evidenceAvailable: true,
+      evidenceIntegrityIssue: null,
+      decision: confirmedDecision,
+      latestAttempts: {
+        direct: {
+          attemptedAt: now,
+          category: "connect_timeout",
+          transportSuccess: false,
+          httpStatus: null,
+          connectDurationMs: 8_000,
+          tlsDurationMs: null,
+          totalDurationMs: 8_000,
+          redirectCount: 0,
+          finalOrigin: "https://www.service.example",
+        },
+        proxy: {
+          attemptedAt: now,
+          category: "http_response",
+          transportSuccess: true,
+          httpStatus: 200,
+          connectDurationMs: 120,
+          tlsDurationMs: 80,
+          totalDurationMs: 260,
+          redirectCount: 0,
+          finalOrigin: "https://www.service.example",
+        },
+      },
+    },
+    {
+      fqdn: "app.pages.example",
+      siteGroup: "pages.example",
+      bucket: "candidate",
+      reviewState: "active",
+      status: "confirmed",
+      selectedScope: "exact",
+      proposedRule: "app.pages.example",
+      eligibleScopes: ["exact"],
+      scopeValid: true,
+      siteUnavailableReason: "non-widenable-suffix",
+      exclusionReason: null,
+      policyExclusionReason: null,
+      firstSeenAt: now - 12 * 60 * 60 * 1_000,
+      lastSeenAt: now,
+      lastValidationAt: now,
+      nextValidationAt: now + 60_000,
+      connectionCount: 12,
+      evidenceAvailable: true,
+      evidenceIntegrityIssue: null,
+      decision: confirmedDecision,
+      latestAttempts: { direct: null, proxy: null },
+    },
+  ],
+};
+
+const emptyExclusions: DomainCandidateList = { items: [], nextCursor: null };
+const candidateFixture = candidates.items.at(0);
+if (!candidateFixture) throw new Error("candidate fixture is missing");
+
+const exclusions: DomainCandidateList = {
+  nextCursor: null,
+  items: [
+    {
+      ...candidateFixture,
+      fqdn: "rejected.service.example",
+      bucket: "exclusion",
+      reviewState: "rejected",
+      exclusionReason: "user-rejected",
+      nextValidationAt: null,
+    },
+    {
+      ...candidateFixture,
+      fqdn: "edge.shared.example",
+      bucket: "exclusion",
+      status: "blocked",
+      exclusionReason: "proxy-unstable",
+    },
+    {
+      ...candidateFixture,
+      fqdn: "static.notblocked.example",
+      bucket: "exclusion",
+      status: "blocked",
+      exclusionReason: "already-covered",
+    },
+    {
+      ...candidateFixture,
+      fqdn: "telemetry.client.example",
+      bucket: "exclusion",
+      status: "excluded",
+      selectedScope: null,
+      proposedRule: null,
+      eligibleScopes: [],
+      scopeValid: false,
+      siteUnavailableReason: "policy-excluded",
+      exclusionReason: "telemetry-pattern",
+      policyExclusionReason: "telemetry-pattern",
+      nextValidationAt: null,
+      evidenceAvailable: false,
+      evidenceIntegrityIssue: null,
+      decision: null,
+      latestAttempts: { direct: null, proxy: null },
+    },
+  ],
+};
+
+function queryState<T>(data: T) {
+  return { data, isLoading: false, isError: false, isFetching: false, refetch: vi.fn() };
+}
+
+function arrange(view = settingsView(), exclusionItems = emptyExclusions) {
+  mocks.queryStates = new Map<string, unknown>([
+    ["settings", queryState(view)],
+    ["overview", queryState(overview)],
+    ["list:candidates", queryState(candidates)],
+    ["list:exclusions", queryState(exclusionItems)],
+  ]);
+  mocks.mutationStates = new Map(
+    ["settings", "scope", "rejected", "recheck"].map((kind) => [
+      kind,
+      { mutate: vi.fn(), isPending: false },
+    ]),
+  );
+}
+
+beforeEach(() => {
+  mocks.queryStates = new Map();
+  mocks.mutationStates = new Map();
+  mocks.queryOptions.mockClear();
+  mocks.listQueryOptions.mockClear();
+  mocks.mutationOptions.mockClear();
+  mocks.invalidateQueries.mockClear();
+  mocks.setQueryData.mockReset();
+  mocks.toast.error.mockReset();
+  mocks.toast.success.mockReset();
+});
+
+describe("DomainIntelligenceScreen", () => {
+  it("shows scoped candidates and keeps shared hosting exact-only", () => {
+    arrange();
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByRole("heading", { name: "Автоправила" })).toBeInTheDocument();
+    expect(screen.getByText("+.service.example")).toBeInTheDocument();
+    expect(screen.getByText("сайт целиком")).toBeInTheDocument();
+    expect(screen.getByText("app.pages.example", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByText("только точный адрес")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее о app.pages.example" }));
+    expect(
+      screen.getByText(/Для адреса найден суффикс из списка «Не расширять»/u),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Сайт целиком" })).toBeDisabled();
+  });
+
+  it("uses review mutations for scope and rejection without pretending to apply", () => {
+    arrange();
+    render(<DomainIntelligenceScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее о www.service.example" }));
+    fireEvent.click(screen.getByRole("button", { name: "Только точный адрес" }));
+    expect(mocks.mutationStates.get("scope")?.mutate).toHaveBeenCalledWith({
+      fqdn: "www.service.example",
+      selectedScope: "exact",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Не добавлять www.service.example" }));
+    expect(mocks.mutationStates.get("rejected")?.mutate).toHaveBeenCalledWith({
+      fqdn: "www.service.example",
+      rejected: true,
+    });
+    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toBeDisabled();
+  });
+
+  it("requires an explicit first-install scope before observation can start", () => {
+    const unconfigured = settingsView({
+      configurationState: "unconfigured",
+      settings: DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+    });
+    arrange(unconfigured);
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText("Сначала выберите область правила")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Включить наблюдение" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Сайт целиком" }));
+    expect(screen.getByRole("button", { name: "Включить наблюдение" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Включить наблюдение" }));
+
+    expect(mocks.mutationStates.get("settings")?.mutate).toHaveBeenCalledWith({
+      ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+      enabled: true,
+      defaultRuleScope: "site",
+      automationMode: "review",
+    });
+  });
+
+  it("offers reason-specific exclusion actions", () => {
+    arrange(settingsView(), exclusions);
+    render(<DomainIntelligenceScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Исключения/u }));
+    expect(screen.getByRole("button", { name: "Вернуть" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Проверить снова" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Показать правило" })).toHaveAttribute(
+      "href",
+      "/routing",
+    );
+    expect(screen.getByRole("link", { name: "Изменить фильтр" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+    expect(screen.queryByText("только точный адрес")).toBeNull();
+  });
+
+  it("shows list failures instead of presenting them as an empty result", () => {
+    arrange();
+    mocks.queryStates.set("list:candidates", {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText("Не удалось загрузить список доменов")).toBeInTheDocument();
+    expect(screen.queryByText("Нечего подтверждать")).toBeNull();
+  });
+
+  it("surfaces fail-closed mutation results instead of reporting success", () => {
+    arrange();
+    render(<DomainIntelligenceScreen />);
+
+    act(() => {
+      mocks.mutationStates.get("settings")?.callbacks?.onSuccess?.({
+        view: settingsView(),
+        applied: false,
+      });
+    });
+    expect(mocks.toast.error).toHaveBeenCalledWith(
+      "Настройки сохранены, но Mihomo не подтвердил активацию",
+    );
+
+    act(() => {
+      mocks.mutationStates.get("scope")?.callbacks?.onSuccess?.({
+        ok: false,
+        reason: "scope-unavailable",
+      });
+    });
+    expect(mocks.toast.error).toHaveBeenCalledWith("Эта область больше недоступна");
+  });
+
+  it("does not call an enabled but inactive observer healthy", () => {
+    arrange();
+    mocks.queryStates.set(
+      "overview",
+      queryState({
+        ...overview,
+        health: { ...overview.health, status: "inactive", reason: "disabled" },
+      } satisfies DomainIntelligenceOverview),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText("Активация не подтверждена")).toBeInTheDocument();
+    expect(screen.queryByText("Наблюдение активно")).toBeNull();
+  });
+
+  it("uses only the current UTC aggregate for today's count", () => {
+    arrange();
+    mocks.queryStates.set(
+      "overview",
+      queryState({
+        ...overview,
+        dailyAggregates: [{ day: "2026-08-03", connectionCount: 67, uniqueDomainCount: 18 }],
+      } satisfies DomainIntelligenceOverview),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText("0 доменов сегодня (UTC)")).toBeInTheDocument();
+    expect(screen.queryByText("18 доменов за сутки")).toBeNull();
+  });
+
+  it("does not claim valid evidence when decision integrity is missing", () => {
+    const candidate = candidates.items[0];
+    if (!candidate) throw new Error("candidate fixture is missing");
+    arrange();
+    mocks.queryStates.set(
+      "list:candidates",
+      queryState({
+        items: [
+          {
+            ...candidate,
+            decision: null,
+            evidenceAvailable: false,
+            evidenceIntegrityIssue: "missing-decision",
+          },
+        ],
+        nextCursor: null,
+      } satisfies DomainCandidateList),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByText(/Доказательства недоступны/u)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее о www.service.example" }));
+    expect(screen.queryByText("проверено, активными правилами не покрыт")).toBeNull();
+  });
+
+  it("colors probe evidence by actual transport result", () => {
+    const candidate = candidates.items[0];
+    if (!candidate) throw new Error("candidate fixture is missing");
+    arrange();
+    mocks.queryStates.set(
+      "list:candidates",
+      queryState({
+        items: [
+          {
+            ...candidate,
+            status: "pending",
+            decision: null,
+            evidenceAvailable: false,
+            latestAttempts: {
+              direct: {
+                ...candidate.latestAttempts.direct,
+                attemptedAt: now,
+                category: "http_response",
+                transportSuccess: true,
+                httpStatus: 403,
+                connectDurationMs: 40,
+                tlsDurationMs: 30,
+                totalDurationMs: 90,
+                redirectCount: 0,
+                finalOrigin: "https://www.service.example",
+              },
+              proxy: {
+                ...candidate.latestAttempts.proxy,
+                attemptedAt: now,
+                category: "connect_timeout",
+                transportSuccess: false,
+                httpStatus: null,
+                connectDurationMs: 8_000,
+                tlsDurationMs: null,
+                totalDurationMs: 8_000,
+                redirectCount: 0,
+                finalOrigin: "https://www.service.example",
+              },
+            },
+          },
+        ],
+        nextCursor: null,
+      } satisfies DomainCandidateList),
+    );
+    render(<DomainIntelligenceScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее о www.service.example" }));
+
+    expect(screen.getByText("HTTP 403 · 90 мс")).toHaveClass("text-online");
+    expect(screen.getByText("таймаут соединения · 8000 мс")).toHaveClass("text-timeout");
+  });
+
+  it("offers pagination when the API returns a cursor", () => {
+    arrange();
+    mocks.queryStates.set(
+      "list:candidates",
+      queryState({ ...candidates, nextCursor: "www.service.example" }),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByRole("button", { name: "Загрузить ещё" })).toBeInTheDocument();
+  });
+
+  it("explains public-suffix exact scope without blaming the Never widen list", () => {
+    const candidate = candidates.items[1];
+    if (!candidate) throw new Error("candidate fixture is missing");
+    arrange();
+    mocks.queryStates.set(
+      "list:candidates",
+      queryState({
+        items: [
+          {
+            ...candidate,
+            fqdn: "service.co.uk",
+            siteGroup: "co.uk",
+            proposedRule: "service.co.uk",
+            siteUnavailableReason: "public-suffix",
+          },
+        ],
+        nextCursor: null,
+      } satisfies DomainCandidateList),
+    );
+    render(<DomainIntelligenceScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее о service.co.uk" }));
+
+    expect(screen.getByText(/co\.uk — публичный суффикс/u)).toBeInTheDocument();
+    expect(screen.queryByText(/co\.uk в списке «Не расширять»/u)).toBeNull();
+  });
+
+  it("does not claim that the derived site group is the configured Never widen suffix", () => {
+    const candidate = candidates.items[1];
+    if (!candidate) throw new Error("candidate fixture is missing");
+    arrange();
+    mocks.queryStates.set(
+      "list:candidates",
+      queryState({
+        items: [
+          {
+            ...candidate,
+            fqdn: "api.tenant.vercel.app",
+            siteGroup: "tenant.vercel.app",
+            proposedRule: "api.tenant.vercel.app",
+          },
+        ],
+        nextCursor: null,
+      } satisfies DomainCandidateList),
+    );
+    render(<DomainIntelligenceScreen />);
+    fireEvent.click(screen.getByRole("button", { name: "Подробнее о api.tenant.vercel.app" }));
+
+    expect(
+      screen.getByText(/Для адреса найден суффикс из списка «Не расширять»/u),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/tenant\.vercel\.app совпадает/u)).toBeNull();
+    expect(screen.queryByText(/tenant\.vercel\.app в списке/u)).toBeNull();
+  });
+});
