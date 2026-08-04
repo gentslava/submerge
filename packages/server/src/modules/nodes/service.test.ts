@@ -8,6 +8,7 @@ import {
   emptyChannelMatcher,
   type NodeView,
   type Proxy as ProxyConfig,
+  SPEED_TEST_HOST,
 } from "@submerge/shared";
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
@@ -376,6 +377,52 @@ describe("applyConfig", () => {
     ).resolves.toMatchObject({ applied: true });
 
     expect(coordinator).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets the serialized coordinator inject the managed provider into the exact apply", async () => {
+    const db = freshDb();
+    db.insert(sources)
+      .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+      .run();
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-")), "config.yaml");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    const coordinator = vi.fn(
+      async (
+        apply: (managedDomainRules?: { targetGroupName: string }) => Promise<{
+          nodes: number;
+          applied: boolean;
+          activationVerified: boolean;
+        }>,
+      ) => apply({ targetGroupName: "AUTO" }),
+    );
+    unregisterConfigApplyCoordinator = registerConfigApplyCoordinator(coordinator);
+
+    await expect(applyConfig(db, configPath, "/root/.config/mihomo/config.yaml")).resolves.toEqual({
+      nodes: 1,
+      applied: true,
+      activationVerified: true,
+    });
+    await expect(
+      applyConfig(db, configPath, "/root/.config/mihomo/config.yaml", { force: true }),
+    ).resolves.toEqual({ nodes: 1, applied: true, activationVerified: true });
+
+    // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
+    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    expect(cfg["rule-providers"]["submerge-custom"]).toEqual({
+      type: "file",
+      behavior: "domain",
+      format: "text",
+      path: "./domain-rules/custom.txt",
+    });
+    expect(cfg.rules.slice(0, 2)).toEqual([
+      `DOMAIN,${SPEED_TEST_HOST},PROBE`,
+      "RULE-SET,submerge-custom,AUTO",
+    ]);
+    expect(coordinator).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 
   it("still reloads when the config actually changes between applies", async () => {

@@ -2,6 +2,7 @@ import {
   type DomainIntelligenceDeploymentCapability,
   domainIntelligenceDeploymentCapabilitySchema,
 } from "@submerge/shared";
+import type { DomainRuleDeploymentProvisioner } from "../modules/domain-intelligence/provisioning.js";
 import { type Env, env } from "./env.js";
 
 export function deriveDomainRulesDeploymentCapability(
@@ -20,6 +21,29 @@ export function deriveDomainRulesDeploymentCapability(
   );
 }
 
-export const domainRulesDeploymentCapability = deriveDomainRulesDeploymentCapability(
-  env.DOMAIN_RULES_MODE,
-);
+let domainRulesDeploymentCapabilitySource: DomainRuleDeploymentProvisioner | null = null;
+
+export function readDomainRulesDeploymentCapability(): DomainIntelligenceDeploymentCapability {
+  return domainIntelligenceDeploymentCapabilitySchema.parse(
+    domainRulesDeploymentCapabilitySource?.readCapability() ??
+      deriveDomainRulesDeploymentCapability(env.DOMAIN_RULES_MODE),
+  );
+}
+
+export function registerDomainRulesDeploymentCapabilitySource(
+  source: DomainRuleDeploymentProvisioner,
+): () => void {
+  if (domainRulesDeploymentCapabilitySource !== null) {
+    throw new Error("domain-rule deployment capability source is already registered");
+  }
+  const parsed = domainIntelligenceDeploymentCapabilitySchema.parse(source.readCapability());
+  if (parsed.mode !== env.DOMAIN_RULES_MODE) {
+    throw new Error("domain-rule deployment capability mode mismatch");
+  }
+  domainRulesDeploymentCapabilitySource = source;
+  return () => {
+    if (domainRulesDeploymentCapabilitySource === source) {
+      domainRulesDeploymentCapabilitySource = null;
+    }
+  };
+}

@@ -30,6 +30,7 @@ import { groupProxies } from "./config.js";
 import type {
   ChannelConfigInput,
   DomainValidationListenerInput,
+  ManagedDomainRulesProviderInput,
   ProxyChannelConfigInput,
 } from "./multiConfig.js";
 import { buildMultiConfig } from "./multiConfig.js";
@@ -110,7 +111,9 @@ export interface ApplyResult {
   activationVerified: boolean;
 }
 
-type ConfigApplyCoordinator = (apply: () => Promise<ApplyResult>) => Promise<ApplyResult>;
+type ConfigApplyCoordinator = (
+  apply: (managedDomainRules?: ManagedDomainRulesProviderInput) => Promise<ApplyResult>,
+) => Promise<ApplyResult>;
 let configApplyCoordinator: ConfigApplyCoordinator | null = null;
 
 export function registerConfigApplyCoordinator(coordinator: ConfigApplyCoordinator): () => void {
@@ -210,16 +213,33 @@ export async function applyConfig(
   db: Db,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
-  opts: { force?: boolean; skipRuntimeReconciliation?: boolean } = {},
+  opts: {
+    force?: boolean;
+    skipRuntimeReconciliation?: boolean;
+  } = {},
 ): Promise<ApplyResult> {
   if (!opts.skipRuntimeReconciliation && configApplyCoordinator) {
-    return configApplyCoordinator(() =>
-      applyConfig(db, configPath, targetPath, {
-        ...opts,
-        skipRuntimeReconciliation: true,
+    return configApplyCoordinator((managedDomainRules) =>
+      applyConfigNow(db, configPath, targetPath, {
+        ...(opts.force === undefined ? {} : { force: opts.force }),
+        ...(managedDomainRules === undefined ? {} : { managedDomainRules }),
       }),
     );
   }
+  return applyConfigNow(db, configPath, targetPath, {
+    ...(opts.force === undefined ? {} : { force: opts.force }),
+  });
+}
+
+async function applyConfigNow(
+  db: Db,
+  configPath: string,
+  targetPath: string,
+  opts: {
+    force?: boolean;
+    managedDomainRules?: ManagedDomainRulesProviderInput;
+  } = {},
+): Promise<ApplyResult> {
   const { inputs, inventory } = collectActiveRoutingInputs(db);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
@@ -237,6 +257,7 @@ export async function applyConfig(
     inputs,
     readMihomoSecret(db),
     domainValidationListener(db, inputs),
+    opts.managedDomainRules,
   );
   // Unchanged config → skip the write + the destructive reload so mihomo keeps its
   // delay history (the charts don't blank on every no-op apply — rename, re-saved

@@ -38,7 +38,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
-import { domainRulesDeploymentCapability } from "../../config/domain-rules.js";
+import { readDomainRulesDeploymentCapability } from "../../config/domain-rules.js";
 import type { Db } from "../../db/client.js";
 import type { DomainValidationRunErrorCategory } from "../../db/schema.js";
 import {
@@ -2193,7 +2193,7 @@ function safeDefaultDomainIntelligenceSettings(): DomainIntelligenceReportSettin
 
 export function getDomainIntelligenceSettingsView(
   db: Db,
-  deployment: DomainIntelligenceDeploymentCapability = domainRulesDeploymentCapability,
+  deployment: DomainIntelligenceDeploymentCapability = readDomainRulesDeploymentCapability(),
 ): DomainIntelligenceSettingsView {
   const raw = getSetting(db, "domainIntelligence");
   if (raw === undefined) {
@@ -2236,7 +2236,7 @@ export function getDomainIntelligenceSettingsView(
 export function setDomainIntelligenceReportSettings(
   db: Db,
   input: DomainIntelligenceReportSettings,
-  deployment: DomainIntelligenceDeploymentCapability = domainRulesDeploymentCapability,
+  deployment: DomainIntelligenceDeploymentCapability = readDomainRulesDeploymentCapability(),
 ): DomainIntelligenceSettingsView {
   const parsed = domainIntelligenceReportSettingsSchema.parse(input);
   const value = JSON.stringify(parsed);
