@@ -254,6 +254,23 @@ describe("domain intelligence shared contracts", () => {
     expect(() => domainCandidateListInputSchema.parse({ rawObservations: true })).toThrow();
   });
 
+  it("accepts the pagination direction added by the tRPC infinite-query transport", () => {
+    expect(
+      domainCandidateListInputSchema.parse({
+        view: "candidates",
+        limit: 50,
+        direction: "forward",
+      }),
+    ).toEqual({ view: "candidates", limit: 50, direction: "forward" });
+    expect(() =>
+      domainCandidateListInputSchema.parse({
+        view: "candidates",
+        limit: 50,
+        direction: "sideways",
+      }),
+    ).toThrow();
+  });
+
   it("accepts a safe report overview and rejects uncontracted fields", () => {
     const overview = {
       generatedAt: Date.parse("2026-08-03T12:00:00.000Z"),

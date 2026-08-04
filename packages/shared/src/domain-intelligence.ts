@@ -733,6 +733,7 @@ export const domainCandidateListInputSchema = z
   .object({
     view: z.enum(["candidates", "exclusions", "all"]).default("candidates"),
     cursor: fqdnSchema.optional(),
+    direction: z.literal("forward").optional(),
     limit: z.number().int().min(1).max(100).default(50),
   })
   .strict();

@@ -4,6 +4,7 @@ import {
   type DomainCandidateList,
   type DomainIntelligenceOverview,
   type DomainIntelligenceSettingsView,
+  domainCandidateListInputSchema,
 } from "@submerge/shared";
 import {
   expectNoDocumentOverflow,
@@ -192,10 +193,7 @@ function listFixture(
   exclusionItems: DomainCandidateList = exclusions,
 ) {
   return trpcFixtureByInput((input) => {
-    if (typeof input !== "object" || input === null || !("view" in input)) {
-      throw new Error("domainIntelligence.list fixture requires a view");
-    }
-    const view = input.view;
+    const { view } = domainCandidateListInputSchema.parse(input);
     if (view !== "candidates" && view !== "exclusions") {
       throw new Error(`Unexpected domainIntelligence.list view: ${String(view)}`);
     }
@@ -367,12 +365,10 @@ test("candidate pagination loads the next cursor page", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1024 });
   await openDomainIntelligence(page, settings, overview, {
     "domainIntelligence.list": trpcFixtureByInput((input) => {
-      if (typeof input !== "object" || input === null || !("view" in input)) {
-        throw new Error("domainIntelligence.list fixture requires a view");
-      }
-      if (input.view === "exclusions") return exclusions;
-      if (input.view !== "candidates") throw new Error("Unexpected list view");
-      const cursor = "cursor" in input ? input.cursor : undefined;
+      const parsed = domainCandidateListInputSchema.parse(input);
+      if (parsed.view === "exclusions") return exclusions;
+      if (parsed.view !== "candidates") throw new Error("Unexpected list view");
+      const cursor = parsed.cursor;
       return cursor
         ? { items: candidates.items.slice(1), nextCursor: null }
         : { items: candidates.items.slice(0, 1), nextCursor: "www.service.example" };
