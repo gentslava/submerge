@@ -22,6 +22,10 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { parse } from "tldts";
+import {
+  type DomainRuleMaterializationResult,
+  reconcileInitialDomainRuleMaterialization,
+} from "./materialization.js";
 import { normalizeObservedFqdn } from "./observer.js";
 
 export const MANAGED_RULES_BEGIN = "# BEGIN SUBMERGE MANAGED";
@@ -37,6 +41,10 @@ export interface LocalRuleRepositoryState {
   contentSha256: string;
   head: string;
   operationIds: readonly string[];
+}
+
+interface AttestedLocalRuleRepositoryState extends LocalRuleRepositoryState {
+  content: string;
 }
 
 export interface LocalRuleRepositoryPaths {
@@ -77,6 +85,22 @@ export interface LocalRuleRepositoryOptions {
     | "after-staging-init"
     | undefined;
   trustedParentPath: string;
+}
+
+export interface ProvisionLocalDomainRuleStoreInput extends LocalRuleRepositoryOptions {
+  mihomoConfigPath: string;
+  repositoryPath: string;
+  /** @internal Deterministic directory-creation race injection for materialization tests. */
+  testBeforeMaterializationDirectoryCreate?: ((directoryPath: string) => void) | undefined;
+  /** @internal Deterministic existing-file race injection for materialization tests. */
+  testBeforeMaterializationExistingRead?: ((filesystemPath: string) => void) | undefined;
+  /** @internal Deterministic publication-race injection for materialization tests. */
+  testBeforeMaterializationPublish?: ((filesystemPath: string) => void) | undefined;
+}
+
+export interface ProvisionedLocalDomainRuleStore {
+  materialization: DomainRuleMaterializationResult;
+  repository: LocalRuleRepositoryState;
 }
 
 export interface LocalRuleRepositoryRecoveryOptions {
@@ -1566,7 +1590,7 @@ async function validateExistingLocalRuleRepository(
   allowedGitRecoveryPaths: ReadonlySet<string> = new Set(),
   allowRecoverableDirtyState: boolean = false,
   allowedRootRecoveryPaths: ReadonlySet<string> = new Set(),
-): Promise<LocalRuleRepositoryState> {
+): Promise<AttestedLocalRuleRepositoryState> {
   const canonicalRepositoryPath = context.repositoryIdentity.canonicalPath;
   const customPath = join(canonicalRepositoryPath, "custom.txt");
   const gitPath = join(canonicalRepositoryPath, ".git");
@@ -1656,6 +1680,7 @@ async function validateExistingLocalRuleRepository(
   assertStableDirectory(gitIdentity);
   return {
     baselineCreated,
+    content: committedContent,
     contentSha256: sha256(committedContent),
     head,
     operationIds,
@@ -1762,7 +1787,7 @@ async function initializeBaselineRepository(
 async function provisionLocalRuleRepositoryUnlocked(
   context: RepositoryContext,
   options: LocalRuleRepositoryOptions,
-): Promise<LocalRuleRepositoryState> {
+): Promise<AttestedLocalRuleRepositoryState> {
   assertNotAborted(options.signal);
   const canonicalRepositoryPath = context.repositoryIdentity.canonicalPath;
   const customPath = join(canonicalRepositoryPath, "custom.txt");
@@ -1807,7 +1832,46 @@ export async function provisionLocalRuleRepository(
   assertNotAborted(options.signal);
   assertTrustedGitBinary();
   const context = resolveRepositoryContext(repositoryPath, options.trustedParentPath);
-  return withRepositoryLock(context, () => provisionLocalRuleRepositoryUnlocked(context, options));
+  return withRepositoryLock(context, async () => {
+    const { content: _content, ...state } = await provisionLocalRuleRepositoryUnlocked(
+      context,
+      options,
+    );
+    return state;
+  });
+}
+
+export async function provisionLocalDomainRuleStore(
+  input: ProvisionLocalDomainRuleStoreInput,
+): Promise<ProvisionedLocalDomainRuleStore> {
+  assertNotAborted(input.signal);
+  assertTrustedGitBinary();
+  const context = resolveRepositoryContext(input.repositoryPath, input.trustedParentPath);
+  return withRepositoryLock(context, async () => {
+    const attested = await provisionLocalRuleRepositoryUnlocked(context, input);
+    const materialization = reconcileInitialDomainRuleMaterialization({
+      content: attested.content,
+      contentSha256: attested.contentSha256,
+      mihomoConfigPath: input.mihomoConfigPath,
+      testBeforeDirectoryCreate: input.testBeforeMaterializationDirectoryCreate,
+      testBeforeExistingRead: input.testBeforeMaterializationExistingRead,
+      testBeforePublish: input.testBeforeMaterializationPublish,
+    });
+    const reattested = await validateExistingLocalRuleRepository(
+      context,
+      input.signal,
+      attested.baselineCreated,
+    );
+    if (
+      reattested.head !== attested.head ||
+      reattested.contentSha256 !== attested.contentSha256 ||
+      reattested.content !== attested.content
+    ) {
+      throw new Error("local domain-rule repository changed during materialization");
+    }
+    const { content: _content, ...repository } = reattested;
+    return { materialization, repository };
+  });
 }
 
 function processIsAlive(pid: number): boolean {
