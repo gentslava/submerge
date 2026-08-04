@@ -172,6 +172,7 @@ pnpm -F @submerge/server domain-intelligence --validate --dry-run
 pnpm -F @submerge/server domain-intelligence --report --dry-run
 pnpm -F @submerge/server domain-intelligence --report --dry-run --output-dir /protected/report-dir
 pnpm -F @submerge/server domain-intelligence --apply
+pnpm -F @submerge/server domain-intelligence --recover-publisher-lock
 ```
 
 `--collect` is an alias for `--collect-snapshot`. Collect and validate are diagnostics and
@@ -332,10 +333,52 @@ type ApplyUnavailableReason =
 
 `DOMAIN_RULES_MODE=report|apply` is the only deployment switch and defaults to
 `report`. It is parsed at the environment boundary and is never exposed as an API write.
-The repository path is code-owned under the persistent Submerge data directory. The
-active materialization path is code-owned under the directory containing
+The repository path is code-owned at `domain-rules/repository` under the persistent
+Submerge data directory. Its `domain-rules` parent is created and attested as `0700`, so
+upgrades remain safe when an existing named-volume root is owner-writable but still
+`0755`. The active materialization path is code-owned under the directory containing
 `MIHOMO_CONFIG_PATH`; Mihomo sees it as `./domain-rules/custom.txt`. Neither path is
 client-configurable.
+
+The private repository and its cooperative process lock assume that Submerge is the sole
+writer under its runtime uid. Code running under the same uid is inside this trust boundary;
+operators must not grant unrelated containers or host processes write access to the data
+directory. A stale lock after an unclean process exit fails closed. After confirming that no
+Submerge process is running, the operator runs `domain-intelligence
+--recover-publisher-lock`. Recovery re-attests the canonical parent, repository, full Git
+metadata, and history before treating the attested `HEAD` blob as the sole recovery authority.
+A crash before the ref CAS restores the worktree to the old `HEAD`; a crash after the CAS rebuilds
+the index from the new `HEAD`. Known interrupted index and atomic-file artifacts are removed only
+after the repair is durable and the clean repository passes full attestation again. If `HEAD`,
+index, and worktree contain three different valid lists, recovery cannot prove intent and fails
+closed without deleting the stale evidence. The online adapter checks a stale lock-owner PID twice
+and refuses a live owner; when only an orphaned known Git artifact remains, recovery first acquires
+the cooperative repository lock itself. A malformed lock, unknown artifact, unsafe ownership,
+unexpected history, or concurrent inode change leaves the stale state in place and aborts
+recovery.
+Baseline provisioning uses one exact code-owned sibling staging directory. A crash after creating
+the seed but before staging is safe to retry only when the repository contains exactly the private,
+valid `custom.txt`. Before the staged `.git` is installed, recovery may discard and restart staging
+only after proving its exact lexical and canonical root, byte-equal seed, owner, private modes,
+regular-file-only bounded tree, same-device entries, and an inode-stable second scan. After `.git`
+installation, recovery first fully attests the final repository and the exact seed-only staging
+remainder, removes that remainder, and fully attests the same final `HEAD` again. It never treats a
+general sibling as disposable staging.
+For Compose, recovery is deliberately offline so PID reuse across container namespaces cannot
+be mistaken for liveness:
+
+```bash
+docker compose stop submerge
+docker compose run --rm --no-deps submerge node dist/domain-intelligence-cli.js --recover-publisher-lock
+docker compose start submerge
+```
+
+The recovery CLI is the explicit operator confirmation that the service is stopped; it does
+not bypass repository, history, path, ownership, lock-shape, or inode-stability checks.
+If it reports `unsafe local baseline staging state`, it has preserved the lock and staging evidence
+because recovery could not prove safety. Keep Submerge stopped, back up the private
+`domain-rules` directory, and escalate for inspection; do not delete or rename the evidence and do
+not retry online provisioning until the state is understood.
 
 `report` performs no provisioning writes and always reports
 `deployment-report-only`. Switching the deployment value to `apply` is the explicit
