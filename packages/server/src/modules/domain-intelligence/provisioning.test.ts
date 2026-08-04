@@ -241,4 +241,85 @@ describe("DomainRuleDeploymentProvisioner", () => {
     });
     expect(deps.forceApplyAndVerifyManagedProvider).toHaveBeenCalledTimes(2);
   });
+
+  it("revokes readiness and fences an in-flight reconciliation", async () => {
+    let finishActivation: (() => void) | undefined;
+    const deps = dependencies();
+    deps.forceApplyAndVerifyManagedProvider.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishActivation = resolve;
+      }).then(() => ({ providerRuleCount: 0 })),
+    );
+    const provisioner = new DomainRuleDeploymentProvisioner("apply", deps);
+
+    const pending = provisioner.reconcile();
+    await vi.waitFor(() => expect(deps.forceApplyAndVerifyManagedProvider).toHaveBeenCalledOnce());
+    provisioner.revoke("provider-inactive");
+    finishActivation?.();
+
+    await expect(pending).resolves.toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "provider-inactive" },
+    });
+    expect(provisioner.readCapability()).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "provider-inactive" },
+    });
+  });
+
+  it("never changes report-only capability when revocation is requested", () => {
+    const provisioner = new DomainRuleDeploymentProvisioner("report", dependencies());
+
+    provisioner.revoke("provider-inactive");
+
+    expect(provisioner.readCapability()).toEqual({
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    });
+  });
+
+  it("restores readiness only from a fresh valid activation proof", () => {
+    const provisioner = new DomainRuleDeploymentProvisioner("apply", dependencies());
+    provisioner.revoke("provider-inactive");
+
+    provisioner.publishActivationProof(provisioner.captureCapabilityEpoch(), {
+      providerRuleCount: 0,
+    });
+
+    expect(provisioner.readCapability()).toMatchObject({
+      mode: "apply",
+      apply: { available: true },
+    });
+
+    provisioner.publishActivationProof(provisioner.captureCapabilityEpoch(), {
+      providerRuleCount: -1,
+    });
+    expect(provisioner.readCapability()).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "provider-inactive" },
+    });
+  });
+
+  it("ignores activation proofs issued before a newer capability transition", () => {
+    const provisioner = new DomainRuleDeploymentProvisioner("apply", dependencies());
+    const staleEpoch = provisioner.captureCapabilityEpoch();
+    provisioner.revoke("local-store-unavailable");
+
+    expect(provisioner.publishActivationProof(staleEpoch, { providerRuleCount: 1 })).toBe(false);
+    expect(provisioner.readCapability()).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "local-store-unavailable" },
+    });
+  });
+
+  it("reserves a unique capability epoch for every requested config transition", () => {
+    const provisioner = new DomainRuleDeploymentProvisioner("apply", dependencies());
+
+    const first = provisioner.reserveCapabilityEpoch();
+    const second = provisioner.reserveCapabilityEpoch();
+
+    expect(second).toBeGreaterThan(first);
+    expect(provisioner.publishActivationProof(first, { providerRuleCount: 1 })).toBe(false);
+    expect(provisioner.publishActivationProof(second, { providerRuleCount: 1 })).toBe(true);
+  });
 });

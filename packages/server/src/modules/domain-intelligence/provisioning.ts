@@ -108,6 +108,36 @@ export class DomainRuleDeploymentProvisioner {
     return domainIntelligenceDeploymentCapabilitySchema.parse(this.capability);
   }
 
+  captureCapabilityEpoch(): number {
+    return this.generation;
+  }
+
+  reserveCapabilityEpoch(): number {
+    if (this.mode === "apply") this.generation += 1;
+    return this.generation;
+  }
+
+  revoke(reason: DomainRuleProvisioningFailureReason): void {
+    if (this.mode === "report") return;
+    this.generation += 1;
+    this.capability = unavailableCapability(reason);
+  }
+
+  revokeIfCurrent(epoch: number, reason: DomainRuleProvisioningFailureReason): boolean {
+    if (this.mode === "report" || epoch !== this.generation) return false;
+    this.generation += 1;
+    this.capability = unavailableCapability(reason);
+    return true;
+  }
+
+  publishActivationProof(epoch: number, proof: ManagedDomainRuleActivationProof): boolean {
+    if (this.mode === "report" || epoch !== this.generation) return false;
+    this.generation += 1;
+    const valid = isValidActivationProof(proof);
+    this.capability = valid ? READY_CAPABILITY : unavailableCapability("provider-inactive");
+    return valid;
+  }
+
   reconcile(signal?: AbortSignal): Promise<DomainIntelligenceDeploymentCapability> {
     if (this.mode === "report") return Promise.resolve(this.readCapability());
     const generation = ++this.generation;
