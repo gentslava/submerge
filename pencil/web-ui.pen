@@ -81822,7 +81822,7 @@
                   "content": "Правило добавлено, но mihomo его ещё не подхватил"
                 },
                 "lr4GD": {
-                  "content": "commit 7bd0e15 отправлен 4 минуты назад. Provider custom не подтвердил обновление, маршрут пока не изменился. Повтор безопасен — правило не задвоится."
+                  "content": "Локальный commit 7bd0e15 создан 4 минуты назад. Mihomo не подтвердил маршрут. Повтор безопасен — правило не задвоится."
                 },
                 "e7xwb": {
                   "content": "Отменить правило"
@@ -82051,20 +82051,10 @@
                           "id": "N9dfn",
                           "name": "t",
                           "fill": "$text-secondary",
-                          "content": "Автоматический режим недоступен: у submerge нет доступа на запись в репозиторий правил.",
+                          "content": "Автоматический режим недоступен: установите DOMAIN_RULES_MODE=apply и перезапустите Submerge.",
                           "fontFamily": "$font-sans",
                           "fontSize": 12.5,
                           "fontWeight": "normal"
-                        },
-                        {
-                          "type": "text",
-                          "id": "OnUCm",
-                          "name": "a",
-                          "fill": "$accent-text",
-                          "content": "Настроить доступ",
-                          "fontFamily": "$font-sans",
-                          "fontSize": 12.5,
-                          "fontWeight": "600"
                         }
                       ]
                     }
@@ -84489,7 +84479,7 @@
                   "id": "arW4q",
                   "name": "t",
                   "fill": "$text-secondary",
-                  "content": "ПУБЛИКАЦИЯ ПРАВИЛА",
+                  "content": "ПРИМЕНЕНИЕ ПРАВИЛА",
                   "fontFamily": "$font-sans",
                   "fontSize": 11,
                   "fontWeight": "600",
@@ -84502,7 +84492,7 @@
                   "fill": "$text-tertiary",
                   "textGrowth": "fixed-width",
                   "width": "fill_container",
-                  "content": "Добавление — не мгновенная операция: коммит, сходимость raw-источника, обновление provider. Кнопка не может просто погаснуть, шаги видны в самой строке.",
+                  "content": "Добавление — не мгновенная операция: локальный коммит, перезагрузка конфигурации, проверка маршрута. Кнопка не может просто погаснуть, шаги видны в самой строке.",
                   "fontFamily": "$font-sans",
                   "fontSize": 12,
                   "fontWeight": "normal"
@@ -84619,7 +84609,7 @@
                             {
                               "type": "frame",
                               "id": "DenWc",
-                              "name": "ждём raw-источник",
+                              "name": "перезагрузка конфигурации",
                               "gap": 6,
                               "alignItems": "center",
                               "children": [
@@ -84638,39 +84628,10 @@
                                   "id": "EJamb",
                                   "name": "t",
                                   "fill": "$accent-text",
-                                  "content": "ждём raw-источник",
+                                  "content": "перезагрузка",
                                   "fontFamily": "$font-sans",
                                   "fontSize": 11.5,
                                   "fontWeight": "600"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "frame",
-                              "id": "XNHJd",
-                              "name": "provider custom",
-                              "gap": 6,
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "icon",
-                                  "id": "C6JdgL",
-                                  "name": "i",
-                                  "width": 13,
-                                  "height": 13,
-                                  "icon": "circle",
-                                  "library": "lucide",
-                                  "fill": "$text-disabled"
-                                },
-                                {
-                                  "type": "text",
-                                  "id": "r4hcjF",
-                                  "name": "t",
-                                  "fill": "$text-disabled",
-                                  "content": "provider custom",
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 11.5,
-                                  "fontWeight": "normal"
                                 }
                               ]
                             },
@@ -84742,7 +84703,7 @@
                               "id": "y2ePWW",
                               "name": "t",
                               "fill": "$accent-text",
-                              "content": "Публикуется",
+                              "content": "Применяется",
                               "fontFamily": "$font-sans",
                               "fontSize": 12,
                               "fontWeight": "600"
@@ -86753,7 +86714,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "commit 7bd0e15 отправлен 4 минуты назад, provider custom не подтвердил обновление. Повтор безопасен.",
+                          "content": "commit 7bd0e15 создан 4 минуты назад, mihomo не подтвердил маршрут. Повтор безопасен.",
                           "lineHeight": 1.45,
                           "fontFamily": "$font-sans",
                           "fontSize": 11.5,
@@ -89437,7 +89398,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "commit 7bd0e15 отправлен 4 минуты назад, provider custom не подтвердил обновление. Повтор безопасен.",
+                          "content": "commit 7bd0e15 создан 4 минуты назад, mihomo не подтвердил маршрут. Повтор безопасен.",
                           "lineHeight": 1.45,
                           "fontFamily": "$font-sans",
                           "fontSize": 11.5,
