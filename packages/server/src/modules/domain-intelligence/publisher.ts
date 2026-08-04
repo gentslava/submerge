@@ -149,6 +149,15 @@ export interface AttestLocalDomainRuleOperationStateInput extends LocalRuleRepos
   repositoryPath: string;
 }
 
+export interface CommitPreparedDomainRuleMutationInput extends LocalRuleRepositoryOptions {
+  deleteRules: readonly string[];
+  expectedParent: string;
+  intendedContentSha256: string;
+  operationId: string;
+  repositoryPath: string;
+  upsertRules: readonly string[];
+}
+
 export type AttestedLocalDomainRuleOperationState =
   | {
       state: "parent";
@@ -472,6 +481,46 @@ function validateCompleteRuleList(content: string): void {
     rules.push(line);
   }
   validateDomainRules(rules);
+}
+
+function managedDomainRules(content: string): string[] {
+  validateCompleteRuleList(content);
+  const beginIndex = content.indexOf(MANAGED_RULES_BEGIN);
+  if (beginIndex === -1) return [];
+  const endIndex = content.indexOf(MANAGED_RULES_END);
+  if (endIndex === -1) throw new Error("invalid managed domain-rule block");
+  const blockStart = beginIndex + MANAGED_RULES_BEGIN.length;
+  const block = content.slice(blockStart, endIndex);
+  return block
+    .split("\n")
+    .map((rawLine) => (rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine))
+    .filter((line) => line !== "" && !line.startsWith("#"));
+}
+
+function applyManagedDomainRuleDelta(
+  content: string,
+  upsertRules: readonly string[],
+  deleteRules: readonly string[],
+): { content: string; rules: string[] } {
+  validateDomainRules(upsertRules);
+  validateDomainRules(deleteRules);
+  const upserts = new Set(upsertRules);
+  const deletes = new Set(deleteRules);
+  if (
+    upserts.size !== upsertRules.length ||
+    deletes.size !== deleteRules.length ||
+    [...upserts].some((rule) => deletes.has(rule))
+  ) {
+    throw new Error("invalid managed domain-rule mutation");
+  }
+  const rules = new Set(managedDomainRules(content));
+  for (const rule of deletes) {
+    if (!rules.delete(rule)) throw new Error("managed domain-rule mutation target is missing");
+  }
+  for (const rule of upserts) rules.add(rule);
+  const updated = updateManagedDomainRules(content, [...rules]);
+  if (!updated.changed) throw new Error("managed domain-rule mutation is a no-op");
+  return { content: updated.content, rules: [...rules] };
 }
 
 function sha256(value: string): string {
@@ -2301,6 +2350,7 @@ export async function recoverStaleLocalRuleRepositoryLock(
 async function commitManagedDomainRulesUnlocked(
   input: CommitManagedDomainRulesInput,
   context: RepositoryContext,
+  requireExistingRepository = false,
 ): Promise<CommittedDomainRules> {
   if (!OPERATION_ID_PATTERN.test(input.operationId)) {
     throw new Error("invalid domain-rule operation ID");
@@ -2309,10 +2359,12 @@ async function commitManagedDomainRulesUnlocked(
     throw new Error("unexpected local Git state");
   }
   assertNotAborted(input.signal);
-  const state = await provisionLocalRuleRepositoryUnlocked(context, {
-    signal: input.signal,
-    trustedParentPath: input.trustedParentPath,
-  });
+  const state = requireExistingRepository
+    ? await validateExistingLocalRuleRepository(context, input.signal, false)
+    : await provisionLocalRuleRepositoryUnlocked(context, {
+        signal: input.signal,
+        trustedParentPath: input.trustedParentPath,
+      });
   if (state.head !== input.expectedParent) throw new Error("unexpected local Git state");
   if (state.operationIds.includes(input.operationId)) {
     throw new Error("duplicate domain-rule operation ID");
@@ -2471,6 +2523,45 @@ export async function commitManagedDomainRules(
   assertTrustedGitBinary();
   const context = resolveRepositoryContext(input.repositoryPath, input.trustedParentPath);
   return withRepositoryLock(context, () => commitManagedDomainRulesUnlocked(input, context));
+}
+
+export async function commitPreparedDomainRuleMutation(
+  input: CommitPreparedDomainRuleMutationInput,
+): Promise<CommittedDomainRules> {
+  assertNotAborted(input.signal);
+  assertTrustedGitBinary();
+  if (
+    !OPERATION_ID_PATTERN.test(input.operationId) ||
+    !COMMIT_SHA_PATTERN.test(input.expectedParent) ||
+    !/^[0-9a-f]{64}$/u.test(input.intendedContentSha256)
+  ) {
+    throw new Error("invalid prepared domain-rule mutation input");
+  }
+  const context = resolveRepositoryContext(input.repositoryPath, input.trustedParentPath);
+  return withRepositoryLock(context, async () => {
+    const state = await validateExistingLocalRuleRepository(context, input.signal, false);
+    if (state.head !== input.expectedParent) throw new Error("unexpected local Git state");
+    const mutation = applyManagedDomainRuleDelta(
+      state.content,
+      input.upsertRules,
+      input.deleteRules,
+    );
+    if (sha256(mutation.content) !== input.intendedContentSha256) {
+      throw new Error("domain-rule mutation does not match prepared intent");
+    }
+    return commitManagedDomainRulesUnlocked(
+      {
+        expectedParent: input.expectedParent,
+        operationId: input.operationId,
+        repositoryPath: input.repositoryPath,
+        rules: mutation.rules,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+        trustedParentPath: input.trustedParentPath,
+      },
+      context,
+      true,
+    );
+  });
 }
 
 export async function attestLocalDomainRuleOperationState(

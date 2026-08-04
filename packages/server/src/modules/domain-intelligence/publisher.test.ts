@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   attestLocalDomainRuleOperationState as attestLocalDomainRuleOperationStateImpl,
   commitManagedDomainRules as commitManagedDomainRulesImpl,
+  commitPreparedDomainRuleMutation as commitPreparedDomainRuleMutationImpl,
   hasLocalRuleHistoryCapacity,
   prepareLocalRuleRepositoryDirectories,
   provisionLocalRuleRepository as provisionLocalRuleRepositoryImpl,
@@ -136,6 +137,15 @@ function attestLocalDomainRuleOperationState(
   input: Omit<Parameters<typeof attestLocalDomainRuleOperationStateImpl>[0], "trustedParentPath">,
 ) {
   return attestLocalDomainRuleOperationStateImpl({
+    trustedParentPath: dirname(input.repositoryPath),
+    ...input,
+  });
+}
+
+function commitPreparedDomainRuleMutation(
+  input: Omit<Parameters<typeof commitPreparedDomainRuleMutationImpl>[0], "trustedParentPath">,
+) {
+  return commitPreparedDomainRuleMutationImpl({
     trustedParentPath: dirname(input.repositoryPath),
     ...input,
   });
@@ -1672,6 +1682,133 @@ describe("attestLocalDomainRuleOperationState", () => {
         expectedParent: "1".repeat(40),
         operationId: "op-missing-git",
         repositoryPath,
+      }),
+    ).rejects.toThrow("unexpected local Git state");
+    expect(() => statSync(join(repositoryPath, ".git"))).toThrow();
+  });
+});
+
+describe("commitPreparedDomainRuleMutation", () => {
+  it("applies only the journal delta and preserves unknown managed rules", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const seeded =
+      "# operator\n# BEGIN SUBMERGE MANAGED\n+.existing.example\n# END SUBMERGE MANAGED\n";
+    writeFileSync(join(repositoryPath, "custom.txt"), seeded, { mode: 0o600 });
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+    const intended = updateManagedDomainRules(seeded, [
+      "+.existing.example",
+      "+.new.example",
+    ]).content;
+
+    const committed = await commitPreparedDomainRuleMutation({
+      deleteRules: [],
+      expectedParent: baseline.head,
+      intendedContentSha256: sha256(intended),
+      operationId: "op-delta-add",
+      repositoryPath,
+      upsertRules: ["+.new.example"],
+    });
+
+    expect(committed).toMatchObject({
+      changed: true,
+      contentSha256: sha256(intended),
+      parent: baseline.head,
+    });
+    expect(readFileSync(join(repositoryPath, "custom.txt"), "utf8")).toBe(intended);
+  });
+
+  it("applies an edit delta without rebuilding the managed block from ownership state", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const seeded =
+      "# BEGIN SUBMERGE MANAGED\n+.existing.example\nold.example\n# END SUBMERGE MANAGED\n";
+    writeFileSync(join(repositoryPath, "custom.txt"), seeded, { mode: 0o600 });
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+    const intended = updateManagedDomainRules(seeded, [
+      "+.existing.example",
+      "new.example",
+    ]).content;
+
+    await commitPreparedDomainRuleMutation({
+      deleteRules: ["old.example"],
+      expectedParent: baseline.head,
+      intendedContentSha256: sha256(intended),
+      operationId: "op-delta-edit",
+      repositoryPath,
+      upsertRules: ["new.example"],
+    });
+
+    expect(readFileSync(join(repositoryPath, "custom.txt"), "utf8")).toBe(intended);
+  });
+
+  it("rejects an intended digest mismatch before changing Git or the worktree", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+    const before = readFileSync(join(repositoryPath, "custom.txt"), "utf8");
+
+    await expect(
+      commitPreparedDomainRuleMutation({
+        deleteRules: [],
+        expectedParent: baseline.head,
+        intendedContentSha256: "f".repeat(64),
+        operationId: "op-delta-digest-mismatch",
+        repositoryPath,
+        upsertRules: ["+.new.example"],
+      }),
+    ).rejects.toThrow("domain-rule mutation does not match prepared intent");
+    expect(git(repositoryPath, ["rev-parse", "HEAD"]).trim()).toBe(baseline.head);
+    expect(git(repositoryPath, ["status", "--porcelain=v1"])).toBe("");
+    expect(readFileSync(join(repositoryPath, "custom.txt"), "utf8")).toBe(before);
+  });
+
+  it("rejects a missing delete target before changing repository state", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const baseline = await provisionLocalRuleRepository(repositoryPath);
+
+    await expect(
+      commitPreparedDomainRuleMutation({
+        deleteRules: ["missing.example"],
+        expectedParent: baseline.head,
+        intendedContentSha256: "f".repeat(64),
+        operationId: "op-delta-missing-delete",
+        repositoryPath,
+        upsertRules: [],
+      }),
+    ).rejects.toThrow("managed domain-rule mutation target is missing");
+    expect(git(repositoryPath, ["rev-parse", "HEAD"]).trim()).toBe(baseline.head);
+  });
+
+  it("does not initialize missing Git metadata for a prepared mutation", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    writeFileSync(join(repositoryPath, "custom.txt"), "# operator\n", { mode: 0o600 });
+
+    await expect(
+      commitPreparedDomainRuleMutation({
+        deleteRules: [],
+        expectedParent: "1".repeat(40),
+        intendedContentSha256: "f".repeat(64),
+        operationId: "op-delta-missing-git",
+        repositoryPath,
+        upsertRules: ["+.new.example"],
       }),
     ).rejects.toThrow("unexpected local Git state");
     expect(() => statSync(join(repositoryPath, ".git"))).toThrow();
