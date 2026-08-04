@@ -204,6 +204,17 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
   free), width 360, `bg-surface` + `border-subtle` + `rounded-lg`; title `cardtitle`,
   body `sub`/`text-secondary`; actions right‑aligned — `secondary` (Отмена) +
   `destructive`; scrim `--color-scrim`; backdrop click closes.
+- **ResponsiveDialog** (domain-rule editor frame `IgxF5`): Base UI `Dialog` provides
+  centered `bg-surface` / `border-default` / `radius-xl` surfaces on desktop: 560px
+  for rule-scope editors and 520px for domain-filter editors (`XDlUV`).
+  Below 768px Base UI `Drawer` provides a full-width bottom sheet with velocity-aware
+  drag/swipe dismissal and a visible handle. Both variants keep header/footer fixed,
+  use one internal scrolling body, animate entry/exit, respect reduced motion, and
+  restore focus after Escape, backdrop press, close action, or swipe. Both variants
+  show a close icon from the shared button system. In the mobile drawer it keeps a
+  44×44 hit target around a compact 32×32 visual surface: the handle remains a fast
+  gesture affordance, while the icon makes dismissal discoverable without requiring
+  knowledge of swipe behavior.
 
 ## Enforcement
 

@@ -4,12 +4,13 @@ import type {
   DomainRuleScope,
 } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, CircleAlert, Save, X } from "lucide-react";
+import { ChevronRight, CircleAlert, Save } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LabeledControlRow as Row } from "@/components/ui/labeled-control-row";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useTRPC } from "@/lib/trpc";
@@ -296,23 +297,28 @@ function NeverAddEditor({
   const [tlds, setTlds] = useState(joinLines(settings.excludedTlds));
   const [patterns, setPatterns] = useState(joinLines(settings.telemetryPatterns));
   return (
-    <FilterEditor title="Не добавлять" onClose={onClose}>
+    <FilterEditor
+      title="Не добавлять"
+      onClose={onClose}
+      footer={
+        <EditorSave
+          label="Сохранить «Не добавлять»"
+          pending={pending}
+          onClick={() =>
+            onSave({
+              neverAddDomains: splitLines(domains),
+              neverAddSuffixes: splitLines(suffixes),
+              excludedTlds: splitLines(tlds),
+              telemetryPatterns: splitLines(patterns),
+            })
+          }
+        />
+      }
+    >
       <EditorField label="Домены, которые не добавлять" value={domains} onChange={setDomains} />
       <EditorField label="Суффиксы, которые не добавлять" value={suffixes} onChange={setSuffixes} />
       <EditorField label="Доменные зоны, которые не добавлять" value={tlds} onChange={setTlds} />
       <EditorField label="Шаблоны телеметрии" value={patterns} onChange={setPatterns} />
-      <EditorSave
-        label="Сохранить «Не добавлять»"
-        pending={pending}
-        onClick={() =>
-          onSave({
-            neverAddDomains: splitLines(domains),
-            neverAddSuffixes: splitLines(suffixes),
-            excludedTlds: splitLines(tlds),
-            telemetryPatterns: splitLines(patterns),
-          })
-        }
-      />
     </FilterEditor>
   );
 }
@@ -330,17 +336,22 @@ function DoNotWidenEditor({
 }) {
   const [suffixes, setSuffixes] = useState(joinLines(values));
   return (
-    <FilterEditor title="Не расширять" onClose={onClose}>
+    <FilterEditor
+      title="Не расширять"
+      onClose={onClose}
+      footer={
+        <EditorSave
+          label="Сохранить «Не расширять»"
+          pending={pending}
+          onClick={() => onSave(splitLines(suffixes))}
+        />
+      }
+    >
       <p className="text-fine text-text-tertiary">
         Эти домены остаются кандидатами, но site-scope для них недоступен. Публичные суффиксы
         добавлять не нужно — они защищены всегда.
       </p>
       <EditorField label="Суффиксы, которые не расширять" value={suffixes} onChange={setSuffixes} />
-      <EditorSave
-        label="Сохранить «Не расширять»"
-        pending={pending}
-        onClick={() => onSave(splitLines(suffixes))}
-      />
     </FilterEditor>
   );
 }
@@ -348,27 +359,24 @@ function DoNotWidenEditor({
 function FilterEditor({
   title,
   onClose,
+  footer,
   children,
 }: {
   title: string;
   onClose: () => void;
+  footer: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-accent-border bg-accent-bg p-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-cardtitle text-text-primary">{title}</h3>
-        <button
-          type="button"
-          aria-label={`Закрыть редактор «${title}»`}
-          onClick={onClose}
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-tertiary hover:bg-hover hover:text-text-secondary"
-        >
-          <X aria-hidden="true" size={16} />
-        </button>
-      </div>
+    <ResponsiveDialog
+      title={title}
+      closeLabel={`Закрыть редактор «${title}»`}
+      size="compact"
+      onClose={onClose}
+      footer={footer}
+    >
       <div className="domain-filter-editor-grid grid gap-3">{children}</div>
-    </div>
+    </ResponsiveDialog>
   );
 }
 

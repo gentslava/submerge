@@ -147,7 +147,7 @@ const exclusions: DomainCandidateList = {
   items: [
     {
       ...candidateBase,
-      fqdn: "rejected.service.example",
+      fqdn: "user-rejected-very-long-subdomain-for-an.internal-service-gateway.service.example",
       bucket: "exclusion",
       reviewState: "rejected",
       exclusionReason: "user-rejected",
@@ -222,15 +222,30 @@ test("populated dark desktop matches the approved Auto Rules hierarchy", async (
   await openDomainIntelligence(page);
 
   await expect(page.getByRole("link", { name: "Автоправила" })).toHaveClass(/active/u);
+  const configure = page.getByRole("link", { name: "Настроить" });
+  await expect(configure).toHaveClass(/page-header-action/u);
+  await expect.poll(async () => (await configure.boundingBox())?.height).toBe(40);
+  await expect(page.getByText("только отчёт", { exact: true })).toBeVisible();
+  await expect(page.getByText("report-only", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Подтверждать вручную" })).toHaveAttribute(
     "aria-current",
     "true",
   );
   await expect(page.getByText("+.service.example", { exact: true })).toBeVisible();
   await expect(page.getByText("только точный адрес", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Подробнее о app.pages.example" }).click();
-  await expect(page.getByText(/Для адреса найден суффикс из списка «Не расширять»/u)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Сайт целиком" })).toBeDisabled();
+  await expect(page.locator(".domain-exact-scope-note")).toContainText(
+    "Адрес входит в список «Не расширять»",
+  );
+  await expect(page.getByRole("button", { name: "Подробнее о app.pages.example" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Открыть детали www.service.example" }),
+  ).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Подробнее о www.service.example" }).click();
+  await expect(page.getByText("DIRECT", { exact: true })).toBeVisible();
+  await expect(page.getByText("PROXY", { exact: true })).toBeVisible();
+  await expect(page.getByText("ПОКРЫТИЕ", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Проверить сейчас" })).toBeVisible();
 
   await page.screenshot({ path: "/tmp/submerge-auto-rules-dark-1440.png", fullPage: true });
   await expectNoDocumentOverflow(page);
@@ -248,6 +263,37 @@ test("first install requires a visible scope choice", async ({ page }) => {
   await expect(enable).toBeDisabled();
   await page.getByRole("button", { name: "Только точный адрес" }).click();
   await expect(enable).toBeEnabled();
+  await expectNoDocumentOverflow(page);
+});
+
+test("mobile exposes the current auto-rule mode through a compact selector", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDomainIntelligence(page);
+
+  await expect(page.locator(".domain-mode-segmented")).toBeHidden();
+  const modeTrigger = page.getByRole("button", { name: "Режим: Подтверждать вручную" });
+  await expect(modeTrigger).toBeVisible();
+  await expect(
+    page.getByText(
+      "Submerge предлагает правила и ждёт. В custom.txt ничего не попадает без вашего подтверждения.",
+      { exact: true },
+    ),
+  ).not.toBeVisible();
+  await expect(page.locator(".domain-mode-status")).toHaveCSS(
+    "background-color",
+    "rgb(22, 25, 34)",
+  );
+  await modeTrigger.click();
+
+  const dialog = page.getByRole("dialog", { name: "Режим автоправил" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /^Автоматически/u })).toBeDisabled();
+  const close = page.getByRole("button", { name: "Закрыть «Режим автоправил»" });
+  await expect(close).toBeVisible();
+  await page.screenshot({ path: "/tmp/submerge-domain-mode-drawer-390.png", fullPage: true });
+  await close.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(modeTrigger).toBeFocused();
   await expectNoDocumentOverflow(page);
 });
 
@@ -281,8 +327,15 @@ test("empty candidate and exclusion states remain distinct", async ({ page }) =>
   );
 
   await expect(page.getByText("Нечего подтверждать")).toBeVisible();
-  await page.getByRole("button", { name: /Исключения/u }).click();
+  const exclusionsTrigger = page.getByRole("button", { name: "Исключения · 0" });
+  await exclusionsTrigger.click();
+  await expect(page.getByRole("button", { name: "К кандидатам" })).toBeFocused();
   await expect(page.getByText("Исключений нет")).toBeVisible();
+  await expect(page.getByText("Нечего подтверждать")).toHaveCount(0);
+  await page.getByRole("button", { name: "К кандидатам" }).click();
+  await expect(page.getByText("Исключений нет")).toHaveCount(0);
+  await expect(page.getByText("Нечего подтверждать")).toBeVisible();
+  await expect(exclusionsTrigger).toBeFocused();
   await expectNoDocumentOverflow(page);
 });
 
@@ -323,7 +376,12 @@ test("list errors are not presented as an empty candidate list", async ({ page }
 test("mobile exclusions expose reason-specific 44px actions", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openDomainIntelligence(page);
-  await page.getByRole("button", { name: /Исключения/u }).click();
+  await expect(page.locator(".domain-exclusions-trigger-header")).not.toBeVisible();
+  const exclusionsTrigger = page.locator(".domain-exclusions-trigger-mobile");
+  await expect(exclusionsTrigger).toBeVisible();
+  expect((await exclusionsTrigger.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  await exclusionsTrigger.click();
+  await expect(page.getByRole("button", { name: "К кандидатам" })).toBeFocused();
 
   for (const action of [
     page.getByRole("button", { name: "Вернуть" }),
@@ -334,9 +392,47 @@ test("mobile exclusions expose reason-specific 44px actions", async ({ page }) =
     await expect(action).toBeVisible();
     expect((await action.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   }
-  await expect(page.getByText("только точный адрес")).toHaveCount(0);
+  await expect(page.locator("#domain-exclusions").getByText("только точный адрес")).toHaveCount(0);
+  await page.getByRole("button", { name: "К кандидатам" }).click();
+  await expect(exclusionsTrigger).toBeFocused();
   await expectNoDocumentOverflow(page);
 });
+
+test("compact exact-only candidate explains why widening is unavailable", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDomainIntelligence(page);
+
+  const exactCard = page.locator(".domain-candidate-item").filter({ hasText: "app.pages.example" });
+  await expect(exactCard.locator(".domain-candidate-summary-compact")).toContainText(
+    "Адрес входит в список «Не расширять»",
+  );
+  await expect(exactCard.locator(".domain-exact-scope-note")).not.toBeVisible();
+  await expectNoDocumentOverflow(page);
+});
+
+for (const width of [320, 390]) {
+  test(`long exclusion stays bounded with a compact reason chip at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await openDomainIntelligence(page);
+    await page.locator(".domain-exclusions-trigger-mobile").click();
+
+    const row = page.locator("#domain-exclusions .domain-exclusion-row").first();
+    const domain = row.locator(".domain-observed-name");
+    const chip = row.locator(".domain-exclusion-reason");
+    await expect(row).toBeVisible();
+    expect(await domain.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    const rowBox = await row.boundingBox();
+    const chipBox = await chip.boundingBox();
+    expect(rowBox).not.toBeNull();
+    expect(chipBox).not.toBeNull();
+    expect(chipBox?.width ?? Number.POSITIVE_INFINITY).toBeLessThan((rowBox?.width ?? 0) * 0.75);
+    await expectNoDocumentOverflow(page);
+  });
+}
 
 test("unverified settings activation is reported as fail-closed", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1024 });
@@ -357,7 +453,10 @@ test("review mutation refusals expose their safe reason", async ({ page }) => {
   });
 
   await page.getByRole("button", { name: "Подробнее о www.service.example" }).click();
-  await page.getByRole("button", { name: "Только точный адрес" }).click();
+  await page
+    .getByRole("group", { name: "Область правила" })
+    .getByRole("button", { name: "www.service.example", exact: true })
+    .click();
   await expect(page.getByText("Эта область больше недоступна")).toBeVisible();
 });
 
@@ -389,6 +488,11 @@ test("settings keeps Never add and Do not widen as separate editors", async ({ p
   const autoRules = page.getByRole("heading", { name: "Автоправила", level: 2 });
   await autoRules.scrollIntoViewIfNeeded();
   await page.getByRole("button", { name: /Не добавлять/u }).click();
+  const dialog = page.getByRole("dialog", { name: "Не добавлять" });
+  await expect(dialog).toBeVisible();
+  await expect.poll(async () => Math.round((await dialog.boundingBox())?.width ?? 0)).toBe(520);
+  const dialogBox = await dialog.boundingBox();
+  expect(Math.round((dialogBox?.x ?? 0) + (dialogBox?.width ?? 0) / 2)).toBe(720);
   await expect(
     page.getByRole("textbox", { name: "Доменные зоны, которые не добавлять" }),
   ).toBeVisible();
@@ -397,10 +501,122 @@ test("settings keeps Never add and Do not widen as separate editors", async ({ p
   );
   await page.getByRole("button", { name: "Закрыть редактор «Не добавлять»" }).click();
   await page.getByRole("button", { name: /Не расширять/u }).click();
+  const widenDialog = page.getByRole("dialog", { name: "Не расширять" });
   await expect(page.getByRole("textbox", { name: "Суффиксы, которые не расширять" })).toBeVisible();
+  await expect.poll(() => widenDialog.getAttribute("data-starting-style")).toBeNull();
+  await expect.poll(() => widenDialog.getAttribute("data-ending-style")).toBeNull();
+  await expect(widenDialog).toHaveCSS("opacity", "1");
   await page.screenshot({ path: "/tmp/submerge-domain-settings-dark-1440.png", fullPage: true });
   await expectNoDocumentOverflow(page);
 });
+
+test("mobile uses a centered settings icon and bottom-sheet filter editor", async ({ page }) => {
+  await page.setViewportSize({ width: 425, height: 844 });
+  await openDomainIntelligence(page);
+
+  const configure = page.getByRole("link", { name: "Настроить" });
+  const configureBox = await configure.boundingBox();
+  const iconBox = await configure.locator("svg").boundingBox();
+  expect(
+    Math.abs(
+      (configureBox?.x ?? 0) +
+        (configureBox?.width ?? 0) / 2 -
+        ((iconBox?.x ?? 0) + (iconBox?.width ?? 0) / 2),
+    ),
+  ).toBeLessThanOrEqual(0.5);
+
+  await page.goto("/settings");
+  const trigger = page.getByRole("button", { name: /Не добавлять/u });
+  await trigger.scrollIntoViewIfNeeded();
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Не добавлять" });
+  await dialog.waitFor({ state: "attached" });
+  const entrySamples: number[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    entrySamples.push((await dialog.boundingBox())?.y ?? 0);
+    await page.waitForTimeout(50);
+  }
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-swipe-direction", "down");
+  const dialogBox = await dialog.boundingBox();
+  expect(entrySamples[0] ?? 0).toBeGreaterThan((dialogBox?.y ?? 0) + 24);
+  expect(entrySamples.at(-1) ?? 0).toBeLessThan(entrySamples[0] ?? 0);
+  expect(dialogBox?.x).toBe(0);
+  expect(dialogBox?.width).toBe(425);
+  expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBe(844);
+
+  const handleBox = await page.locator(".responsive-dialog-handle").boundingBox();
+  if (!dialogBox || !handleBox) throw new Error("Drawer geometry is unavailable");
+  const handleX = handleBox.x + handleBox.width / 2;
+  const handleY = handleBox.y + handleBox.height / 2;
+  await page.mouse.move(handleX, handleY);
+  await page.mouse.down();
+  await page.mouse.move(handleX, handleY + 72, { steps: 8 });
+  await expect
+    .poll(async () => (await dialog.boundingBox())?.y ?? 0)
+    .toBeGreaterThan(dialogBox.y + 24);
+  await page.mouse.move(handleX, handleY, { steps: 8 });
+  await page.mouse.up();
+  await expect
+    .poll(async () => Math.abs(((await dialog.boundingBox())?.y ?? 0) - dialogBox.y))
+    .toBeLessThanOrEqual(1);
+  await page.screenshot({ path: "/tmp/submerge-domain-settings-drawer-425.png", fullPage: true });
+
+  const compactClose = page.getByRole("button", { name: "Закрыть редактор «Не добавлять»" });
+  await expect(compactClose).toBeVisible();
+  const compactCloseBox = await compactClose.boundingBox();
+  expect(compactCloseBox?.width).toBeGreaterThanOrEqual(44);
+  expect(compactCloseBox?.height).toBeGreaterThanOrEqual(44);
+  const compactCloseVisualBox = await compactClose
+    .locator(".responsive-dialog-mobile-close-visual")
+    .boundingBox();
+  expect(compactCloseVisualBox?.width).toBeLessThanOrEqual(32);
+  expect(compactCloseVisualBox?.height).toBeLessThanOrEqual(32);
+  if (!compactCloseVisualBox) throw new Error("Drawer close geometry is unavailable");
+  const closeTopInset = compactCloseVisualBox.y - dialogBox.y;
+  const closeRightInset =
+    dialogBox.x + dialogBox.width - compactCloseVisualBox.x - compactCloseVisualBox.width;
+  expect(Math.abs(closeTopInset - closeRightInset)).toBeLessThanOrEqual(1);
+  await compactClose.focus();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await trigger.click();
+  await expect(dialog).toBeVisible();
+  await page.locator(".responsive-dialog-backdrop--drawer").click({ position: { x: 8, y: 8 } });
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
+for (const width of [320, 390, 767, 768]) {
+  test(`filter editor uses the responsive dialog placement at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await openDomainIntelligence(page);
+    await page.goto("/settings");
+    const trigger = page.getByRole("button", { name: /Не расширять/u });
+    await trigger.scrollIntoViewIfNeeded();
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Не расширять" });
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => dialog.getAttribute("data-starting-style")).toBeNull();
+    const box = await dialog.boundingBox();
+    if (!box) throw new Error("Responsive editor geometry is unavailable");
+
+    if (width < 768) {
+      expect(box.x).toBe(0);
+      expect(box.width).toBe(width);
+      await expect(page.locator(".responsive-dialog-handle")).toBeVisible();
+    } else {
+      await expect.poll(async () => Math.round((await dialog.boundingBox())?.width ?? 0)).toBe(520);
+      const settledBox = await dialog.boundingBox();
+      expect(Math.round((settledBox?.x ?? 0) + (settledBox?.width ?? 0) / 2)).toBe(width / 2);
+      await expect(page.locator(".responsive-dialog-handle")).toHaveCount(0);
+    }
+    await page.screenshot({ path: `/tmp/submerge-domain-settings-${width}.png`, fullPage: true });
+    await expectNoDocumentOverflow(page);
+  });
+}
 
 for (const width of [320, 390, 425, 768, 983, 984, 1024, 1440]) {
   test(`candidate list stays complete and overflow-free at ${width}px`, async ({ page }) => {
@@ -410,7 +626,9 @@ for (const width of [320, 390, 425, 768, 983, 984, 1024, 1440]) {
     await expect(page.getByText("+.internal-service-gateway.product.example")).toBeVisible();
     if (width < 984) {
       const reject = page.getByRole("button", { name: "Не добавлять www.service.example" });
-      const details = page.getByRole("button", { name: "Подробнее о www.service.example" });
+      const cardDetails = page.getByRole("button", { name: "Открыть детали www.service.example" });
+      const inlineDetails = page.getByRole("button", { name: "Подробнее о www.service.example" });
+      const details = (await cardDetails.isVisible()) ? cardDetails : inlineDetails;
       expect((await reject.boundingBox())?.height).toBeGreaterThanOrEqual(44);
       expect((await details.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     }
@@ -418,12 +636,35 @@ for (const width of [320, 390, 425, 768, 983, 984, 1024, 1440]) {
       await expect(page.getByRole("link", { name: "Ещё" })).toHaveClass(/active/u);
     }
     if (width === 390) {
+      await expect(
+        page.locator(".domain-candidate-panel--cards .domain-candidate-item"),
+      ).toHaveCount(candidates.items.length);
+      await expect(page.locator(".domain-candidate-expand").first()).not.toBeVisible();
+      await expect(page.locator(".domain-exact-scope-note")).not.toBeVisible();
       const prefix = page.locator(".domain-observed-prefix").last();
       const suffix = page.locator(".domain-observed-suffix").last();
       await expect(suffix).toHaveText("product.example");
       expect(await prefix.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
         true,
       );
+    }
+    if (width === 390 || width === 1440) {
+      const longCardDetails = page.getByRole("button", {
+        name: "Открыть детали very-long-subdomain-for-an.internal-service-gateway.product.example",
+      });
+      const longInlineDetails = page.getByRole("button", {
+        name: "Подробнее о very-long-subdomain-for-an.internal-service-gateway.product.example",
+      });
+      await ((await longCardDetails.isVisible()) ? longCardDetails : longInlineDetails).click();
+      await expect(
+        page.getByRole("button", { name: "+.internal-service-gateway.product.example" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", {
+          name: "very-long-subdomain-for-an.internal-service-gateway.product.example",
+          exact: true,
+        }),
+      ).toBeVisible();
     }
     await expectNoDocumentOverflow(page);
   });

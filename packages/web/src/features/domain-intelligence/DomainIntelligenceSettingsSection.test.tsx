@@ -71,13 +71,13 @@ beforeEach(() => {
 });
 
 describe("DomainIntelligenceSettingsSection", () => {
-  it("keeps Never add and Do not widen in independent editors", () => {
+  it("keeps Never add and Do not widen in independent editors", async () => {
     render(<DomainIntelligenceSettingsSection />);
 
     expect(screen.getByRole("spinbutton", { name: "Правил в сутки" })).toHaveAttribute("max", "3");
 
     fireEvent.click(screen.getByRole("button", { name: /Не добавлять/u }));
-    expect(screen.getByRole("heading", { name: "Не добавлять" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Не добавлять" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Домены, которые не добавлять" })).toHaveValue(
       "blocked.example",
     );
@@ -98,8 +98,9 @@ describe("DomainIntelligenceSettingsSection", () => {
       neverAddSuffixes: ["ads.example", "telemetry.example"],
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Закрыть редактор «Не добавлять»" }));
     fireEvent.click(screen.getByRole("button", { name: /Не расширять/u }));
-    expect(screen.getByRole("heading", { name: "Не расширять" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Не расширять" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Суффиксы, которые не расширять" })).toHaveValue(
       "pages.example\nvercel.app",
     );

@@ -4,7 +4,7 @@ import {
   type DomainIntelligenceOverview,
   type DomainIntelligenceSettingsView,
 } from "@submerge/shared";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DomainIntelligenceScreen } from "./DomainIntelligenceScreen";
@@ -326,12 +326,11 @@ describe("DomainIntelligenceScreen", () => {
     expect(screen.getByText("сайт целиком")).toBeInTheDocument();
     expect(screen.getByText("app.pages.example", { selector: "code" })).toBeInTheDocument();
     expect(screen.getByText("только точный адрес")).toBeInTheDocument();
+    expect(screen.getByText("только отчёт", { exact: true })).toBeInTheDocument();
+    expect(screen.queryByText("report-only", { exact: true })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Подробнее о app.pages.example" }));
-    expect(
-      screen.getByText(/Для адреса найден суффикс из списка «Не расширять»/u),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Сайт целиком" })).toBeDisabled();
+    expect(screen.getAllByText(/Адрес входит в список «Не расширять»/u)).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Подробнее о app.pages.example" })).toBeNull();
   });
 
   it("uses review mutations for scope and rejection without pretending to apply", () => {
@@ -339,7 +338,10 @@ describe("DomainIntelligenceScreen", () => {
     render(<DomainIntelligenceScreen />);
 
     fireEvent.click(screen.getByRole("button", { name: "Подробнее о www.service.example" }));
-    fireEvent.click(screen.getByRole("button", { name: "Только точный адрес" }));
+    expect(document.querySelectorAll(".domain-candidate-detail-row")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "+.service.example" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Проверить сейчас" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "www.service.example" }));
     expect(mocks.mutationStates.get("scope")?.mutate).toHaveBeenCalledWith({
       fqdn: "www.service.example",
       selectedScope: "exact",
@@ -375,11 +377,20 @@ describe("DomainIntelligenceScreen", () => {
     });
   });
 
-  it("offers reason-specific exclusion actions", () => {
+  it("opens exclusions as a separate panel view and restores focus on return", async () => {
     arrange(settingsView(), exclusions);
     render(<DomainIntelligenceScreen />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Исключения/u }));
+    const exclusionsTrigger = document.querySelector<HTMLButtonElement>(
+      ".domain-exclusions-trigger-header",
+    );
+    if (!exclusionsTrigger) throw new Error("exclusions trigger is missing");
+    fireEvent.click(exclusionsTrigger);
+    await waitFor(() => expect(screen.getByRole("button", { name: "К кандидатам" })).toHaveFocus());
+    expect(screen.getByRole("link", { name: "Настроить фильтры" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
     expect(screen.getByRole("button", { name: "Вернуть" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Проверить снова" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Показать правило" })).toHaveAttribute(
@@ -390,7 +401,98 @@ describe("DomainIntelligenceScreen", () => {
       "href",
       "/settings",
     );
-    expect(screen.queryByText("только точный адрес")).toBeNull();
+    const exclusionsPanel = document.querySelector<HTMLElement>("#domain-exclusions");
+    if (!exclusionsPanel) throw new Error("exclusions panel is missing");
+    expect(within(exclusionsPanel).queryByText("только точный адрес")).toBeNull();
+    expect(within(exclusionsPanel).queryByText("+.service.example")).toBeNull();
+    expect(within(exclusionsPanel).getByText("Отклонён вами")).toBeInTheDocument();
+    expect(within(exclusionsPanel).getByText("Не помогает VPN")).toBeInTheDocument();
+    expect(within(exclusionsPanel).getByText("Уже покрыт")).toBeInTheDocument();
+    expect(within(exclusionsPanel).getByText("Телеметрия")).toBeInTheDocument();
+    expect(screen.queryByText("Ждут подтверждения")).toBeNull();
+
+    const closeExclusions = screen.getByRole("button", { name: "К кандидатам" });
+    closeExclusions.focus();
+    fireEvent.click(closeExclusions);
+    await waitFor(() => {
+      expect(document.querySelector(".domain-exclusions-trigger-header")).toHaveFocus();
+    });
+    expect(screen.queryByRole("button", { name: "Вернуть" })).toBeNull();
+    expect(screen.getByText("+.service.example")).toBeInTheDocument();
+  });
+
+  it("routes invalid policy exclusions to settings instead of a dead recheck", () => {
+    const policyFixture = exclusions.items.at(-1);
+    if (!policyFixture) throw new Error("policy exclusion fixture is missing");
+    arrange(settingsView(), {
+      items: [
+        {
+          ...policyFixture,
+          fqdn: "invalid-policy.example",
+          status: "blocked",
+          selectedScope: null,
+          proposedRule: null,
+          eligibleScopes: [],
+          scopeValid: false,
+          siteUnavailableReason: "policy-unavailable",
+          exclusionReason: "invalid-policy",
+          policyExclusionReason: null,
+        },
+      ],
+      nextCursor: null,
+    });
+    render(<DomainIntelligenceScreen />);
+
+    const trigger = document.querySelector<HTMLButtonElement>(".domain-exclusions-trigger-header");
+    if (!trigger) throw new Error("exclusions trigger is missing");
+    fireEvent.click(trigger);
+    expect(screen.getByText("Политика недоступна")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Изменить фильтр" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+    expect(screen.queryByRole("button", { name: "Проверить снова" })).toBeNull();
+  });
+
+  it("keeps exclusion errors scoped and retries the exclusion query", () => {
+    arrange();
+    const refetch = vi.fn();
+    mocks.queryStates.set("list:exclusions", {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      isFetching: false,
+      refetch,
+    });
+    render(<DomainIntelligenceScreen />);
+
+    const trigger = document.querySelector<HTMLButtonElement>(".domain-exclusions-trigger-header");
+    if (!trigger) throw new Error("exclusions trigger is missing");
+    fireEvent.click(trigger);
+    const panel = document.querySelector<HTMLElement>("#domain-exclusions");
+    if (!panel) throw new Error("exclusions panel is missing");
+    expect(within(panel).getByText("Не удалось загрузить список доменов")).toBeInTheDocument();
+    expect(screen.queryByText("Ждут подтверждения")).toBeNull();
+    fireEvent.click(within(panel).getByRole("button", { name: "Повторить" }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it("paginates exclusions with the exclusion query cursor", () => {
+    arrange();
+    const fetchNextPage = vi.fn();
+    mocks.queryStates.set("list:exclusions", {
+      ...queryState({ ...exclusions, nextCursor: "edge.shared.example" }),
+      fetchNextPage,
+    });
+    render(<DomainIntelligenceScreen />);
+
+    const trigger = document.querySelector<HTMLButtonElement>(".domain-exclusions-trigger-header");
+    if (!trigger) throw new Error("exclusions trigger is missing");
+    fireEvent.click(trigger);
+    const panel = document.querySelector<HTMLElement>("#domain-exclusions");
+    if (!panel) throw new Error("exclusions panel is missing");
+    fireEvent.click(within(panel).getByRole("button", { name: "Загрузить ещё" }));
+    expect(fetchNextPage).toHaveBeenCalledOnce();
   });
 
   it("shows list failures instead of presenting them as an empty result", () => {
@@ -533,8 +635,8 @@ describe("DomainIntelligenceScreen", () => {
     render(<DomainIntelligenceScreen />);
     fireEvent.click(screen.getByRole("button", { name: "Подробнее о www.service.example" }));
 
-    expect(screen.getByText("HTTP 403 · 90 мс")).toHaveClass("text-online");
-    expect(screen.getByText("таймаут соединения · 8000 мс")).toHaveClass("text-timeout");
+    expect(screen.getByText("DIRECT", { exact: true })).toHaveClass("text-online");
+    expect(screen.getByText("PROXY", { exact: true })).toHaveClass("text-timeout");
   });
 
   it("offers pagination when the API returns a cursor", () => {
@@ -568,9 +670,9 @@ describe("DomainIntelligenceScreen", () => {
       } satisfies DomainCandidateList),
     );
     render(<DomainIntelligenceScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "Подробнее о service.co.uk" }));
-
-    expect(screen.getByText(/co\.uk — публичный суффикс/u)).toBeInTheDocument();
+    const compactSummary = document.querySelector<HTMLElement>(".domain-candidate-summary-compact");
+    if (!compactSummary) throw new Error("compact candidate summary is missing");
+    expect(within(compactSummary).getByText(/co\.uk — публичный суффикс/u)).toBeInTheDocument();
     expect(screen.queryByText(/co\.uk в списке «Не расширять»/u)).toBeNull();
   });
 
@@ -593,10 +695,10 @@ describe("DomainIntelligenceScreen", () => {
       } satisfies DomainCandidateList),
     );
     render(<DomainIntelligenceScreen />);
-    fireEvent.click(screen.getByRole("button", { name: "Подробнее о api.tenant.vercel.app" }));
-
+    const compactSummary = document.querySelector<HTMLElement>(".domain-candidate-summary-compact");
+    if (!compactSummary) throw new Error("compact candidate summary is missing");
     expect(
-      screen.getByText(/Для адреса найден суффикс из списка «Не расширять»/u),
+      within(compactSummary).getByText(/Адрес входит в список «Не расширять»/u),
     ).toBeInTheDocument();
     expect(screen.queryByText(/tenant\.vercel\.app совпадает/u)).toBeNull();
     expect(screen.queryByText(/tenant\.vercel\.app в списке/u)).toBeNull();

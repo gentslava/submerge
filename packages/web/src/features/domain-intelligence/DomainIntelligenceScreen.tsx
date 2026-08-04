@@ -4,6 +4,7 @@ import type {
   DomainCandidateReviewMutationResult,
   DomainIntelligenceReportSettings,
   DomainProbeCategory,
+  DomainReportExclusionReason,
   DomainRuleScope,
 } from "@submerge/shared";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,15 +12,20 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Eye,
+  Plus,
   RefreshCw,
   Settings2,
+  Shield,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/PageHeader";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -42,7 +48,7 @@ const MODE_DESCRIPTIONS = {
 export function DomainIntelligenceScreen() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const [view, setView] = useState<CandidateView>("candidates");
+  const [exclusionsOpen, setExclusionsOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [firstInstallScope, setFirstInstallScope] = useState<DomainRuleScope | null>(null);
 
@@ -102,8 +108,8 @@ export function DomainIntelligenceScreen() {
   const failed = settingsQuery.isError || overviewQuery.isError;
   const settingsView = settingsQuery.data;
   const overview = overviewQuery.data;
-  const activeListQuery = view === "candidates" ? candidatesQuery : exclusionsQuery;
-  const items = activeListQuery.data?.pages.flatMap((page) => page.items);
+  const candidateItems = candidatesQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const exclusionItems = exclusionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const currentUtcDay = new Date(overview?.period.to ?? 0).toISOString().slice(0, 10);
   const seenToday =
     overview?.dailyAggregates.find((aggregate) => aggregate.day === currentUtcDay)
@@ -141,10 +147,14 @@ export function DomainIntelligenceScreen() {
         actions={
           <Link
             to="/settings"
-            className="domain-settings-link inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border-default bg-elevated px-[14px] text-sub font-medium text-text-primary transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
+            aria-label="Настроить"
+            className={cn(
+              buttonVariants({ variant: "secondary", size: "headerIcon" }),
+              "page-header-action domain-settings-link",
+            )}
           >
-            <Settings2 aria-hidden="true" size={15} />
-            Настроить
+            <Settings2 aria-hidden="true" size={18} />
+            <span className="domain-settings-label">Настроить</span>
           </Link>
         }
       />
@@ -185,26 +195,33 @@ export function DomainIntelligenceScreen() {
           )}
 
           <CandidatePanel
-            view={view}
+            exclusionsOpen={exclusionsOpen}
             candidatesCount={overview.bucketCounts.candidate}
             exclusionsCount={overview.bucketCounts.exclusion}
-            items={items ?? []}
-            loading={activeListQuery.isLoading}
-            failed={activeListQuery.isError}
-            hasMore={activeListQuery.hasNextPage}
-            loadingMore={activeListQuery.isFetchingNextPage}
+            candidateItems={candidateItems}
+            exclusionItems={exclusionItems}
+            candidatesLoading={candidatesQuery.isLoading}
+            candidatesFailed={candidatesQuery.isError}
+            candidatesHaveMore={candidatesQuery.hasNextPage}
+            candidatesLoadingMore={candidatesQuery.isFetchingNextPage}
+            exclusionsLoading={exclusionsQuery.isLoading}
+            exclusionsFailed={exclusionsQuery.isError}
+            exclusionsHaveMore={exclusionsQuery.hasNextPage}
+            exclusionsLoadingMore={exclusionsQuery.isFetchingNextPage}
             expanded={expanded}
             publisherAvailable={settingsView.automatic.available}
             scopePending={scopeMutation.isPending}
             rejectionPending={rejectionMutation.isPending}
             recheckPending={recheckMutation.isPending}
-            onView={setView}
+            onToggleExclusions={() => setExclusionsOpen((open) => !open)}
             onExpand={(fqdn) => setExpanded((current) => (current === fqdn ? null : fqdn))}
             onScope={(fqdn, selectedScope) => scopeMutation.mutate({ fqdn, selectedScope })}
             onReject={(fqdn, rejected) => rejectionMutation.mutate({ fqdn, rejected })}
             onRecheck={(fqdn) => recheckMutation.mutate({ fqdn })}
-            onRetry={() => void activeListQuery.refetch()}
-            onLoadMore={() => void activeListQuery.fetchNextPage()}
+            onRetryCandidates={() => void candidatesQuery.refetch()}
+            onRetryExclusions={() => void exclusionsQuery.refetch()}
+            onLoadMoreCandidates={() => void candidatesQuery.fetchNextPage()}
+            onLoadMoreExclusions={() => void exclusionsQuery.fetchNextPage()}
           />
 
           <PublisherUnavailableCard />
@@ -296,6 +313,7 @@ function ModeCard({
   onSelect: (mode: "off" | "review") => void;
 }) {
   const mode = settings.automationMode;
+  const [modeEditorOpen, setModeEditorOpen] = useState(false);
   const statusLabel = (() => {
     if (!settings.enabled) return "Наблюдение выключено";
     if (health === "degraded") return "Наблюдение неполное";
@@ -308,10 +326,10 @@ function ModeCard({
       <div className="flex min-w-0 flex-1 flex-col gap-2.5">
         <fieldset
           aria-label="Режим автоправил"
-          className="domain-mode-segmented flex w-fit max-w-full flex-wrap gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]"
+          className="domain-mode-segmented flex w-fit max-w-full flex-nowrap gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]"
         >
           {(["off", "review", "automatic"] as const).map((option) => {
-            const disabled = pending || (option === "automatic" && !automaticAvailable);
+            const disabled = pending || option === "automatic";
             return (
               <button
                 key={option}
@@ -319,13 +337,15 @@ function ModeCard({
                 disabled={disabled}
                 aria-current={mode === option ? "true" : undefined}
                 title={
-                  option === "automatic" && !automaticAvailable
-                    ? "Publisher не настроен на сервере"
+                  option === "automatic"
+                    ? automaticAvailable
+                      ? "Автоматический режим ещё не подключён в интерфейсе"
+                      : "Publisher не настроен на сервере"
                     : undefined
                 }
                 onClick={() => option !== "automatic" && onSelect(option)}
                 className={cn(
-                  "rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:text-text-disabled",
+                  "whitespace-nowrap rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:text-text-disabled",
                   mode === option
                     ? "bg-accent text-accent-fg disabled:bg-accent disabled:text-accent-fg"
                     : "text-text-secondary hover:text-text-primary",
@@ -336,9 +356,27 @@ function ModeCard({
             );
           })}
         </fieldset>
-        <p className="text-meta text-text-tertiary">{MODE_DESCRIPTIONS[mode]}</p>
+        <button
+          type="button"
+          className="domain-mode-mobile-trigger min-h-11 w-full items-center justify-between gap-3 rounded-md border border-border-subtle bg-elevated px-3 py-2 text-left hover:bg-hover"
+          aria-label={`Режим: ${MODE_LABELS[mode]}`}
+          onClick={() => setModeEditorOpen(true)}
+        >
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-micro font-semibold uppercase tracking-wide text-text-tertiary">
+              Режим
+            </span>
+            <span className="truncate text-sub font-medium text-text-primary">
+              {MODE_LABELS[mode]}
+            </span>
+          </span>
+          <ChevronRight aria-hidden="true" className="shrink-0 text-text-tertiary" size={18} />
+        </button>
+        <p className="domain-mode-description text-meta text-text-tertiary">
+          {MODE_DESCRIPTIONS[mode]}
+        </p>
         {!automaticAvailable ? (
-          <p className="text-fine text-text-tertiary">
+          <p className="domain-mode-capability text-fine text-text-tertiary">
             Автоматический режим недоступен: нет подтверждённой Git-capability.
           </p>
         ) : null}
@@ -362,14 +400,272 @@ function ModeCard({
           {seenToday} доменов сегодня (UTC)
         </span>
       </div>
+      {modeEditorOpen ? (
+        <ResponsiveDialog
+          title="Режим автоправил"
+          description="Насколько самостоятельно Submerge меняет список custom"
+          size="compact"
+          onClose={() => setModeEditorOpen(false)}
+        >
+          <fieldset aria-label="Выбор режима автоправил" className="flex flex-col gap-2">
+            {(["off", "review", "automatic"] as const).map((option) => {
+              const selected = mode === option;
+              const disabled = pending || option === "automatic";
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={disabled}
+                  aria-pressed={selected}
+                  title={
+                    option === "automatic"
+                      ? automaticAvailable
+                        ? "Автоматический режим ещё не подключён в интерфейсе"
+                        : "Publisher не настроен на сервере"
+                      : undefined
+                  }
+                  className={cn(
+                    "flex min-h-14 w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition-colors disabled:opacity-50",
+                    selected
+                      ? "border-accent-border bg-accent-bg"
+                      : "border-border-subtle bg-elevated hover:bg-hover",
+                  )}
+                  onClick={() => {
+                    if (option === "automatic") return;
+                    onSelect(option);
+                    setModeEditorOpen(false);
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-full border",
+                      selected ? "border-accent" : "border-border-strong",
+                    )}
+                  >
+                    {selected ? <span className="h-2.5 w-2.5 rounded-full bg-accent" /> : null}
+                  </span>
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-sub font-medium text-text-primary">
+                      {MODE_LABELS[option]}
+                    </span>
+                    <span className="text-fine text-text-tertiary">
+                      {MODE_DESCRIPTIONS[option]}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </fieldset>
+        </ResponsiveDialog>
+      ) : null}
     </section>
   );
 }
 
 function CandidatePanel({
-  view,
+  exclusionsOpen,
   candidatesCount,
   exclusionsCount,
+  candidateItems,
+  exclusionItems,
+  candidatesLoading,
+  candidatesFailed,
+  candidatesHaveMore,
+  candidatesLoadingMore,
+  exclusionsLoading,
+  exclusionsFailed,
+  exclusionsHaveMore,
+  exclusionsLoadingMore,
+  expanded,
+  publisherAvailable,
+  scopePending,
+  rejectionPending,
+  recheckPending,
+  onToggleExclusions,
+  onExpand,
+  onScope,
+  onReject,
+  onRecheck,
+  onRetryCandidates,
+  onRetryExclusions,
+  onLoadMoreCandidates,
+  onLoadMoreExclusions,
+}: {
+  exclusionsOpen: boolean;
+  candidatesCount: number;
+  exclusionsCount: number;
+  candidateItems: readonly DomainCandidateReportItem[];
+  exclusionItems: readonly DomainCandidateReportItem[];
+  candidatesLoading: boolean;
+  candidatesFailed: boolean;
+  candidatesHaveMore: boolean;
+  candidatesLoadingMore: boolean;
+  exclusionsLoading: boolean;
+  exclusionsFailed: boolean;
+  exclusionsHaveMore: boolean;
+  exclusionsLoadingMore: boolean;
+  expanded: string | null;
+  publisherAvailable: boolean;
+  scopePending: boolean;
+  rejectionPending: boolean;
+  recheckPending: boolean;
+  onToggleExclusions: () => void;
+  onExpand: (fqdn: string) => void;
+  onScope: (fqdn: string, scope: DomainRuleScope) => void;
+  onReject: (fqdn: string, rejected: boolean) => void;
+  onRecheck: (fqdn: string) => void;
+  onRetryCandidates: () => void;
+  onRetryExclusions: () => void;
+  onLoadMoreCandidates: () => void;
+  onLoadMoreExclusions: () => void;
+}) {
+  const desktopExclusionsTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobileExclusionsTriggerRef = useRef<HTMLButtonElement>(null);
+  const candidatesBackRef = useRef<HTMLButtonElement>(null);
+
+  function openExclusions() {
+    onToggleExclusions();
+    requestAnimationFrame(() => candidatesBackRef.current?.focus());
+  }
+
+  function collapseExclusions() {
+    onToggleExclusions();
+    requestAnimationFrame(() => {
+      const triggers = [desktopExclusionsTriggerRef.current, mobileExclusionsTriggerRef.current];
+      const visibleTrigger = triggers.find(
+        (trigger) => trigger && trigger.getClientRects().length > 0,
+      );
+      (
+        visibleTrigger ??
+        desktopExclusionsTriggerRef.current ??
+        mobileExclusionsTriggerRef.current
+      )?.focus();
+    });
+  }
+
+  return (
+    <section
+      className={cn(
+        "domain-candidate-panel overflow-hidden rounded-lg border border-border-subtle bg-surface",
+        !exclusionsOpen && "domain-candidate-panel--candidates",
+        !exclusionsOpen && candidateItems.length > 0 && "domain-candidate-panel--cards",
+      )}
+    >
+      {exclusionsOpen ? (
+        <>
+          <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border-subtle bg-elevated px-[18px] py-2.5">
+            <button
+              ref={candidatesBackRef}
+              type="button"
+              aria-label="К кандидатам"
+              onClick={collapseExclusions}
+              className="inline-flex min-h-8 min-w-0 items-center gap-2 text-text-primary"
+            >
+              <ChevronLeft aria-hidden="true" size={15} className="shrink-0 text-text-secondary" />
+              <span className="text-label font-semibold">Исключения</span>
+              <span className="text-meta font-normal text-text-tertiary">
+                {domainCountLabel(exclusionsCount)}
+              </span>
+            </button>
+            <Link
+              to="/settings"
+              aria-label="Настроить фильтры"
+              className="shrink-0 text-meta font-semibold text-accent-text"
+            >
+              <span className="domain-exclusions-settings-full">Настроить фильтры</span>
+              <span className="domain-exclusions-settings-mobile">Фильтры</span>
+            </Link>
+          </header>
+          <div id="domain-exclusions">
+            <div className="flex items-center gap-2 border-b border-border-subtle bg-elevated px-[18px] py-2.5 text-fine text-text-tertiary">
+              <Shield aria-hidden="true" size={14} className="shrink-0" />
+              <p>
+                Фильтры останавливают автоматическое предложение, но своё правило всегда можно
+                добавить вручную.
+              </p>
+            </div>
+            <CandidateListBody
+              view="exclusions"
+              items={exclusionItems}
+              loading={exclusionsLoading}
+              failed={exclusionsFailed}
+              hasMore={exclusionsHaveMore}
+              loadingMore={exclusionsLoadingMore}
+              expanded={expanded}
+              publisherAvailable={publisherAvailable}
+              scopePending={scopePending}
+              rejectionPending={rejectionPending}
+              recheckPending={recheckPending}
+              onExpand={onExpand}
+              onScope={onScope}
+              onReject={onReject}
+              onRecheck={onRecheck}
+              onRetry={onRetryExclusions}
+              onLoadMore={onLoadMoreExclusions}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border-subtle bg-elevated px-[18px] py-2.5">
+            <div className="inline-flex min-w-0 items-center gap-2 text-label font-semibold text-text-primary">
+              <span>Ждут подтверждения</span>
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 font-mono text-fine font-bold",
+                  candidatesCount > 0 ? "bg-accent text-accent-fg" : "bg-hover text-text-tertiary",
+                )}
+              >
+                {candidatesCount}
+              </span>
+            </div>
+            <button
+              ref={desktopExclusionsTriggerRef}
+              type="button"
+              onClick={openExclusions}
+              className="domain-exclusions-trigger-header inline-flex min-h-8 items-center gap-1.5 text-meta font-medium text-text-tertiary hover:text-text-secondary"
+            >
+              Исключения · {exclusionsCount}
+              <ChevronRight aria-hidden="true" size={14} />
+            </button>
+          </header>
+          <CandidateListBody
+            view="candidates"
+            items={candidateItems}
+            loading={candidatesLoading}
+            failed={candidatesFailed}
+            hasMore={candidatesHaveMore}
+            loadingMore={candidatesLoadingMore}
+            expanded={expanded}
+            publisherAvailable={publisherAvailable}
+            scopePending={scopePending}
+            rejectionPending={rejectionPending}
+            recheckPending={recheckPending}
+            onExpand={onExpand}
+            onScope={onScope}
+            onReject={onReject}
+            onRecheck={onRecheck}
+            onRetry={onRetryCandidates}
+            onLoadMore={onLoadMoreCandidates}
+          />
+          <button
+            ref={mobileExclusionsTriggerRef}
+            type="button"
+            onClick={openExclusions}
+            className="domain-exclusions-trigger-mobile min-h-11 w-full items-center justify-center gap-1.5 border-t border-border-subtle text-meta font-medium text-text-tertiary hover:text-text-secondary"
+          >
+            Исключения · {exclusionsCount}
+            <ChevronRight aria-hidden="true" size={14} />
+          </button>
+        </>
+      )}
+    </section>
+  );
+}
+
+function CandidateListBody({
+  view,
   items,
   loading,
   failed,
@@ -380,7 +676,6 @@ function CandidatePanel({
   scopePending,
   rejectionPending,
   recheckPending,
-  onView,
   onExpand,
   onScope,
   onReject,
@@ -389,8 +684,6 @@ function CandidatePanel({
   onLoadMore,
 }: {
   view: CandidateView;
-  candidatesCount: number;
-  exclusionsCount: number;
   items: readonly DomainCandidateReportItem[];
   loading: boolean;
   failed: boolean;
@@ -401,7 +694,6 @@ function CandidatePanel({
   scopePending: boolean;
   rejectionPending: boolean;
   recheckPending: boolean;
-  onView: (view: CandidateView) => void;
   onExpand: (fqdn: string) => void;
   onScope: (fqdn: string, scope: DomainRuleScope) => void;
   onReject: (fqdn: string, rejected: boolean) => void;
@@ -409,89 +701,133 @@ function CandidatePanel({
   onRetry: () => void;
   onLoadMore: () => void;
 }) {
-  return (
-    <section className="overflow-hidden rounded-lg border border-border-subtle bg-surface">
-      <header className="flex min-h-12 items-center justify-between gap-3 border-b border-border-subtle bg-elevated px-[18px] py-2.5">
-        <button
-          type="button"
-          aria-current={view === "candidates" ? "true" : undefined}
-          onClick={() => onView("candidates")}
-          className="inline-flex items-center gap-2 text-label font-semibold text-text-primary"
-        >
-          Ждут подтверждения
-          <span className="rounded-full bg-accent px-2 py-0.5 font-mono text-fine font-bold text-accent-fg">
-            {candidatesCount}
-          </span>
-        </button>
-        <button
-          type="button"
-          aria-current={view === "exclusions" ? "true" : undefined}
-          onClick={() => onView("exclusions")}
-          className="inline-flex min-h-8 items-center gap-1.5 text-meta font-medium text-text-tertiary hover:text-text-secondary"
-        >
-          Исключения · {exclusionsCount}
-          <ChevronRight aria-hidden="true" size={14} />
-        </button>
-      </header>
-
-      {loading ? (
-        <div className="flex flex-col gap-2 p-4">
-          <Skeleton className="h-[62px] w-full rounded-md" />
-          <Skeleton className="h-[62px] w-full rounded-md" />
-        </div>
-      ) : failed ? (
-        <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
-          <div className="flex flex-col gap-1.5">
-            <h3 className="text-cardtitle text-text-primary">
-              Не удалось загрузить список доменов
-            </h3>
-            <p className="text-sub text-text-secondary">Показ предыдущих данных остановлен.</p>
-          </div>
-          <Button variant="secondary" size="sm" onClick={onRetry}>
-            Повторить
+  return loading ? (
+    <div className="flex flex-col gap-2 p-4">
+      <Skeleton className="h-[62px] w-full rounded-md" />
+      <Skeleton className="h-[62px] w-full rounded-md" />
+    </div>
+  ) : failed ? (
+    <div className="flex min-h-40 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
+      <div className="flex flex-col gap-1.5">
+        <h3 className="text-cardtitle text-text-primary">Не удалось загрузить список доменов</h3>
+        <p className="text-sub text-text-secondary">Показ предыдущих данных остановлен.</p>
+      </div>
+      <Button variant="secondary" size="sm" onClick={onRetry}>
+        Повторить
+      </Button>
+    </div>
+  ) : items.length === 0 ? (
+    <div className="flex min-h-40 flex-col items-center justify-center gap-1.5 px-6 py-8 text-center">
+      <h3 className="text-cardtitle text-text-primary">
+        {view === "candidates" ? "Нечего подтверждать" : "Исключений нет"}
+      </h3>
+      <p className="max-w-xl text-sub text-text-secondary">
+        {view === "candidates"
+          ? "Submerge продолжает наблюдать. Домен появится здесь после нескольких DIRECT-сбоев и успешных проверок через VPN."
+          : "Отклонённые и заблокированные кандидаты появятся здесь с причиной."}
+      </p>
+    </div>
+  ) : (
+    <>
+      <div
+        className={cn(
+          "divide-y divide-border-subtle",
+          view === "candidates" && "domain-candidate-list",
+        )}
+      >
+        {items.map((item) =>
+          view === "exclusions" ? (
+            <ExclusionRow
+              key={item.fqdn}
+              item={item}
+              rejectionPending={rejectionPending}
+              recheckPending={recheckPending}
+              onReject={(rejected) => onReject(item.fqdn, rejected)}
+              onRecheck={() => onRecheck(item.fqdn)}
+            />
+          ) : (
+            <CandidateRow
+              key={item.fqdn}
+              item={item}
+              expanded={expanded === item.fqdn}
+              publisherAvailable={publisherAvailable}
+              scopePending={scopePending}
+              rejectionPending={rejectionPending}
+              recheckPending={recheckPending}
+              onExpand={() => onExpand(item.fqdn)}
+              onScope={(scope) => onScope(item.fqdn, scope)}
+              onReject={(rejected) => onReject(item.fqdn, rejected)}
+              onRecheck={() => onRecheck(item.fqdn)}
+            />
+          ),
+        )}
+      </div>
+      {hasMore ? (
+        <div className="flex justify-center border-t border-border-subtle p-3">
+          <Button variant="secondary" size="sm" disabled={loadingMore} onClick={onLoadMore}>
+            {loadingMore ? "Загрузка…" : "Загрузить ещё"}
           </Button>
         </div>
-      ) : items.length === 0 ? (
-        <div className="flex min-h-40 flex-col items-center justify-center gap-1.5 px-6 py-8 text-center">
-          <h3 className="text-cardtitle text-text-primary">
-            {view === "candidates" ? "Нечего подтверждать" : "Исключений нет"}
-          </h3>
-          <p className="max-w-xl text-sub text-text-secondary">
-            {view === "candidates"
-              ? "Submerge продолжает наблюдать и проверять домены асинхронно."
-              : "Отклонённые и заблокированные кандидаты появятся здесь с причиной."}
-          </p>
-        </div>
-      ) : (
-        <>
-          <div className="divide-y divide-border-subtle">
-            {items.map((item) => (
-              <CandidateRow
-                key={item.fqdn}
-                item={item}
-                expanded={expanded === item.fqdn}
-                publisherAvailable={publisherAvailable}
-                scopePending={scopePending}
-                rejectionPending={rejectionPending}
-                recheckPending={recheckPending}
-                onExpand={() => onExpand(item.fqdn)}
-                onScope={(scope) => onScope(item.fqdn, scope)}
-                onReject={(rejected) => onReject(item.fqdn, rejected)}
-                onRecheck={() => onRecheck(item.fqdn)}
-              />
-            ))}
-          </div>
-          {hasMore ? (
-            <div className="flex justify-center border-t border-border-subtle p-3">
-              <Button variant="secondary" size="sm" disabled={loadingMore} onClick={onLoadMore}>
-                {loadingMore ? "Загрузка…" : "Загрузить ещё"}
-              </Button>
-            </div>
-          ) : null}
-        </>
-      )}
-    </section>
+      ) : null}
+    </>
   );
+}
+
+function ExclusionRow({
+  item,
+  rejectionPending,
+  recheckPending,
+  onReject,
+  onRecheck,
+}: {
+  item: DomainCandidateReportItem;
+  rejectionPending: boolean;
+  recheckPending: boolean;
+  onReject: (rejected: boolean) => void;
+  onRecheck: () => void;
+}) {
+  const observedDomain = observedDomainParts(item.fqdn, item.siteGroup);
+  return (
+    <article className="domain-candidate-row domain-exclusion-row flex min-w-0 items-center gap-3.5 px-[18px] py-[11px]">
+      <div className="min-w-0 flex-1">
+        <span
+          title={item.fqdn}
+          className="domain-observed-name min-w-0 font-mono text-sub text-text-secondary"
+        >
+          {observedDomain.prefix ? (
+            <span className="domain-observed-prefix">{observedDomain.prefix}</span>
+          ) : null}
+          <span className="domain-observed-suffix">{observedDomain.suffix}</span>
+        </span>
+        <p className="mt-1 text-fine text-text-tertiary">{exclusionText(item)}</p>
+      </div>
+      <span className="domain-exclusion-reason w-fit shrink-0 rounded-full bg-hover px-[9px] py-[3px] text-micro font-medium text-text-secondary">
+        {exclusionReasonLabel(item.exclusionReason)}
+      </span>
+      <div className="domain-candidate-actions flex shrink-0 items-center justify-end">
+        <ExclusionAction
+          item={item}
+          pending={item.reviewState === "rejected" ? rejectionPending : recheckPending}
+          onRestore={() => onReject(false)}
+          onRecheck={onRecheck}
+        />
+      </div>
+    </article>
+  );
+}
+
+function domainCountLabel(count: number): string {
+  const mod100 = count % 100;
+  const mod10 = count % 10;
+  const noun =
+    mod100 >= 11 && mod100 <= 14
+      ? "доменов"
+      : mod10 === 1
+        ? "домен"
+        : mod10 >= 2 && mod10 <= 4
+          ? "домена"
+          : "доменов";
+  return `${count} ${noun}`;
 }
 
 function CandidateRow({
@@ -520,40 +856,77 @@ function CandidateRow({
   const exactOnly = item.eligibleScopes.length === 1 && item.eligibleScopes[0] === "exact";
   const observedDomain = observedDomainParts(item.fqdn, item.siteGroup);
   const scopeLabel =
-    item.selectedScope === null
+    item.bucket !== "candidate" || item.selectedScope === null
       ? null
       : item.selectedScope === "site"
         ? "сайт целиком"
         : "только точный адрес";
+  const identity = (
+    <>
+      <div className="domain-candidate-rule flex min-w-0 items-center gap-2">
+        <span
+          title={item.fqdn}
+          className="domain-observed-name min-w-0 font-mono text-sub text-text-secondary"
+        >
+          <Eye aria-hidden="true" size={11} className="domain-observed-eye shrink-0" />
+          {observedDomain.prefix ? (
+            <span className="domain-observed-prefix">{observedDomain.prefix}</span>
+          ) : null}
+          <span className="domain-observed-suffix">{observedDomain.suffix}</span>
+        </span>
+        {item.proposedRule ? (
+          <>
+            <ArrowRight aria-hidden="true" size={13} className="shrink-0 text-text-disabled" />
+            <code className="domain-generated-rule font-mono text-sub font-semibold text-text-primary">
+              {item.proposedRule}
+            </code>
+          </>
+        ) : null}
+        {scopeLabel ? (
+          <span
+            className={cn(
+              "shrink-0 rounded-full px-[7px] py-0.5 text-micro font-medium",
+              exactOnly ? "bg-slow-bg text-slow" : "bg-hover text-text-secondary",
+            )}
+          >
+            {scopeLabel}
+          </span>
+        ) : null}
+      </div>
+      <p
+        className={cn(
+          "domain-candidate-summary mt-1 text-fine text-text-tertiary",
+          exactOnly && "domain-candidate-summary--exact",
+        )}
+      >
+        {candidateSummary(item)}
+      </p>
+      {exactOnly ? (
+        <p className="domain-candidate-summary-compact mt-1 text-fine text-text-secondary">
+          {exactScopeExplanation(item)}
+        </p>
+      ) : null}
+    </>
+  );
   return (
-    <article className="min-w-0">
-      <div className="domain-candidate-row flex min-w-0 items-center gap-3.5 px-[18px] py-[13px]">
-        <div className="min-w-0 flex-1">
-          <div className="domain-candidate-rule flex min-w-0 items-center gap-2">
-            <span
-              title={item.fqdn}
-              className="domain-observed-name min-w-0 font-mono text-sub text-text-secondary"
-            >
-              {observedDomain.prefix ? (
-                <span className="domain-observed-prefix">{observedDomain.prefix}</span>
-              ) : null}
-              <span className="domain-observed-suffix">{observedDomain.suffix}</span>
-            </span>
-            {item.proposedRule ? (
-              <>
-                <ArrowRight aria-hidden="true" size={13} className="shrink-0 text-text-disabled" />
-                <code className="domain-generated-rule font-mono text-sub font-semibold text-text-primary">
-                  {item.proposedRule}
-                </code>
-              </>
-            ) : null}
-            {scopeLabel ? (
-              <span className="shrink-0 rounded-full bg-hover px-[7px] py-0.5 text-micro font-medium text-text-secondary">
-                {scopeLabel}
-              </span>
-            ) : null}
-          </div>
-          <p className="mt-1 text-fine text-text-tertiary">{candidateSummary(item)}</p>
+    <article className="domain-candidate-item min-w-0">
+      <div
+        className={cn(
+          "domain-candidate-row flex min-w-0 items-center gap-3.5 px-[18px] py-[13px]",
+          expanded && "bg-elevated",
+        )}
+      >
+        <div className="domain-candidate-copy relative min-w-0 flex-1">
+          {identity}
+          {!exactOnly ? (
+            <button
+              type="button"
+              aria-label={`Открыть детали ${item.fqdn}`}
+              aria-expanded={expanded}
+              onClick={onExpand}
+              className="domain-candidate-copy-trigger absolute inset-0 hidden rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            />
+          ) : null}
         </div>
         <div className="domain-candidate-actions flex shrink-0 items-center gap-2">
           {item.bucket === "candidate" ? (
@@ -569,9 +942,14 @@ function CandidateRow({
               </Button>
               <Button
                 size="sm"
-                disabled={!publisherAvailable || item.status !== "confirmed"}
-                title={!publisherAvailable ? "Apply не настроен на сервере" : undefined}
+                disabled
+                title={
+                  !publisherAvailable
+                    ? "Apply не настроен на сервере"
+                    : "Добавление из интерфейса ещё не подключено"
+                }
               >
+                <Plus aria-hidden="true" size={14} />
                 Добавить
               </Button>
             </>
@@ -583,45 +961,60 @@ function CandidateRow({
               onRecheck={onRecheck}
             />
           )}
-          <button
-            type="button"
-            aria-label={`Подробнее о ${item.fqdn}`}
-            aria-expanded={expanded}
-            onClick={onExpand}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-text-disabled hover:bg-hover hover:text-text-secondary"
-          >
-            <ChevronDown
-              aria-hidden="true"
-              size={16}
-              className={cn("transition-transform", expanded && "rotate-180")}
-            />
-          </button>
+          {item.bucket === "candidate" && !exactOnly ? (
+            <button
+              type="button"
+              aria-label={`Подробнее о ${item.fqdn}`}
+              aria-expanded={expanded}
+              onClick={onExpand}
+              className="domain-candidate-expand flex h-8 w-8 items-center justify-center rounded-md text-text-disabled hover:bg-hover hover:text-text-secondary"
+            >
+              <ChevronDown
+                aria-hidden="true"
+                size={16}
+                className={cn("transition-transform", expanded && "rotate-180")}
+              />
+            </button>
+          ) : null}
         </div>
       </div>
-      {expanded ? (
-        <div className="domain-candidate-detail grid gap-4 border-t border-border-subtle bg-canvas/40 px-[18px] py-4">
-          <EvidenceBlock item={item} />
-          {item.bucket === "candidate" ? (
-            <div className="flex min-w-0 flex-col gap-2.5">
-              <span className="text-caption text-text-tertiary">ОБЛАСТЬ</span>
+      {exactOnly && item.bucket === "candidate" ? (
+        <div className="domain-exact-scope-note flex items-start gap-2.5 border-t border-border-subtle bg-canvas px-[18px] py-3 text-fine text-text-secondary">
+          <Shield aria-hidden="true" size={15} className="mt-0.5 shrink-0 text-slow" />
+          <p>{exactScopeExplanation(item)}</p>
+        </div>
+      ) : null}
+      {expanded && item.bucket === "candidate" && !exactOnly ? (
+        <div className="flex flex-col gap-[11px] border-t border-border-subtle bg-canvas px-[18px] pb-4 pt-3.5">
+          <EvidenceRows item={item} />
+          <DetailRow label="ОБЛАСТЬ" tone="accent">
+            <div className="domain-candidate-scope flex min-w-0 flex-wrap items-center gap-3">
               <ScopeButtons
                 value={item.selectedScope}
                 siteDisabled={!item.eligibleScopes.some((scope) => scope === "site")}
                 pending={scopePending}
+                siteLabel={`+.${item.siteGroup}`}
+                exactLabel={item.fqdn}
+                ruleLabels
                 onChange={onScope}
               />
-              {exactOnly ? (
-                <p className="text-fine text-text-tertiary">{exactScopeExplanation(item)}</p>
-              ) : (
-                <p className="text-fine text-text-tertiary">
-                  Сайт целиком покрывает {item.siteGroup} и его поддомены; точный адрес — только
-                  наблюдавшийся FQDN.
-                </p>
-              )}
+              <span className="text-fine text-text-tertiary">
+                {item.selectedScope === "site"
+                  ? "сайт и все поддомены"
+                  : "только наблюдавшийся адрес"}
+              </span>
             </div>
-          ) : (
-            <p className="text-sub text-text-secondary">{exclusionText(item)}</p>
-          )}
+          </DetailRow>
+          <div className="domain-candidate-detail-footer flex items-center justify-between gap-4 border-t border-border-subtle pt-3">
+            <p className="min-w-0 text-fine text-text-tertiary">
+              Наблюдался один адрес; правило для сайта не возвращает тот же домен кандидатом по
+              каждому поддомену. Суффиксы из «Не расширять» остаются точными.
+            </p>
+            <Button variant="secondary" size="sm" disabled={recheckPending} onClick={onRecheck}>
+              <RefreshCw aria-hidden="true" size={14} />
+              Проверить сейчас
+            </Button>
+          </div>
         </div>
       ) : null}
     </article>
@@ -641,7 +1034,7 @@ function ExclusionAction({
 }) {
   if (item.reviewState === "rejected") {
     return (
-      <Button size="sm" variant="secondary" onClick={onRestore}>
+      <Button size="sm" variant="secondary" disabled={pending} onClick={onRestore}>
         Вернуть
       </Button>
     );
@@ -657,10 +1050,12 @@ function ExclusionAction({
     );
   }
   if (
+    item.status === "excluded" ||
     item.exclusionReason === "telemetry-pattern" ||
     item.exclusionReason === "never-add-domain" ||
     item.exclusionReason === "never-add-suffix" ||
-    item.exclusionReason === "excluded-tld"
+    item.exclusionReason === "excluded-tld" ||
+    item.exclusionReason === "invalid-policy"
   ) {
     return (
       <Link
@@ -683,17 +1078,26 @@ function ScopeButtons({
   value,
   siteDisabled,
   pending = false,
+  siteLabel = "Сайт целиком",
+  exactLabel = "Только точный адрес",
+  ruleLabels = false,
   onChange,
 }: {
   value: DomainRuleScope | null;
   siteDisabled: boolean;
   pending?: boolean;
+  siteLabel?: string;
+  exactLabel?: string;
+  ruleLabels?: boolean;
   onChange: (scope: DomainRuleScope) => void;
 }) {
   return (
     <fieldset
       aria-label="Область правила"
-      className="flex w-fit max-w-full gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]"
+      className={cn(
+        "flex w-fit max-w-full gap-[3px] rounded-md border border-border-subtle bg-canvas p-[3px]",
+        ruleLabels && "domain-candidate-scope-picker",
+      )}
     >
       <button
         type="button"
@@ -702,7 +1106,7 @@ function ScopeButtons({
         onClick={() => onChange("site")}
         className={scopeButtonClass(value === "site")}
       >
-        Сайт целиком
+        {siteLabel}
       </button>
       <button
         type="button"
@@ -711,7 +1115,7 @@ function ScopeButtons({
         onClick={() => onChange("exact")}
         className={scopeButtonClass(value === "exact")}
       >
-        Только точный адрес
+        {exactLabel}
       </button>
     </fieldset>
   );
@@ -724,7 +1128,7 @@ function scopeButtonClass(active: boolean) {
   );
 }
 
-function EvidenceBlock({ item }: { item: DomainCandidateReportItem }) {
+function EvidenceRows({ item }: { item: DomainCandidateReportItem }) {
   if (item.evidenceIntegrityIssue !== null) {
     return (
       <div className="rounded-md border border-timeout/30 bg-timeout-bg px-3 py-2.5 text-fine text-text-secondary">
@@ -732,52 +1136,61 @@ function EvidenceBlock({ item }: { item: DomainCandidateReportItem }) {
       </div>
     );
   }
-  const direct = item.latestAttempts.direct;
-  const proxy = item.latestAttempts.proxy;
-  const directView = probeAttemptView(direct);
-  const proxyView = probeAttemptView(proxy);
+  const directView = probeAttemptView(item.latestAttempts.direct);
+  const proxyView = probeAttemptView(item.latestAttempts.proxy);
+  const evidence = item.decision?.evidence;
+  const windowHours = item.decision?.windowStart
+    ? Math.max(1, Math.round((item.decision.evaluatedAt - item.decision.windowStart) / 3_600_000))
+    : null;
   return (
-    <div className="domain-evidence-grid grid min-w-0 gap-3">
-      <EvidenceCell label="DIRECT" value={directView.value} tone={directView.tone} />
-      <EvidenceCell label="PROXY" value={proxyView.value} tone={proxyView.tone} />
-      <EvidenceCell
-        label="ПОКРЫТИЕ"
-        value={
-          item.status === "confirmed" &&
-          item.evidenceAvailable &&
-          item.decision?.status === "confirmed"
-            ? "проверено, активными правилами не покрыт"
-            : "повторно проверяется перед применением"
-        }
-      />
-    </div>
+    <>
+      <DetailRow label="DIRECT" tone={directView.tone}>
+        {evidence && windowHours
+          ? `${evidence.directQualifyingFailures} DIRECT-сбоя за ${windowHours} ч · последний: ${directView.value}`
+          : directView.value}
+      </DetailRow>
+      <DetailRow label="PROXY" tone={proxyView.tone}>
+        {evidence
+          ? `${evidence.proxyHttpSuccesses} успешных PROXY-проверок · последний: ${proxyView.value}`
+          : proxyView.value}
+      </DetailRow>
+      <DetailRow label="ПОКРЫТИЕ">
+        {item.status === "confirmed" &&
+        item.evidenceAvailable &&
+        item.decision?.status === "confirmed"
+          ? "не покрыт активными правилами и списками"
+          : "повторно проверяется перед применением"}
+      </DetailRow>
+    </>
   );
 }
 
-function EvidenceCell({
+function DetailRow({
   label,
-  value,
+  children,
   tone,
 }: {
   label: string;
-  value: string;
-  tone?: "danger" | "success" | undefined;
+  children: ReactNode;
+  tone?: "danger" | "success" | "accent" | undefined;
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-md border border-border-subtle bg-surface px-3 py-2.5">
-      <span className="text-caption text-text-tertiary">{label}</span>
+    <div className="domain-candidate-detail-row grid min-w-0 items-center gap-3.5">
       <span
         className={cn(
-          "text-fine",
+          "font-mono text-caption font-semibold tracking-wide",
           tone === "danger"
             ? "text-timeout"
             : tone === "success"
               ? "text-online"
-              : "text-text-secondary",
+              : tone === "accent"
+                ? "text-accent-text"
+                : "text-text-tertiary",
         )}
       >
-        {value}
+        {label}
       </span>
+      <div className="min-w-0 text-sub text-text-secondary">{children}</div>
     </div>
   );
 }
@@ -792,7 +1205,7 @@ function PublisherUnavailableCard() {
         </p>
       </div>
       <span className="shrink-0 rounded-full bg-hover px-2.5 py-1 text-fine font-medium text-text-tertiary">
-        report-only
+        только отчёт
       </span>
     </section>
   );
@@ -840,7 +1253,7 @@ function exactScopeExplanation(item: DomainCandidateReportItem): string {
     return `${item.siteGroup} — публичный суффикс: расширять правило до него нельзя. Кандидат остаётся допустимым только на точном адресе.`;
   }
   if (item.siteUnavailableReason === "non-widenable-suffix") {
-    return `Для адреса найден суффикс из списка «Не расширять»: +.${item.siteGroup} могло бы увести в VPN чужие сайты. Кандидат остаётся допустимым, но правило — только на точный адрес.`;
+    return `Адрес входит в список «Не расширять»: +.${item.siteGroup} могло бы увести в VPN чужие сайты. Домен остаётся допустимым кандидатом, но правило создаётся только на точный адрес.`;
   }
   return "Расширение недоступно по текущей политике; правило остаётся на точном адресе.";
 }
@@ -873,14 +1286,47 @@ function boundedDomainSuffix(domain: string): string {
 
 function exclusionText(item: DomainCandidateReportItem): string {
   const reason = item.exclusionReason;
-  if (reason === "user-rejected") return "Отклонён вами";
+  if (reason === "user-rejected") return "Вы нажали «Не добавлять»";
   if (reason === "proxy-unstable") return "Через VPN тоже отвечает нестабильно";
   if (reason === "already-covered") return "Уже покрыт активным правилом или списком";
   if (reason === "telemetry-pattern") return "Совпал с шаблоном телеметрии";
   if (reason === "never-add-domain" || reason === "never-add-suffix") {
     return "Совпал со списком «Не добавлять»";
   }
+  if (reason === "invalid-policy") return "Политика фильтрации недоступна или некорректна";
+  if (reason === "invalid-evidence") return "Доказательства не прошли проверку целостности";
+  if (reason === "observer-unhealthy") return "Наблюдение сейчас не даёт надёжных данных";
+  if (reason === "insufficient-observations") return "Недостаточно независимых наблюдений";
+  if (reason === "candidate-excluded") return "Домен исключён текущей политикой";
+  if (reason === "invalid-scope") return "Выбранная область правила больше недоступна";
+  if (reason === "coverage-incomplete") return "Покрытие активными правилами не подтверждено";
+  if (reason === "proxy-evidence-uncertain") return "Работа через VPN не подтверждена надёжно";
+  if (reason === "insufficient-direct-failures") return "Недостаточно независимых DIRECT-сбоев";
+  if (reason === "direct-failures-not-spaced") return "DIRECT-сбои произошли слишком близко";
+  if (reason === "direct-address-diversity-missing")
+    return "DIRECT-сбои не подтверждены на разных адресах";
+  if (reason === "insufficient-proxy-successes") return "Недостаточно успешных проверок через VPN";
   return "Предложение заблокировано текущей политикой";
+}
+
+function exclusionReasonLabel(reason: DomainReportExclusionReason | null): string {
+  if (reason === "user-rejected") return "Отклонён вами";
+  if (reason === "proxy-unstable") return "Не помогает VPN";
+  if (reason === "already-covered") return "Уже покрыт";
+  if (reason === "telemetry-pattern") return "Телеметрия";
+  if (reason === "never-add-domain" || reason === "never-add-suffix") return "Не добавлять";
+  if (reason === "excluded-tld") return "Зона исключена";
+  if (reason === "invalid-policy") return "Политика недоступна";
+  if (reason === "invalid-evidence") return "Данные неполны";
+  if (reason === "observer-unhealthy") return "Наблюдение неполно";
+  if (reason === "insufficient-observations") return "Мало наблюдений";
+  if (reason === "candidate-excluded") return "Исключён политикой";
+  if (reason === "invalid-scope") return "Область недоступна";
+  if (reason === "coverage-incomplete") return "Покрытие неясно";
+  if (reason === "proxy-evidence-uncertain") return "VPN не подтверждён";
+  if (reason === "direct-failures-not-spaced") return "Сбои слишком близко";
+  if (reason === "direct-address-diversity-missing") return "Мало адресов";
+  return "Недостаточно проверок";
 }
 
 function probeCategoryText(category: DomainProbeCategory): string {

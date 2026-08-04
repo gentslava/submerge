@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { Button } from "./button";
+import { Button, buttonVariants } from "./button";
 
 describe("Button", () => {
   it("forwards its ref to the native button", () => {
@@ -38,6 +38,12 @@ describe("Button", () => {
     const cls = screen.getByRole("button", { name: "Обновить" }).className;
     expect(cls).toContain("h-[var(--mobile-header-action-size)]");
     expect(cls).toContain("w-[var(--mobile-header-action-size)]");
+  });
+  it("exposes the same header-action contract to router links", () => {
+    const cls = buttonVariants({ variant: "secondary", size: "headerIcon" });
+
+    expect(cls).toContain("h-[var(--mobile-header-action-size)]");
+    expect(cls).toContain("border-border-default");
   });
   it("fires onClick", () => {
     const onClick = vi.fn();
