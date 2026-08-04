@@ -10,7 +10,8 @@ testable and rollback-friendly.
 
 The publisher ships fail-closed and report mode remains the default. No slice adds live
 credentials, publishes a port, changes the Mihomo log level, enables apply in a deployment,
-or mutates the production rules repository during verification.
+or mutates a production rule store during verification. Submerge never receives remote Git
+credentials; optional export is a host-side deployment concern (ADR-0006).
 
 ## Architecture decisions
 
@@ -323,28 +324,39 @@ or mutates the production rules repository during verification.
 - [x] JSON and Markdown output is atomic, sanitized, and available only at the explicit
       protected destination.
 
-### Task 16: Add guarded Git publication and provider activation
+### Task 16: Add guarded local Git publication and provider activation
 
 **Files:**
 
 - Create `packages/server/src/modules/domain-intelligence/publisher.ts` and its tests
 - Extend the shared settings/actions, protected router, service, and SQLite schema
 - Extend the CLI with the real `--apply` action and its fully non-mutating dry-run path
-- Extend the domain runtime for automatic batches without coupling it to observation
-- Modify the Mihomo client only through its validated provider-refresh boundary
+- Add a server-lifecycle-owned durable apply worker outside the validation runtime; the scheduler only
+  enqueues after releasing its lease
+- Route activation through the existing serialized, validated config-reload coordinator
+- Extend env/config generation and Compose with the report/apply gate, private repository
+  mount, and read-only Mihomo materialization mount; add Git to the runtime image
 
 **Acceptance criteria:**
 
 - [ ] The managed block update is deterministic and idempotent, preserves every unrelated
       byte, rejects invalid/duplicate rules, and passes `git diff --check`.
-- [ ] A narrow Git adapter accepts only the deployment checkout whose remote is exactly
-      `gentslava/mihomo-rules`, branch `main`, and file `custom.txt`; it fast-forwards,
-      commits, and pushes without shell interpolation or force.
+- [ ] A narrow local Git adapter initializes or accepts only the dedicated Submerge
+      worktree on branch `main` and file `custom.txt`; it creates attested local commits
+      without shell interpolation, hooks, remote access, fetch, push, or force.
+- [ ] The deployment-only `DOMAIN_RULES_MODE` defaults to `report`; its separate apply
+      provisioning preserves an optional seed, creates the baseline, materializes it,
+      adds the provider without removing old coverage, and mints readiness only after reload proof.
 - [ ] Candidate apply in both review and automatic modes re-reads `confirmed` plus `active`
       under the global apply lock, rechecks health/coverage/scope/topology, and atomically
       enforces the UTC daily budget for automatic additions only.
-- [ ] Publication waits for validated raw-source convergence, refreshes only the stable
-      custom provider, proves resulting route coverage, and records partial/success audit.
+- [ ] Publication force-reloads the stable local `submerge-custom` file-provider, proves
+      resulting route coverage, and records partial/success audit without external
+      convergence.
+- [ ] A durable prepared-operation journal bridges SQLite and Git; restart/retry attests
+      operation ID, parent, path, blob, ownership, and budget exactly once before resuming.
+- [ ] Automatic apply enqueue returns before the server-lifecycle worker enters serialized config
+      reload; integration tests prove runtime stop/reload/resume cannot wait on its own caller.
 - [ ] Manual add/edit/delete and automatic add use the same pipeline; manual edits transfer
       ownership to `Manual`, while automation cannot rewrite manual rules.
 - [ ] Report/default configuration has no mutation capability. Apply and automatic mode
@@ -383,7 +395,11 @@ or mutates the production rules repository during verification.
 - [ ] Populated, empty, degraded, error, collapsed, long-FQDN, and scope states match the
       approved Pencil frames at the required desktop and responsive widths.
 - [ ] The runbook covers install, report-only use, apply prerequisites, enablement,
-      dry-run, retry, uninstall, normal Git revert rollback, and provider re-verification.
+      dry-run, retry, uninstall, normal local Git revert rollback, provider re-verification,
+      and an optional host-side remote-export recipe.
+- [ ] Migration backs up existing config/lists, supports an exact byte-preserving seed,
+      adds the local provider without removing old coverage, requires equivalence proof
+      before old-provider removal, and documents fail-closed rollback.
 - [ ] Verification uses mocks/reserved domains only and never enables or executes
       production apply.
 
@@ -392,13 +408,13 @@ or mutates the production rules repository during verification.
 - [ ] `pnpm verify:static` is green with zero browser retries.
 - [ ] Incremental reviews are green for every slice.
 - [ ] The independent final review is green across the complete feature.
-- [ ] No push or production enablement occurs without an explicit later request.
+- [ ] No remote push or production enablement occurs without an explicit later request.
 
 ## Deferred follow-up
 
 - Automatic cleanup/removal policy for rules that later become unnecessary.
 - Adoption of pre-existing rules outside the Submerge-managed block.
-- Any production credential, mount, provider, or mode change.
+- Any production mount, provider, mode, or optional host-export credential change.
 
 ## Risks and mitigations
 

@@ -14,7 +14,7 @@ The feature needs to:
 - build a daily map of destination FQDNs actually seen by Mihomo;
 - identify FQDNs that repeatedly fail through DIRECT but work through a VPN channel;
 - recommend a visible, reviewable rule scope for `custom.txt`;
-- optionally publish confirmed rules to the Git-backed source of truth;
+- optionally apply confirmed rules to a local Git-backed source of truth;
 - remain completely outside the synchronous connection-routing path.
 
 Submerge already has the relevant infrastructure:
@@ -68,7 +68,7 @@ and publication asynchronously.
 - (+) Event-driven enqueue is possible without blocking a connection.
 - (+) The current proxy/channel/provider topology is always known.
 - (-) Bugs share the Submerge process.
-- (-) Git publication adds optional credentials and filesystem work to the container.
+- (-) Local Git history adds bounded filesystem work to the container.
 
 Chosen, with strict concurrency, timeouts, circuit breakers, error containment, and
 report-only defaults.
@@ -104,7 +104,7 @@ connection reached Mihomo.
 ### Asynchronous processing
 
 Observation handling performs only validation, deduplication, and a small SQLite write.
-It never waits for DNS, HTTPS, Git, GitHub, or provider activation.
+It never waits for DNS, HTTPS, local Git, or provider activation.
 
 A background scheduler later performs rate-limited DIRECT/PROXY A/B probes. A daily job
 generates reports. Apply remains a separately gated operation and is disabled by default.
@@ -149,10 +149,11 @@ same site as unrelated candidates without silently widening coverage.
 
 ### Source of truth and activation
 
-`gentslava/mihomo-rules/custom.txt` remains the sole durable rule source. The optional
-publisher makes a deterministic Git change, waits for the raw source to converge, asks
-the existing Mihomo client to refresh the stable `custom` provider, and verifies the
-route. It never edits a materialized provider file.
+As amended by [ADR-0006](0006-local-domain-rule-store.md), each installation owns a
+private Submerge-only Git-backed `custom.txt` as its durable source. The optional
+publisher makes a deterministic local commit, atomically materializes the attested blob
+to a separate file inside Mihomo HomeDir, reloads the stable file provider, and verifies
+the route. Mihomo cannot access `.git`; external mirroring is outside Submerge.
 
 ## Event-driven behavior
 
@@ -177,13 +178,14 @@ One event or one probe can never confirm a domain.
 
 - The feature flag and apply mode are off by default.
 - A failed observer, validator, report, or publisher is fail-open for user traffic.
-- Unsupported, empty, unsafe, or stale rule-provider coverage blocks recommendation/apply. For
-  the current daily provider update contract, a cache older than two refresh intervals is stale;
-  provider count and aggregate bytes are bounded per coverage snapshot.
+- Unsupported, empty, unsafe, or stale rule-provider coverage blocks recommendation/apply.
+  For externally refreshed providers, a cache older than two refresh intervals is stale;
+  provider count and aggregate bytes are bounded per coverage snapshot. The local
+  `submerge-custom` provider is age-exempt and is instead attested against its Git blob,
+  materialized digest, and current config-activation proof.
 - Apply requires persistent configuration and a confirmed rule scope. Review mode requires
   an explicit rule action; automatic mode requires an explicit, persisted enablement.
-- Publication credentials are optional, narrowly scoped to `mihomo-rules`, supplied
-  outside Git, and never exposed through API/logs.
+- Submerge never accepts or reads publication credentials, remote URLs, or SSH agents.
 - The module does not change DNS configuration, Mihomo log level, VPN egress, VLESS, or
   node-selection policy.
 - All background tasks are single-flight, bounded, abortable, and stopped during
@@ -221,5 +223,5 @@ One event or one probe can never confirm a domain.
 - (-) Very short connections depend on Mihomo's info-log record; log-format drift must be
   detected and must disable apply rather than silently lose observations.
 - (-) Destinations available only as IP addresses cannot be proposed automatically.
-- (-) Optional Git publication expands the Submerge container/runtime surface and must be
-  isolated behind the apply feature gate.
+- (-) Optional local Git publication expands the Submerge container/runtime surface and
+  must be isolated behind the apply feature gate.

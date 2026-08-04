@@ -4,6 +4,7 @@
 - **Status:** Approved for report/review, CLI, and guarded apply implementation;
   production enablement remains a separate operation
 - **Related:** [ADR-0005](../adr/0005-mihomo-native-domain-intelligence.md),
+  [ADR-0006](../adr/0006-local-domain-rule-store.md),
   [routing Phase 4](2026-07-07-routing-phase4-design.md),
   [background prober](2026-07-03-background-prober-design.md)
 
@@ -20,7 +21,7 @@
 5. Version 1 is a Submerge TypeScript module using the existing SQLite and lifecycle; no
    separate Python/systemd worker is introduced.
 6. Report mode remains the default. Guarded apply is implemented in the same feature but
-   cannot run until its deployment credentials, managed provider, and rollback path are
+   cannot run until its local rule store, managed file provider, and rollback path are
    separately configured and verified.
 7. Rule scope is an explicit candidate decision: exact observed address or the whole
    registrable site when that expansion cannot capture unrelated tenants.
@@ -39,7 +40,7 @@ Success means:
 1. No upstream DNS implementation, API, credential, or configuration appears in the
    module.
 2. A connection-routing event is never delayed by normalization, persistence, probing,
-   reporting, Git, or provider activation.
+   reporting, local Git, or provider activation.
 3. Observations contain only normalized FQDN, timestamp, count, transport, and internal
    deduplication data.
 4. A recommendation requires at least three spaced DIRECT transport failures in 24 hours
@@ -49,7 +50,7 @@ Success means:
    otherwise eligible candidates to exact scope.
 6. Every proposal exposes one of two scopes: exact FQDN (`api.service.example`) or whole
    site (`+.service.example`). Shared-hosting/CDN boundaries can lock a candidate to exact.
-7. Report mode cannot mutate Git, Mihomo providers, configuration, or active list files.
+7. Report mode cannot mutate local Git, Mihomo providers, configuration, or active list files.
 8. Apply is deterministic, capped, idempotent, and auditable. Review mode requires an
    explicit rule action; automatic mode requires an explicit audited enablement and a
    persisted UTC daily budget.
@@ -96,7 +97,8 @@ Mihomo log stream --------------------+
                                                         |
                                              optional guarded publisher
                                                         |
-                                      Git custom.txt -> provider refresh
+                       private local Git -> attested materialization
+                                                -> file-provider config reload
 ```
 
 Responsibilities:
@@ -110,7 +112,9 @@ Responsibilities:
 - `coverage.ts`: active custom/notblocked/third-party rule coverage.
 - `decision.ts`: pure thresholds and reason codes.
 - `report.ts`: protected JSON/Markdown artifacts or API read model.
-- `publisher.ts`: optional deterministic Git transaction and provider activation.
+- `publisher.ts`: optional deterministic local Git transaction and materialization.
+- `apply-worker.ts`: durable apply queue/reconciliation outside the validation runtime;
+  the scheduler enqueues and releases its lease before this worker may reload config.
 - `router.ts`: authenticated administrative status/actions; no raw observation feed.
 
 ### 3.2 No synchronous probing
@@ -147,7 +151,8 @@ blocked. The implementation does not change Mihomo's configured log level.
 - Existing `better-sqlite3` + Drizzle database and migrations.
 - Existing Mihomo client with Zod-parsed responses.
 - Node TLS/HTTP primitives or the existing `undici` dependency for probes.
-- System Git invoked through a narrow typed adapter only when apply is enabled.
+- System Git invoked through a narrow local-only adapter only when apply is enabled; the
+  adapter never configures a remote, fetches, pushes, or reads credentials.
 - No Python, second database, systemd worker, broker, queue service, or new web server.
 
 ### 4.2 Commands
@@ -183,7 +188,7 @@ separate-process dry-run cannot produce a confirmed decision. The protected tRPC
 the source for live observer health.
 
 `--dry-run` makes no durable application or system-state mutation. It may read Mihomo,
-SQLite, Git, and the raw source and may perform explicitly requested bounded probes, but it
+SQLite, and the local rule store and may perform explicitly requested bounded probes, but it
 does not write observations, candidates, leases, validation evidence, decisions, settings,
 apply audit, budgets, ownership, Git, providers, config, or channels. An explicitly requested
 report file or stdout payload is its only allowed output side effect.
@@ -211,12 +216,14 @@ packages/server/src/config/env.ts
 packages/server/src/index.ts
 packages/server/drizzle/<migration>.sql
 docs/adr/0005-mihomo-native-domain-intelligence.md
+docs/adr/0006-local-domain-rule-store.md
 docs/specs/2026-08-03-domain-intelligence-design.md
 docs/plans/2026-08-03-domain-intelligence.md
 ```
 
-Deployment/runbook changes, if needed for an optional Git key or repository mount, live
-in `vps`. No resolver-specific deployment file belongs in Submerge.
+Submerge documents the local shared-volume path and file-provider lifecycle. An optional
+host-side export script and its remote credentials belong to deployment tooling, never to
+Submerge. No resolver-specific deployment file belongs in this repository.
 
 ## 5. Code style and boundaries
 
@@ -237,7 +244,7 @@ export function decideCandidate(evidence: CandidateEvidence, policy: DecisionPol
 
 ### Always
 
-- Parse every Mihomo, DNS resolver, network, Git, and GitHub response at its boundary.
+- Parse every Mihomo, DNS resolver, network, and local Git response at its boundary.
 - Use UTC timestamps and persisted reason enums.
 - Use bounded queues, timeouts, concurrency, retries, and circuit breakers.
 - Keep observer and scheduler errors out of the log-stream/traffic control flow.
@@ -247,10 +254,9 @@ export function decideCandidate(evidence: CandidateEvidence, policy: DecisionPol
 ### Ask first
 
 - Enable the feature or apply mode in production.
-- Add Git credentials or a repository mount to the Submerge deployment.
-- Add the stable managed `custom` provider/routing rule to production.
+- Enable the persistent local rule store or stable managed `custom` file-provider in production.
 - Change container networking or publish a new port.
-- Commit or push any repository.
+- Enable local commits in production.
 
 ### Never
 
@@ -264,6 +270,9 @@ export function decideCandidate(evidence: CandidateEvidence, policy: DecisionPol
 - Hide the selected rule scope or infer that site scope is safe from the Public Suffix
   List alone.
 - Manually edit a materialized/active provider file.
+- Accept, store, or use a remote Git URL, SSH key, token, agent socket, hook, or arbitrary
+  publisher command inside Submerge.
+- Fetch or push a Git remote from Submerge.
 - Treat HTTP `401`, `403`, `404`, or `429` as a routing failure.
 
 ## 6. Configuration
@@ -303,13 +312,52 @@ type DomainIntelligenceDeploymentCapability =
       mode: "apply";
       apply: {
         available: true;
-        repository: "gentslava/mihomo-rules";
+        repository: "local";
         branch: "main";
         path: "custom.txt";
-        providerUrl: "https://raw.githubusercontent.com/gentslava/mihomo-rules/main/custom.txt";
+        providerName: "submerge-custom";
+        providerPath: "./domain-rules/custom.txt";
       };
     };
+
+type ApplyUnavailableReason =
+  | "deployment-report-only"
+  | "local-store-unavailable"
+  | "local-store-unsafe"
+  | "local-store-migration-required"
+  | "local-store-reconciliation-required"
+  | "provider-inactive"
+  | "target-channel-unavailable";
 ```
+
+`DOMAIN_RULES_MODE=report|apply` is the only deployment switch and defaults to
+`report`. It is parsed at the environment boundary and is never exposed as an API write.
+The repository path is code-owned under the persistent Submerge data directory. The
+active materialization path is code-owned under the directory containing
+`MIHOMO_CONFIG_PATH`; Mihomo sees it as `./domain-rules/custom.txt`. Neither path is
+client-configurable.
+
+`report` performs no provisioning writes and always reports
+`deployment-report-only`. Switching the deployment value to `apply` is the explicit
+operator authorization for a separate boot reconciliation:
+
+1. validate canonical parents, ownership, mode, device/inode stability, and absence of
+   symlinks, multi-link files, and group/world write; the private repository and `.git`
+   are Submerge-owned `0700`, repository `custom.txt` is `0600`, and the separately
+   materialized file is `0644` behind Mihomo's read-only mount;
+2. initialize or validate the private local repository on `main`, requiring zero remotes,
+   hooks, credential helpers, agent sockets, alternates, promisor config, or unknown
+   history;
+3. preserve a pre-seeded `custom.txt` byte-for-byte in a baseline commit, or create an
+   empty managed baseline on a new install;
+4. atomically materialize the exact baseline blob into Mihomo HomeDir;
+5. add the local provider to generated config without deleting any existing external
+   provider, force-reload through the serialized config coordinator, and verify provider
+   identity plus target route;
+6. mint `apply.available` only after all proofs succeed.
+
+Provisioning is not candidate apply and cannot reserve an automatic budget or change rule
+ownership. A failure leaves the capability in report mode with one exact reason above.
 
 Default exclusions include `ru`, `su`, `xn--p1ai`, private/local/reverse zones, telemetry,
 advertising/tracking names, and infrastructure hostnames that are not meaningful routing
@@ -326,16 +374,17 @@ disabled. Enabling report/review collection requires an explicit `exact` or `sit
 the implementation never invents a factory scope.
 
 The feature exposes preferences through a dedicated strict protected API, not the generic
-raw-string settings mutation. `mode`, apply readiness, repository, branch, path, provider
-URL, checkout path, and credentials are not accepted in that input. Report capability
+raw-string settings mutation. `mode`, apply readiness, local repository path, branch,
+provider name/path, remotes, and credentials are not accepted in that input. Report capability
 accepts only `automationMode: off | review`; the separate protected automatic-consent
 action can select `automatic` only after server-derived deployment readiness succeeds.
 The resolver list is limited to the two reviewed credential-free JSON DoH endpoints.
-The repository is pinned to `gentslava/mihomo-rules`, branch `main`, path `custom.txt`, and
-the exact corresponding GitHub Raw URL; a mismatched checkout remote, branch, file, or
-active provider fails closed. Git credentials are never stored in or returned through the
-settings API. Boundary tests reject every client-supplied capability/repository/provider
-field and every deployment mismatch.
+The repository is a dedicated private local store, pinned to branch `main`, file
+`custom.txt`, provider `submerge-custom`, and the corresponding HomeDir-relative
+materialization path. A mismatched path, branch, worktree, configured remote, or active
+provider fails closed. Submerge never receives Git credentials. Boundary tests
+reject every client-supplied capability/repository/provider field and every deployment
+mismatch.
 
 Automatic consent is stored separately from mutable preferences. Its revision is a
 code-owned safety version plus a SHA-256 fingerprint of the canonical automatic-safety
@@ -373,9 +422,11 @@ derives the candidate from the current full filter policy and wakes the bounded 
 scheduler. Each run reads current settings, the exact active channel projection, and bounded
 provider caches; executes one pinned DIRECT/forced-PROXY pair; then rechecks coverage before
 combining the pair with persisted window evidence. The two probes share a cancellation scope and
-both settle before the run releases its lease. Missing, empty, opaque, oversized, unsafe, or more
-than two daily refresh intervals old provider materialization makes coverage incomplete and
-therefore blocks confirmation.
+both settle before the run releases its lease. Missing, empty, opaque, oversized, unsafe, or
+more than two daily refresh intervals old **externally refreshed** provider materialization
+makes coverage incomplete and therefore blocks confirmation. The local `submerge-custom`
+materialization is age-exempt and instead requires matching repository blob, file digest,
+provider identity, and current config-activation proof.
 
 The two filter policies are independent:
 
@@ -395,8 +446,9 @@ The protected-suffix lock applies to automatic proposals. A deliberate manual ru
 broader after the administrator reviews its observed coverage in the rule editor. Manual
 rules are labelled as such and are never changed or removed by automation.
 
-Publication credentials are supplied outside Git through deployment secrets and are
-loaded only when apply is explicitly enabled. Report mode does not require them.
+No publication credential exists in Submerge. Optional remote export runs from a separate
+host-owned mirror/snapshot with credentials and destination configuration unavailable to
+the app and absent from all Submerge mounts.
 
 ## 7. Observation storage and retention
 
@@ -410,7 +462,7 @@ The existing SQLite database receives these tables:
 | `domain_validation_runs` | bounded scheduler/circuit-breaker summary |
 | `domain_validation_attempts` | DIRECT/PROXY transport results and safe timings |
 | `domain_decisions` | decision, deterministic confidence, reasons, selected scope and proposed rule |
-| `domain_apply_operations` | commit SHA, previous/new revision, activation result |
+| `domain_apply_operations` | durable prepared/committed/activated journal, expected parent/blob, commit SHA, ownership delta, activation result |
 | `domain_automatic_budgets` | atomic UTC-date reservations and consumed automatic-rule count |
 | `domain_rule_ownership` | automatic/manual ownership and last successful mutation audit |
 
@@ -423,8 +475,8 @@ undercounting so two sources cannot manufacture a threshold crossing.
 
 Operational observations, stats, attempts, candidates, and non-apply decisions older than
 14 days are deleted by the scheduler. Minimal apply audit is retained indefinitely by
-default because the rule and commit are already public in the Git source of truth and are
-needed for rollback explanations.
+default because the rule and local commit are the durable source of truth and are needed
+for rollback explanations.
 
 Candidate expiry is based on its last qualifying observation, not on validation or queue
 maintenance timestamps. Rechecks may update lifecycle state and evidence, but cannot keep an
@@ -482,8 +534,11 @@ DOMAIN-SUFFIX,example.com
 If an active provider format cannot be checked reliably, coverage is incomplete and the
 candidate cannot be recommended or applied. Materialization accepts at most 64 distinct active
 providers and 16 MiB in aggregate per snapshot, rejects symlinked cache roots/parents and files
-that change while being read, and treats a cache older than 48 hours as stale for the current
-daily provider refresh contract.
+that change while being read, and treats an externally refreshed cache older than 48 hours as
+stale for the current daily provider refresh contract. The managed local
+`submerge-custom` provider is age-exempt: unchanged rules may remain valid indefinitely.
+Its coverage is trusted only when repository blob, materialized SHA-256, generated provider
+identity/path, and current config-activation proof all agree.
 
 Every candidate keeps both its observation and its selected rule scope:
 
@@ -747,8 +802,8 @@ candidate.reviewState == "active"
 ```
 
 The publisher must re-read both fields under the global apply lock immediately before its
-SQLite reservation and Git mutation. Pending, blocked, excluded, or rejected candidate
-actions stop without consuming budget or changing Git, providers, config, or channels. This
+SQLite reservation and local Git mutation. Pending, blocked, excluded, or rejected candidate
+actions stop without consuming budget or changing the rule store, providers, config, or channels. This
 check is required both when selecting a batch and in the final locked preflight; filtering
 only by `status == "confirmed"` is forbidden. Only a distinct free-form manual-rule editor
 action may bypass candidate evidence, and it remains subject to syntax, scope, coverage
@@ -757,12 +812,27 @@ preview, capability, Git, activation, and audit safeguards.
 ### 12.1 Automatic daily budget
 
 `maximumAutomaticRulesPerDay` is a UTC-day ceiling, not a per-run limit. Before publication
-the global apply lock and one SQLite transaction reserve the remaining slots in
-`domain_automatic_budgets`. An idempotency key ties a retry to its original reservation.
-Reservations are released only if the operation stops before push; once a commit containing
-the rules is pushed, the slots are consumed even when later raw-source convergence or
-activation fails. Restarts and concurrent scheduler/manual triggers cannot reset or exceed
-the persisted budget. Explicit manual mutations do not consume the automatic daily budget.
+the global apply lock and one SQLite transaction create a durable prepared operation and
+reserve the remaining slots in `domain_automatic_budgets`. An idempotency key ties a retry
+to its original reservation.
+Reservations are released only if the operation stops before the local commit; once a commit
+containing the rules is created, the slots are consumed even when later activation fails.
+Restarts and concurrent scheduler/manual triggers cannot reset or exceed the persisted
+budget. Explicit manual mutations do not consume the automatic daily budget.
+
+The prepared journal row contains the operation/idempotency ID, action, expected parent
+commit, intended content SHA-256, proposed rule and ownership delta, budget reservation,
+and phase. The non-secret operation ID is added as a Git commit trailer. Immediately after
+commit attestation, one SQLite transaction records commit SHA/blob, consumes the reservation,
+and applies ownership exactly once before activation begins.
+
+On startup and retry, the global apply lock reconciles every unfinished row before accepting
+new work. If `HEAD` is still the expected parent, pre-commit recovery may restore the clean
+worktree and release/retry the reservation. If `HEAD` is the one expected child commit, its
+operation trailer, parent, sole changed path, mode, and exact blob digest must match the
+journal; reconciliation then finalizes budget and ownership idempotently and resumes
+materialization/activation. Any other history or dirty state becomes
+`local-store-reconciliation-required` and fails closed.
 
 ### 12.2 Rule ownership
 
@@ -775,13 +845,13 @@ audit:
 - editing an automatic rule manually changes ownership to `Manual` atomically with the Git
   mutation, so automation never rewrites the override;
 - a rule created through the manual editor starts as `Manual` and bypasses candidate
-  evidence thresholds, but still passes syntax, coverage-preview, Git, activation, and
+  evidence thresholds, but still passes syntax, coverage-preview, local Git, activation, and
   audit safeguards;
 - pre-existing lines outside the managed block are preserved byte-for-byte and are
   read-only in the UI until an explicit future adoption design is approved.
 
-Manual add/edit/delete and automatic add share the same publisher, lock, idempotency, raw
-convergence, activation, and audit pipeline. Public suffix scope is the absolute widening
+Manual add/edit/delete and automatic add share the same publisher, lock, idempotency,
+activation, and audit pipeline. Public suffix scope is the absolute widening
 ceiling; the editor never offers rules such as `+.com` or `+.co.uk`.
 
 ### 12.3 Publication pipeline
@@ -790,33 +860,44 @@ Pipeline:
 
 1. acquire a global apply lock;
 2. verify observer health, current topology, target channel, and complete coverage;
-3. require a clean managed checkout and fast-forward to current `main`;
+3. require the already provisioned private local repository on `main`, a clean worktree,
+   zero remotes/credential or execution config, and a current provider activation proof;
 4. branch by action kind under the same lock: for every candidate-derived request in
    review or automatic mode, re-read and require both `status == confirmed` and
    `reviewState == active`, then re-evaluate evidence and scope; for a distinct free-form
    manual-rule request, validate its explicit authorization, syntax, scope, and coverage
    preview without pretending it is candidate evidence;
-5. reserve the UTC daily budget for automatic additions, or validate explicit manual
-   authorization for add/edit/delete;
+5. in one SQLite transaction write the prepared operation journal and reserve the UTC
+   daily budget for automatic additions, or record explicit manual authorization;
 6. deterministically mutate only the marked managed block in `custom.txt`;
 7. sort that managed block and preserve unrelated file bytes/order;
 8. validate syntax/duplicates and run `git diff --check`;
-9. create one commit and push without force;
-10. record the commit SHA and wait until raw `main/custom.txt` reflects the mutation;
-11. refresh the stable managed `custom` provider through the existing Mihomo client;
-12. verify resulting coverage and routing to the configured VPN channel;
-13. persist ownership, budget, complete/partial audit, and the final report.
+9. create one local commit carrying the operation ID, without running hooks or contacting
+   a remote;
+10. attest the commit parent/path/mode/blob and atomically finalize commit SHA, ownership,
+    and budget state in SQLite;
+11. atomically materialize the exact committed blob to the code-owned Mihomo HomeDir path;
+12. force-reload the full generated Mihomo configuration through the existing serialized
+    config coordinator;
+13. verify materialized digest, provider identity, resulting coverage, and routing to the
+    configured VPN channel;
+14. persist complete/partial activation audit and the final report.
 
-A dirty checkout, non-fast-forward state, rejected push, raw-source timeout, incomplete
-coverage, unstable proxy, or failed activation stops the pipeline. It never hand-edits a
-provider cache. A pushed-but-not-activated commit is recorded and may be safely retried.
+A dirty worktree, unexpected local history, incomplete coverage, unstable proxy, or failed
+activation stops the pipeline. It never edits a Mihomo cache: the materialized `custom.txt`
+is the source file of the declared local provider. A committed-but-not-activated change is
+recorded and safely resumed from its journal.
 
-Rollback uses a normal Git revert, raw-source convergence, and the same provider refresh.
-No force push or automatic deletion of concurrent human changes is allowed.
+Rollback selects an attested Submerge commit from audit, persists a prepared rollback row
+with target SHA and expected revert blob, creates a normal local revert commit, and runs the
+same materialization, config reload, and route verification. Conflicts or unknown ancestry
+fail closed; Submerge never resets or force-rewrites history. An optional host exporter
+receives an immutable audited SHA through a separate host-owned mirror/snapshot and cannot
+read-write mount the app repository or active materialization.
 
 ## 13. Scheduler and lifecycle
 
-The scheduler follows the existing Submerge patterns:
+The validation scheduler follows the existing Submerge patterns:
 
 - starts only after migrations and the boot config apply prerequisite;
 - one in-process timer with persisted due state;
@@ -834,6 +915,21 @@ The scheduler follows the existing Submerge patterns:
 - the latched scheduler keeps a separate maintenance-only pulse for crash recovery and
   14-day SQLite retention; that pulse cannot lease a candidate or invoke the network executor;
 - overdue work after restart is processed in capped order, never as an unbounded burst.
+
+Apply uses a separate server-lifecycle-owned durable worker, not a callback awaited by the
+validation scheduler. After a confirmed decision, the scheduler may only enqueue an apply
+request in SQLite, release its candidate/validation lease, and return. The apply worker then
+acquires the global apply lock, performs the fresh locked preflight, and invokes the
+serialized config coordinator.
+
+This ownership split is mandatory because config reconciliation stops and drains the domain
+validation runtime before reload. The apply worker is outside that stopped runtime and is
+not included in its drain set, so the coordinator never waits on the caller that is waiting
+for reload. The worker belongs to the top level of the existing Submerge process lifecycle
+and is stopped during process shutdown after new requests are fenced. It runs under the same
+non-root uid as the server and introduces no sudo, setuid binary, Linux capability,
+privileged container, host socket, or helper process. Startup reconciliation processes
+unfinished journal rows before the worker accepts another request.
 
 Operational retention remains active when validation collection is disabled: the validation
 scheduler stays alive as a maintenance-only pulse while its network executor gate is closed. The
@@ -902,13 +998,16 @@ Component/browser tests cover:
 8. populated, empty, accumulating, degraded, publication-in-progress, activation-error,
    and success states at the repository-required responsive widths.
 
-Integration tests use mocked Mihomo log, `/connections`, DNS, DIRECT/PROXY HTTP, Git, raw
-source, and provider-refresh boundaries with reserved `example.com` fixtures. They verify
+Integration tests use mocked Mihomo log, `/connections`, DNS, DIRECT/PROXY HTTP, local Git,
+and config-reload/provider boundaries with reserved `example.com` fixtures. They verify
 that PROXY probes enter the dedicated authenticated listener through the active topology
 and exit through the configured target group, that manual add/edit/delete uses the same
-safe publication pipeline, and that pushed-but-not-activated retries preserve ownership
-and daily-budget accounting. No test uses real browsing history or the production traffic
-path.
+safe publication pipeline, and that committed-but-not-activated retries preserve ownership
+and daily-budget accounting. A zero-timeout lifecycle test proves automatic scheduling
+enqueues and releases its validation lease before the separate apply worker performs
+serialized runtime stop, full config reload, provider/route proof, and runtime resume; the
+coordinator must never await its own caller. No test uses real browsing history or the
+production traffic path.
 
 Every behavior slice follows TDD, `pnpm verify:static`, an independent incremental code
 review, and the repository's final review before any push.
@@ -920,11 +1019,43 @@ requires only the existing Mihomo access already held by Submerge.
 
 Apply additionally requires:
 
-- a clean persistent checkout or other explicitly approved Git workspace;
-- a Git credential restricted to `gentslava/mihomo-rules`;
-- a stable managed `custom` provider routed to the configured VPN channel;
+- a persistent private `domain-rules` repository mounted read-write only into Submerge;
+- a separate code-owned materialization directory in the existing Mihomo HomeDir, written
+  by Submerge and over-mounted read-only into Mihomo;
+- the Git CLI in the Submerge runtime for local init/commit only;
+- a stable generated `submerge-custom` file-provider routed to the configured VPN channel;
 - backup of changed deployment/config files;
-- verified disable, retry, revert, and provider-refresh runbooks.
+- verified disable, retry, local-revert, and config-reload runbooks.
+
+External synchronization is optional. When configured, it is a host-side read/push-only
+job operating on a separate host-owned mirror/snapshot, with an explicit destination and
+credential outside every Submerge mount. It must not write or configure the app repository.
+Submerge neither configures nor reports it, and local apply does not wait for the mirror.
+
+### 15.1 New install and migration
+
+The deployment procedure runs before `DOMAIN_RULES_MODE=apply` is set:
+
+1. back up the current generated config, deployment file, and every existing custom-list
+   source/cache that may later be retired;
+2. create the private repository directory with Submerge ownership and no group/world
+   write; do not initialize Git or add a remote from the host;
+3. for a new install, leave it empty and let provisioning create an empty managed
+   baseline; for an existing custom list, copy its source `custom.txt` into the private
+   directory while report mode is active and verify exact bytes before restart;
+4. switch the deployment-only mode to `apply` and restart; provisioning preserves all
+   pre-seeded bytes in the baseline commit and adds the local provider **alongside** every
+   existing provider, so cutover cannot remove coverage;
+5. require clean repository/blob/materialization attestation, successful config reload,
+   parsed local coverage, and route proof before capability becomes available;
+6. only after a separate coverage-equivalence report may the operator remove the former
+   external custom provider. Submerge never removes or rewrites it automatically.
+
+If the active materialization path already exists with bytes different from the intended
+baseline, provisioning reports `local-store-migration-required` and does not overwrite it.
+Rolling back provisioning restores the backed-up deployment/config, returns
+`DOMAIN_RULES_MODE` to `report`, reloads the previous config, and leaves the private local
+repository intact for audit/export. No rollback deletes rules or rewrites Git history.
 
 Installing/enabling apply is a separate production action. It does not change DNS,
 networking, VPN nodes, VLESS, or log level.
@@ -941,7 +1072,8 @@ networking, VPN nodes, VLESS, or log level.
 | Application denial response | High | false routing diagnosis | any valid HTTP response is transport success |
 | PROXY/node outage | Medium | false comparison | unstable PROXY blocks decision and trips breaker |
 | Unsupported provider coverage | Medium | duplicate/conflicting rule | incomplete coverage blocks recommendation/apply |
-| Git race | Low | lost human change | clean checkout, fast-forward only, no force push |
+| Local Git race | Low | lost local change | Submerge-exclusive worktree, global apply lock, clean-tree and blob/commit attestation |
+| External mirror fails | Medium | backup is stale | local activation is independent; host job alerts and safely retries push |
 | Apply runaway | Low | list pollution | disabled/report default, consent gate, atomic three-rule UTC daily budget |
 | Module bug | Low | Submerge instability | bounded async tasks, error containment, feature flag, tests |
 
@@ -958,6 +1090,6 @@ administrator to choose `exact` or `site` before observation can be enabled; the
 mockups show `site` only as a configured example.
 
 Shipping the publisher code does not authorize a production mutation. Apply stays
-fail-closed until a repository-scoped credential, clean persistent checkout, managed
-provider, target channel, backup, and rollback verification are supplied by a separate
-deployment change.
+fail-closed until the persistent local rule store, generated file-provider, target channel,
+backup, and rollback verification are supplied by a separate deployment change. No remote
+credential is a prerequisite for local apply.
