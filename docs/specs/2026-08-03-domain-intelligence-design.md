@@ -165,8 +165,22 @@ internal CLI entry points for safe diagnostics:
 pnpm -F @submerge/server domain-intelligence --collect-snapshot --dry-run
 pnpm -F @submerge/server domain-intelligence --validate --dry-run
 pnpm -F @submerge/server domain-intelligence --report --dry-run
+pnpm -F @submerge/server domain-intelligence --report --dry-run --output-dir /protected/report-dir
 pnpm -F @submerge/server domain-intelligence --apply
 ```
+
+`--collect` is an alias for `--collect-snapshot`. Collect and validate are diagnostics and
+therefore require `--dry-run`; report is the default action and remains read-only with or
+without the flag. A full report is never printed to stdout. Without `--output-dir`, stdout
+contains only a domain-free JSON summary. The output directory must already exist, must not
+be a symlink, and must be owner-only (`0700`); JSON and Markdown artifacts are replaced
+atomically with owner-only permissions (`0600`). Settings, counts, filter policy, and every
+candidate page are read inside one SQLite read transaction so a concurrent collector cannot
+mix revisions in one report. Because the CLI is a separate process, it
+marks live in-memory observer health as unavailable instead of inventing a disabled or healthy
+state. CLI validation passes that unavailable state into the decision engine fail-closed, so a
+separate-process dry-run cannot produce a confirmed decision. The protected tRPC overview remains
+the source for live observer health.
 
 `--dry-run` makes no durable application or system-state mutation. It may read Mihomo,
 SQLite, Git, and the raw source and may perform explicitly requested bounded probes, but it

@@ -302,10 +302,10 @@ or mutates the production rules repository during verification.
       latches the scheduler so no later pulse can accumulate zombie transports.
 - [x] The terminal network latch preserves an executor-free maintenance pulse so crash recovery
       and the 14-day privacy retention continue without permitting another probe.
-- [ ] The approved Pencil controls and states are functional, token-based, and honest.
-- [ ] Never-add and do-not-widen editors remain separate and scope restrictions are
+- [x] The approved Pencil controls and states are functional, token-based, and honest.
+- [x] Never-add and do-not-widen editors remain separate and scope restrictions are
       visible before expansion.
-- [ ] The unresolved first-install scope remains an explicit unconfigured state.
+- [x] The unresolved first-install scope remains an explicit unconfigured state.
 
 ### Task 15: Add report CLI and protected artifacts
 
@@ -317,10 +317,10 @@ or mutates the production rules repository during verification.
 
 **Acceptance criteria:**
 
-- [ ] Collect, validate, and report commands share the same service boundaries.
-- [ ] Every dry-run leaves all domain/settings/apply SQLite rows and Git, provider, config,
+- [x] Collect, validate, and report commands share the same service boundaries.
+- [x] Every dry-run leaves all domain/settings/apply SQLite rows and Git, provider, config,
       and channel state unchanged; an explicit report artifact/stdout is the sole output.
-- [ ] JSON and Markdown output is atomic, sanitized, and available only at the explicit
+- [x] JSON and Markdown output is atomic, sanitized, and available only at the explicit
       protected destination.
 
 ### Task 16: Add guarded Git publication and provider activation
