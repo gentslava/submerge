@@ -13,6 +13,7 @@ import {
   openSync,
   readSync,
   realpathSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -24,6 +25,8 @@ const PROVIDER_PATH = `./${MATERIALIZATION_DIRECTORY_NAME}/${MATERIALIZATION_FIL
 const MAX_MATERIALIZATION_BYTES = 1024 * 1024;
 const MATERIALIZATION_TEMPORARY_PATTERN =
   /^\.custom\.txt\.submerge-[1-9][0-9]*-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const COMMITTED_MATERIALIZATION_TEMPORARY_PATTERN =
+  /^\.custom\.txt\.submerge-update-[1-9][0-9]*-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 
 export type DomainRuleMaterializationFailureReason =
   | "local-store-migration-required"
@@ -50,6 +53,17 @@ export interface InitialDomainRuleMaterializationInput {
   testBeforeExistingRead?: ((filesystemPath: string) => void) | undefined;
   /** @internal Deterministic final path-attestation race injection for materialization tests. */
   testBeforeFinalProviderStat?: ((filesystemPath: string) => void) | undefined;
+  /** @internal Deterministic publication-race injection for materialization tests. */
+  testBeforePublish?: ((filesystemPath: string) => void) | undefined;
+}
+
+export interface CommittedDomainRuleMaterializationInput {
+  content: string;
+  contentSha256: string;
+  expectedPreviousContentSha256: string;
+  mihomoConfigPath: string;
+  /** @internal Deterministic final directory-attestation race injection for tests. */
+  testBeforeFinalDirectoryAttestation?: (() => void) | undefined;
   /** @internal Deterministic publication-race injection for materialization tests. */
   testBeforePublish?: ((filesystemPath: string) => void) | undefined;
 }
@@ -475,6 +489,133 @@ function createProviderFileAtomically(
   }
 }
 
+function reconcileInterruptedCommittedMaterialization(
+  directory: DirectoryIdentity,
+  targetPath: string,
+  expectedPreviousContentSha256: string,
+  committedContent: string,
+  committedContentSha256: string,
+): boolean {
+  const entries = readMaterializationDirectoryEntries(directory.canonicalPath);
+  const temporaryEntries = entries.filter((entry) =>
+    COMMITTED_MATERIALIZATION_TEMPORARY_PATTERN.test(entry),
+  );
+  const unknownEntries = entries.filter(
+    (entry) =>
+      entry !== MATERIALIZATION_FILE_NAME &&
+      !COMMITTED_MATERIALIZATION_TEMPORARY_PATTERN.test(entry),
+  );
+  if (unknownEntries.length > 0 || temporaryEntries.length > 1) {
+    throw new DomainRuleMaterializationError(
+      "local-store-reconciliation-required",
+      "unexpected domain-rule materialization state",
+    );
+  }
+  const temporaryName = temporaryEntries[0];
+  if (!temporaryName) return false;
+
+  const temporaryPath = join(directory.canonicalPath, temporaryName);
+  const temporaryContent = readStableMaterializationFile(
+    temporaryPath,
+    new Set([0o600, 0o644]),
+    new Set([1]),
+  );
+  if (
+    temporaryContent !== committedContent ||
+    sha256(temporaryContent) !== committedContentSha256
+  ) {
+    throw new DomainRuleMaterializationError(
+      "local-store-reconciliation-required",
+      "interrupted domain-rule materialization differs from the committed blob",
+    );
+  }
+
+  if (!existsSync(targetPath)) {
+    if ((lstatSync(temporaryPath).mode & 0o777) !== 0o644) chmodSync(temporaryPath, 0o644);
+    fsyncMaterializationFile(temporaryPath);
+    assertStableDirectory(directory, "materialization");
+    renameSync(temporaryPath, targetPath);
+    fsyncDirectory(directory.canonicalPath);
+    if (readStableProviderFile(targetPath) !== committedContent) {
+      throw new DomainRuleMaterializationError(
+        "local-store-unsafe",
+        "recovered committed domain-rule materialization does not match",
+      );
+    }
+    return true;
+  }
+
+  const activeContent = readStableProviderFile(targetPath);
+  const activeContentSha256 = sha256(activeContent);
+  if (activeContentSha256 === committedContentSha256 && activeContent === committedContent) {
+    unlinkSync(temporaryPath);
+    fsyncDirectory(directory.canonicalPath);
+    return false;
+  }
+  if (activeContentSha256 !== expectedPreviousContentSha256) {
+    throw new DomainRuleMaterializationError(
+      "local-store-reconciliation-required",
+      "active domain-rule materialization does not match the expected commit parent",
+    );
+  }
+
+  if ((lstatSync(temporaryPath).mode & 0o777) !== 0o644) chmodSync(temporaryPath, 0o644);
+  fsyncMaterializationFile(temporaryPath);
+  assertStableDirectory(directory, "materialization");
+  renameSync(temporaryPath, targetPath);
+  fsyncDirectory(directory.canonicalPath);
+  if (readStableProviderFile(targetPath) !== committedContent) {
+    throw new DomainRuleMaterializationError(
+      "local-store-unsafe",
+      "recovered committed domain-rule materialization does not match",
+    );
+  }
+  return true;
+}
+
+function replaceProviderFileAtomically(
+  directory: DirectoryIdentity,
+  targetPath: string,
+  expectedActiveContent: string,
+  committedContent: string,
+  testBeforePublish?: ((filesystemPath: string) => void) | undefined,
+): void {
+  const temporaryPath = join(
+    directory.canonicalPath,
+    `.${basename(targetPath)}.submerge-update-${process.pid}-${randomUUID()}`,
+  );
+  let temporaryCreated = false;
+  try {
+    const descriptor = openSync(
+      temporaryPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    );
+    temporaryCreated = true;
+    try {
+      writeFileSync(descriptor, committedContent, "utf8");
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+    chmodSync(temporaryPath, 0o644);
+    fsyncMaterializationFile(temporaryPath);
+    assertStableDirectory(directory, "materialization");
+    testBeforePublish?.(targetPath);
+    if (readStableProviderFile(targetPath) !== expectedActiveContent) {
+      throw new DomainRuleMaterializationError(
+        "local-store-reconciliation-required",
+        "active domain-rule materialization changed during publication",
+      );
+    }
+    renameSync(temporaryPath, targetPath);
+    temporaryCreated = false;
+    fsyncDirectory(directory.canonicalPath);
+  } finally {
+    if (temporaryCreated && existsSync(temporaryPath)) unlinkSync(temporaryPath);
+  }
+}
+
 function reconcileInitialDomainRuleMaterializationUnchecked(
   input: InitialDomainRuleMaterializationInput,
 ): DomainRuleMaterializationResult {
@@ -552,6 +693,101 @@ export function reconcileInitialDomainRuleMaterialization(
 ): DomainRuleMaterializationResult {
   try {
     return reconcileInitialDomainRuleMaterializationUnchecked(input);
+  } catch (error) {
+    if (error instanceof DomainRuleMaterializationError) throw error;
+    throw new DomainRuleMaterializationError(
+      "local-store-unsafe",
+      "domain-rule materialization filesystem operation failed",
+    );
+  }
+}
+
+function materializeCommittedDomainRulesUnchecked(
+  input: CommittedDomainRuleMaterializationInput,
+): DomainRuleMaterializationResult {
+  if (
+    Buffer.byteLength(input.content, "utf8") > MAX_MATERIALIZATION_BYTES ||
+    !/^[0-9a-f]{64}$/u.test(input.contentSha256) ||
+    !/^[0-9a-f]{64}$/u.test(input.expectedPreviousContentSha256) ||
+    sha256(input.content) !== input.contentSha256
+  ) {
+    throw new DomainRuleMaterializationError(
+      "local-store-unsafe",
+      "attested domain-rule content digest does not match",
+    );
+  }
+
+  const mihomoDirectory = assertMihomoDirectory(resolve(dirname(input.mihomoConfigPath)));
+  const materializationDirectory = prepareMaterializationDirectory(mihomoDirectory);
+  const filesystemPath = join(materializationDirectory.canonicalPath, MATERIALIZATION_FILE_NAME);
+  const recoveredPublication = reconcileInterruptedCommittedMaterialization(
+    materializationDirectory,
+    filesystemPath,
+    input.expectedPreviousContentSha256,
+    input.content,
+    input.contentSha256,
+  );
+  let createdPublication = false;
+  if (!existsSync(filesystemPath)) {
+    createProviderFileAtomically(
+      materializationDirectory,
+      filesystemPath,
+      input.content,
+      input.testBeforePublish,
+    );
+    createdPublication = true;
+  }
+  const existing = readStableProviderFile(filesystemPath);
+  if (existing === input.content && sha256(existing) === input.contentSha256) {
+    input.testBeforeFinalDirectoryAttestation?.();
+    assertStableDirectory(mihomoDirectory, "mihomo");
+    assertStableDirectory(materializationDirectory, "materialization");
+    fsyncDirectory(materializationDirectory.canonicalPath);
+    assertExpectedDirectoryEntries(materializationDirectory.canonicalPath);
+    return {
+      changed: recoveredPublication || createdPublication,
+      contentSha256: input.contentSha256,
+      filesystemPath,
+      providerPath: PROVIDER_PATH,
+    };
+  }
+  if (sha256(existing) !== input.expectedPreviousContentSha256) {
+    throw new DomainRuleMaterializationError(
+      "local-store-reconciliation-required",
+      "active domain-rule materialization does not match the expected commit parent",
+    );
+  }
+
+  replaceProviderFileAtomically(
+    materializationDirectory,
+    filesystemPath,
+    existing,
+    input.content,
+    input.testBeforePublish,
+  );
+  if (readStableProviderFile(filesystemPath) !== input.content) {
+    throw new DomainRuleMaterializationError(
+      "local-store-unsafe",
+      "committed domain-rule materialization does not match",
+    );
+  }
+  input.testBeforeFinalDirectoryAttestation?.();
+  assertStableDirectory(mihomoDirectory, "mihomo");
+  assertStableDirectory(materializationDirectory, "materialization");
+  assertExpectedDirectoryEntries(materializationDirectory.canonicalPath);
+  return {
+    changed: true,
+    contentSha256: input.contentSha256,
+    filesystemPath,
+    providerPath: PROVIDER_PATH,
+  };
+}
+
+export function materializeCommittedDomainRules(
+  input: CommittedDomainRuleMaterializationInput,
+): DomainRuleMaterializationResult {
+  try {
+    return materializeCommittedDomainRulesUnchecked(input);
   } catch (error) {
     if (error instanceof DomainRuleMaterializationError) throw error;
     throw new DomainRuleMaterializationError(

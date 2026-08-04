@@ -9,6 +9,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -16,14 +17,16 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   DomainRuleMaterializationError,
+  materializeCommittedDomainRules,
   reconcileInitialDomainRuleMaterialization,
 } from "./materialization.js";
 import {
   commitManagedDomainRules,
+  materializeCommittedLocalDomainRuleStore,
   prepareLocalRuleRepositoryDirectories,
   provisionLocalDomainRuleStore,
   provisionLocalRuleRepository,
@@ -497,5 +500,240 @@ describe("reconcileInitialDomainRuleMaterialization", () => {
     );
     expect(readFileSync(join(directoryPath, "custom.txt"), "utf8")).toBe(content);
     expect(readFileSync(join(directoryPath, ".operator-state"), "utf8")).toBe("evidence\n");
+  });
+});
+
+describe("materializeCommittedDomainRules", () => {
+  const committedContent =
+    "# BEGIN SUBMERGE MANAGED\n+.other.example\n+.service.example\n# END SUBMERGE MANAGED\n";
+
+  function materializeCommit(
+    mihomoDirectoryPath: string,
+    overrides: Partial<Parameters<typeof materializeCommittedDomainRules>[0]> = {},
+  ) {
+    return materializeCommittedDomainRules({
+      content: committedContent,
+      contentSha256: sha256(committedContent),
+      expectedPreviousContentSha256: sha256(content),
+      mihomoConfigPath: join(mihomoDirectoryPath, "config.yaml"),
+      ...overrides,
+    });
+  }
+
+  it("atomically replaces the exact expected parent materialization", () => {
+    const mihomoDirectoryPath = createMihomoDirectory();
+    const initial = reconcile(mihomoDirectoryPath);
+    const previousInode = lstatSync(initial.filesystemPath).ino;
+
+    const result = materializeCommit(mihomoDirectoryPath);
+
+    expect(result).toEqual({
+      changed: true,
+      contentSha256: sha256(committedContent),
+      filesystemPath: initial.filesystemPath,
+      providerPath: "./domain-rules/custom.txt",
+    });
+    expect(readFileSync(result.filesystemPath, "utf8")).toBe(committedContent);
+    expect(lstatSync(result.filesystemPath).ino).not.toBe(previousInode);
+    expect(statSync(result.filesystemPath).mode & 0o777).toBe(0o644);
+    expect(readdirSync(dirname(result.filesystemPath))).toEqual(["custom.txt"]);
+  });
+
+  it("treats an already materialized committed blob as an idempotent retry", () => {
+    const mihomoDirectoryPath = createMihomoDirectory();
+    reconcile(mihomoDirectoryPath);
+    const first = materializeCommit(mihomoDirectoryPath);
+    const committedInode = lstatSync(first.filesystemPath).ino;
+
+    const repeated = materializeCommit(mihomoDirectoryPath);
+
+    expect(repeated.changed).toBe(false);
+    expect(lstatSync(repeated.filesystemPath).ino).toBe(committedInode);
+    expect(readFileSync(repeated.filesystemPath, "utf8")).toBe(committedContent);
+  });
+
+  it("re-attests the materialization directory before completing an idempotent retry", () => {
+    const mihomoDirectoryPath = createMihomoDirectory();
+    reconcile(mihomoDirectoryPath);
+    const first = materializeCommit(mihomoDirectoryPath);
+    const materializationDirectory = dirname(first.filesystemPath);
+    const displacedDirectory = `${materializationDirectory}.displaced`;
+
+    expect(() =>
+      materializeCommit(mihomoDirectoryPath, {
+        testBeforeFinalDirectoryAttestation: () => {
+          renameSync(materializationDirectory, displacedDirectory);
+          mkdirSync(materializationDirectory, { mode: 0o755 });
+        },
+      }),
+    ).toThrowError(
+      new DomainRuleMaterializationError(
+        "local-store-unsafe",
+        "unstable domain-rule materialization directory",
+      ),
+    );
+    expect(readFileSync(join(displacedDirectory, "custom.txt"), "utf8")).toBe(committedContent);
+    expect(readdirSync(materializationDirectory)).toEqual([]);
+  });
+
+  it("preserves an active blob that matches neither parent nor committed content", () => {
+    const mihomoDirectoryPath = createMihomoDirectory();
+    const initial = reconcile(mihomoDirectoryPath);
+    const unexpected = "# BEGIN SUBMERGE MANAGED\n+.unexpected.example\n# END SUBMERGE MANAGED\n";
+    writeFileSync(initial.filesystemPath, unexpected, { mode: 0o644 });
+
+    expect(() => materializeCommit(mihomoDirectoryPath)).toThrowError(
+      new DomainRuleMaterializationError(
+        "local-store-reconciliation-required",
+        "active domain-rule materialization does not match the expected commit parent",
+      ),
+    );
+    expect(readFileSync(initial.filesystemPath, "utf8")).toBe(unexpected);
+    expect(readdirSync(dirname(initial.filesystemPath))).toEqual(["custom.txt"]);
+  });
+
+  it("detects a concurrent target replacement before publishing", () => {
+    const mihomoDirectoryPath = createMihomoDirectory();
+    const initial = reconcile(mihomoDirectoryPath);
+    const concurrent = "# BEGIN SUBMERGE MANAGED\n+.concurrent.example\n# END SUBMERGE MANAGED\n";
+
+    expect(() =>
+      materializeCommit(mihomoDirectoryPath, {
+        testBeforePublish: (filesystemPath) =>
+          writeFileSync(filesystemPath, concurrent, { mode: 0o644 }),
+      }),
+    ).toThrowError(
+      new DomainRuleMaterializationError(
+        "local-store-reconciliation-required",
+        "active domain-rule materialization changed during publication",
+      ),
+    );
+    expect(readFileSync(initial.filesystemPath, "utf8")).toBe(concurrent);
+    expect(readdirSync(dirname(initial.filesystemPath))).toEqual(["custom.txt"]);
+  });
+
+  it("finishes a known interrupted committed publication on retry", () => {
+    const mihomoDirectoryPath = createMihomoDirectory();
+    const initial = reconcile(mihomoDirectoryPath);
+    const temporaryPath = join(
+      dirname(initial.filesystemPath),
+      ".custom.txt.submerge-update-123-12345678-1234-4234-8234-123456789abc",
+    );
+    writeFileSync(temporaryPath, committedContent, { mode: 0o644 });
+
+    const result = materializeCommit(mihomoDirectoryPath);
+
+    expect(result.changed).toBe(true);
+    expect(readFileSync(result.filesystemPath, "utf8")).toBe(committedContent);
+    expect(() => statSync(temporaryPath)).toThrow();
+    expect(readdirSync(dirname(result.filesystemPath))).toEqual(["custom.txt"]);
+  });
+});
+
+describe("materializeCommittedLocalDomainRuleStore", () => {
+  it("attests the operation commit and materializes its exact blob under the repository lock", async () => {
+    const dataDirectory = createMihomoDirectory();
+    const mihomoDirectoryPath = createMihomoDirectory();
+    const paths = prepareLocalRuleRepositoryDirectories(dataDirectory);
+    writeFileSync(join(paths.repositoryPath, "custom.txt"), content, { mode: 0o600 });
+    const baseline = await provisionLocalDomainRuleStore({
+      mihomoConfigPath: join(mihomoDirectoryPath, "config.yaml"),
+      repositoryPath: paths.repositoryPath,
+      trustedParentPath: paths.trustedParentPath,
+    });
+    const committed = await commitManagedDomainRules({
+      expectedParent: baseline.repository.head,
+      operationId: "op-materialize-commit",
+      repositoryPath: paths.repositoryPath,
+      rules: ["+.other.example", "+.service.example"],
+      trustedParentPath: paths.trustedParentPath,
+    });
+
+    const result = await materializeCommittedLocalDomainRuleStore({
+      committedContentSha256: committed.contentSha256,
+      commitSha: committed.head,
+      expectedParent: baseline.repository.head,
+      mihomoConfigPath: join(mihomoDirectoryPath, "config.yaml"),
+      operationId: "op-materialize-commit",
+      repositoryPath: paths.repositoryPath,
+      trustedParentPath: paths.trustedParentPath,
+    });
+
+    expect(result.repository).toMatchObject({
+      baselineCreated: false,
+      contentSha256: committed.contentSha256,
+      head: committed.head,
+    });
+    expect(result.materialization.changed).toBe(true);
+    expect(readFileSync(result.materialization.filesystemPath, "utf8")).toBe(
+      readFileSync(join(paths.repositoryPath, "custom.txt"), "utf8"),
+    );
+  });
+
+  it("rejects an operation trailer mismatch before changing the active provider", async () => {
+    const dataDirectory = createMihomoDirectory();
+    const mihomoDirectoryPath = createMihomoDirectory();
+    const paths = prepareLocalRuleRepositoryDirectories(dataDirectory);
+    writeFileSync(join(paths.repositoryPath, "custom.txt"), content, { mode: 0o600 });
+    const baseline = await provisionLocalDomainRuleStore({
+      mihomoConfigPath: join(mihomoDirectoryPath, "config.yaml"),
+      repositoryPath: paths.repositoryPath,
+      trustedParentPath: paths.trustedParentPath,
+    });
+    const activePath = baseline.materialization.filesystemPath;
+    const committed = await commitManagedDomainRules({
+      expectedParent: baseline.repository.head,
+      operationId: "op-materialize-real",
+      repositoryPath: paths.repositoryPath,
+      rules: ["+.other.example", "+.service.example"],
+      trustedParentPath: paths.trustedParentPath,
+    });
+
+    await expect(
+      materializeCommittedLocalDomainRuleStore({
+        committedContentSha256: committed.contentSha256,
+        commitSha: committed.head,
+        expectedParent: baseline.repository.head,
+        mihomoConfigPath: join(mihomoDirectoryPath, "config.yaml"),
+        operationId: "op-materialize-wrong",
+        repositoryPath: paths.repositoryPath,
+        trustedParentPath: paths.trustedParentPath,
+      }),
+    ).rejects.toThrow("local domain-rule commit attestation failed");
+    expect(readFileSync(activePath, "utf8")).toBe(content);
+  });
+
+  it("does not initialize a replacement repository when committed recovery finds no Git metadata", async () => {
+    const dataDirectory = createMihomoDirectory();
+    const mihomoDirectoryPath = createMihomoDirectory();
+    const paths = prepareLocalRuleRepositoryDirectories(dataDirectory);
+    writeFileSync(join(paths.repositoryPath, "custom.txt"), content, { mode: 0o600 });
+    const baseline = await provisionLocalDomainRuleStore({
+      mihomoConfigPath: join(mihomoDirectoryPath, "config.yaml"),
+      repositoryPath: paths.repositoryPath,
+      trustedParentPath: paths.trustedParentPath,
+    });
+    const committed = await commitManagedDomainRules({
+      expectedParent: baseline.repository.head,
+      operationId: "op-materialize-missing-git",
+      repositoryPath: paths.repositoryPath,
+      rules: ["+.other.example", "+.service.example"],
+      trustedParentPath: paths.trustedParentPath,
+    });
+    rmSync(join(paths.repositoryPath, ".git"), { recursive: true });
+
+    await expect(
+      materializeCommittedLocalDomainRuleStore({
+        committedContentSha256: committed.contentSha256,
+        commitSha: committed.head,
+        expectedParent: baseline.repository.head,
+        mihomoConfigPath: join(mihomoDirectoryPath, "config.yaml"),
+        operationId: "op-materialize-missing-git",
+        repositoryPath: paths.repositoryPath,
+        trustedParentPath: paths.trustedParentPath,
+      }),
+    ).rejects.toThrow("unexpected local Git state");
+    expect(() => statSync(join(paths.repositoryPath, ".git"))).toThrow();
+    expect(readFileSync(baseline.materialization.filesystemPath, "utf8")).toBe(content);
   });
 });

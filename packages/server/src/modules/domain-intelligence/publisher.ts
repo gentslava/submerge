@@ -24,6 +24,7 @@ import { promisify } from "node:util";
 import { parse } from "tldts";
 import {
   type DomainRuleMaterializationResult,
+  materializeCommittedDomainRules,
   reconcileInitialDomainRuleMaterialization,
 } from "./materialization.js";
 import { normalizeObservedFqdn } from "./observer.js";
@@ -101,6 +102,17 @@ export interface ProvisionLocalDomainRuleStoreInput extends LocalRuleRepositoryO
 export interface ProvisionedLocalDomainRuleStore {
   materialization: DomainRuleMaterializationResult;
   repository: LocalRuleRepositoryState;
+}
+
+export interface MaterializeCommittedLocalDomainRuleStoreInput extends LocalRuleRepositoryOptions {
+  committedContentSha256: string;
+  commitSha: string;
+  expectedParent: string;
+  mihomoConfigPath: string;
+  operationId: string;
+  repositoryPath: string;
+  /** @internal Deterministic publication-race injection for materialization tests. */
+  testBeforeMaterializationPublish?: ((filesystemPath: string) => void) | undefined;
 }
 
 export interface LocalRuleRepositoryRecoveryOptions {
@@ -1857,6 +1869,69 @@ export async function provisionLocalDomainRuleStore(
       testBeforeExistingRead: input.testBeforeMaterializationExistingRead,
       testBeforePublish: input.testBeforeMaterializationPublish,
     });
+    const reattested = await validateExistingLocalRuleRepository(
+      context,
+      input.signal,
+      attested.baselineCreated,
+    );
+    if (
+      reattested.head !== attested.head ||
+      reattested.contentSha256 !== attested.contentSha256 ||
+      reattested.content !== attested.content
+    ) {
+      throw new Error("local domain-rule repository changed during materialization");
+    }
+    const { content: _content, ...repository } = reattested;
+    return { materialization, repository };
+  });
+}
+
+export async function materializeCommittedLocalDomainRuleStore(
+  input: MaterializeCommittedLocalDomainRuleStoreInput,
+): Promise<ProvisionedLocalDomainRuleStore> {
+  assertNotAborted(input.signal);
+  assertTrustedGitBinary();
+  if (
+    !OPERATION_ID_PATTERN.test(input.operationId) ||
+    !COMMIT_SHA_PATTERN.test(input.expectedParent) ||
+    !COMMIT_SHA_PATTERN.test(input.commitSha) ||
+    !/^[0-9a-f]{64}$/u.test(input.committedContentSha256) ||
+    input.commitSha === input.expectedParent
+  ) {
+    throw new Error("invalid committed domain-rule materialization input");
+  }
+  const context = resolveRepositoryContext(input.repositoryPath, input.trustedParentPath);
+  return withRepositoryLock(context, async () => {
+    const attested = await validateExistingLocalRuleRepository(context, input.signal, false);
+    if (
+      attested.head !== input.commitSha ||
+      attested.contentSha256 !== input.committedContentSha256
+    ) {
+      throw new Error("unexpected local Git state");
+    }
+    await assertCommit(
+      context.repositoryIdentity.canonicalPath,
+      input.commitSha,
+      input.expectedParent,
+      input.operationId,
+      attested.content,
+      input.signal,
+    );
+    const previousContent = await runLocalGit(
+      context.repositoryIdentity.canonicalPath,
+      ["show", `${input.expectedParent}:custom.txt`],
+      { signal: input.signal },
+    );
+    validateCompleteRuleList(previousContent);
+    assertNotAborted(input.signal);
+    const materialization = materializeCommittedDomainRules({
+      content: attested.content,
+      contentSha256: attested.contentSha256,
+      expectedPreviousContentSha256: sha256(previousContent),
+      mihomoConfigPath: input.mihomoConfigPath,
+      testBeforePublish: input.testBeforeMaterializationPublish,
+    });
+    assertNotAborted(input.signal);
     const reattested = await validateExistingLocalRuleRepository(
       context,
       input.signal,
