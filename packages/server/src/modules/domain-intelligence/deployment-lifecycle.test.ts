@@ -51,7 +51,13 @@ describe("DomainRuleDeploymentLifecycle", () => {
 
   it("does not repeat a successful boot deployment on first availability", async () => {
     const controller = {
-      readCapability: vi.fn(() => ({ mode: "report", apply: { available: false } }) as never),
+      readCapability: vi.fn(
+        () =>
+          ({
+            mode: "report",
+            apply: { available: false, reason: "deployment-report-only" },
+          }) as const,
+      ),
       reconcile: vi.fn(async () => applied),
     };
     const lifecycle = new DomainRuleDeploymentLifecycle(controller);
@@ -60,6 +66,19 @@ describe("DomainRuleDeploymentLifecycle", () => {
 
     await expect(lifecycle.recoverIfNeeded()).resolves.toBeUndefined();
     expect(controller.reconcile).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when the deployment capability shape is stale", async () => {
+    const controller = {
+      readCapability: vi.fn(() => ({ mode: "apply" }) as never),
+      reconcile: vi.fn(async () => applied),
+    };
+    const lifecycle = new DomainRuleDeploymentLifecycle(controller);
+
+    await expect(lifecycle.reconcile()).resolves.toEqual(applied);
+
+    await expect(lifecycle.recoverIfNeeded()).resolves.toEqual(applied);
+    expect(controller.reconcile).toHaveBeenCalledTimes(2);
   });
 
   it("aborts and drains pending store provisioning before shutdown resolves", async () => {

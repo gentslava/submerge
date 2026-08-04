@@ -1,4 +1,7 @@
-import type { DomainIntelligenceDeploymentCapability } from "@submerge/shared";
+import {
+  type DomainIntelligenceDeploymentCapability,
+  domainIntelligenceDeploymentCapabilitySchema,
+} from "@submerge/shared";
 import type { ApplyResult } from "../nodes/service.js";
 
 interface DomainRuleDeploymentLifecycleController {
@@ -61,7 +64,11 @@ export class DomainRuleDeploymentLifecycle {
 
   private requiresRecovery(result: ApplyResult): boolean {
     if (!result.applied || !result.activationVerified) return true;
-    const capability = this.controller.readCapability();
+    const parsed = domainIntelligenceDeploymentCapabilitySchema.safeParse(
+      this.controller.readCapability(),
+    );
+    if (!parsed.success) return true;
+    const capability = parsed.data;
     return capability.mode === "apply" && !capability.apply.available;
   }
 
