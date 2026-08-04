@@ -281,7 +281,7 @@ test("mobile exposes the current auto-rule mode through a compact selector", asy
   ).not.toBeVisible();
   await expect(page.locator(".domain-mode-status")).toHaveCSS(
     "background-color",
-    "rgb(22, 25, 34)",
+    "rgba(0, 0, 0, 0)",
   );
   await modeTrigger.click();
 

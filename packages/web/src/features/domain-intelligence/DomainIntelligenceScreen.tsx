@@ -381,7 +381,11 @@ function ModeCard({
           </p>
         ) : null}
       </div>
-      <div className="domain-mode-status flex shrink-0 flex-col items-end gap-1.5 text-right">
+      <div
+        role="status"
+        aria-label={`${statusLabel}. ${seenToday} доменов сегодня по UTC`}
+        className="domain-mode-status flex shrink-0 flex-col items-end gap-1.5 text-right"
+      >
         <span className="inline-flex items-center gap-2 text-meta font-medium text-text-secondary">
           <span
             aria-hidden="true"
@@ -875,17 +879,17 @@ function CandidateRow({
           <span className="domain-observed-suffix">{observedDomain.suffix}</span>
         </span>
         {item.proposedRule ? (
-          <>
+          <span className="domain-generated-group inline-flex min-w-0 shrink-0 items-center gap-2">
             <ArrowRight aria-hidden="true" size={13} className="shrink-0 text-text-disabled" />
             <code className="domain-generated-rule font-mono text-sub font-semibold text-text-primary">
               {item.proposedRule}
             </code>
-          </>
+          </span>
         ) : null}
         {scopeLabel ? (
           <span
             className={cn(
-              "shrink-0 rounded-full px-[7px] py-0.5 text-micro font-medium",
+              "domain-rule-scope inline-flex shrink-0 items-center rounded-full px-[7px] py-0.5 text-micro font-medium",
               exactOnly ? "bg-slow-bg text-slow" : "bg-hover text-text-secondary",
             )}
           >
@@ -906,6 +910,16 @@ function CandidateRow({
           {exactScopeExplanation(item)}
         </p>
       ) : null}
+      {!exactOnly ? (
+        <span className="domain-candidate-details-hint mt-2 items-center gap-1 text-fine font-medium text-accent-text">
+          {expanded ? "Скрыть" : "Подробнее"}
+          <ChevronDown
+            aria-hidden="true"
+            size={14}
+            className={cn("transition-transform", expanded && "rotate-180")}
+          />
+        </span>
+      ) : null}
     </>
   );
   return (
@@ -921,7 +935,7 @@ function CandidateRow({
           {!exactOnly ? (
             <button
               type="button"
-              aria-label={`Открыть детали ${item.fqdn}`}
+              aria-label={`${expanded ? "Скрыть" : "Открыть"} детали ${item.fqdn}`}
               aria-expanded={expanded}
               onClick={onExpand}
               className="domain-candidate-copy-trigger absolute inset-0 hidden rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -941,17 +955,33 @@ function CandidateRow({
                 Не добавлять
               </Button>
               <Button
+                variant="secondary"
                 size="sm"
                 disabled
+                aria-describedby={`domain-add-state-${item.fqdn}`}
+                className="disabled:border-border-subtle disabled:bg-hover disabled:text-text-disabled disabled:opacity-100 [&_svg]:text-text-disabled"
                 title={
                   !publisherAvailable
-                    ? "Apply не настроен на сервере"
+                    ? "Применение недоступно: DOMAIN_RULES_MODE=report"
                     : "Добавление из интерфейса ещё не подключено"
                 }
               >
-                <Plus aria-hidden="true" size={14} />
-                Добавить
+                {item.status === "confirmed" ? (
+                  <>
+                    <Plus aria-hidden="true" size={14} />
+                    Добавить
+                  </>
+                ) : (
+                  "Проверяется"
+                )}
               </Button>
+              <span id={`domain-add-state-${item.fqdn}`} className="sr-only">
+                {item.status === "confirmed"
+                  ? publisherAvailable
+                    ? "Добавление из интерфейса ещё не подключено"
+                    : "Применение недоступно, пока сервер работает в режиме только отчёта"
+                  : "Добавление станет доступно после завершения проверок"}
+              </span>
             </>
           ) : (
             <ExclusionAction
@@ -1010,7 +1040,13 @@ function CandidateRow({
               Наблюдался один адрес; правило для сайта не возвращает тот же домен кандидатом по
               каждому поддомену. Суффиксы из «Не расширять» остаются точными.
             </p>
-            <Button variant="secondary" size="sm" disabled={recheckPending} onClick={onRecheck}>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={recheckPending}
+              className="shrink-0 whitespace-nowrap"
+              onClick={onRecheck}
+            >
               <RefreshCw aria-hidden="true" size={14} />
               Проверить сейчас
             </Button>

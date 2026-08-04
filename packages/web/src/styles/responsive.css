@@ -83,7 +83,7 @@
 }
 
 .domain-generated-rule {
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .domain-observed-name {
@@ -305,6 +305,10 @@
   display: none;
 }
 
+.domain-candidate-details-hint {
+  display: none;
+}
+
 @container app-page (max-width: 41.999rem) {
   .responsive-page--domain-intelligence .page-header {
     align-items: flex-start;
@@ -346,11 +350,11 @@
   .domain-mode-status {
     align-items: flex-start;
     width: 100%;
-    padding: 0.75rem;
+    padding: 0.25rem 0.125rem 0;
     text-align: left;
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--design-radius-md);
+    background: transparent;
+    border: 0;
+    border-radius: 0;
   }
 
   .domain-mode-segmented {
@@ -401,7 +405,7 @@
   }
 
   .domain-candidate-rule {
-    align-items: flex-start;
+    align-items: center;
     flex-wrap: wrap;
   }
 
@@ -417,16 +421,19 @@
     display: block;
   }
 
-  .domain-candidate-rule > svg {
+  .domain-generated-group {
+    order: 1;
+  }
+
+  .domain-generated-group > svg {
     display: none;
   }
 
-  .domain-candidate-rule > .domain-generated-rule {
-    order: 1;
+  .domain-generated-rule {
     width: auto;
   }
 
-  .domain-candidate-rule > span:last-child {
+  .domain-rule-scope {
     order: 2;
   }
 
@@ -454,6 +461,10 @@
 
   .domain-candidate-copy-trigger {
     display: block;
+  }
+
+  .domain-candidate-details-hint {
+    display: inline-flex;
   }
 
   .domain-candidate-summary--exact {

@@ -333,6 +333,45 @@ describe("DomainIntelligenceScreen", () => {
     expect(screen.queryByRole("button", { name: "Подробнее о app.pages.example" })).toBeNull();
   });
 
+  it("keeps report-mode add actions visibly unavailable", () => {
+    arrange();
+    render(<DomainIntelligenceScreen />);
+
+    const addButton = screen.getAllByRole("button", { name: "Добавить" })[0];
+    expect(addButton).toBeDisabled();
+    expect(addButton).toHaveClass("disabled:opacity-100");
+    expect(addButton).toHaveClass("disabled:text-text-disabled");
+    expect(addButton).toHaveAccessibleDescription(
+      "Применение недоступно, пока сервер работает в режиме только отчёта",
+    );
+  });
+
+  it("separates a pending check from the unavailable add action", () => {
+    const candidate = candidates.items[0];
+    if (!candidate) throw new Error("candidate fixture is missing");
+    arrange();
+    mocks.queryStates.set(
+      "list:candidates",
+      queryState({
+        items: [{ ...candidate, status: "pending" }],
+        nextCursor: null,
+      } satisfies DomainCandidateList),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(screen.getByRole("button", { name: "Проверяется" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Добавить" })).toBeNull();
+    const details = screen.getByRole("button", {
+      name: "Открыть детали www.service.example",
+    });
+    expect(screen.getByText("Подробнее", { exact: true })).toBeInTheDocument();
+    fireEvent.click(details);
+    expect(
+      screen.getByRole("button", { name: "Скрыть детали www.service.example" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Скрыть", { exact: true })).toBeInTheDocument();
+  });
+
   it("uses review mutations for scope and rejection without pretending to apply", () => {
     arrange();
     render(<DomainIntelligenceScreen />);
@@ -340,7 +379,10 @@ describe("DomainIntelligenceScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Подробнее о www.service.example" }));
     expect(document.querySelectorAll(".domain-candidate-detail-row")).toHaveLength(4);
     expect(screen.getByRole("button", { name: "+.service.example" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Проверить сейчас" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Проверить сейчас" })).toHaveClass(
+      "shrink-0",
+      "whitespace-nowrap",
+    );
     fireEvent.click(screen.getByRole("button", { name: "www.service.example" }));
     expect(mocks.mutationStates.get("scope")?.mutate).toHaveBeenCalledWith({
       fqdn: "www.service.example",
