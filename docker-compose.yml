@@ -17,6 +17,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./mihomo:/root/.config/mihomo
+      - ./domain-rules:/root/.config/mihomo/domain-rules:ro
     ports:
       - "127.0.0.1:7890:7890"   # SOCKS5 + HTTP (для клиентов / роутера / matter)
       - "127.0.0.1:9090:9090"   # mihomo API (отладка; submerge ходит внутри сети по http://mihomo:9090)
@@ -42,14 +43,17 @@ services:
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     volumes:
       - ./mihomo:/mihomo            # shared config + hwid.txt (server writes config.yaml)
+      - ./domain-rules:/domain-rules # canonical custom.txt; prepare owner/mode before first start
       - submerge-data:/app/data     # persistent SQLite DB
     ports:
       # Bind to loopback by default. Front it with a TLS reverse-proxy; only set
       # SUBMERGE_BIND=0.0.0.0 if you deliberately expose the port directly.
       - "${SUBMERGE_BIND:-127.0.0.1}:3000:3000"
     depends_on:
-      - mihomo
-      - happ-decoder
+      mihomo:
+        condition: service_started
+      happ-decoder:
+        condition: service_started
 
   happ-decoder:
     image: ghcr.io/gentslava/submerge-happ-decoder:latest

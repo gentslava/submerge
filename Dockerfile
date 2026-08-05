@@ -18,17 +18,14 @@ RUN pnpm --filter @submerge/server deploy --prod --legacy /app/deploy
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends git \
-  && /usr/bin/git --version \
-  && rm -rf /var/lib/apt/lists/*
 # uid/gid pinned to 999: the deploy docs tell Linux hosts to `chown -R 999:999 mihomo`,
 # so the id must not drift with the base image's system-id allocation.
 RUN groupadd --system --gid 999 app && useradd --system --uid 999 --gid app app
 COPY --from=builder /app/deploy ./
 COPY --from=builder /app/packages/web/dist ./web
-RUN mkdir -p /app/data/domain-rules/repository \
-  && chown -R app:app /app/data \
-  && chmod 0700 /app/data /app/data/domain-rules /app/data/domain-rules/repository
+RUN mkdir -p /app/data /domain-rules \
+  && chown -R app:app /app/data /domain-rules \
+  && chmod 0700 /app/data /domain-rules
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV WEB_DIST=/app/web

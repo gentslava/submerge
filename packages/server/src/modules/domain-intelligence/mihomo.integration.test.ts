@@ -32,6 +32,23 @@ async function docker(...args: string[]): Promise<string> {
   return stdout.trim();
 }
 
+async function containerFailureSummary(name: string): Promise<string> {
+  const state = await docker(
+    "inspect",
+    "--format",
+    "status={{.State.Status}} exit={{.State.ExitCode}} error={{json .State.Error}}",
+    name,
+  ).catch(() => "container state unavailable");
+  const logs = await execFile("docker", ["logs", "--tail", "20", name], {
+    encoding: "utf8",
+    timeout: 5_000,
+    maxBuffer: 64 * 1024,
+  })
+    .then(({ stdout, stderr }) => `${stdout}${stderr}`.trim())
+    .catch(() => "container logs unavailable");
+  return `${state}; logs=${logs || "empty"}`;
+}
+
 async function removeResources(): Promise<void> {
   for (const name of createdContainers.reverse()) {
     await docker("rm", "-f", name).catch(() => undefined);
@@ -67,6 +84,28 @@ async function waitForController(port: number, secret: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error("isolated Mihomo controller did not become ready");
+}
+
+async function waitForRuleProvider(
+  port: number,
+  secret: string,
+  expectedRuleCount: number,
+): Promise<{ ruleCount: number; vehicleType?: string }> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const response = await fetch(`http://127.0.0.1:${port}/providers/rules`, {
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as {
+        providers?: Record<string, { ruleCount: number; vehicleType?: string }> | null;
+      };
+      const provider = payload.providers?.["submerge-custom"];
+      if (provider?.ruleCount === expectedRuleCount) return provider;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`managed rule provider did not reach ${expectedRuleCount} rules`);
 }
 
 async function containerIpv4(name: string): Promise<string> {
@@ -262,7 +301,13 @@ it.runIf(runIntegration)(
 
     const listenerPort = mappedPort(await docker("port", mihomoName, "7891/tcp"));
     const controllerPort = mappedPort(await docker("port", mihomoName, "9090/tcp"));
-    await waitForController(controllerPort, controllerSecret);
+    try {
+      await waitForController(controllerPort, controllerSecret);
+    } catch (error) {
+      throw new Error(
+        `${error instanceof Error ? error.message : "mihomo startup failed"}; ${await containerFailureSummary(mihomoName)}`,
+      );
+    }
 
     const missing = await openConnect(listenerPort, targetAddress, null, "missing-auth");
     expect(missing.statusLine).toMatch(/^HTTP\/1\.1 407\b/u);
@@ -295,6 +340,95 @@ it.runIf(runIntegration)(
     });
     expect(connection.chains).toEqual(expect.arrayContaining(["integration-exit", "CUSTOM"]));
     accepted.socket.destroy();
+  },
+  30_000,
+);
+
+it.runIf(runIntegration)(
+  "loads and refreshes the managed file provider from the dedicated read-only mount",
+  async () => {
+    runtimeDir = mkdtempSync(join(tmpdir(), "submerge-domain-provider-integration-"));
+    const mainDir = join(runtimeDir, "main");
+    const rulesDir = join(runtimeDir, "rules");
+    mkdirSync(mainDir);
+    mkdirSync(rulesDir);
+    const controllerSecret = "integration-controller-secret";
+    const providerChannel: ChannelConfigInput = {
+      target: "proxy",
+      id: "default",
+      groupName: "AUTO",
+      isDefault: true,
+      policy: {
+        kind: "manual",
+        pinnedNode: "integration-placeholder",
+        onFailure: "hold",
+      },
+      domains: [],
+      cidrs: [],
+      proxies: [
+        {
+          name: "integration-placeholder",
+          type: "socks5",
+          server: "127.0.0.1",
+          port: 9,
+        },
+      ],
+    };
+    writeFileSync(join(rulesDir, "custom.txt"), "api.service.example\n", "utf8");
+    writeFileSync(
+      join(mainDir, "config.yaml"),
+      buildMultiConfig([providerChannel], controllerSecret, undefined, {
+        targetGroupName: "AUTO",
+      }),
+      "utf8",
+    );
+
+    await docker(
+      "run",
+      "-d",
+      "--pull=never",
+      "--name",
+      mihomoName,
+      "-p",
+      "127.0.0.1::9090",
+      "-v",
+      `${mainDir}:/root/.config/mihomo`,
+      "-v",
+      `${rulesDir}:/root/.config/mihomo/domain-rules:ro`,
+      "metacubex/mihomo:latest",
+      "-d",
+      "/root/.config/mihomo",
+    );
+    createdContainers.push(mihomoName);
+    const controllerPort = mappedPort(await docker("port", mihomoName, "9090/tcp"));
+    try {
+      await waitForController(controllerPort, controllerSecret);
+    } catch (error) {
+      throw new Error(
+        `${error instanceof Error ? error.message : "mihomo startup failed"}; ${await containerFailureSummary(mihomoName)}`,
+      );
+    }
+    const headers = { Authorization: `Bearer ${controllerSecret}` };
+
+    await expect(waitForRuleProvider(controllerPort, controllerSecret, 1)).resolves.toMatchObject({
+      ruleCount: 1,
+      vehicleType: "File",
+    });
+
+    writeFileSync(
+      join(rulesDir, "custom.txt"),
+      "api.service.example\ncdn.service.example\n",
+      "utf8",
+    );
+    const reload = await fetch(`http://127.0.0.1:${controllerPort}/configs?force=true`, {
+      method: "PUT",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "/root/.config/mihomo/config.yaml" }),
+    });
+    expect(reload.ok).toBe(true);
+    await expect(waitForRuleProvider(controllerPort, controllerSecret, 2)).resolves.toMatchObject({
+      ruleCount: 2,
+    });
   },
   30_000,
 );

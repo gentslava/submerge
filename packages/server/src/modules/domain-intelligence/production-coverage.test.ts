@@ -63,15 +63,17 @@ describe("production domain coverage", () => {
     const root = mkdtempSync(join(tmpdir(), "submerge-production-empty-coverage-"));
     roots.push(root);
     mkdirSync(join(root, "providers"));
-    mkdirSync(join(root, "domain-rules"));
+    const managedRuleDirectory = join(root, "separate-rule-volume");
+    mkdirSync(managedRuleDirectory);
     writeFileSync(
-      join(root, "domain-rules", "custom.txt"),
+      join(managedRuleDirectory, "custom.txt"),
       "# BEGIN SUBMERGE MANAGED\n# END SUBMERGE MANAGED\n",
       "utf8",
     );
 
     const snapshot = createProductionDomainCoverageSnapshot({
       channels: channels(),
+      managedRuleDirectory,
       mihomoDirectory: root,
       managedProviderActive: true,
     });
@@ -87,15 +89,17 @@ describe("production domain coverage", () => {
     const root = mkdtempSync(join(tmpdir(), "submerge-production-coverage-"));
     roots.push(root);
     mkdirSync(join(root, "providers"));
-    mkdirSync(join(root, "domain-rules"));
+    const managedRuleDirectory = join(root, "separate-rule-volume");
+    mkdirSync(managedRuleDirectory);
     writeFileSync(
-      join(root, "domain-rules", "custom.txt"),
+      join(managedRuleDirectory, "custom.txt"),
       "+.service.example\napi.exact.example\n",
       "utf8",
     );
 
     const snapshot = createProductionDomainCoverageSnapshot({
       channels: channels(),
+      managedRuleDirectory,
       mihomoDirectory: root,
       managedProviderActive: true,
     });

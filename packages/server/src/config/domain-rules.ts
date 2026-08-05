@@ -22,6 +22,7 @@ export function deriveDomainRulesDeploymentCapability(
 }
 
 let domainRulesDeploymentCapabilitySource: DomainRuleDeploymentProvisioner | null = null;
+let managedDomainRuleProviderActiveSource: (() => boolean) | null = null;
 
 export function readDomainRulesDeploymentCapability(): DomainIntelligenceDeploymentCapability {
   return domainIntelligenceDeploymentCapabilitySchema.parse(
@@ -44,6 +45,22 @@ export function registerDomainRulesDeploymentCapabilitySource(
   return () => {
     if (domainRulesDeploymentCapabilitySource === source) {
       domainRulesDeploymentCapabilitySource = null;
+    }
+  };
+}
+
+export function readManagedDomainRuleProviderActive(): boolean {
+  return managedDomainRuleProviderActiveSource?.() ?? false;
+}
+
+export function registerManagedDomainRuleProviderActiveSource(source: () => boolean): () => void {
+  if (managedDomainRuleProviderActiveSource !== null) {
+    throw new Error("managed domain-rule provider source is already registered");
+  }
+  managedDomainRuleProviderActiveSource = source;
+  return () => {
+    if (managedDomainRuleProviderActiveSource === source) {
+      managedDomainRuleProviderActiveSource = null;
     }
   };
 }

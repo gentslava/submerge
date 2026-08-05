@@ -125,8 +125,7 @@ describe("domain intelligence shared contracts", () => {
           mode: "report",
           apply: {
             available: true,
-            repository: "local",
-            branch: "main",
+            store: "local-file",
             path: "custom.txt",
             providerName: "submerge-custom",
             providerPath: "./domain-rules/custom.txt",
@@ -198,14 +197,27 @@ describe("domain intelligence shared contracts", () => {
         mode: "apply",
         apply: {
           available: true,
-          repository: "local",
-          branch: "main",
+          store: "local-file",
           path: "custom.txt",
           providerName: "submerge-custom",
           providerPath: "./domain-rules/custom.txt",
         },
       }),
-    ).toMatchObject({ mode: "apply", apply: { available: true, repository: "local" } });
+    ).toMatchObject({ mode: "apply", apply: { available: true, store: "local-file" } });
+
+    expect(() =>
+      domainIntelligenceDeploymentCapabilitySchema.parse({
+        mode: "apply",
+        apply: {
+          available: true,
+          store: "local-file",
+          path: "custom.txt",
+          providerName: "submerge-custom",
+          providerPath: "./domain-rules/custom.txt",
+          repository: "local",
+        },
+      }),
+    ).toThrow();
 
     expect(() =>
       domainIntelligenceDeploymentCapabilitySchema.parse({
@@ -218,8 +230,7 @@ describe("domain intelligence shared contracts", () => {
         mode: "report",
         apply: {
           available: true,
-          repository: "local",
-          branch: "main",
+          store: "local-file",
           path: "custom.txt",
           providerName: "submerge-custom",
           providerPath: "./domain-rules/custom.txt",
@@ -332,7 +343,7 @@ describe("domain intelligence shared contracts", () => {
       domainRuleApplyOperationResultSchema.parse({
         operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
         phase: "completed",
-        commitSha: "a".repeat(40),
+        contentSha256: "a".repeat(64),
         activationAttempt: 1,
       }),
     ).toMatchObject({ phase: "completed", activationAttempt: 1 });
@@ -340,7 +351,7 @@ describe("domain intelligence shared contracts", () => {
       domainRuleApplyOperationResultSchema.parse({
         operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
         phase: "queued",
-        commitSha: null,
+        contentSha256: null,
         activationAttempt: 0,
       }),
     ).toMatchObject({ phase: "queued", activationAttempt: 0 });
@@ -348,7 +359,7 @@ describe("domain intelligence shared contracts", () => {
       domainRuleApplyOperationResultSchema.parse({
         operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
         phase: "aborted",
-        commitSha: "a".repeat(40),
+        contentSha256: "a".repeat(64),
         activationAttempt: 0,
       }),
     ).toThrow();

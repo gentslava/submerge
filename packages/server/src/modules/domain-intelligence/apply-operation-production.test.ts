@@ -2,9 +2,10 @@ import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
+import { getSetting } from "../settings/service.js";
 import { DomainRuleOperationDeferredError } from "./apply-errors.js";
 import {
-  finalizeDomainRuleCommit,
+  finalizeDomainRuleWrite,
   listUnfinishedDomainRuleOperations,
   prepareDomainRuleOperation,
 } from "./apply-journal.js";
@@ -13,10 +14,11 @@ import {
   executeDomainRuleOperation,
 } from "./apply-operation.js";
 import { createProductionDomainRuleApplyOperationDependencies } from "./apply-operation-production.js";
+import { DomainRuleStoreError } from "./rule-store.js";
 
 const migrationsFolder = fileURLToPath(new URL("../../../drizzle", import.meta.url));
-const PARENT_SHA = "1".repeat(40);
-const COMMIT_SHA = "2".repeat(40);
+const SOURCE_REVISION = "1".repeat(40);
+const RESULT_REVISION = "2".repeat(40);
 const CONTENT_SHA = "a".repeat(64);
 const NOW = Date.parse("2026-08-05T12:00:00.000Z");
 const operation = {
@@ -25,6 +27,8 @@ const operation = {
 } as Parameters<DomainRuleApplyOperationDependencies["preflightPrepared"]>[0];
 
 function setup() {
+  const db = createDb(":memory:");
+  migrate(db, { migrationsFolder });
   const preflightPrepared = vi.fn(async () => undefined);
   const controller = {
     readCapability: vi.fn(
@@ -33,8 +37,7 @@ function setup() {
           mode: "apply",
           apply: {
             available: true,
-            repository: "local",
-            branch: "main",
+            store: "local-file",
             path: "custom.txt",
             providerName: "submerge-custom",
             providerPath: "./domain-rules/custom.txt",
@@ -46,35 +49,37 @@ function setup() {
       applied: true,
       activationVerified: true,
     })),
+    invalidateManagedProviderActivation: vi.fn(),
   };
   const adapters = {
-    prepareRepositoryDirectories: vi.fn(() => ({
-      repositoryPath: "/data/domain-rules/repository",
-      trustedParentPath: "/data/domain-rules",
-    })),
     attestOperation: vi.fn(async () => ({
-      state: "parent" as const,
-      head: "1".repeat(40),
+      state: "expected" as const,
+      revision: "1".repeat(40),
       contentSha256: "b".repeat(64),
     })),
     commitPrepared: vi.fn(async () => ({
       changed: true,
-      head: "2".repeat(40),
-      parent: "1".repeat(40),
+      revision: "2".repeat(40),
+      previousRevision: "1".repeat(40),
       contentSha256: "a".repeat(64),
     })),
-    materializeCommitted: vi.fn(async () => undefined),
+    attestWritten: vi.fn(async () => ({
+      baselineCreated: false,
+      content: "",
+      contentSha256: "a".repeat(64),
+      revision: "2".repeat(40),
+      ruleCount: 2,
+    })),
   };
   const dependencies = createProductionDomainRuleApplyOperationDependencies(
     {
       controller,
-      databasePath: "/data/submerge.db",
-      mihomoConfigPath: "/mihomo/config.yaml",
+      db,
       preflightPrepared,
     },
     adapters,
   );
-  return { adapters, controller, dependencies, preflightPrepared };
+  return { adapters, controller, db, dependencies, preflightPrepared };
 }
 
 describe("createProductionDomainRuleApplyOperationDependencies", () => {
@@ -98,8 +103,7 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
         mode: "apply",
         apply: {
           available: true,
-          repository: "local",
-          branch: "main",
+          store: "local-file",
           path: "custom.txt",
           providerName: "submerge-custom",
           providerPath: "./domain-rules/custom.txt",
@@ -117,63 +121,77 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
     expect(controller.readCapability).toHaveBeenCalledTimes(2);
   });
 
-  it("passes exact repository paths and journal identity to local adapters", async () => {
-    const { adapters, dependencies, preflightPrepared } = setup();
+  it("passes the canonical file path and journal identity to local adapters", async () => {
+    const { adapters, controller, db, dependencies, preflightPrepared } = setup();
     const signal = new AbortController().signal;
 
     await dependencies.preflightPrepared(operation, signal);
     await dependencies.attestOperation({
       operationId: "manual-add-1",
-      expectedParent: "1".repeat(40),
-      committedContentSha256: "a".repeat(64),
+      expectedSourceRevision: "1".repeat(40),
+      intendedContentSha256: "a".repeat(64),
       signal,
     });
     await dependencies.commitPrepared({
       operationId: "manual-add-1",
-      expectedParent: "1".repeat(40),
+      expectedSourceRevision: "1".repeat(40),
       intendedContentSha256: "a".repeat(64),
       upsertRules: ["+.service.example"],
       deleteRules: [],
       signal,
     });
-    await dependencies.materializeCommitted({
+    await dependencies.attestWritten({
       operationId: "manual-add-1",
-      expectedParent: "1".repeat(40),
-      commitSha: "2".repeat(40),
-      committedContentSha256: "a".repeat(64),
+      revision: "2".repeat(40),
+      contentSha256: "a".repeat(64),
       signal,
     });
 
     expect(preflightPrepared).toHaveBeenCalledWith(operation, signal);
-    expect(adapters.prepareRepositoryDirectories).toHaveBeenCalledWith("/data");
     expect(adapters.attestOperation).toHaveBeenCalledWith({
       operationId: "manual-add-1",
-      expectedParent: "1".repeat(40),
-      committedContentSha256: "a".repeat(64),
-      repositoryPath: "/data/domain-rules/repository",
-      trustedParentPath: "/data/domain-rules",
+      expectedSourceRevision: "1".repeat(40),
+      intendedContentSha256: "a".repeat(64),
+      ruleDirectoryPath: "/domain-rules",
       signal,
     });
     expect(adapters.commitPrepared).toHaveBeenCalledWith({
       operationId: "manual-add-1",
-      expectedParent: "1".repeat(40),
+      expectedSourceRevision: "1".repeat(40),
       intendedContentSha256: "a".repeat(64),
       upsertRules: ["+.service.example"],
       deleteRules: [],
-      repositoryPath: "/data/domain-rules/repository",
-      trustedParentPath: "/data/domain-rules",
+      ruleDirectoryPath: "/domain-rules",
       signal,
     });
-    expect(adapters.materializeCommitted).toHaveBeenCalledWith({
-      operationId: "manual-add-1",
-      expectedParent: "1".repeat(40),
-      commitSha: "2".repeat(40),
-      committedContentSha256: "a".repeat(64),
-      repositoryPath: "/data/domain-rules/repository",
-      trustedParentPath: "/data/domain-rules",
-      mihomoConfigPath: "/mihomo/config.yaml",
+    expect(controller.invalidateManagedProviderActivation).toHaveBeenCalledOnce();
+    expect(adapters.attestWritten).toHaveBeenCalledWith({
+      contentSha256: "a".repeat(64),
+      ruleDirectoryPath: "/domain-rules",
+      revision: "2".repeat(40),
       signal,
     });
+    expect(getSetting(db, "internal.domainRuleStore.v1")).toBe(`sha256:${"a".repeat(64)}`);
+  });
+
+  it("revokes provider readiness when written-file attestation fails", async () => {
+    const { adapters, controller, dependencies } = setup();
+    vi.mocked(adapters.attestWritten).mockRejectedValueOnce(
+      new DomainRuleStoreError(
+        "local-store-reconciliation-required",
+        "local domain-rule source changed",
+      ),
+    );
+
+    await expect(
+      dependencies.attestWritten({
+        operationId: "manual-add-1",
+        revision: RESULT_REVISION,
+        contentSha256: CONTENT_SHA,
+      }),
+    ).rejects.toThrow("local domain-rule source changed");
+
+    expect(controller.invalidateManagedProviderActivation).toHaveBeenCalledOnce();
   });
 
   it("reports success only after reload and the apply capability proof", async () => {
@@ -182,12 +200,33 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
     await expect(
       dependencies.activateCommitted({
         attempt: 1,
-        commitSha: "2".repeat(40),
         operation,
+        revision: "2".repeat(40),
       }),
     ).resolves.toEqual({ outcome: "succeeded" });
-    expect(controller.activateCommittedRules).toHaveBeenCalledOnce();
+    expect(controller.activateCommittedRules).toHaveBeenCalledWith(2);
     expect(controller.readCapability).toHaveBeenCalledTimes(2);
+  });
+
+  it("revokes a stale proof when activation-time file attestation fails", async () => {
+    const { adapters, controller, dependencies } = setup();
+    vi.mocked(adapters.attestWritten).mockRejectedValueOnce(
+      new DomainRuleStoreError(
+        "local-store-reconciliation-required",
+        "local domain-rule source changed before reload",
+      ),
+    );
+
+    await expect(
+      dependencies.activateCommitted({
+        attempt: 1,
+        operation,
+        revision: RESULT_REVISION,
+      }),
+    ).resolves.toEqual({ outcome: "failed", errorCategory: "infrastructure-failure" });
+
+    expect(controller.invalidateManagedProviderActivation).toHaveBeenCalledOnce();
+    expect(controller.activateCommittedRules).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -214,8 +253,8 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
     await expect(
       dependencies.activateCommitted({
         attempt: 1,
-        commitSha: "2".repeat(40),
         operation,
+        revision: "2".repeat(40),
       }),
     ).resolves.toEqual({ outcome: "failed", errorCategory });
   });
@@ -227,14 +266,14 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
     );
 
     await expect(
-      dependencies.activateCommitted({ attempt: 1, commitSha: "2".repeat(40), operation }),
+      dependencies.activateCommitted({ attempt: 1, revision: "2".repeat(40), operation }),
     ).resolves.toEqual({ outcome: "failed", errorCategory: "infrastructure-failure" });
 
     const abort = new AbortController();
     abort.abort();
     await expect(
       dependencies.activateCommitted(
-        { attempt: 2, commitSha: "2".repeat(40), operation },
+        { attempt: 2, revision: "2".repeat(40), operation },
         abort.signal,
       ),
     ).rejects.toMatchObject({ name: "AbortError" });
@@ -249,7 +288,7 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
         id: "manual-add-1",
         idempotencyKey: "manual-add-1",
         action: "manual-add",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "+.service.example",
         ownershipDelta: {
@@ -259,12 +298,12 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
       },
       { clock: () => NOW - 1_000 },
     );
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "manual-add-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => NOW - 500 },
     );
@@ -276,8 +315,6 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
     const dependencies = createProductionDomainRuleApplyOperationDependencies(
       {
         controller,
-        databasePath: "/data/submerge.db",
-        mihomoConfigPath: "/mihomo/config.yaml",
         preflightPrepared: vi.fn(async () => undefined),
       },
       adapters,
@@ -289,8 +326,7 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
     expect(listUnfinishedDomainRuleOperations(db)).toMatchObject([
       { id: "manual-add-1", phase: "committed", activationStatus: "not-started" },
     ]);
-    expect(adapters.prepareRepositoryDirectories).not.toHaveBeenCalled();
-    expect(adapters.materializeCommitted).not.toHaveBeenCalled();
+    expect(adapters.attestWritten).not.toHaveBeenCalled();
     expect(controller.activateCommittedRules).not.toHaveBeenCalled();
   });
 });

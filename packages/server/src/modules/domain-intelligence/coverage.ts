@@ -170,6 +170,16 @@ function safeChildDirectory(mihomoDirectory: string, childName: string): string 
   }
 }
 
+function safeStandaloneDirectory(path: string): string | null {
+  try {
+    const stats = lstatSync(path);
+    if (stats.isSymbolicLink() || !stats.isDirectory()) return null;
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
 function safeProviderDirectory(mihomoDirectory: string): string | null {
   return safeChildDirectory(mihomoDirectory, "providers");
 }
@@ -264,10 +274,10 @@ export interface ManagedDomainRuleProviderSnapshot {
 }
 
 export function materializeManagedDomainRuleProviderSnapshot(
-  mihomoDirectory: string,
+  ruleDirectory: string,
   now: number = Date.now(),
 ): ManagedDomainRuleProviderSnapshot {
-  const directory = safeChildDirectory(mihomoDirectory, "domain-rules");
+  const directory = safeStandaloneDirectory(ruleDirectory);
   const read = directory
     ? readBoundedProvider(join(directory, "custom.txt"), now, MAX_PROVIDER_CONTENT_BYTES, {
         allowEmpty: true,
@@ -277,7 +287,7 @@ export function materializeManagedDomainRuleProviderSnapshot(
   return {
     provider: { content: read?.content ?? null, sourceKind: "custom" },
     isCurrent: () =>
-      directory === safeChildDirectory(mihomoDirectory, "domain-rules") &&
+      directory === safeStandaloneDirectory(ruleDirectory) &&
       read !== null &&
       currentProviderIdentity(read.identity, Date.now(), false),
   };

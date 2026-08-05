@@ -1,5 +1,6 @@
 import { dirname } from "node:path";
 import { getConnections, prepareForcedRouteProof } from "../../clients/mihomo.js";
+import { readManagedDomainRuleProviderActive } from "../../config/domain-rules.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import {
@@ -20,6 +21,7 @@ import {
 import { DomainValidationExecutor } from "./executor.js";
 import type { DomainObservation } from "./observer.js";
 import { probeDirectHttps, probeProxyHttps } from "./probe.js";
+import { DOMAIN_RULE_DIRECTORY_PATH } from "./rule-store.js";
 import {
   countDomainObservationsInWindow,
   getDomainIntelligenceSettingsView,
@@ -103,11 +105,12 @@ export function readProductionDomainCoverage(db: Db, fqdn: string) {
   const { inputs } = collectActiveRoutingInputs(db);
   const view = getDomainIntelligenceSettingsView(db);
   const managedProviderActive =
-    env.DOMAIN_RULES_MODE === "apply" &&
+    readManagedDomainRuleProviderActive() &&
     view.configurationState === "ready" &&
     hasManagedDomainRuleProviderTarget(inputs, view.settings.customTargetChannelId);
   return createProductionDomainCoverageSnapshot({
     channels: inputs,
+    managedRuleDirectory: DOMAIN_RULE_DIRECTORY_PATH,
     mihomoDirectory: dirname(env.MIHOMO_CONFIG_PATH),
     managedProviderActive,
   }).readCoverage(fqdn);
@@ -115,6 +118,7 @@ export function readProductionDomainCoverage(db: Db, fqdn: string) {
 
 export interface ProductionDomainCoverageSnapshotInput {
   channels: readonly ChannelConfigInput[];
+  managedRuleDirectory: string;
   mihomoDirectory: string;
   managedProviderActive: boolean;
 }
@@ -148,7 +152,7 @@ export function createProductionDomainCoverageSnapshot(
 ): ProductionDomainCoverageSnapshot {
   const providers = materializeActiveRuleProviderSnapshot(input.channels, input.mihomoDirectory);
   const managed = input.managedProviderActive
-    ? materializeManagedDomainRuleProviderSnapshot(input.mihomoDirectory)
+    ? materializeManagedDomainRuleProviderSnapshot(input.managedRuleDirectory)
     : null;
   const base = coverageModelFromActiveChannels(input.channels, providers.providers);
   const model = managed ? withManagedProvider(base, managed.provider.content) : base;
@@ -170,11 +174,12 @@ export function createProductionDomainValidationExecutor(
       const routingSignature = JSON.stringify(inputs);
       const view = getDomainIntelligenceSettingsView(db);
       const managedProviderActive =
-        env.DOMAIN_RULES_MODE === "apply" &&
+        readManagedDomainRuleProviderActive() &&
         view.configurationState === "ready" &&
         hasManagedDomainRuleProviderTarget(inputs, view.settings.customTargetChannelId);
       const snapshot = createProductionDomainCoverageSnapshot({
         channels: inputs,
+        managedRuleDirectory: DOMAIN_RULE_DIRECTORY_PATH,
         mihomoDirectory: dirname(env.MIHOMO_CONFIG_PATH),
         managedProviderActive,
       });

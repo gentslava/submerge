@@ -239,8 +239,7 @@ export const domainIntelligenceApplyModeUnavailableReasonSchema = z.enum([
 const domainIntelligenceApplyReadySchema = z
   .object({
     available: z.literal(true),
-    repository: z.literal("local"),
-    branch: z.literal("main"),
+    store: z.literal("local-file"),
     path: z.literal("custom.txt"),
     providerName: z.literal("submerge-custom"),
     providerPath: z.literal("./domain-rules/custom.txt"),
@@ -754,7 +753,7 @@ export const domainCandidateApplyActionInputSchema = z
   .strict();
 export type DomainCandidateApplyActionInput = z.infer<typeof domainCandidateApplyActionInputSchema>;
 
-const domainRuleCommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/u);
+const domainRuleContentSha256Schema = z.string().regex(/^[0-9a-f]{64}$/u);
 const domainRuleActivationAttemptSchema = z.number().int().min(0).max(1_000_000);
 const domainRuleActivationErrorCategorySchema = z.enum([
   "shutdown",
@@ -771,7 +770,7 @@ export const domainRuleApplyOperationResultSchema = z.discriminatedUnion("phase"
     .object({
       operationId: domainRuleOperationIdSchema,
       phase: z.literal("queued"),
-      commitSha: z.null(),
+      contentSha256: z.null(),
       activationAttempt: z.literal(0),
     })
     .strict(),
@@ -779,7 +778,7 @@ export const domainRuleApplyOperationResultSchema = z.discriminatedUnion("phase"
     .object({
       operationId: domainRuleOperationIdSchema,
       phase: z.literal("completed"),
-      commitSha: domainRuleCommitShaSchema,
+      contentSha256: domainRuleContentSha256Schema,
       activationAttempt: domainRuleActivationAttemptSchema.min(1),
     })
     .strict(),
@@ -787,7 +786,7 @@ export const domainRuleApplyOperationResultSchema = z.discriminatedUnion("phase"
     .object({
       operationId: domainRuleOperationIdSchema,
       phase: z.literal("partial"),
-      commitSha: domainRuleCommitShaSchema,
+      contentSha256: domainRuleContentSha256Schema,
       activationAttempt: domainRuleActivationAttemptSchema.min(1),
       errorCategory: domainRuleActivationErrorCategorySchema,
     })
@@ -796,7 +795,7 @@ export const domainRuleApplyOperationResultSchema = z.discriminatedUnion("phase"
     .object({
       operationId: domainRuleOperationIdSchema,
       phase: z.literal("aborted"),
-      commitSha: z.null(),
+      contentSha256: z.null(),
       activationAttempt: z.literal(0),
     })
     .strict(),

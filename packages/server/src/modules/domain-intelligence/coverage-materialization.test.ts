@@ -111,7 +111,7 @@ describe("active provider materialization", () => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "+.service.example\napi.exact.example\n", "utf8");
 
-    const snapshot = materializeManagedDomainRuleProviderSnapshot(root);
+    const snapshot = materializeManagedDomainRuleProviderSnapshot(dirname(path));
     expect(snapshot.provider).toEqual({
       content: "+.service.example\napi.exact.example\n",
       sourceKind: "custom",
@@ -131,7 +131,7 @@ describe("active provider materialization", () => {
     writeFileSync(outside, "must-not-be-read\n", "utf8");
     symlinkSync(outside, join(root, "domain-rules", "custom.txt"));
 
-    const snapshot = materializeManagedDomainRuleProviderSnapshot(root);
+    const snapshot = materializeManagedDomainRuleProviderSnapshot(join(root, "domain-rules"));
     expect(snapshot.provider).toEqual({ content: null, sourceKind: "custom" });
     expect(snapshot.isCurrent()).toBe(false);
   });

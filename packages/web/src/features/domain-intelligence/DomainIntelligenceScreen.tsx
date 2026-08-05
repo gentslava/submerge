@@ -45,13 +45,8 @@ const MODE_DESCRIPTIONS = {
   off: "Submerge не наблюдает домены и не меняет список custom.",
   review:
     "Submerge предлагает правила и ждёт. В custom.txt ничего не попадает без вашего подтверждения.",
-  automatic: "Подтверждённые правила публикуются сами в пределах дневного лимита.",
+  automatic: "Подтверждённые правила добавляются в custom.txt в пределах дневного лимита.",
 } as const;
-
-const REPORT_ONLY_APPLY_READINESS = {
-  available: false,
-  reason: "deployment-report-only",
-} as const satisfies DomainIntelligenceApplyReadiness;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -59,20 +54,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function resolveApplyReadiness(settingsView: unknown): DomainIntelligenceApplyReadiness | null {
   if (!isRecord(settingsView)) return null;
-  if (Object.hasOwn(settingsView, "deployment")) {
-    const parsed = domainIntelligenceDeploymentCapabilitySchema.safeParse(settingsView.deployment);
-    return parsed.success ? parsed.data.apply : null;
-  }
-  const automatic = settingsView.automatic;
-  if (
-    !isRecord(automatic) ||
-    Object.keys(automatic).length !== 2 ||
-    automatic.available !== false ||
-    automatic.reason !== "publisher-unavailable"
-  ) {
-    return null;
-  }
-  return REPORT_ONLY_APPLY_READINESS;
+  const parsed = domainIntelligenceDeploymentCapabilitySchema.safeParse(settingsView.deployment);
+  return parsed.success ? parsed.data.apply : null;
 }
 
 function candidateApplyUnavailableMessage(
@@ -186,8 +169,6 @@ export function DomainIntelligenceScreen() {
   const failed = settingsQuery.isError || overviewQuery.isError;
   const settingsView = settingsQuery.data;
   const overview = overviewQuery.data;
-  // A Vite client can briefly outlive the exact previous server contract during a local
-  // restart. Only that legacy shape falls back; malformed current capabilities stay errors.
   const applyReadiness = resolveApplyReadiness(settingsView);
   const candidateItems = candidatesQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const exclusionItems = exclusionsQuery.data?.pages.flatMap((page) => page.items) ?? [];
@@ -313,7 +294,7 @@ export function DomainIntelligenceScreen() {
             onLoadMoreExclusions={() => void exclusionsQuery.fetchNextPage()}
           />
 
-          <PublisherStatusCard applyReadiness={applyReadiness} />
+          <RuleStoreStatusCard applyReadiness={applyReadiness} />
         </>
       )}
     </div>
@@ -1380,7 +1361,7 @@ function applyActionUnavailableMessage(applyReadiness: DomainIntelligenceApplyRe
   }
 }
 
-function publisherStatusCopy(applyReadiness: DomainIntelligenceApplyReadiness): {
+function ruleStoreStatusCopy(applyReadiness: DomainIntelligenceApplyReadiness): {
   badge: string;
   description: string;
 } {
@@ -1429,12 +1410,12 @@ function publisherStatusCopy(applyReadiness: DomainIntelligenceApplyReadiness): 
   }
 }
 
-function PublisherStatusCard({
+function RuleStoreStatusCard({
   applyReadiness,
 }: {
   applyReadiness: DomainIntelligenceApplyReadiness;
 }) {
-  const copy = publisherStatusCopy(applyReadiness);
+  const copy = ruleStoreStatusCopy(applyReadiness);
   return (
     <section className="flex min-w-0 items-center justify-between gap-4 rounded-lg border border-border-subtle bg-surface px-[18px] py-4">
       <div className="flex min-w-0 flex-col gap-1">

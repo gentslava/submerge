@@ -212,7 +212,7 @@ export function renderDomainIntelligenceMarkdown(report: DomainIntelligenceRepor
       : `Observer: unavailable (${parsed.observer.reason})`,
     `Candidates: ${parsed.counts.buckets.candidate}; exclusions: ${parsed.counts.buckets.exclusion}`,
     parsed.applyReadiness.available
-      ? "Apply: available (private local repository)"
+      ? "Apply: available (local custom.txt)"
       : `Apply: unavailable (${parsed.applyReadiness.reason})`,
     "",
     "## Domains",

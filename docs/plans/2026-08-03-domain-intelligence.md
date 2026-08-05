@@ -8,10 +8,12 @@ as a disabled-by-default Submerge server module. Mihomo is the only observation 
 The work is split into small risk-first and vertical slices so every commit remains
 testable and rollback-friendly.
 
-The publisher ships fail-closed and report mode remains the default. No slice adds live
+The local rule writer ships fail-closed and report mode remains the default. No slice adds live
 credentials, publishes a port, changes the Mihomo log level, enables apply in a deployment,
-or mutates a production rule store during verification. Submerge never receives remote Git
-credentials; optional export is a host-side deployment concern (ADR-0006).
+or mutates a production rule store during verification. Submerge contains no Git runtime,
+repository, remote, or credentials; optional local-to-remote Git replication is a separate
+deployment service, while remote content is staged until a coordinated import API exists
+(ADR-0006).
 
 ## Architecture decisions
 
@@ -274,7 +276,7 @@ credentials; optional export is a host-side deployment concern (ADR-0006).
 - [x] Protected procedures expose health, aggregates, exclusions, candidates, selected
       scopes, evidence summaries, and safe reason codes without raw observations.
 - [x] Review actions support scope selection, rejection, and recheck only; they cannot
-      mutate Git, providers, active config, or channels.
+      mutate the local rule file, providers, active config, or channels.
 
 ### Task 14: Add settings and the report/review screen
 
@@ -319,33 +321,33 @@ credentials; optional export is a host-side deployment concern (ADR-0006).
 **Acceptance criteria:**
 
 - [x] Collect, validate, and report commands share the same service boundaries.
-- [x] Every dry-run leaves all domain/settings/apply SQLite rows and Git, provider, config,
+- [x] Every dry-run leaves all domain/settings/apply SQLite rows and rule-file, provider, config,
       and channel state unchanged; an explicit report artifact/stdout is the sole output.
 - [x] JSON and Markdown output is atomic, sanitized, and available only at the explicit
       protected destination.
 
-### Task 16: Add guarded local Git publication and provider activation
+### Task 16: Add guarded local-file publication and provider activation
 
 **Files:**
 
-- Create `packages/server/src/modules/domain-intelligence/publisher.ts` and its tests
+- Create `packages/server/src/modules/domain-intelligence/rule-store.ts` and its tests
 - Extend the shared settings/actions, protected router, service, and SQLite schema
-- Extend the CLI with the real `--apply` action and its fully non-mutating dry-run path
+- Keep the CLI read-only; expose mutations only through the protected tRPC/UI boundary
 - Add a server-lifecycle-owned durable apply worker outside the validation runtime; the scheduler only
   enqueues after releasing its lease
 - Route activation through the existing serialized, validated config-reload coordinator
-- Extend env/config generation and Compose with the report/apply gate, private repository
-  mount, and read-only Mihomo materialization mount; add Git to the runtime image
+- Extend env/config generation and Compose with the report/apply gate and a dedicated
+  rule volume mounted read-write into Submerge and read-only into Mihomo
 
 **Acceptance criteria:**
 
 - [ ] The managed block update is deterministic and idempotent, preserves every unrelated
-      byte, rejects invalid/duplicate rules, and passes `git diff --check`.
-- [ ] A narrow local Git adapter initializes or accepts only the dedicated Submerge
-      worktree on branch `main` and file `custom.txt`; it creates attested local commits
-      without shell interpolation, hooks, remote access, fetch, push, or force.
+      byte, and rejects invalid/duplicate rules, invalid line endings, and oversized files.
+- [ ] A narrow local-file adapter validates the dedicated volume, coordinates writers,
+      performs expected-digest compare-and-swap, atomically replaces `custom.txt`, and
+      never initializes or invokes Git.
 - [ ] The deployment-only `DOMAIN_RULES_MODE` defaults to `report`; its separate apply
-      provisioning preserves an optional seed, creates the baseline, materializes it,
+      provisioning preserves an optional seed, creates the baseline,
       adds the provider without removing old coverage, and mints readiness only after reload proof.
 - [ ] Candidate apply in both review and automatic modes re-reads `confirmed` plus `active`
       under the global apply lock, rechecks health/coverage/scope/topology, and atomically
@@ -353,8 +355,9 @@ credentials; optional export is a host-side deployment concern (ADR-0006).
 - [ ] Publication force-reloads the stable local `submerge-custom` file-provider, proves
       resulting route coverage, and records partial/success audit without external
       convergence.
-- [ ] A durable prepared-operation journal bridges SQLite and Git; restart/retry attests
-      operation ID, parent, path, blob, ownership, and budget exactly once before resuming.
+- [ ] A durable prepared-operation journal bridges SQLite and the canonical file;
+      restart/retry attests expected or resulting SHA-256, ownership, and budget exactly
+      once before resuming.
 - [ ] Automatic apply enqueue returns before the server-lifecycle worker enters serialized config
       reload; integration tests prove runtime stop/reload/resume cannot wait on its own caller.
 - [ ] Manual add/edit/delete and automatic add use the same pipeline; manual edits transfer
@@ -363,8 +366,8 @@ credentials; optional export is a host-side deployment concern (ADR-0006).
       remain unavailable without explicit deployment readiness and consent revision.
 - [ ] The automatic consent fingerprint is code-owned, covers every safety preference,
       invalidates to review on change, and is required again by the locked preflight.
-- [ ] `--apply --dry-run` leaves candidate, validation, decision, audit, budget, ownership,
-      Git, provider, config, and channel state unchanged.
+- [ ] CLI dry-runs leave candidate, validation, decision, audit, budget, ownership,
+      rule-file, provider, config, and channel state unchanged.
 
 ### Task 17: Complete the apply-aware admin UI
 
@@ -395,13 +398,54 @@ credentials; optional export is a host-side deployment concern (ADR-0006).
 - [ ] Populated, empty, degraded, error, collapsed, long-FQDN, and scope states match the
       approved Pencil frames at the required desktop and responsive widths.
 - [ ] The runbook covers install, report-only use, apply prerequisites, enablement,
-      dry-run, retry, uninstall, normal local Git revert rollback, provider re-verification,
-      and an optional host-side remote-export recipe.
+      dry-run, retry, uninstall, explicit-backup recovery, provider re-verification, and
+      the separate synchronizer boundary.
 - [ ] Migration backs up existing config/lists, supports an exact byte-preserving seed,
       adds the local provider without removing old coverage, requires equivalence proof
       before old-provider removal, and documents fail-closed rollback.
 - [ ] Verification uses mocks/reserved domains only and never enables or executes
       production apply.
+
+## Phase 4 — remove Git from the Submerge boundary
+
+### Task 19: Replace Git audit identities with content digests
+
+**Files:** shared domain-intelligence contract, Drizzle schema/migration, apply journal,
+operation service, and focused tests.
+
+**Acceptance criteria:**
+
+- [ ] Public and persisted apply results expose resulting content SHA-256 rather than a
+      Git commit SHA.
+- [ ] Prepared operations record expected and intended content SHA-256; successful writes
+      record the resulting SHA-256 and preserve idempotent ownership/budget accounting.
+- [ ] Existing branch databases migrate without losing operation audit rows.
+
+### Task 20: Replace the repository publisher with a plain local rule store
+
+**Files:** rule-store adapter/tests, production deployment/apply wiring, Dockerfile.
+
+**Acceptance criteria:**
+
+- [ ] Submerge provisions, reads, validates, and atomically replaces only canonical
+      `custom.txt` in the dedicated rule volume.
+- [ ] Expected-digest races and unsafe paths fail closed without overwriting external
+      changes; interrupted operations reconcile from SQLite plus file digests.
+- [ ] The runtime image does not install or execute Git and no production module imports
+      child-process Git code.
+
+### Task 21: Align deployment, UI, and external-sync documentation
+
+**Files:** Compose/env template, protected capability/UI copy, ADR/spec/runbook and tests.
+
+**Acceptance criteria:**
+
+- [ ] Apply readiness describes a local file, never a repository/branch/commit.
+- [ ] Compose declares a dedicated rule volume with Submerge read-write and Mihomo
+      read-only mounts; no Git credential or remote enters Submerge.
+- [ ] Documentation assigns clone/fetch/merge/commit/push and conflict handling to a
+      separate optional synchronization service. Live replication is local-to-remote only;
+      inbound changes remain offline until a coordinated import API exists.
 
 ### Final checkpoint
 
@@ -414,7 +458,7 @@ credentials; optional export is a host-side deployment concern (ADR-0006).
 
 - Automatic cleanup/removal policy for rules that later become unnecessary.
 - Adoption of pre-existing rules outside the Submerge-managed block.
-- Any production mount, provider, mode, or optional host-export credential change.
+- Any production mount, provider, mode, or optional synchronizer credential change.
 
 ## Risks and mitigations
 

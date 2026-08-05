@@ -1,6 +1,7 @@
-import { dirname } from "node:path";
 import { domainIntelligenceDeploymentCapabilitySchema } from "@submerge/shared";
+import type { Db } from "../../db/client.js";
 import type { ApplyResult } from "../nodes/service.js";
+import { setSetting } from "../settings/service.js";
 import { DomainRuleOperationDeferredError } from "./apply-errors.js";
 import type {
   DomainRuleActivationOutcome,
@@ -8,38 +9,42 @@ import type {
 } from "./apply-operation.js";
 import {
   attestLocalDomainRuleOperationState,
+  attestWrittenLocalDomainRuleStore,
   commitPreparedDomainRuleMutation,
-  materializeCommittedLocalDomainRuleStore,
-  prepareLocalRuleRepositoryDirectories,
-} from "./publisher.js";
+  DOMAIN_RULE_DIRECTORY_PATH,
+} from "./rule-store.js";
 
 type DomainRuleOperation = Parameters<DomainRuleApplyOperationDependencies["preflightPrepared"]>[0];
 
 export interface ProductionDomainRuleApplyController {
-  activateCommittedRules: () => Promise<ApplyResult>;
+  activateCommittedRules: (expectedProviderRuleCount: number) => Promise<ApplyResult>;
+  invalidateManagedProviderActivation: () => void;
   readCapability: () => unknown;
 }
 
 export interface ProductionDomainRuleApplyOperationInput {
   controller: ProductionDomainRuleApplyController;
-  databasePath: string;
-  mihomoConfigPath: string;
+  db: Db;
   preflightPrepared: (operation: DomainRuleOperation, signal?: AbortSignal) => Promise<void>;
 }
 
 export interface ProductionDomainRuleApplyOperationAdapters {
-  prepareRepositoryDirectories: typeof prepareLocalRuleRepositoryDirectories;
   attestOperation: typeof attestLocalDomainRuleOperationState;
+  attestWritten: typeof attestWrittenLocalDomainRuleStore;
   commitPrepared: typeof commitPreparedDomainRuleMutation;
-  materializeCommitted: typeof materializeCommittedLocalDomainRuleStore;
 }
 
 const productionAdapters: ProductionDomainRuleApplyOperationAdapters = {
-  prepareRepositoryDirectories: prepareLocalRuleRepositoryDirectories,
   attestOperation: attestLocalDomainRuleOperationState,
+  attestWritten: attestWrittenLocalDomainRuleStore,
   commitPrepared: commitPreparedDomainRuleMutation,
-  materializeCommitted: materializeCommittedLocalDomainRuleStore,
 };
+
+const LOCAL_RULE_STORE_MARKER_KEY = "internal.domainRuleStore.v1";
+
+function recordCanonicalDigest(db: Db, contentSha256: string): void {
+  setSetting(db, LOCAL_RULE_STORE_MARKER_KEY, `sha256:${contentSha256}`);
+}
 
 function readApplyCapability(controller: ProductionDomainRuleApplyController) {
   const capability = domainIntelligenceDeploymentCapabilitySchema.safeParse(
@@ -85,8 +90,6 @@ export function createProductionDomainRuleApplyOperationDependencies(
   input: ProductionDomainRuleApplyOperationInput,
   adapters: ProductionDomainRuleApplyOperationAdapters = productionAdapters,
 ): DomainRuleApplyOperationDependencies {
-  const repositoryPaths = () => adapters.prepareRepositoryDirectories(dirname(input.databasePath));
-
   return {
     assertExecutionAllowed: (signal) => {
       signal?.throwIfAborted();
@@ -103,32 +106,50 @@ export function createProductionDomainRuleApplyOperationDependencies(
       assertApplyMode(input.controller);
       return adapters.attestOperation({
         ...operation,
-        ...repositoryPaths(),
+        ruleDirectoryPath: DOMAIN_RULE_DIRECTORY_PATH,
       });
     },
-    commitPrepared: (operation) => {
+    commitPrepared: async (operation) => {
       assertApplyMode(input.controller);
-      return adapters.commitPrepared({
+      input.controller.invalidateManagedProviderActivation();
+      const written = await adapters.commitPrepared({
         ...operation,
-        ...repositoryPaths(),
+        ruleDirectoryPath: DOMAIN_RULE_DIRECTORY_PATH,
       });
+      recordCanonicalDigest(input.db, written.contentSha256);
+      return written;
     },
-    materializeCommitted: async (operation) => {
+    attestWritten: async (operation) => {
       assertApplyMode(input.controller);
-      await adapters.materializeCommitted({
-        ...operation,
-        ...repositoryPaths(),
-        mihomoConfigPath: input.mihomoConfigPath,
-      });
+      try {
+        const state = await adapters.attestWritten({
+          contentSha256: operation.contentSha256,
+          ruleDirectoryPath: DOMAIN_RULE_DIRECTORY_PATH,
+          revision: operation.revision,
+          ...(operation.signal === undefined ? {} : { signal: operation.signal }),
+        });
+        recordCanonicalDigest(input.db, state.contentSha256);
+      } catch (error) {
+        input.controller.invalidateManagedProviderActivation();
+        throw error;
+      }
     },
-    activateCommitted: async (_operation, signal) => {
+    activateCommitted: async (operation, signal) => {
       signal?.throwIfAborted();
       assertApplyMode(input.controller);
       let result: ApplyResult;
       try {
-        result = await input.controller.activateCommittedRules();
+        const attested = await adapters.attestWritten({
+          contentSha256: operation.operation.resultingContentSha256 ?? "",
+          ruleDirectoryPath: DOMAIN_RULE_DIRECTORY_PATH,
+          revision: operation.revision,
+          ...(signal === undefined ? {} : { signal }),
+        });
+        signal?.throwIfAborted();
+        result = await input.controller.activateCommittedRules(attested.ruleCount);
         signal?.throwIfAborted();
       } catch (error) {
+        input.controller.invalidateManagedProviderActivation();
         if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
         return { outcome: "failed", errorCategory: "infrastructure-failure" };
       }

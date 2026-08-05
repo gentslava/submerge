@@ -6,7 +6,7 @@ import {
 import { deriveDomainRulesDeploymentCapability } from "../../config/domain-rules.js";
 import type { Env } from "../../config/env.js";
 import type { ManagedDomainRuleActivationProof } from "./activation.js";
-import { DomainRuleMaterializationError } from "./materialization.js";
+import { DomainRuleStoreError } from "./rule-store.js";
 
 type DomainRuleStoreFailureReason = Extract<
   DomainIntelligenceApplyUnavailableReason,
@@ -41,8 +41,7 @@ const READY_CAPABILITY: DomainIntelligenceDeploymentCapability =
     mode: "apply",
     apply: {
       available: true,
-      repository: "local",
-      branch: "main",
+      store: "local-file",
       path: "custom.txt",
       providerName: "submerge-custom",
       providerPath: "./domain-rules/custom.txt",
@@ -59,7 +58,7 @@ function unavailableCapability(
 }
 
 function storeFailureReason(error: unknown): DomainRuleStoreFailureReason {
-  if (error instanceof DomainRuleMaterializationError) return error.reason;
+  if (error instanceof DomainRuleStoreError) return error.reason;
   if (error instanceof DomainRuleProvisioningError) {
     switch (error.reason) {
       case "local-store-unavailable":

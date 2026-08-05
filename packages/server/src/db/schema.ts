@@ -524,7 +524,7 @@ export interface DomainRuleOwnershipDeltaJson {
   deletes: string[];
 }
 
-// Durable bridge between SQLite intent and the attested local Git commit. Audit
+// Durable bridge between SQLite intent and the attested local file write. Audit
 // rows are retained independently from the 14-day observation/evidence window.
 export const domainRuleOperations = sqliteTable(
   "domain_rule_operations",
@@ -533,9 +533,9 @@ export const domainRuleOperations = sqliteTable(
     idempotencyKey: text("idempotency_key").notNull().unique(),
     action: text("action").$type<DomainRuleOperationAction>().notNull(),
     phase: text("phase").$type<DomainRuleOperationPhase>().notNull().default("prepared"),
-    rollbackTargetCommit: text("rollback_target_commit"),
+    rollbackTargetRevision: text("rollback_target_commit"),
     candidateFqdn: text("candidate_fqdn"),
-    expectedParentCommit: text("expected_parent_commit").notNull(),
+    expectedSourceRevision: text("expected_parent_commit").notNull(),
     intendedContentSha256: text("intended_content_sha256").notNull(),
     proposedRule: text("proposed_rule"),
     ownershipDelta: text("ownership_delta", { mode: "json" })
@@ -545,8 +545,8 @@ export const domainRuleOperations = sqliteTable(
     automaticConsentRevision: text("automatic_consent_revision"),
     automaticBudgetDay: text("automatic_budget_day"),
     automaticBudgetSlots: integer("automatic_budget_slots").notNull().default(0),
-    commitSha: text("commit_sha"),
-    committedContentSha256: text("committed_content_sha256"),
+    resultingRevision: text("commit_sha"),
+    resultingContentSha256: text("committed_content_sha256"),
     activationStatus: text("activation_status", {
       enum: ["not-started", "in-progress", "succeeded", "failed"],
     })
@@ -577,7 +577,7 @@ export const domainRuleOperations = sqliteTable(
     ),
     check(
       "domain_rule_operations_rollback_target_check",
-      sql`(${t.action} = 'rollback' and ${t.rollbackTargetCommit} is not null and length(${t.rollbackTargetCommit}) = 40) or (${t.action} != 'rollback' and ${t.rollbackTargetCommit} is null)`,
+      sql`(${t.action} = 'rollback' and ${t.rollbackTargetRevision} is not null and length(${t.rollbackTargetRevision}) = 40) or (${t.action} != 'rollback' and ${t.rollbackTargetRevision} is null)`,
     ),
     check(
       "domain_rule_operations_candidate_length_check",
@@ -585,7 +585,7 @@ export const domainRuleOperations = sqliteTable(
     ),
     check(
       "domain_rule_operations_parent_length_check",
-      sql`length(${t.expectedParentCommit}) = 40`,
+      sql`length(${t.expectedSourceRevision}) = 40`,
     ),
     check(
       "domain_rule_operations_intended_digest_length_check",
@@ -609,11 +609,11 @@ export const domainRuleOperations = sqliteTable(
     ),
     check(
       "domain_rule_operations_commit_pair_check",
-      sql`(${t.commitSha} is null and ${t.committedContentSha256} is null) or (${t.commitSha} is not null and ${t.committedContentSha256} is not null and length(${t.commitSha}) = 40 and length(${t.committedContentSha256}) = 64)`,
+      sql`(${t.resultingRevision} is null and ${t.resultingContentSha256} is null) or (${t.resultingRevision} is not null and ${t.resultingContentSha256} is not null and length(${t.resultingRevision}) = 40 and length(${t.resultingContentSha256}) = 64)`,
     ),
     check(
       "domain_rule_operations_phase_commit_check",
-      sql`(${t.phase} in ('prepared', 'aborted') and ${t.commitSha} is null) or (${t.phase} in ('committed', 'activating', 'completed', 'partial') and ${t.commitSha} is not null) or ${t.phase} = 'reconciliation-required'`,
+      sql`(${t.phase} in ('prepared', 'aborted') and ${t.resultingRevision} is null) or (${t.phase} in ('committed', 'activating', 'completed', 'partial') and ${t.resultingRevision} is not null) or ${t.phase} = 'reconciliation-required'`,
     ),
     check(
       "domain_rule_operations_activation_shape_check",
@@ -632,9 +632,7 @@ export const domainRuleOperations = sqliteTable(
       sql`(${t.phase} in ('completed', 'aborted', 'reconciliation-required') and ${t.completedAt} is not null) or (${t.phase} not in ('completed', 'aborted', 'reconciliation-required') and ${t.completedAt} is null)`,
     ),
     index("domain_rule_operations_recovery_idx").on(t.phase, t.createdAt),
-    uniqueIndex("domain_rule_operations_commit_unique_idx")
-      .on(t.commitSha)
-      .where(sql`${t.commitSha} is not null`),
+    index("domain_rule_operations_revision_idx").on(t.resultingRevision),
   ],
 );
 
@@ -664,8 +662,8 @@ export const domainAutomaticConsents = sqliteTable(
   ],
 );
 
-// Reservations and consumption are separate so a pre-commit abort can release
-// its slot while a committed operation consumes it even if activation is partial.
+// Reservations and consumption are separate so a pre-write abort can release
+// its slot while a written operation consumes it even if activation is partial.
 export const domainAutomaticBudgets = sqliteTable(
   "domain_automatic_budgets",
   {
@@ -686,7 +684,7 @@ export const domainAutomaticBudgets = sqliteTable(
 );
 
 // Current mutable ownership read model. The immutable operation row keeps the
-// ownership delta and commit audit after an edit or delete replaces this row.
+// ownership delta and content-revision audit after an edit or delete replaces this row.
 export const domainRuleOwnership = sqliteTable(
   "domain_rule_ownership",
   {
@@ -695,14 +693,14 @@ export const domainRuleOwnership = sqliteTable(
     operationId: text("operation_id")
       .notNull()
       .references(() => domainRuleOperations.id),
-    commitSha: text("commit_sha").notNull(),
+    resultingRevision: text("commit_sha").notNull(),
     createdAt: integer("created_at").notNull(),
     updatedAt: integer("updated_at").notNull(),
   },
   (t) => [
     check("domain_rule_ownership_rule_length_check", sql`length(${t.rule}) between 3 and 255`),
     check("domain_rule_ownership_kind_check", sql`${t.ownership} in ('automatic', 'manual')`),
-    check("domain_rule_ownership_commit_length_check", sql`length(${t.commitSha}) = 40`),
+    check("domain_rule_ownership_commit_length_check", sql`length(${t.resultingRevision}) = 40`),
     check(
       "domain_rule_ownership_timestamp_check",
       sql`${t.createdAt} between 0 and ${MAX_DATE_SQL} and ${t.updatedAt} between ${t.createdAt} and ${MAX_DATE_SQL}`,

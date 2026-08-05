@@ -20,7 +20,6 @@ import {
   validateDomainCandidateDryRun,
 } from "./domain-intelligence-cli.js";
 import { fingerprintObservation } from "./modules/domain-intelligence/observer.js";
-import { LocalGitCommandError } from "./modules/domain-intelligence/publisher.js";
 import type { DomainIntelligenceReport } from "./modules/domain-intelligence/report.js";
 import type { DomainValidationExecution } from "./modules/domain-intelligence/scheduler.js";
 import {
@@ -75,7 +74,6 @@ function deps(): DomainIntelligenceCliDeps {
       connectionCount: 3,
       eligibleObservationCount: 2,
     })),
-    recoverPublisherLock: vi.fn(async () => true),
     validateDryRun: vi.fn(async () => ({
       action: "validate",
       dryRun: true,
@@ -113,51 +111,12 @@ describe("domain intelligence CLI", () => {
     );
   });
 
-  it("accepts explicit publisher-lock recovery without pretending it is a dry-run", () => {
-    expect(parseDomainIntelligenceCliArgs(["--recover-publisher-lock"])).toEqual({
-      action: "recover-publisher-lock",
-      dryRun: false,
-    });
-    expect(() => parseDomainIntelligenceCliArgs(["--recover-publisher-lock", "--dry-run"])).toThrow(
-      "publisher-lock recovery cannot be a dry-run",
-    );
-  });
-
-  it("runs explicit publisher-lock recovery and reports only whether anything changed", async () => {
-    const services = deps();
-
-    await runDomainIntelligenceCli(["--recover-publisher-lock"], services);
-
-    expect(services.recoverPublisherLock).toHaveBeenCalledOnce();
-    expect(services.collectSnapshotDryRun).not.toHaveBeenCalled();
-    expect(services.validateDryRun).not.toHaveBeenCalled();
-    expect(services.readReport).not.toHaveBeenCalled();
-    expect(services.writeStdout).toHaveBeenCalledWith(
-      '{"action":"recover-publisher-lock","recovered":true}\n',
-    );
-  });
-
   it("does not echo unexpected error details to stderr", () => {
     expect(
       formatDomainIntelligenceCliError(
         new Error("token=private-secret for api.private-report.example"),
       ),
     ).toBe("domain intelligence command failed");
-  });
-
-  it("reports only allow-listed publisher recovery reasons", () => {
-    expect(
-      formatDomainIntelligenceCliError(new Error("local domain-rule repository is busy")),
-    ).toBe("local domain-rule repository is busy");
-    expect(
-      formatDomainIntelligenceCliError(new LocalGitCommandError("config", "exit", 1, null)),
-    ).toBe("local Git config failed (exit)");
-    expect(formatDomainIntelligenceCliError(new Error("unsafe local baseline staging state"))).toBe(
-      "unsafe local baseline staging state",
-    );
-    expect(formatDomainIntelligenceCliError(new Error("token=private-secret"))).toBe(
-      "domain intelligence command failed",
-    );
   });
 
   it("runs collection through the non-persisting boundary", async () => {
@@ -192,10 +151,10 @@ describe("domain intelligence CLI", () => {
     );
   });
 
-  it("fails closed for apply until the publisher slice exists", async () => {
+  it("rejects mutating apply because the CLI is diagnostics-only", async () => {
     const services = deps();
     await expect(runDomainIntelligenceCli(["--apply", "--dry-run"], services)).rejects.toEqual(
-      new DomainIntelligenceCliError("publisher-unavailable"),
+      new DomainIntelligenceCliError("invalid-arguments"),
     );
     expect(services.collectSnapshotDryRun).not.toHaveBeenCalled();
     expect(services.validateDryRun).not.toHaveBeenCalled();

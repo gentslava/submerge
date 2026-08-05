@@ -18,7 +18,7 @@ import {
   beginDomainRuleActivation,
   buildDomainAutomaticConsentRevision,
   completeDomainRuleActivation,
-  finalizeDomainRuleCommit,
+  finalizeDomainRuleWrite,
   prepareDomainRuleOperation,
 } from "./apply-journal.js";
 import {
@@ -26,11 +26,11 @@ import {
   DomainRuleOperationReconciliationError,
   executeDomainRuleOperation,
 } from "./apply-operation.js";
-import { DomainRuleMaterializationError } from "./materialization.js";
+import { DomainRuleStoreError } from "./rule-store.js";
 
 const migrationsFolder = fileURLToPath(new URL("../../../drizzle", import.meta.url));
-const PARENT_SHA = "1".repeat(40);
-const COMMIT_SHA = "2".repeat(40);
+const SOURCE_REVISION = "1".repeat(40);
+const RESULT_REVISION = "2".repeat(40);
 const CONTENT_SHA = "a".repeat(64);
 const NOW = Date.parse("2026-08-05T12:00:00.000Z");
 
@@ -47,7 +47,7 @@ function prepareManual(db: Db, id = "manual-add-1") {
       id,
       idempotencyKey: id,
       action: "manual-add",
-      expectedParentCommit: PARENT_SHA,
+      expectedSourceRevision: SOURCE_REVISION,
       intendedContentSha256: CONTENT_SHA,
       proposedRule: "+.service.example",
       ownershipDelta: {
@@ -126,7 +126,7 @@ function prepareAutomatic(db: Db, id = "automatic-add-1") {
       idempotencyKey: id,
       action: "automatic-add",
       candidateFqdn: "api.service.example",
-      expectedParentCommit: PARENT_SHA,
+      expectedSourceRevision: SOURCE_REVISION,
       intendedContentSha256: CONTENT_SHA,
       proposedRule: "+.service.example",
       ownershipDelta: {
@@ -148,19 +148,19 @@ function successfulDependencies(events: string[] = []): DomainRuleApplyOperation
     }),
     attestOperation: vi.fn(async () => {
       events.push("attest");
-      return { state: "parent", head: PARENT_SHA, contentSha256: "b".repeat(64) };
+      return { state: "expected", revision: SOURCE_REVISION, contentSha256: "b".repeat(64) };
     }),
     commitPrepared: vi.fn(async () => {
-      events.push("commit");
+      events.push("write");
       return {
         changed: true,
-        head: COMMIT_SHA,
-        parent: PARENT_SHA,
+        revision: RESULT_REVISION,
+        previousRevision: SOURCE_REVISION,
         contentSha256: CONTENT_SHA,
       };
     }),
-    materializeCommitted: vi.fn(async () => {
-      events.push("materialize");
+    attestWritten: vi.fn(async () => {
+      events.push("attest-written");
     }),
     activateCommitted: vi.fn(async () => {
       events.push("activate");
@@ -178,7 +178,7 @@ function row(db: Db, operationId: string) {
 }
 
 describe("executeDomainRuleOperation", () => {
-  it("commits, finalizes, materializes, activates, and completes one prepared operation", async () => {
+  it("writes, finalizes, attests, activates, and completes one prepared operation", async () => {
     const db = migratedDb();
     prepareManual(db);
     const events: string[] = [];
@@ -189,15 +189,23 @@ describe("executeDomainRuleOperation", () => {
     ).resolves.toEqual({
       operationId: "manual-add-1",
       phase: "completed",
-      commitSha: COMMIT_SHA,
+      contentSha256: CONTENT_SHA,
       activationAttempt: 1,
     });
 
-    expect(events).toEqual(["allowed", "attest", "preflight", "commit", "materialize", "activate"]);
+    expect(events).toEqual([
+      "allowed",
+      "attest",
+      "preflight",
+      "write",
+      "attest-written",
+      "activate",
+      "attest-written",
+    ]);
     expect(dependencies.commitPrepared).toHaveBeenCalledWith(
       expect.objectContaining({
         operationId: "manual-add-1",
-        expectedParent: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         upsertRules: ["+.service.example"],
         deleteRules: [],
@@ -205,7 +213,7 @@ describe("executeDomainRuleOperation", () => {
     );
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "completed",
-      commitSha: COMMIT_SHA,
+      resultingRevision: RESULT_REVISION,
       activationStatus: "succeeded",
       activationAttemptCount: 1,
     });
@@ -213,11 +221,11 @@ describe("executeDomainRuleOperation", () => {
       rule: "+.service.example",
       ownership: "manual",
       operationId: "manual-add-1",
-      commitSha: COMMIT_SHA,
+      resultingRevision: RESULT_REVISION,
     });
   });
 
-  it("recovers a commit whose Git CAS completed before SQLite finalization", async () => {
+  it("recovers a file write that completed before SQLite finalization", async () => {
     const db = migratedDb();
     prepareManual(db);
     const events: string[] = [];
@@ -225,25 +233,25 @@ describe("executeDomainRuleOperation", () => {
     vi.mocked(dependencies.attestOperation).mockImplementation(async () => {
       events.push("attest");
       return {
-        state: "committed",
-        head: COMMIT_SHA,
-        parent: PARENT_SHA,
+        state: "written",
+        revision: RESULT_REVISION,
+        previousRevision: SOURCE_REVISION,
         contentSha256: CONTENT_SHA,
       };
     });
 
     await executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW });
 
-    expect(events).toEqual(["allowed", "attest", "materialize", "activate"]);
+    expect(events).toEqual(["allowed", "attest", "attest-written", "activate", "attest-written"]);
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "completed",
-      commitSha: COMMIT_SHA,
-      committedContentSha256: CONTENT_SHA,
+      resultingRevision: RESULT_REVISION,
+      resultingContentSha256: CONTENT_SHA,
     });
   });
 
-  it("rechecks automatic consent after preflight and before Git", async () => {
+  it("rechecks automatic consent after preflight and before the local write", async () => {
     const db = migratedDb();
     prepareAutomatic(db);
     const dependencies = successfulDependencies();
@@ -259,7 +267,7 @@ describe("executeDomainRuleOperation", () => {
     ).resolves.toMatchObject({ phase: "aborted" });
 
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
-    expect(row(db, "automatic-add-1")).toMatchObject({ phase: "aborted", commitSha: null });
+    expect(row(db, "automatic-add-1")).toMatchObject({ phase: "aborted", resultingRevision: null });
     expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
       reservedSlots: 0,
       consumedSlots: 0,
@@ -267,7 +275,7 @@ describe("executeDomainRuleOperation", () => {
     expect(db.select().from(domainRuleOwnership).all()).toEqual([]);
   });
 
-  it("consumes the automatic reservation only after a successful local commit", async () => {
+  it("consumes the automatic reservation only after a successful local write", async () => {
     const db = migratedDb();
     prepareAutomatic(db);
 
@@ -287,9 +295,7 @@ describe("executeDomainRuleOperation", () => {
     const db = migratedDb();
     prepareAutomatic(db);
     const firstDependencies = successfulDependencies();
-    vi.mocked(firstDependencies.materializeCommitted).mockRejectedValue(
-      new Error("disk unavailable"),
-    );
+    vi.mocked(firstDependencies.attestWritten).mockRejectedValue(new Error("disk unavailable"));
 
     await expect(
       executeDomainRuleOperation(db, "automatic-add-1", firstDependencies, { clock: () => NOW }),
@@ -316,51 +322,51 @@ describe("executeDomainRuleOperation", () => {
     ).toHaveLength(2);
   });
 
-  it("rejects a fresh commit that aliases its prepared parent", async () => {
+  it("rejects a fresh write that aliases its prepared parent", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
     vi.mocked(dependencies.commitPrepared).mockResolvedValue({
       changed: true,
-      head: PARENT_SHA,
-      parent: PARENT_SHA,
+      revision: SOURCE_REVISION,
+      previousRevision: SOURCE_REVISION,
       contentSha256: CONTENT_SHA,
     });
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("domain-rule committed result does not match prepared intent");
-    expect(row(db, "manual-add-1")).toMatchObject({ phase: "prepared", commitSha: null });
+    ).rejects.toThrow("domain-rule written result does not match prepared intent");
+    expect(row(db, "manual-add-1")).toMatchObject({ phase: "prepared", resultingRevision: null });
     expect(db.select().from(domainRuleOwnership).all()).toEqual([]);
-    expect(dependencies.materializeCommitted).not.toHaveBeenCalled();
+    expect(dependencies.attestWritten).not.toHaveBeenCalled();
   });
 
-  it("rejects a fresh publisher result that did not create a child commit", async () => {
+  it("rejects a fresh rule-store result that did not advance the source revision", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
     vi.mocked(dependencies.commitPrepared).mockResolvedValue({
       changed: false,
-      head: COMMIT_SHA,
-      parent: PARENT_SHA,
+      revision: RESULT_REVISION,
+      previousRevision: SOURCE_REVISION,
       contentSha256: CONTENT_SHA,
     });
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("domain-rule committed result does not match prepared intent");
-    expect(row(db, "manual-add-1")).toMatchObject({ phase: "prepared", commitSha: null });
+    ).rejects.toThrow("domain-rule written result does not match prepared intent");
+    expect(row(db, "manual-add-1")).toMatchObject({ phase: "prepared", resultingRevision: null });
     expect(db.select().from(domainRuleOwnership).all()).toEqual([]);
-    expect(dependencies.materializeCommitted).not.toHaveBeenCalled();
+    expect(dependencies.attestWritten).not.toHaveBeenCalled();
   });
 
-  it("rejects malformed attestation discriminants before preflight or Git", async () => {
+  it("rejects malformed attestation discriminants before preflight or file write", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
     vi.mocked(dependencies.attestOperation).mockResolvedValue({
       state: "bogus",
-      head: PARENT_SHA,
+      revision: SOURCE_REVISION,
       contentSha256: "b".repeat(64),
     } as never);
 
@@ -369,18 +375,18 @@ describe("executeDomainRuleOperation", () => {
     ).rejects.toThrow("domain-rule attestation returned an invalid result");
     expect(dependencies.preflightPrepared).not.toHaveBeenCalled();
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
-    expect(row(db, "manual-add-1")).toMatchObject({ phase: "prepared", commitSha: null });
+    expect(row(db, "manual-add-1")).toMatchObject({ phase: "prepared", resultingRevision: null });
   });
 
-  it("resumes a committed operation without repeating preflight, attestation, or commit", async () => {
+  it("resumes a committed operation without repeating preflight, attestation, or write", async () => {
     const db = migratedDb();
     prepareManual(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "manual-add-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => NOW - 500 },
     );
@@ -389,7 +395,7 @@ describe("executeDomainRuleOperation", () => {
 
     await executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW });
 
-    expect(events).toEqual(["allowed", "materialize", "activate"]);
+    expect(events).toEqual(["allowed", "attest-written", "activate", "attest-written"]);
     expect(dependencies.preflightPrepared).not.toHaveBeenCalled();
     expect(dependencies.attestOperation).not.toHaveBeenCalled();
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
@@ -398,38 +404,62 @@ describe("executeDomainRuleOperation", () => {
   it("fails closed when a committed journal row no longer matches its prepared digest", async () => {
     const db = migratedDb();
     prepareManual(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "manual-add-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => NOW - 500 },
     );
     db.update(domainRuleOperations)
-      .set({ committedContentSha256: "b".repeat(64) })
+      .set({ resultingContentSha256: "b".repeat(64) })
       .where(eq(domainRuleOperations.id, "manual-add-1"))
       .run();
     const dependencies = successfulDependencies();
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("domain-rule committed content does not match prepared intent");
-    expect(dependencies.materializeCommitted).not.toHaveBeenCalled();
+    ).rejects.toThrow("domain-rule written content does not match prepared intent");
+    expect(dependencies.attestWritten).not.toHaveBeenCalled();
     expect(dependencies.activateCommitted).not.toHaveBeenCalled();
   });
 
-  it("rejects a stored parent SHA in both committed and completed recovery", async () => {
+  it("requires the written digest to remain stable through activation", async () => {
+    const db = migratedDb();
+    prepareManual(db);
+    const dependencies = successfulDependencies();
+    vi.mocked(dependencies.attestWritten)
+      .mockResolvedValueOnce()
+      .mockRejectedValueOnce(
+        new DomainRuleStoreError(
+          "local-store-reconciliation-required",
+          "local domain-rule source changed",
+        ),
+      );
+
+    await expect(
+      executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
+    ).rejects.toThrow("local domain-rule source changed");
+    expect(dependencies.activateCommitted).toHaveBeenCalledOnce();
+    expect(row(db, "manual-add-1")).toMatchObject({
+      phase: "reconciliation-required",
+      activationStatus: "failed",
+      activationErrorCategory: "infrastructure-failure",
+    });
+  });
+
+  it("rejects the source revision as the result revision during recovery", async () => {
     for (const targetPhase of ["committed", "completed"] as const) {
       const db = migratedDb();
       prepareManual(db);
-      finalizeDomainRuleCommit(
+      finalizeDomainRuleWrite(
         db,
         {
           operationId: "manual-add-1",
-          commitSha: COMMIT_SHA,
-          committedContentSha256: CONTENT_SHA,
+          resultingRevision: RESULT_REVISION,
+          resultingContentSha256: CONTENT_SHA,
         },
         { clock: () => NOW - 500 },
       );
@@ -444,15 +474,15 @@ describe("executeDomainRuleOperation", () => {
         );
       }
       db.update(domainRuleOperations)
-        .set({ commitSha: PARENT_SHA })
+        .set({ resultingRevision: SOURCE_REVISION })
         .where(eq(domainRuleOperations.id, "manual-add-1"))
         .run();
       const dependencies = successfulDependencies();
 
       await expect(
         executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-      ).rejects.toThrow("domain-rule commit must be a child of the prepared parent");
-      expect(dependencies.materializeCommitted).not.toHaveBeenCalled();
+      ).rejects.toThrow("domain-rule write must advance the prepared revision");
+      expect(dependencies.attestWritten).not.toHaveBeenCalled();
       expect(dependencies.activateCommitted).not.toHaveBeenCalled();
     }
   });
@@ -461,14 +491,14 @@ describe("executeDomainRuleOperation", () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
-    vi.mocked(dependencies.materializeCommitted).mockRejectedValue(new Error("disk unavailable"));
+    vi.mocked(dependencies.attestWritten).mockRejectedValue(new Error("disk unavailable"));
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
     ).resolves.toEqual({
       operationId: "manual-add-1",
       phase: "partial",
-      commitSha: COMMIT_SHA,
+      contentSha256: CONTENT_SHA,
       activationAttempt: 1,
       errorCategory: "materialization-failure",
     });
@@ -511,12 +541,12 @@ describe("executeDomainRuleOperation", () => {
   it("resumes the same in-progress attempt after a process restart", async () => {
     const db = migratedDb();
     prepareManual(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "manual-add-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => NOW - 500 },
     );
@@ -582,7 +612,7 @@ describe("executeDomainRuleOperation", () => {
     prepareManual(shutdownDb, "shutdown-op");
     const controller = new AbortController();
     const shutdownDependencies = successfulDependencies();
-    vi.mocked(shutdownDependencies.materializeCommitted).mockImplementation(async () => {
+    vi.mocked(shutdownDependencies.attestWritten).mockImplementation(async () => {
       controller.abort();
       controller.signal.throwIfAborted();
     });
@@ -611,12 +641,12 @@ describe("executeDomainRuleOperation", () => {
     ).rejects.toThrow("policy changed");
     expect(row(preparedDb, "preflight-op")).toMatchObject({
       phase: "prepared",
-      commitSha: null,
+      resultingRevision: null,
       activationAttemptCount: 0,
     });
   });
 
-  it("attests and aborts an automatic operation after an ordinary pre-commit veto", async () => {
+  it("attests and aborts an automatic operation after an ordinary pre-write veto", async () => {
     const db = migratedDb();
     prepareAutomatic(db, "automatic-veto");
     const dependencies = successfulDependencies();
@@ -629,12 +659,12 @@ describe("executeDomainRuleOperation", () => {
     ).resolves.toEqual({
       operationId: "automatic-veto",
       phase: "aborted",
-      commitSha: null,
+      contentSha256: null,
       activationAttempt: 0,
     });
 
     expect(dependencies.attestOperation).toHaveBeenCalledTimes(2);
-    expect(row(db, "automatic-veto")).toMatchObject({ phase: "aborted", commitSha: null });
+    expect(row(db, "automatic-veto")).toMatchObject({ phase: "aborted", resultingRevision: null });
     expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
       reservedSlots: 0,
       consumedSlots: 0,
@@ -669,17 +699,17 @@ describe("executeDomainRuleOperation", () => {
     ).rejects.toThrow("domain-rule apply dependencies unavailable");
   });
 
-  it("durably fences later mutations when Git attestation requires reconciliation", async () => {
+  it("durably fences later mutations when file attestation requires reconciliation", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
     vi.mocked(dependencies.attestOperation).mockRejectedValue(
-      new DomainRuleOperationReconciliationError("unexpected local Git state"),
+      new DomainRuleOperationReconciliationError("unexpected local rule-file state"),
     );
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("unexpected local Git state");
+    ).rejects.toThrow("unexpected local rule-file state");
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "reconciliation-required",
       completedAt: NOW,
@@ -690,17 +720,20 @@ describe("executeDomainRuleOperation", () => {
     );
   });
 
-  it("recognizes the production publisher Git-state error as reconciliation", async () => {
+  it("recognizes the production rule-store error as reconciliation", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
     vi.mocked(dependencies.attestOperation).mockRejectedValue(
-      new Error("unexpected local Git state"),
+      new DomainRuleStoreError(
+        "local-store-reconciliation-required",
+        "local domain-rule source changed",
+      ),
     );
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("unexpected local Git state");
+    ).rejects.toThrow("local domain-rule source changed");
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "reconciliation-required",
       completedAt: NOW,
@@ -708,40 +741,40 @@ describe("executeDomainRuleOperation", () => {
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
   });
 
-  it("durably fences an ambiguous commit result before SQLite finalization", async () => {
+  it("durably fences an ambiguous file write before SQLite finalization", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
     vi.mocked(dependencies.commitPrepared).mockRejectedValue(
-      new DomainRuleOperationReconciliationError("local Git ref update was ambiguous"),
+      new DomainRuleOperationReconciliationError("local file replacement was ambiguous"),
     );
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("local Git ref update was ambiguous");
+    ).rejects.toThrow("local file replacement was ambiguous");
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "reconciliation-required",
-      commitSha: null,
+      resultingRevision: null,
       completedAt: NOW,
     });
     expect(db.select().from(domainRuleOwnership).all()).toEqual([]);
-    expect(dependencies.materializeCommitted).not.toHaveBeenCalled();
+    expect(dependencies.attestWritten).not.toHaveBeenCalled();
     expect(() => prepareManual(db, "later-operation")).toThrow(
       "domain-rule reconciliation required",
     );
   });
 
-  it("turns a materializer reconciliation error into a durable global fence", async () => {
+  it("turns a written-file attestation error into a durable global fence", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
-    vi.mocked(dependencies.materializeCommitted).mockRejectedValue(
-      new DomainRuleOperationReconciliationError("committed Git history changed"),
+    vi.mocked(dependencies.attestWritten).mockRejectedValue(
+      new DomainRuleOperationReconciliationError("written rule file changed"),
     );
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("committed Git history changed");
+    ).rejects.toThrow("written rule file changed");
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "reconciliation-required",
       activationStatus: "failed",
@@ -751,20 +784,20 @@ describe("executeDomainRuleOperation", () => {
     expect(dependencies.activateCommitted).not.toHaveBeenCalled();
   });
 
-  it("recognizes the production materializer reconciliation error", async () => {
+  it("recognizes the production rule-store reconciliation error", async () => {
     const db = migratedDb();
     prepareManual(db);
     const dependencies = successfulDependencies();
-    vi.mocked(dependencies.materializeCommitted).mockRejectedValue(
-      new DomainRuleMaterializationError(
+    vi.mocked(dependencies.attestWritten).mockRejectedValue(
+      new DomainRuleStoreError(
         "local-store-reconciliation-required",
-        "active domain-rule materialization does not match the expected commit parent",
+        "active domain-rule file does not match the expected revision",
       ),
     );
 
     await expect(
       executeDomainRuleOperation(db, "manual-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("active domain-rule materialization does not match");
+    ).rejects.toThrow("active domain-rule file does not match");
     expect(row(db, "manual-add-1")).toMatchObject({
       phase: "reconciliation-required",
       activationStatus: "failed",
@@ -777,12 +810,12 @@ describe("executeDomainRuleOperation", () => {
   it("fails closed for a prepared rollback until its attested revert path exists", async () => {
     const db = migratedDb();
     prepareManual(db, "rollback-target");
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "rollback-target",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => NOW - 750 },
     );
@@ -800,8 +833,8 @@ describe("executeDomainRuleOperation", () => {
         id: "rollback-1",
         idempotencyKey: "rollback-1",
         action: "rollback",
-        rollbackTargetCommit: COMMIT_SHA,
-        expectedParentCommit: "3".repeat(40),
+        rollbackTargetRevision: RESULT_REVISION,
+        expectedSourceRevision: "3".repeat(40),
         intendedContentSha256: "b".repeat(64),
         ownershipDelta: {
           upserts: [{ rule: "+.service.example", ownership: "manual" }],
@@ -815,7 +848,7 @@ describe("executeDomainRuleOperation", () => {
     await expect(
       executeDomainRuleOperation(db, "rollback-1", dependencies, { clock: () => NOW }),
     ).rejects.toThrow("domain-rule rollback execution unavailable");
-    expect(row(db, "rollback-1")).toMatchObject({ phase: "prepared", commitSha: null });
+    expect(row(db, "rollback-1")).toMatchObject({ phase: "prepared", resultingRevision: null });
     expect(dependencies.attestOperation).not.toHaveBeenCalled();
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
   });

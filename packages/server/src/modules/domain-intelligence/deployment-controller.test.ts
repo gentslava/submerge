@@ -19,7 +19,9 @@ function deferred<T>() {
 
 function dependencies(): DomainRuleDeploymentControllerDeps {
   return {
-    provisionStore: vi.fn(async (_signal?: AbortSignal) => undefined),
+    provisionStore: vi.fn(async (_signal?: AbortSignal) => ({ ruleCount: 0 })),
+    inspectStore: vi.fn(async (_signal?: AbortSignal) => null),
+    storePreviouslyInitialized: vi.fn(() => false),
     resolveTargetGroupName: vi.fn(() => "AUTO" as string | null),
     runConfigApply: vi.fn(async (apply) => apply()),
     applyConfigDirect: vi.fn(
@@ -42,8 +44,116 @@ describe("DomainRuleDeploymentController", () => {
       apply: { available: false, reason: "deployment-report-only" },
     });
     expect(deps.provisionStore).not.toHaveBeenCalled();
+    expect(deps.inspectStore).toHaveBeenCalledOnce();
     expect(deps.applyConfigDirect).toHaveBeenCalledWith({ force: true });
     expect(deps.verifyActivation).not.toHaveBeenCalled();
+    expect(controller.isManagedProviderActive()).toBe(false);
+  });
+
+  it("keeps an attested existing provider active in report mode without provisioning", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.inspectStore).mockResolvedValueOnce({ ruleCount: 0 });
+    const controller = new DomainRuleDeploymentController("report", deps);
+
+    await expect(controller.reconcile()).resolves.toEqual(applied);
+
+    expect(deps.provisionStore).not.toHaveBeenCalled();
+    expect(deps.applyConfigDirect).toHaveBeenCalledWith({
+      force: true,
+      managedDomainRules: { targetGroupName: "AUTO" },
+    });
+    expect(deps.verifyActivation).toHaveBeenCalledOnce();
+    expect(controller.readCapability()).toEqual({
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    });
+    expect(controller.isManagedProviderActive()).toBe(true);
+  });
+
+  it("does not remove existing routing for an unmarked legacy store in report mode", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.storePreviouslyInitialized).mockReturnValue(true);
+    const controller = new DomainRuleDeploymentController("report", deps);
+
+    await expect(controller.reconcile()).rejects.toMatchObject({
+      reason: "local-store-migration-required",
+    });
+
+    expect(deps.provisionStore).not.toHaveBeenCalled();
+    expect(deps.applyConfigDirect).not.toHaveBeenCalled();
+    expect(controller.isManagedProviderActive()).toBe(false);
+  });
+
+  it("revokes an old provider proof before report-mode store re-attestation", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.inspectStore)
+      .mockResolvedValueOnce({ ruleCount: 0 })
+      .mockRejectedValueOnce(
+        new DomainRuleProvisioningError("local-store-reconciliation-required"),
+      );
+    const controller = new DomainRuleDeploymentController("report", deps);
+    await controller.reconcile();
+    expect(controller.isManagedProviderActive()).toBe(true);
+
+    await expect(controller.reconcile()).rejects.toMatchObject({
+      reason: "local-store-reconciliation-required",
+    });
+
+    expect(deps.applyConfigDirect).toHaveBeenCalledOnce();
+    expect(controller.isManagedProviderActive()).toBe(false);
+  });
+
+  it("keeps a live report-mode provider active after a normal coordinated config apply", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.inspectStore).mockResolvedValueOnce({ ruleCount: 0 });
+    const controller = new DomainRuleDeploymentController("report", deps);
+    await controller.reconcile();
+    vi.clearAllMocks();
+
+    await expect(controller.coordinateConfigApply(async () => applied)).resolves.toEqual(applied);
+
+    expect(controller.isManagedProviderActive()).toBe(true);
+    expect(controller.requiresManagedProviderRecovery()).toBe(false);
+    expect(controller.readCapability()).toEqual({
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    });
+  });
+
+  it("keeps a live report-mode provider active after a direct current-config apply", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.inspectStore).mockResolvedValueOnce({ ruleCount: 0 });
+    const controller = new DomainRuleDeploymentController("report", deps);
+    await controller.reconcile();
+    vi.clearAllMocks();
+
+    await expect(controller.applyCurrentConfig()).resolves.toEqual(applied);
+
+    expect(controller.isManagedProviderActive()).toBe(true);
+    expect(controller.requiresManagedProviderRecovery()).toBe(false);
+    expect(controller.readCapability()).toEqual({
+      mode: "report",
+      apply: { available: false, reason: "deployment-report-only" },
+    });
+  });
+
+  it("does not reactivate a report-mode provider after a pending config proof is invalidated", async () => {
+    const staleProof = deferred<{ providerRuleCount: number }>();
+    const deps = dependencies();
+    vi.mocked(deps.inspectStore).mockResolvedValueOnce({ ruleCount: 0 });
+    const controller = new DomainRuleDeploymentController("report", deps);
+    await controller.reconcile();
+    vi.clearAllMocks();
+    vi.mocked(deps.verifyActivation).mockReturnValueOnce(staleProof.promise);
+
+    const pending = controller.coordinateConfigApply(async () => applied);
+    await vi.waitFor(() => expect(deps.verifyActivation).toHaveBeenCalledOnce());
+    controller.invalidateManagedProviderActivation();
+    staleProof.resolve({ providerRuleCount: 0 });
+
+    await expect(pending).resolves.toEqual(applied);
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(true);
   });
 
   it("propagates report-mode cancellation during coordinator finalization", async () => {
@@ -70,6 +180,7 @@ describe("DomainRuleDeploymentController", () => {
     const deps = dependencies();
     vi.mocked(deps.provisionStore).mockImplementationOnce(async () => {
       events.push("store");
+      return { ruleCount: 3 };
     });
     vi.mocked(deps.runConfigApply).mockImplementationOnce(async (apply) => {
       events.push("coordinator-enter");
@@ -116,6 +227,57 @@ describe("DomainRuleDeploymentController", () => {
       mode: "apply",
       apply: { available: false, reason: "local-store-unsafe" },
     });
+    expect(controller.isManagedProviderActive()).toBe(false);
+  });
+
+  it("does not remove routing when an initialized store fails boot attestation", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.storePreviouslyInitialized).mockReturnValue(true);
+    vi.mocked(deps.provisionStore).mockRejectedValueOnce(
+      new DomainRuleProvisioningError("local-store-reconciliation-required"),
+    );
+    const controller = new DomainRuleDeploymentController("apply", deps);
+
+    await expect(controller.reconcile()).rejects.toMatchObject({
+      reason: "local-store-reconciliation-required",
+    });
+
+    expect(deps.applyConfigDirect).not.toHaveBeenCalled();
+    expect(controller.readCapability()).toMatchObject({
+      apply: { available: false, reason: "local-store-reconciliation-required" },
+    });
+  });
+
+  it("fences later config applies after initialized-store boot attestation fails", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.storePreviouslyInitialized).mockReturnValue(true);
+    vi.mocked(deps.provisionStore).mockRejectedValueOnce(
+      new DomainRuleProvisioningError("local-store-reconciliation-required"),
+    );
+    const controller = new DomainRuleDeploymentController("apply", deps);
+    await expect(controller.reconcile()).rejects.toMatchObject({
+      reason: "local-store-reconciliation-required",
+    });
+    vi.clearAllMocks();
+    vi.mocked(deps.storePreviouslyInitialized).mockReturnValue(true);
+    const apply = vi.fn(async () => applied);
+
+    await expect(controller.coordinateConfigApply(apply)).rejects.toMatchObject({
+      reason: "local-store-reconciliation-required",
+    });
+    expect(controller.readCapability()).toMatchObject({
+      apply: { available: false, reason: "local-store-reconciliation-required" },
+    });
+    await expect(controller.applyCurrentConfig()).rejects.toMatchObject({
+      reason: "local-store-reconciliation-required",
+    });
+    expect(controller.readCapability()).toMatchObject({
+      apply: { available: false, reason: "local-store-reconciliation-required" },
+    });
+
+    expect(apply).not.toHaveBeenCalled();
+    expect(deps.applyConfigDirect).not.toHaveBeenCalled();
+    expect(controller.isManagedProviderActive()).toBe(false);
   });
 
   it("keeps the managed provider in a fallback after provisioning is fenced", async () => {
@@ -171,6 +333,30 @@ describe("DomainRuleDeploymentController", () => {
       mode: "apply",
       apply: { available: false, reason: "provider-inactive" },
     });
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(true);
+  });
+
+  it("does not reactivate a provider after its pending proof is invalidated", async () => {
+    const staleProof = deferred<{ providerRuleCount: number }>();
+    const deps = dependencies();
+    const controller = new DomainRuleDeploymentController("apply", deps);
+    await controller.reconcile();
+    vi.clearAllMocks();
+    vi.mocked(deps.verifyActivation).mockReturnValueOnce(staleProof.promise);
+
+    const pending = controller.coordinateConfigApply(async () => applied);
+    await vi.waitFor(() => expect(deps.verifyActivation).toHaveBeenCalledOnce());
+    controller.invalidateManagedProviderActivation();
+    staleProof.resolve({ providerRuleCount: 0 });
+
+    await expect(pending).resolves.toEqual(applied);
+    expect(controller.readCapability()).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "provider-inactive" },
+    });
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(true);
   });
 
   it("injects and verifies the provider inside every later serialized config apply", async () => {
@@ -228,7 +414,7 @@ describe("DomainRuleDeploymentController", () => {
       return applied;
     });
     await currentApplyStarted.promise;
-    const activation = controller.activateCommittedRules();
+    const activation = controller.activateCommittedRules(0);
     await Promise.resolve();
 
     expect(deps.applyConfigDirect).not.toHaveBeenCalled();
@@ -253,6 +439,26 @@ describe("DomainRuleDeploymentController", () => {
       mode: "apply",
       apply: { available: false, reason: "provider-inactive" },
     });
+    expect(controller.isManagedProviderActive()).toBe(false);
+  });
+
+  it("revokes the prior provider proof when a later config apply throws", async () => {
+    const deps = dependencies();
+    const controller = new DomainRuleDeploymentController("apply", deps);
+    await controller.reconcile();
+    expect(controller.isManagedProviderActive()).toBe(true);
+
+    await expect(
+      controller.coordinateConfigApply(async () => {
+        throw new Error("config apply failed");
+      }),
+    ).rejects.toThrow("config apply failed");
+
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.readCapability()).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "provider-inactive" },
+    });
   });
 
   it("keeps readiness when an unchanged config still has a live managed provider", async () => {
@@ -268,6 +474,35 @@ describe("DomainRuleDeploymentController", () => {
     expect(controller.readCapability()).toMatchObject({
       mode: "apply",
       apply: { available: true },
+    });
+  });
+
+  it("rejects a live provider whose rule count differs from the attested file", async () => {
+    const deps = dependencies();
+    const controller = new DomainRuleDeploymentController("apply", deps);
+    await controller.reconcile();
+    vi.clearAllMocks();
+    vi.mocked(deps.verifyActivation).mockResolvedValueOnce({ providerRuleCount: 1 });
+
+    await expect(controller.activateCommittedRules(2)).resolves.toMatchObject({ applied: true });
+
+    expect(controller.readCapability()).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "provider-inactive" },
+    });
+  });
+
+  it("does not mint boot readiness when the loaded provider has a stale rule count", async () => {
+    const deps = dependencies();
+    vi.mocked(deps.provisionStore).mockResolvedValueOnce({ ruleCount: 2 });
+    vi.mocked(deps.verifyActivation).mockResolvedValueOnce({ providerRuleCount: 1 });
+    const controller = new DomainRuleDeploymentController("apply", deps);
+
+    await expect(controller.reconcile()).resolves.toMatchObject({ applied: true });
+
+    expect(controller.readCapability()).toEqual({
+      mode: "apply",
+      apply: { available: false, reason: "provider-inactive" },
     });
   });
 
@@ -289,12 +524,14 @@ describe("DomainRuleDeploymentController", () => {
     const newer = controller.reconcile();
 
     await expect(newer).resolves.toMatchObject({ applied: false });
-    staleProof.resolve({ providerRuleCount: 1 });
+    staleProof.resolve({ providerRuleCount: 0 });
     await expect(older).resolves.toEqual(applied);
     expect(controller.readCapability()).toEqual({
       mode: "apply",
       apply: { available: false, reason: "provider-inactive" },
     });
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(true);
   });
 
   it("lets the newer queued config failure supersede an older successful proof", async () => {
@@ -320,7 +557,7 @@ describe("DomainRuleDeploymentController", () => {
       applied: false,
       activationVerified: false,
     }));
-    firstProof.resolve({ providerRuleCount: 1 });
+    firstProof.resolve({ providerRuleCount: 0 });
 
     await expect(older).resolves.toEqual(applied);
     await expect(newer).resolves.toMatchObject({ applied: false });
@@ -328,6 +565,8 @@ describe("DomainRuleDeploymentController", () => {
       mode: "apply",
       apply: { available: false, reason: "provider-inactive" },
     });
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(true);
   });
 
   it("keeps nested forced recovery in the epoch of its older config request", async () => {
@@ -358,12 +597,14 @@ describe("DomainRuleDeploymentController", () => {
       apply: { available: false, reason: "target-channel-unavailable" },
     });
 
-    staleProof.resolve({ providerRuleCount: 1 });
+    staleProof.resolve({ providerRuleCount: 0 });
     await expect(older).resolves.toEqual(applied);
     expect(controller.readCapability()).toEqual({
       mode: "apply",
       apply: { available: false, reason: "target-channel-unavailable" },
     });
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(true);
   });
 
   it("restores readiness after the next successful forced apply and live proof", async () => {

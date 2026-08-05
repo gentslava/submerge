@@ -22,15 +22,15 @@ import {
   beginDomainRuleActivation,
   buildDomainAutomaticConsentRevision,
   completeDomainRuleActivation,
-  finalizeDomainRuleCommit,
+  finalizeDomainRuleWrite,
   listUnfinishedDomainRuleOperations,
   prepareDomainRuleOperation,
 } from "./apply-journal.js";
 import { claimDomainValidationRun, listDomainCandidateReport } from "./service.js";
 
 const migrationsFolder = fileURLToPath(new URL("../../../drizzle", import.meta.url));
-const PARENT_SHA = "1".repeat(40);
-const COMMIT_SHA = "2".repeat(40);
+const SOURCE_REVISION = "1".repeat(40);
+const RESULT_REVISION = "2".repeat(40);
 const CONTENT_SHA = "a".repeat(64);
 const DAY_START = Date.parse("2026-08-05T00:00:00.000Z");
 
@@ -125,7 +125,7 @@ function prepareAutomatic(
       idempotencyKey: id,
       action: "automatic-add",
       candidateFqdn: fqdn,
-      expectedParentCommit: PARENT_SHA,
+      expectedSourceRevision: SOURCE_REVISION,
       intendedContentSha256: CONTENT_SHA,
       proposedRule,
       ownershipDelta: {
@@ -176,7 +176,7 @@ describe("domain-rule apply journal", () => {
         idempotencyKey: "auto-2026-08-05-1",
         action: "automatic-add",
         candidateFqdn: "other.service.example",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "+.service.example",
         ownershipDelta: {
@@ -195,7 +195,7 @@ describe("domain-rule apply journal", () => {
         id: "manual-add-invalid",
         idempotencyKey: "manual-add-invalid",
         action: "manual-add",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "+.service.example",
         ownershipDelta: {
@@ -209,7 +209,7 @@ describe("domain-rule apply journal", () => {
         id: "manual-delete-invalid",
         idempotencyKey: "manual-delete-invalid",
         action: "manual-delete",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         ownershipDelta: {
           upserts: [{ rule: "api.service.example", ownership: "manual" }],
@@ -229,7 +229,7 @@ describe("domain-rule apply journal", () => {
         idempotencyKey: "auto-multiple-invalid",
         action: "automatic-add",
         candidateFqdn: "api.service.example",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "+.service.example",
         ownershipDelta: {
@@ -247,7 +247,7 @@ describe("domain-rule apply journal", () => {
         idempotencyKey: "auto-unrelated-invalid",
         action: "automatic-add",
         candidateFqdn: "api.service.example",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "+.other.example",
         ownershipDelta: {
@@ -311,7 +311,7 @@ describe("domain-rule apply journal", () => {
     expect(staleConsentDb.select().from(domainAutomaticBudgets).all()).toEqual([]);
   });
 
-  it("rechecks consent before Git but finalizes an already-created commit from durable intent", () => {
+  it("rechecks consent before the file write but finalizes an already-completed file write from durable intent", () => {
     const db = migratedDb();
     prepareAutomatic(db);
     db.update(domainAutomaticConsents)
@@ -323,12 +323,12 @@ describe("domain-rule apply journal", () => {
       "automatic domain-rule consent unavailable or stale",
     );
     expect(
-      finalizeDomainRuleCommit(
+      finalizeDomainRuleWrite(
         db,
         {
           operationId: "auto-2026-08-05-1",
-          commitSha: COMMIT_SHA,
-          committedContentSha256: CONTENT_SHA,
+          resultingRevision: RESULT_REVISION,
+          resultingContentSha256: CONTENT_SHA,
         },
         { clock: () => DAY_START + 200 },
       ),
@@ -365,7 +365,7 @@ describe("domain-rule apply journal", () => {
         id: "rollback-invalid",
         idempotencyKey: "rollback-invalid",
         action: "rollback",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "api.service.example",
         ownershipDelta: {
@@ -380,8 +380,8 @@ describe("domain-rule apply journal", () => {
         id: "rollback-unattested",
         idempotencyKey: "rollback-unattested",
         action: "rollback",
-        rollbackTargetCommit: "0".repeat(40),
-        expectedParentCommit: PARENT_SHA,
+        rollbackTargetRevision: "0".repeat(40),
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "api.service.example",
         ownershipDelta: {
@@ -395,7 +395,7 @@ describe("domain-rule apply journal", () => {
       id: "manual-target",
       idempotencyKey: "manual-target",
       action: "manual-add",
-      expectedParentCommit: PARENT_SHA,
+      expectedSourceRevision: SOURCE_REVISION,
       intendedContentSha256: "c".repeat(64),
       proposedRule: "api.target.example",
       ownershipDelta: {
@@ -403,10 +403,10 @@ describe("domain-rule apply journal", () => {
         deletes: [],
       },
     });
-    finalizeDomainRuleCommit(db, {
+    finalizeDomainRuleWrite(db, {
       operationId: "manual-target",
-      commitSha: COMMIT_SHA,
-      committedContentSha256: "c".repeat(64),
+      resultingRevision: RESULT_REVISION,
+      resultingContentSha256: "c".repeat(64),
     });
 
     expect(
@@ -414,8 +414,8 @@ describe("domain-rule apply journal", () => {
         id: "rollback-valid",
         idempotencyKey: "rollback-valid",
         action: "rollback",
-        rollbackTargetCommit: COMMIT_SHA,
-        expectedParentCommit: PARENT_SHA,
+        rollbackTargetRevision: RESULT_REVISION,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "api.service.example",
         ownershipDelta: {
@@ -423,14 +423,14 @@ describe("domain-rule apply journal", () => {
           deletes: [],
         },
       }),
-    ).toMatchObject({ rollbackTargetCommit: COMMIT_SHA, phase: "prepared" });
+    ).toMatchObject({ rollbackTargetRevision: RESULT_REVISION, phase: "prepared" });
     expect(() =>
       prepareDomainRuleOperation(db, {
         id: "rollback-valid",
         idempotencyKey: "rollback-valid",
         action: "rollback",
-        rollbackTargetCommit: "9".repeat(40),
-        expectedParentCommit: PARENT_SHA,
+        rollbackTargetRevision: "9".repeat(40),
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "api.service.example",
         ownershipDelta: {
@@ -441,28 +441,28 @@ describe("domain-rule apply journal", () => {
     ).toThrow("domain-rule idempotency conflict");
   });
 
-  it("finalizes commit, ownership, and budget exactly once", () => {
+  it("finalizes the write, ownership, and budget exactly once", () => {
     const db = migratedDb();
     prepareAutomatic(db);
 
     expect(
-      finalizeDomainRuleCommit(
+      finalizeDomainRuleWrite(
         db,
         {
           operationId: "auto-2026-08-05-1",
-          commitSha: COMMIT_SHA,
-          committedContentSha256: CONTENT_SHA,
+          resultingRevision: RESULT_REVISION,
+          resultingContentSha256: CONTENT_SHA,
         },
         { clock: () => DAY_START + 200 },
       ),
     ).toMatchObject({ changed: true, phase: "committed" });
     expect(
-      finalizeDomainRuleCommit(
+      finalizeDomainRuleWrite(
         db,
         {
           operationId: "auto-2026-08-05-1",
-          commitSha: COMMIT_SHA,
-          committedContentSha256: CONTENT_SHA,
+          resultingRevision: RESULT_REVISION,
+          resultingContentSha256: CONTENT_SHA,
         },
         { clock: () => DAY_START + 300 },
       ),
@@ -476,7 +476,7 @@ describe("domain-rule apply journal", () => {
       rule: "+.service.example",
       ownership: "automatic",
       operationId: "auto-2026-08-05-1",
-      commitSha: COMMIT_SHA,
+      resultingRevision: RESULT_REVISION,
     });
     expect(
       db
@@ -523,7 +523,7 @@ describe("domain-rule apply journal", () => {
     expect(prepareAutomatic(db)).toMatchObject({
       created: false,
       phase: "committed",
-      commitSha: COMMIT_SHA,
+      resultingRevision: RESULT_REVISION,
     });
   });
 
@@ -545,7 +545,7 @@ describe("domain-rule apply journal", () => {
 
     await abortPreparedDomainRuleOperation(db, "auto-2026-08-05-1", {
       clock: () => DAY_START + 300,
-      assertPreCommitState: async () => undefined,
+      assertPreWriteState: async () => undefined,
     });
     expect(
       claimDomainValidationRun(db, {
@@ -578,28 +578,28 @@ describe("domain-rule apply journal", () => {
     expect(db.select().from(domainRuleOperations).all()).toEqual([]);
   });
 
-  it("rejects the prepared parent as an operation commit without consuming durable intent", () => {
+  it("rejects the prepared source revision as a write result without consuming durable intent", () => {
     const db = migratedDb();
     prepareAutomatic(db);
 
     expect(() =>
-      finalizeDomainRuleCommit(
+      finalizeDomainRuleWrite(
         db,
         {
           operationId: "auto-2026-08-05-1",
-          commitSha: PARENT_SHA,
-          committedContentSha256: CONTENT_SHA,
+          resultingRevision: SOURCE_REVISION,
+          resultingContentSha256: CONTENT_SHA,
         },
         { clock: () => DAY_START + 200 },
       ),
-    ).toThrow("domain-rule commit must be a child of the prepared parent");
+    ).toThrow("domain-rule write must advance the prepared revision");
     expect(
       db
         .select()
         .from(domainRuleOperations)
         .where(eq(domainRuleOperations.id, "auto-2026-08-05-1"))
         .get(),
-    ).toMatchObject({ phase: "prepared", commitSha: null });
+    ).toMatchObject({ phase: "prepared", resultingRevision: null });
     expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
       reservedSlots: 1,
       consumedSlots: 0,
@@ -610,12 +610,12 @@ describe("domain-rule apply journal", () => {
   it("atomically transfers manual ownership and deletes removed ownership", () => {
     const db = migratedDb();
     prepareAutomatic(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "auto-2026-08-05-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => DAY_START + 200 },
     );
@@ -626,7 +626,7 @@ describe("domain-rule apply journal", () => {
         id: "manual-edit-1",
         idempotencyKey: "manual-edit-1",
         action: "manual-edit",
-        expectedParentCommit: COMMIT_SHA,
+        expectedSourceRevision: RESULT_REVISION,
         intendedContentSha256: "b".repeat(64),
         proposedRule: "api.service.example",
         ownershipDelta: {
@@ -636,12 +636,12 @@ describe("domain-rule apply journal", () => {
       },
       { clock: () => DAY_START + 300 },
     );
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "manual-edit-1",
-        commitSha: "3".repeat(40),
-        committedContentSha256: "b".repeat(64),
+        resultingRevision: "3".repeat(40),
+        resultingContentSha256: "b".repeat(64),
       },
       { clock: () => DAY_START + 400 },
     );
@@ -659,15 +659,15 @@ describe("domain-rule apply journal", () => {
     });
   });
 
-  it("reports the stored post-commit phase on an idempotent finalize retry", () => {
+  it("reports the stored post-write phase on an idempotent finalize retry", () => {
     const db = migratedDb();
     prepareAutomatic(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "auto-2026-08-05-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => DAY_START + 200 },
     );
@@ -684,27 +684,27 @@ describe("domain-rule apply journal", () => {
       .run();
 
     expect(
-      finalizeDomainRuleCommit(
+      finalizeDomainRuleWrite(
         db,
         {
           operationId: "auto-2026-08-05-1",
-          commitSha: COMMIT_SHA,
-          committedContentSha256: CONTENT_SHA,
+          resultingRevision: RESULT_REVISION,
+          resultingContentSha256: CONTENT_SHA,
         },
         { clock: () => DAY_START + 400 },
       ),
     ).toEqual({ changed: false, phase: "partial" });
   });
 
-  it("records activation success exactly once after a committed mutation", () => {
+  it("records activation success exactly once after a durable mutation", () => {
     const db = migratedDb();
     prepareAutomatic(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "auto-2026-08-05-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => DAY_START + 200 },
     );
@@ -754,12 +754,12 @@ describe("domain-rule apply journal", () => {
   it("persists a failed activation and increments the attempt on retry", () => {
     const db = migratedDb();
     prepareAutomatic(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "auto-2026-08-05-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => DAY_START + 200 },
     );
@@ -805,7 +805,7 @@ describe("domain-rule apply journal", () => {
     ).toEqual({ changed: true, phase: "completed", attempt: 2 });
   });
 
-  it("rejects activation transitions before commit and mismatched terminal retries", () => {
+  it("rejects activation transitions before a durable write and mismatched terminal retries", () => {
     const db = migratedDb();
     prepareAutomatic(db);
 
@@ -821,12 +821,12 @@ describe("domain-rule apply journal", () => {
       }),
     ).toThrow("domain-rule operation cannot complete activation");
 
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "auto-2026-08-05-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => DAY_START + 200 },
     );
@@ -852,12 +852,12 @@ describe("domain-rule apply journal", () => {
   it("rejects a stale completion after a newer activation attempt starts", () => {
     const db = migratedDb();
     prepareAutomatic(db);
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: "auto-2026-08-05-1",
-        commitSha: COMMIT_SHA,
-        committedContentSha256: CONTENT_SHA,
+        resultingRevision: RESULT_REVISION,
+        resultingContentSha256: CONTENT_SHA,
       },
       { clock: () => DAY_START + 200 },
     );
@@ -905,7 +905,7 @@ describe("domain-rule apply journal", () => {
       id: "manual-add-1",
       idempotencyKey: "manual-add-1",
       action: "manual-add",
-      expectedParentCommit: PARENT_SHA,
+      expectedSourceRevision: SOURCE_REVISION,
       intendedContentSha256: CONTENT_SHA,
       proposedRule: "+.service.example",
       ownershipDelta: {
@@ -913,10 +913,10 @@ describe("domain-rule apply journal", () => {
         deletes: [],
       },
     });
-    finalizeDomainRuleCommit(db, {
+    finalizeDomainRuleWrite(db, {
       operationId: "manual-add-1",
-      commitSha: COMMIT_SHA,
-      committedContentSha256: CONTENT_SHA,
+      resultingRevision: RESULT_REVISION,
+      resultingContentSha256: CONTENT_SHA,
     });
     expect(() =>
       prepareDomainRuleOperation(db, {
@@ -924,7 +924,7 @@ describe("domain-rule apply journal", () => {
         idempotencyKey: "auto-conflict-1",
         action: "automatic-add",
         candidateFqdn: "api.service.example",
-        expectedParentCommit: COMMIT_SHA,
+        expectedSourceRevision: RESULT_REVISION,
         intendedContentSha256: "b".repeat(64),
         proposedRule: "+.service.example",
         ownershipDelta: {
@@ -952,7 +952,7 @@ describe("domain-rule apply journal", () => {
         action: "automatic-add",
         phase: "prepared",
         candidateFqdn: "api.service.example",
-        expectedParentCommit: COMMIT_SHA,
+        expectedSourceRevision: RESULT_REVISION,
         intendedContentSha256: "b".repeat(64),
         proposedRule: "+.service.example",
         ownershipDelta: {
@@ -963,8 +963,8 @@ describe("domain-rule apply journal", () => {
         automaticConsentRevision: buildDomainAutomaticConsentRevision(automaticSettings()),
         automaticBudgetDay: "2026-08-05",
         automaticBudgetSlots: 1,
-        commitSha: null,
-        committedContentSha256: null,
+        resultingRevision: null,
+        resultingContentSha256: null,
         createdAt: DAY_START + 300,
         updatedAt: DAY_START + 300,
         completedAt: null,
@@ -972,12 +972,12 @@ describe("domain-rule apply journal", () => {
       .run();
 
     expect(() =>
-      finalizeDomainRuleCommit(
+      finalizeDomainRuleWrite(
         db,
         {
           operationId: "auto-conflict-1",
-          commitSha: "3".repeat(40),
-          committedContentSha256: "b".repeat(64),
+          resultingRevision: "3".repeat(40),
+          resultingContentSha256: "b".repeat(64),
         },
         { clock: () => DAY_START + 400 },
       ),
@@ -993,7 +993,7 @@ describe("domain-rule apply journal", () => {
     });
   });
 
-  it("releases only an attested pre-commit reservation and exposes unfinished recovery work", async () => {
+  it("releases only an attested pre-write reservation and exposes unfinished recovery work", async () => {
     const db = migratedDb();
     prepareAutomatic(db);
     insertConfirmedCandidate(db, "api.other.example", "other.example", "+.other.example");
@@ -1008,11 +1008,11 @@ describe("domain-rule apply journal", () => {
     await expect(
       abortPreparedDomainRuleOperation(db, "auto-2026-08-05-1", {
         clock: () => DAY_START + 150,
-        assertPreCommitState: async () => {
-          throw new Error("local Git HEAD moved");
+        assertPreWriteState: async () => {
+          throw new Error("local rule file changed");
         },
       }),
-    ).rejects.toThrow("local Git HEAD moved");
+    ).rejects.toThrow("local rule file changed");
     expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
       reservedSlots: 2,
       consumedSlots: 0,
@@ -1021,10 +1021,10 @@ describe("domain-rule apply journal", () => {
     await expect(
       abortPreparedDomainRuleOperation(db, "auto-2026-08-05-1", {
         clock: () => DAY_START + 200,
-        assertPreCommitState: async (intent) => {
+        assertPreWriteState: async (intent) => {
           expect(intent).toEqual({
             operationId: "auto-2026-08-05-1",
-            expectedParentCommit: PARENT_SHA,
+            expectedSourceRevision: SOURCE_REVISION,
             intendedContentSha256: CONTENT_SHA,
           });
         },
@@ -1033,7 +1033,7 @@ describe("domain-rule apply journal", () => {
     await expect(
       abortPreparedDomainRuleOperation(db, "auto-2026-08-05-1", {
         clock: () => DAY_START + 300,
-        assertPreCommitState: async () => {
+        assertPreWriteState: async () => {
           throw new Error("must not attest a terminal operation");
         },
       }),
@@ -1069,7 +1069,7 @@ describe("domain-rule apply journal", () => {
         id: "manual-blocked-by-reconciliation",
         idempotencyKey: "manual-blocked-by-reconciliation",
         action: "manual-add",
-        expectedParentCommit: PARENT_SHA,
+        expectedSourceRevision: SOURCE_REVISION,
         intendedContentSha256: CONTENT_SHA,
         proposedRule: "manual.service.example",
         ownershipDelta: {

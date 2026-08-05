@@ -18,7 +18,7 @@ describe("domain-rules deployment capability", () => {
     });
   });
 
-  it("does not mistake the apply deployment switch for repository readiness", () => {
+  it("does not mistake the apply deployment switch for local-file readiness", () => {
     expect(deriveDomainRulesDeploymentCapability("apply")).toEqual({
       mode: "apply",
       apply: { available: false, reason: "local-store-unavailable" },

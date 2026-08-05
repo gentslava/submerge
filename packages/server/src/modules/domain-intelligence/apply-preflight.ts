@@ -111,7 +111,7 @@ function manualCoverageFqdn(operation: DomainRuleOperation): string | null {
   return rule.startsWith("+.") ? rule.slice(2) : rule;
 }
 
-/** Re-read every candidate-derived safety fact immediately before local Git. */
+/** Re-read every candidate-derived safety fact immediately before the local file write. */
 export function createDomainRulePreparedPreflight(
   dependencies: DomainRulePreparedPreflightDependencies,
 ): DomainRuleApplyOperationDependencies["preflightPrepared"] {

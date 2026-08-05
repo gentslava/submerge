@@ -28,7 +28,7 @@ import { normalizeObservedFqdn } from "./observer.js";
 
 const MAX_DATE_MS = 8_640_000_000_000_000;
 const operationIdSchema = z.string().regex(/^[a-zA-Z0-9._-]{1,128}$/u);
-const sha1Schema = z.string().regex(/^[0-9a-f]{40}$/u);
+const sourceRevisionSchema = z.string().regex(/^[0-9a-f]{40}$/u);
 const sha256Schema = z.string().regex(/^[0-9a-f]{64}$/u);
 const timestampSchema = z.number().int().min(0).max(MAX_DATE_MS);
 export const DOMAIN_AUTOMATIC_SAFETY_VERSION = "domain-auto-v1";
@@ -160,9 +160,9 @@ const prepareInputSchema = z
     id: operationIdSchema,
     idempotencyKey: operationIdSchema,
     action: z.enum(["automatic-add", "manual-add", "manual-edit", "manual-delete", "rollback"]),
-    rollbackTargetCommit: sha1Schema.optional(),
+    rollbackTargetRevision: sourceRevisionSchema.optional(),
     candidateFqdn: z.string().min(3).max(253).optional(),
-    expectedParentCommit: sha1Schema,
+    expectedSourceRevision: sourceRevisionSchema,
     intendedContentSha256: sha256Schema,
     proposedRule: domainRuleSchema.optional(),
     ownershipDelta: ownershipDeltaSchema,
@@ -176,7 +176,7 @@ const prepareInputSchema = z
     if (input.candidateFqdn && normalizeObservedFqdn(input.candidateFqdn) !== input.candidateFqdn) {
       context.addIssue({ code: "custom", message: "candidate FQDN is not normalized" });
     }
-    if (Boolean(input.rollbackTargetCommit) !== (input.action === "rollback")) {
+    if (Boolean(input.rollbackTargetRevision) !== (input.action === "rollback")) {
       context.addIssue({ code: "custom", message: "rollback target does not match action" });
     }
     if (
@@ -223,8 +223,8 @@ const prepareInputSchema = z
 
 const finalizeInputSchema = z.object({
   operationId: operationIdSchema,
-  commitSha: sha1Schema,
-  committedContentSha256: sha256Schema,
+  resultingRevision: sourceRevisionSchema,
+  resultingContentSha256: sha256Schema,
 });
 const activationResultInputSchema = z.discriminatedUnion("outcome", [
   z
@@ -248,7 +248,7 @@ interface PrepareDomainRuleOperationBase {
   id: string;
   idempotencyKey: string;
   candidateFqdn?: string;
-  expectedParentCommit: string;
+  expectedSourceRevision: string;
   intendedContentSha256: string;
 }
 
@@ -285,15 +285,15 @@ export type PrepareDomainRuleOperationInput =
     })
   | (PrepareDomainRuleOperationBase & {
       action: "rollback";
-      rollbackTargetCommit: string;
+      rollbackTargetRevision: string;
       proposedRule?: string;
       ownershipDelta: DomainRuleOwnershipDeltaJson;
     });
 
-export interface FinalizeDomainRuleCommitInput {
+export interface FinalizeDomainRuleWriteInput {
   operationId: string;
-  commitSha: string;
-  committedContentSha256: string;
+  resultingRevision: string;
+  resultingContentSha256: string;
 }
 
 export type CompleteDomainRuleActivationInput =
@@ -311,11 +311,11 @@ export interface DomainRuleJournalOptions {
 
 export interface DomainRuleAbortOptions extends DomainRuleJournalOptions {
   // The caller holds the process-wide apply lock while this async proof and the
-  // following SQLite transition run. The attestor must require clean worktree
-  // and HEAD === expectedParentCommit.
-  assertPreCommitState: (intent: {
+  // following SQLite transition run. The attestor must require the exact
+  // expected source revision.
+  assertPreWriteState: (intent: {
     operationId: string;
-    expectedParentCommit: string;
+    expectedSourceRevision: string;
     intendedContentSha256: string;
   }) => Promise<void>;
 }
@@ -331,9 +331,9 @@ function immutableIntentMatches(
   return (
     stored.id === input.id &&
     stored.action === input.action &&
-    stored.rollbackTargetCommit === (input.rollbackTargetCommit ?? null) &&
+    stored.rollbackTargetRevision === (input.rollbackTargetRevision ?? null) &&
     stored.candidateFqdn === (input.candidateFqdn ?? null) &&
-    stored.expectedParentCommit === input.expectedParentCommit &&
+    stored.expectedSourceRevision === input.expectedSourceRevision &&
     stored.intendedContentSha256 === input.intendedContentSha256 &&
     stored.proposedRule === (input.proposedRule ?? null) &&
     JSON.stringify(stored.ownershipDelta) === JSON.stringify(input.ownershipDelta)
@@ -471,13 +471,13 @@ export function prepareDomainRuleOperation(
     assertCandidateApplyAvailable();
     const automaticAuthorization = authorizeAutomaticOperation();
     if (input.action === "rollback") {
-      const rollbackTargetCommit = sha1Schema.parse(input.rollbackTargetCommit);
+      const rollbackTargetRevision = sourceRevisionSchema.parse(input.rollbackTargetRevision);
       const attestedTarget = tx
         .select({ id: domainRuleOperations.id })
         .from(domainRuleOperations)
         .where(
           and(
-            eq(domainRuleOperations.commitSha, rollbackTargetCommit),
+            eq(domainRuleOperations.resultingRevision, rollbackTargetRevision),
             inArray(domainRuleOperations.phase, [
               "committed",
               "activating",
@@ -529,9 +529,9 @@ export function prepareDomainRuleOperation(
         idempotencyKey: input.idempotencyKey,
         action: input.action,
         phase: "prepared",
-        rollbackTargetCommit: input.rollbackTargetCommit ?? null,
+        rollbackTargetRevision: input.rollbackTargetRevision ?? null,
         candidateFqdn: input.candidateFqdn ?? null,
-        expectedParentCommit: input.expectedParentCommit,
+        expectedSourceRevision: input.expectedSourceRevision,
         intendedContentSha256: input.intendedContentSha256,
         proposedRule: input.proposedRule ?? null,
         ownershipDelta: input.ownershipDelta,
@@ -539,8 +539,8 @@ export function prepareDomainRuleOperation(
         automaticConsentRevision: automaticAuthorization?.consent.revision ?? null,
         automaticBudgetDay,
         automaticBudgetSlots,
-        commitSha: null,
-        committedContentSha256: null,
+        resultingRevision: null,
+        resultingContentSha256: null,
         createdAt: now,
         updatedAt: now,
         completedAt: null,
@@ -558,7 +558,7 @@ export function prepareDomainRuleOperation(
 }
 
 // The apply worker calls this while holding its process-wide mutation lock,
-// immediately before invoking the local Git publisher. Consent changes use the
+// immediately before invoking the local rule-file writer. Consent changes use the
 // same lock, so a successful proof remains valid until the commit boundary.
 export function assertPreparedAutomaticOperationAuthorized(
   db: Db,
@@ -636,9 +636,9 @@ export function assertPreparedAutomaticOperationAuthorized(
   });
 }
 
-export function finalizeDomainRuleCommit(
+export function finalizeDomainRuleWrite(
   db: Db,
-  rawInput: FinalizeDomainRuleCommitInput,
+  rawInput: FinalizeDomainRuleWriteInput,
   options: DomainRuleJournalOptions = {},
 ): { changed: boolean; phase: DomainRuleOperationPhase } {
   const input = finalizeInputSchema.parse(rawInput);
@@ -651,21 +651,21 @@ export function finalizeDomainRuleCommit(
       .where(eq(domainRuleOperations.id, input.operationId))
       .get();
     if (!operation) throw new Error("domain-rule operation not found");
-    if (operation.intendedContentSha256 !== input.committedContentSha256) {
-      throw new Error("domain-rule committed content does not match prepared intent");
+    if (operation.intendedContentSha256 !== input.resultingContentSha256) {
+      throw new Error("domain-rule written content does not match prepared intent");
     }
-    if (operation.expectedParentCommit === input.commitSha) {
-      throw new Error("domain-rule commit must be a child of the prepared parent");
+    if (operation.expectedSourceRevision === input.resultingRevision) {
+      throw new Error("domain-rule write must advance the prepared revision");
     }
     if (operation.phase !== "prepared") {
       if (
         ["committed", "activating", "completed", "partial"].includes(operation.phase) &&
-        operation.commitSha === input.commitSha &&
-        operation.committedContentSha256 === input.committedContentSha256
+        operation.resultingRevision === input.resultingRevision &&
+        operation.resultingContentSha256 === input.resultingContentSha256
       ) {
         return { changed: false, phase: operation.phase };
       }
-      throw new Error("domain-rule operation cannot finalize commit");
+      throw new Error("domain-rule operation cannot finalize write");
     }
 
     if (operation.action === "automatic-add") {
@@ -714,7 +714,7 @@ export function finalizeDomainRuleCommit(
           rule: entry.rule,
           ownership: entry.ownership,
           operationId: operation.id,
-          commitSha: input.commitSha,
+          resultingRevision: input.resultingRevision,
           createdAt: existing?.createdAt ?? now,
           updatedAt: now,
         })
@@ -723,7 +723,7 @@ export function finalizeDomainRuleCommit(
           set: {
             ownership: entry.ownership,
             operationId: operation.id,
-            commitSha: input.commitSha,
+            resultingRevision: input.resultingRevision,
             updatedAt: now,
           },
         })
@@ -792,8 +792,8 @@ export function finalizeDomainRuleCommit(
     tx.update(domainRuleOperations)
       .set({
         phase: "committed",
-        commitSha: input.commitSha,
-        committedContentSha256: input.committedContentSha256,
+        resultingRevision: input.resultingRevision,
+        resultingContentSha256: input.resultingContentSha256,
         updatedAt: now,
       })
       .where(
@@ -975,16 +975,16 @@ export async function abortPreparedDomainRuleOperation(
     .select({
       id: domainRuleOperations.id,
       phase: domainRuleOperations.phase,
-      expectedParentCommit: domainRuleOperations.expectedParentCommit,
+      expectedSourceRevision: domainRuleOperations.expectedSourceRevision,
       intendedContentSha256: domainRuleOperations.intendedContentSha256,
     })
     .from(domainRuleOperations)
     .where(eq(domainRuleOperations.id, parsedId))
     .get();
   if (prepared?.phase !== "prepared") return false;
-  await options.assertPreCommitState({
+  await options.assertPreWriteState({
     operationId: prepared.id,
-    expectedParentCommit: prepared.expectedParentCommit,
+    expectedSourceRevision: prepared.expectedSourceRevision,
     intendedContentSha256: prepared.intendedContentSha256,
   });
   const now = journalNow(options);
@@ -997,7 +997,7 @@ export async function abortPreparedDomainRuleOperation(
       .get();
     if (
       operation?.phase !== "prepared" ||
-      operation.expectedParentCommit !== prepared.expectedParentCommit ||
+      operation.expectedSourceRevision !== prepared.expectedSourceRevision ||
       operation.intendedContentSha256 !== prepared.intendedContentSha256
     ) {
       return false;

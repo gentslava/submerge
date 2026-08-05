@@ -7,6 +7,7 @@ import type { ApplyResult } from "../nodes/service.js";
 interface DomainRuleDeploymentLifecycleController {
   readCapability: () => DomainIntelligenceDeploymentCapability;
   reconcile: (signal?: AbortSignal) => Promise<ApplyResult>;
+  requiresManagedProviderRecovery: () => boolean;
 }
 
 export class DomainRuleDeploymentLifecycle {
@@ -64,6 +65,7 @@ export class DomainRuleDeploymentLifecycle {
 
   private requiresRecovery(result: ApplyResult): boolean {
     if (!result.applied || !result.activationVerified) return true;
+    if (this.controller.requiresManagedProviderRecovery()) return true;
     const parsed = domainIntelligenceDeploymentCapabilitySchema.safeParse(
       this.controller.readCapability(),
     );

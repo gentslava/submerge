@@ -371,23 +371,6 @@ describe("DomainIntelligenceScreen", () => {
     );
   });
 
-  it("fails closed when an older server response has no deployment capability", () => {
-    const legacyView: Partial<DomainIntelligenceSettingsView> = settingsView();
-    delete legacyView.deployment;
-    Object.assign(legacyView, {
-      automatic: { available: false, reason: "publisher-unavailable" },
-    });
-    arrange(legacyView as DomainIntelligenceSettingsView);
-
-    expect(() => render(<DomainIntelligenceScreen />)).not.toThrow();
-    expect(screen.getByText("только отчёт", { exact: true })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Добавить www.service.example" }),
-    ).toHaveAccessibleDescription(
-      "Применение недоступно, пока сервер работает в режиме только отчёта",
-    );
-  });
-
   it("shows an error instead of masking a malformed current deployment capability", () => {
     arrange({
       ...settingsView(),
@@ -427,8 +410,7 @@ describe("DomainIntelligenceScreen", () => {
           mode: "apply",
           apply: {
             available: true,
-            repository: "local",
-            branch: "main",
+            store: "local-file",
             path: "custom.txt",
             providerName: "submerge-custom",
             providerPath: "./domain-rules/custom.txt",
@@ -452,7 +434,7 @@ describe("DomainIntelligenceScreen", () => {
       await mocks.mutationStates.get("apply")?.callbacks?.onSuccess?.({
         operationId: "manual-add-review-1",
         phase: "completed",
-        commitSha: "a".repeat(40),
+        contentSha256: "a".repeat(64),
         activationAttempt: 1,
       });
     });
@@ -468,8 +450,7 @@ describe("DomainIntelligenceScreen", () => {
           mode: "apply",
           apply: {
             available: true,
-            repository: "local",
-            branch: "main",
+            store: "local-file",
             path: "custom.txt",
             providerName: "submerge-custom",
             providerPath: "./domain-rules/custom.txt",
@@ -497,8 +478,7 @@ describe("DomainIntelligenceScreen", () => {
           mode: "apply",
           apply: {
             available: true,
-            repository: "local",
-            branch: "main",
+            store: "local-file",
             path: "custom.txt",
             providerName: "submerge-custom",
             providerPath: "./domain-rules/custom.txt",
@@ -521,7 +501,7 @@ describe("DomainIntelligenceScreen", () => {
       await mocks.mutationStates.get("apply")?.callbacks?.onSuccess?.({
         operationId: "manual-add-review-1",
         phase: "queued",
-        commitSha: null,
+        contentSha256: null,
         activationAttempt: 0,
       });
     });
@@ -539,8 +519,7 @@ describe("DomainIntelligenceScreen", () => {
           mode: "apply",
           apply: {
             available: true,
-            repository: "local",
-            branch: "main",
+            store: "local-file",
             path: "custom.txt",
             providerName: "submerge-custom",
             providerPath: "./domain-rules/custom.txt",
@@ -558,7 +537,7 @@ describe("DomainIntelligenceScreen", () => {
         {
           operationId: "manual-add-review-1",
           phase: "queued",
-          commitSha: null,
+          contentSha256: null,
           activationAttempt: 0,
         },
         null,
@@ -579,8 +558,7 @@ describe("DomainIntelligenceScreen", () => {
           mode: "apply",
           apply: {
             available: true,
-            repository: "local",
-            branch: "main",
+            store: "local-file",
             path: "custom.txt",
             providerName: "submerge-custom",
             providerPath: "./domain-rules/custom.txt",

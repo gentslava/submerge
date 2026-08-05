@@ -21,8 +21,8 @@
 5. Version 1 is a Submerge TypeScript module using the existing SQLite and lifecycle; no
    separate Python/systemd worker is introduced.
 6. Report mode remains the default. Guarded apply is implemented in the same feature but
-   cannot run until its local rule store, managed file provider, and rollback path are
-   separately configured and verified.
+   cannot run until its local rule store, managed file provider, and operator backup and
+   recovery path are separately configured and verified.
 7. Rule scope is an explicit candidate decision: exact observed address or the whole
    registrable site when that expansion cannot capture unrelated tenants.
 8. The approved Indigo Console Pencil frames define how candidates, scope, reports, and
@@ -40,7 +40,7 @@ Success means:
 1. No upstream DNS implementation, API, credential, or configuration appears in the
    module.
 2. A connection-routing event is never delayed by normalization, persistence, probing,
-   reporting, local Git, or provider activation.
+   reporting, local rule-file mutation, or provider activation.
 3. Observations contain only normalized FQDN, timestamp, count, transport, and internal
    deduplication data.
 4. A recommendation requires at least three spaced DIRECT transport failures in 24 hours
@@ -50,7 +50,10 @@ Success means:
    otherwise eligible candidates to exact scope.
 6. Every proposal exposes one of two scopes: exact FQDN (`api.service.example`) or whole
    site (`+.service.example`). Shared-hosting/CDN boundaries can lock a candidate to exact.
-7. Report mode cannot mutate local Git, Mihomo providers, configuration, or active list files.
+7. Report mode cannot provision or mutate the local rule file and cannot apply candidate
+   rules. It may serialize a Mihomo config reload: a fresh report-only install uses the
+   base config, while an already initialized store keeps its previously attested provider
+   only after file and live-provider re-verification.
 8. Apply is deterministic, capped, idempotent, and auditable. Review mode requires an
    explicit rule action; automatic mode requires an explicit audited enablement and a
    persisted UTC daily budget.
@@ -95,10 +98,9 @@ Mihomo log stream --------------------+
                                                         v
                                                 decision + reports
                                                         |
-                                             optional guarded publisher
+                                             optional guarded rule writer
                                                         |
-                       private local Git -> attested materialization
-                                                -> file-provider config reload
+                                  canonical custom.txt -> file-provider config reload
 ```
 
 Responsibilities:
@@ -112,7 +114,7 @@ Responsibilities:
 - `coverage.ts`: active custom/notblocked/third-party rule coverage.
 - `decision.ts`: pure thresholds and reason codes.
 - `report.ts`: protected JSON/Markdown artifacts or API read model.
-- `publisher.ts`: optional deterministic local Git transaction and materialization.
+- `rule-store.ts`: optional deterministic plain-file transaction and digest attestation.
 - `apply-worker.ts`: durable apply queue/reconciliation outside the validation runtime;
   the scheduler enqueues and releases its lease before this worker may reload config.
 - `router.ts`: authenticated administrative status/actions; no raw observation feed.
@@ -151,9 +153,8 @@ blocked. The implementation does not change Mihomo's configured log level.
 - Existing `better-sqlite3` + Drizzle database and migrations.
 - Existing Mihomo client with Zod-parsed responses.
 - Node TLS/HTTP primitives or the existing `undici` dependency for probes.
-- System Git invoked through a narrow local-only adapter only when apply is enabled; the
-  adapter never configures a remote, fetches, pushes, or reads credentials.
-- No Python, second database, systemd worker, broker, queue service, or new web server.
+- No Git executable, repository library, Python, second database, systemd worker, broker,
+  queue service, or new web server inside Submerge.
 
 ### 4.2 Commands
 
@@ -163,16 +164,14 @@ pnpm typecheck
 pnpm verify:static
 ```
 
-Administrative actions are exposed through protected tRPC procedures and corresponding
-internal CLI entry points for safe diagnostics:
+Mutating administrative actions are exposed only through protected tRPC procedures. The
+internal CLI remains a read-only diagnostic/report interface:
 
 ```bash
 pnpm -F @submerge/server domain-intelligence --collect-snapshot --dry-run
 pnpm -F @submerge/server domain-intelligence --validate --dry-run
 pnpm -F @submerge/server domain-intelligence --report --dry-run
 pnpm -F @submerge/server domain-intelligence --report --dry-run --output-dir /protected/report-dir
-pnpm -F @submerge/server domain-intelligence --apply
-pnpm -F @submerge/server domain-intelligence --recover-publisher-lock
 ```
 
 `--collect` is an alias for `--collect-snapshot`. Collect and validate are diagnostics and
@@ -191,7 +190,7 @@ the source for live observer health.
 `--dry-run` makes no durable application or system-state mutation. It may read Mihomo,
 SQLite, and the local rule store and may perform explicitly requested bounded probes, but it
 does not write observations, candidates, leases, validation evidence, decisions, settings,
-apply audit, budgets, ownership, Git, providers, config, or channels. An explicitly requested
+apply audit, budgets, ownership, rule files, providers, config, or channels. An explicitly requested
 report file or stdout payload is its only allowed output side effect.
 
 ### 4.3 Planned files
@@ -208,7 +207,7 @@ packages/server/src/modules/domain-intelligence/
   coverage.ts
   decision.ts
   report.ts
-  publisher.ts
+  rule-store.ts
   router.ts
   *.test.ts
 packages/server/src/db/schema.ts
@@ -222,9 +221,10 @@ docs/specs/2026-08-03-domain-intelligence-design.md
 docs/plans/2026-08-03-domain-intelligence.md
 ```
 
-Submerge documents the local shared-volume path and file-provider lifecycle. An optional
-host-side export script and its remote credentials belong to deployment tooling, never to
-Submerge. No resolver-specific deployment file belongs in this repository.
+Submerge documents the dedicated rule-volume path, cross-process lock, atomic-write
+contract, and file-provider lifecycle. Optional Git replication and its private repository,
+remote, conflict policy, and credentials belong to deployment tooling, never to Submerge.
+No synchronizer implementation or resolver-specific deployment file belongs here.
 
 ## 5. Code style and boundaries
 
@@ -245,19 +245,19 @@ export function decideCandidate(evidence: CandidateEvidence, policy: DecisionPol
 
 ### Always
 
-- Parse every Mihomo, DNS resolver, network, and local Git response at its boundary.
+- Parse every Mihomo, DNS resolver, network, and local-file input at its boundary.
 - Use UTC timestamps and persisted reason enums.
 - Use bounded queues, timeouts, concurrency, retries, and circuit breakers.
 - Keep observer and scheduler errors out of the log-stream/traffic control flow.
 - Recheck coverage immediately before recommendation and apply.
-- Write configuration/report/Git files atomically.
+- Write configuration, report, and rule files atomically.
 
 ### Ask first
 
 - Enable the feature or apply mode in production.
 - Enable the persistent local rule store or stable managed `custom` file-provider in production.
 - Change container networking or publish a new port.
-- Enable local commits in production.
+- Enable an external synchronizer or a future authenticated import API for rule exchange.
 
 ### Never
 
@@ -270,10 +270,11 @@ export function decideCandidate(evidence: CandidateEvidence, policy: DecisionPol
   public/private, shared-hosting, CDN, or multi-tenant suffix.
 - Hide the selected rule scope or infer that site scope is safe from the Public Suffix
   List alone.
-- Manually edit a materialized/active provider file.
-- Accept, store, or use a remote Git URL, SSH key, token, agent socket, hook, or arbitrary
-  publisher command inside Submerge.
-- Fetch or push a Git remote from Submerge.
+- Write the canonical provider file outside Submerge. An external synchronizer receives
+  read-only access; future inbound changes must use a dedicated authenticated Submerge API.
+- Accept, store, or use a remote Git URL, SSH key, token, agent socket, hook, repository,
+  branch, arbitrary command, or Git credential inside Submerge.
+- Initialize, inspect, commit, fetch, pull, merge, or push a Git repository from Submerge.
 - Treat HTTP `401`, `403`, `404`, or `429` as a routing failure.
 
 ## 6. Configuration
@@ -321,8 +322,7 @@ type DomainIntelligenceDeploymentCapability =
           }
         | {
             available: true;
-            repository: "local";
-            branch: "main";
+            store: "local-file";
             path: "custom.txt";
             providerName: "submerge-custom";
             providerPath: "./domain-rules/custom.txt";
@@ -341,75 +341,49 @@ type ApplyUnavailableReason =
 
 `DOMAIN_RULES_MODE=report|apply` is the only deployment switch and defaults to
 `report`. It is parsed at the environment boundary and is never exposed as an API write.
-The repository path is code-owned at `domain-rules/repository` under the persistent
-Submerge data directory. Its `domain-rules` parent is created and attested as `0700`, so
-upgrades remain safe when an existing named-volume root is owner-writable but still
-`0755`. The active materialization path is code-owned under the directory containing
-`MIHOMO_CONFIG_PATH`; Mihomo sees it as `./domain-rules/custom.txt`. Neither path is
-client-configurable.
+The canonical path is code-owned at `/domain-rules/custom.txt` in a dedicated persistent
+rule volume. Submerge mounts that volume read-write; Mihomo mounts it read-only at its
+HomeDir-relative `./domain-rules/custom.txt`; an optional synchronizer mounts only this
+rule volume plus its own private repository volume. The path is not client-configurable.
 
-The private repository and its cooperative process lock assume that Submerge is the sole
-writer under its runtime uid. Code running under the same uid is inside this trust boundary;
-operators must not grant unrelated containers or host processes write access to the data
-directory. A stale lock after an unclean process exit fails closed. After confirming that no
-Submerge process is running, the operator runs `domain-intelligence
---recover-publisher-lock`. Recovery re-attests the canonical parent, repository, full Git
-metadata, and history before treating the attested `HEAD` blob as the sole recovery authority.
-A crash before the ref CAS restores the worktree to the old `HEAD`; a crash after the CAS rebuilds
-the index from the new `HEAD`. Known interrupted index and atomic-file artifacts are removed only
-after the repair is durable and the clean repository passes full attestation again. If `HEAD`,
-index, and worktree contain three different valid lists, recovery cannot prove intent and fails
-closed without deleting the stale evidence. The online adapter checks a stale lock-owner PID twice
-and refuses a live owner; when only an orphaned known Git artifact remains, recovery first acquires
-the cooperative repository lock itself. A malformed lock, unknown artifact, unsafe ownership,
-unexpected history, or concurrent inode change leaves the stale state in place and aborts
-recovery.
-Baseline provisioning uses one exact code-owned sibling staging directory. A crash after creating
-the seed but before staging is safe to retry only when the repository contains exactly the private,
-valid `custom.txt`. Before the staged `.git` is installed, recovery may discard and restart staging
-only after proving its exact lexical and canonical root, byte-equal seed, owner, private modes,
-regular-file-only bounded tree, same-device entries, and an inode-stable second scan. After `.git`
-installation, recovery first fully attests the final repository and the exact seed-only staging
-remainder, removes that remainder, and fully attests the same final `HEAD` again. It never treats a
-general sibling as disposable staging.
-For Compose, recovery is deliberately offline so PID reuse across container namespaces cannot
-be mistaken for liveness:
+The rule directory must be a real, symlink-free directory owned by the runtime uid with
+mode `0700`. `custom.txt` must be a regular, symlink-free, single-link file owned by that
+uid with mode `0600`; Mihomo receives it through the read-only volume mount. The file is
+UTF-8 text, at most 1 MiB and 10,000 unique rules. Blank lines and comments are allowed;
+rules are normalized exact FQDNs or `+.` registrable domains. Embedded carriage returns,
+invalid rule forms, and more than one ordered managed-marker pair are rejected. Submerge
+changes the file only by writing and fsyncing a same-directory private temporary file,
+re-attesting the expected source digest, atomically replacing `custom.txt`, and fsyncing
+the directory.
 
-```bash
-docker compose stop submerge
-docker compose run --rm --no-deps submerge node dist/domain-intelligence-cli.js --recover-publisher-lock
-docker compose start submerge
-```
-
-The recovery CLI is the explicit operator confirmation that the service is stopped; it does
-not bypass repository, history, path, ownership, lock-shape, or inode-stability checks.
-If it reports `unsafe local baseline staging state`, it has preserved the lock and staging evidence
-because recovery could not prove safety. Keep Submerge stopped, back up the private
-`domain-rules` directory, and escalate for inspection; do not delete or rename the evidence and do
-not retry online provisioning until the state is understood.
+All writers must honor one documented cross-process lock in the dedicated volume. Any
+existing, malformed, unsafe, or identity-changing lock blocks online mutation. No running
+service removes a lock based on age. A lock or private temporary artifact is reconciled
+only offline after every writer is stopped and the rule volume plus SQLite are backed up.
+There is no Git metadata, history, index, hook, remote, or process-liveness inspection in
+Submerge.
 
 `report` performs no provisioning writes and always reports
 `deployment-report-only`. Switching the deployment value to `apply` is the explicit
 operator authorization for a separate boot reconciliation:
 
-1. validate canonical parents, ownership, mode, device/inode stability, and absence of
-   symlinks, multi-link files, and group/world write; the private repository and `.git`
-   are Submerge-owned `0700`, repository `custom.txt` is `0600`, and the separately
-   materialized file is `0644` behind Mihomo's read-only mount;
-2. initialize or validate the private local repository on `main`, requiring zero remotes,
-   hooks, credential helpers, agent sockets, alternates, promisor config, or unknown
-   history;
-3. preserve a pre-seeded `custom.txt` byte-for-byte in a baseline commit, or create an
-   empty managed baseline on a new install;
-4. atomically materialize the exact baseline blob into Mihomo HomeDir;
-5. add the local provider to generated config without deleting any existing external
+1. validate the dedicated directory and file ownership, mode, device/inode stability,
+   and absence of symlinks, multi-link files, and group/world write;
+2. preserve a pre-seeded valid `custom.txt` byte-for-byte, or create an empty managed
+   baseline on a new install;
+3. attest and record the canonical file SHA-256;
+4. add the local provider to generated config without deleting any existing external
    provider, force-reload through the serialized config coordinator, and verify provider
    identity plus target route;
-6. mint `apply.available` only after all proofs succeed.
+5. mint `apply.available` only after all proofs succeed.
 
 Provisioning is not candidate apply and cannot reserve an automatic budget or change rule
 ownership. In `apply` deployment mode, a failure leaves apply unavailable with one exact reason
 above; effective behavior therefore remains report-only without misreporting the configured mode.
+When an initialized deployment switches to `report`, Submerge read-only attests the marker,
+canonical digest, provider rule count, and route and keeps that provider in generated
+configuration. Report mode never creates a baseline or changes the file. A missing, unsafe,
+or unjournaled changed file blocks reconciliation instead of silently removing routing.
 
 Default exclusions include `ru`, `su`, `xn--p1ai`, private/local/reverse zones, telemetry,
 advertising/tracking names, and infrastructure hostnames that are not meaningful routing
@@ -426,17 +400,16 @@ disabled. Enabling report/review collection requires an explicit `exact` or `sit
 the implementation never invents a factory scope.
 
 The feature exposes preferences through a dedicated strict protected API, not the generic
-raw-string settings mutation. `mode`, apply readiness, local repository path, branch,
-provider name/path, remotes, and credentials are not accepted in that input. Report capability
+raw-string settings mutation. `mode`, apply readiness, local path, provider name/path,
+repositories, remotes, and credentials are not accepted in that input. Report capability
 accepts only `automationMode: off | review`; the separate protected automatic-consent
 action can select `automatic` only after server-derived deployment readiness succeeds.
 The resolver list is limited to the two reviewed credential-free JSON DoH endpoints.
-The repository is a dedicated private local store, pinned to branch `main`, file
-`custom.txt`, provider `submerge-custom`, and the corresponding HomeDir-relative
-materialization path. A mismatched path, branch, worktree, configured remote, or active
-provider fails closed. Submerge never receives Git credentials. Boundary tests
-reject every client-supplied capability/repository/provider field and every deployment
-mismatch.
+The dedicated rule volume contains the canonical `custom.txt`, provider
+`submerge-custom`, and the corresponding HomeDir-relative provider path. A mismatched
+path, unsafe file, or inactive provider fails closed. Submerge never receives Git
+configuration or credentials. Boundary tests reject every client-supplied
+capability/store/provider field and every deployment mismatch.
 
 Automatic consent is stored separately from mutable preferences. Its revision is a
 code-owned safety version plus a SHA-256 fingerprint of the canonical automatic-safety
@@ -477,8 +450,8 @@ combining the pair with persisted window evidence. The two probes share a cancel
 both settle before the run releases its lease. Missing, empty, opaque, oversized, unsafe, or
 more than two daily refresh intervals old **externally refreshed** provider materialization
 makes coverage incomplete and therefore blocks confirmation. The local `submerge-custom`
-materialization is age-exempt and instead requires matching repository blob, file digest,
-provider identity, and current config-activation proof.
+file is age-exempt and instead requires matching canonical file digest, provider identity,
+and current config-activation proof.
 
 The two filter policies are independent:
 
@@ -498,9 +471,13 @@ The protected-suffix lock applies to automatic proposals. A deliberate manual ru
 broader after the administrator reviews its observed coverage in the rule editor. Manual
 rules are labelled as such and are never changed or removed by automation.
 
-No publication credential exists in Submerge. Optional remote export runs from a separate
-host-owned mirror/snapshot with credentials and destination configuration unavailable to
-the app and absent from all Submerge mounts.
+No synchronization credential exists in Submerge. Optional Git replication runs in a
+separate service with its own private repository and credentials. The service may read a
+stable canonical file and commit/push it, and may fetch remote changes into its private
+repository, but it may not replace the canonical file. Unjournaled digest changes are
+rejected across restart. Inbound application is deferred until a protected Submerge
+endpoint can reconcile the file with SQLite and serialize activation. The service never
+controls Mihomo.
 
 ## 7. Observation storage and retention
 
@@ -514,7 +491,7 @@ The existing SQLite database receives these tables:
 | `domain_validation_runs` | bounded scheduler/circuit-breaker summary |
 | `domain_validation_attempts` | DIRECT/PROXY transport results and safe timings |
 | `domain_decisions` | decision, deterministic confidence, reasons, selected scope and proposed rule |
-| `domain_apply_operations` | durable prepared/committed/activated journal, expected parent/blob, commit SHA, ownership delta, activation result |
+| `domain_apply_operations` | durable prepared/written/activated journal, expected/resulting content SHA-256, ownership delta, activation result |
 | `domain_automatic_budgets` | atomic UTC-date reservations and consumed automatic-rule count |
 | `domain_rule_ownership` | automatic/manual ownership and last successful mutation audit |
 
@@ -527,7 +504,7 @@ undercounting so two sources cannot manufacture a threshold crossing.
 
 Operational observations, stats, attempts, candidates, and non-apply decisions older than
 14 days are deleted by the scheduler. Minimal apply audit is retained indefinitely by
-default because the rule and local commit are the durable source of truth and are needed
+default because the rule and operation digests are the durable source of truth and are needed
 for rollback explanations.
 
 Candidate expiry is based on its last qualifying observation, not on validation or queue
@@ -589,8 +566,8 @@ providers and 16 MiB in aggregate per snapshot, rejects symlinked cache roots/pa
 that change while being read, and treats an externally refreshed cache older than 48 hours as
 stale for the current daily provider refresh contract. The managed local
 `submerge-custom` provider is age-exempt: unchanged rules may remain valid indefinitely.
-Its coverage is trusted only when repository blob, materialized SHA-256, generated provider
-identity/path, and current config-activation proof all agree.
+Its coverage is trusted only when the canonical SHA-256, generated provider identity/path,
+and current config-activation proof all agree.
 
 Every candidate keeps both its observation and its selected rule scope:
 
@@ -765,7 +742,7 @@ model containing:
 Observed domain names may appear in the protected admin report because that is the
 feature's purpose. They are not printed to stdout or general operational logs.
 
-Report mode cannot mutate Git, providers, config, channels, or materialized rule files.
+Report mode cannot mutate the canonical rule file, providers, config, or channels.
 Its protected review actions are limited to eligible scope selection, reversible user
 rejection, and recheck queueing in SQLite. User rejection remains separate from system
 exclusion reasons; restoring a rejected candidate re-evaluates the current filter and
@@ -853,13 +830,13 @@ candidate.status == "confirmed"
 candidate.reviewState == "active"
 ```
 
-The publisher must re-read both fields under the global apply lock immediately before its
-SQLite reservation and local Git mutation. Pending, blocked, excluded, or rejected candidate
+The rule writer must re-read both fields under the global apply lock immediately before its
+SQLite reservation and local file mutation. Pending, blocked, excluded, or rejected candidate
 actions stop without consuming budget or changing the rule store, providers, config, or channels. This
 check is required both when selecting a batch and in the final locked preflight; filtering
 only by `status == "confirmed"` is forbidden. Only a distinct free-form manual-rule editor
 action may bypass candidate evidence, and it remains subject to syntax, scope, coverage
-preview, capability, Git, activation, and audit safeguards.
+preview, capability, file-integrity, activation, and audit safeguards.
 
 ### 12.1 Automatic daily budget
 
@@ -867,42 +844,42 @@ preview, capability, Git, activation, and audit safeguards.
 the global apply lock and one SQLite transaction create a durable prepared operation and
 reserve the remaining slots in `domain_automatic_budgets`. An idempotency key ties a retry
 to its original reservation.
-Reservations are released only if the operation stops before the local commit; once a commit
-containing the rules is created, the slots are consumed even when later activation fails.
+Reservations are released only if the operation stops before the atomic rule-file replace;
+once the resulting content digest is attested, the slots are consumed even when later
+activation fails.
 Restarts and concurrent scheduler/manual triggers cannot reset or exceed the persisted
 budget. Explicit manual mutations do not consume the automatic daily budget.
 
-The prepared journal row contains the operation/idempotency ID, action, expected parent
-commit, intended content SHA-256, proposed rule and ownership delta, budget reservation,
-and phase. The non-secret operation ID is added as a Git commit trailer. Immediately after
-commit attestation, one SQLite transaction records commit SHA/blob, consumes the reservation,
-and applies ownership exactly once before activation begins.
+The prepared journal row contains the operation/idempotency ID, action, expected source
+SHA-256, intended content SHA-256, proposed rule and ownership delta, budget reservation,
+and phase. Immediately after file attestation, one SQLite transaction records the resulting
+source SHA-256, consumes the reservation, and applies ownership exactly once before
+activation begins.
 
 On startup and retry, the global apply lock reconciles every unfinished row before accepting
-new work. If `HEAD` is still the expected parent, pre-commit recovery may restore the clean
-worktree and release/retry the reservation. If `HEAD` is the one expected child commit, its
-operation trailer, parent, sole changed path, mode, and exact blob digest must match the
-journal; reconciliation then finalizes budget and ownership idempotently and resumes
-materialization/activation. Any other history or dirty state becomes
-`local-store-reconciliation-required` and fails closed.
+new work. If the canonical file still has the expected source digest, pre-write recovery may
+release or retry the reservation. If it has the intended resulting digest, reconciliation
+finalizes budget and ownership idempotently and resumes activation. Any third digest,
+unsafe file identity, or stale cross-process lock becomes
+`local-store-reconciliation-required` and fails closed without overwriting evidence.
 
 ### 12.2 Rule ownership
 
 The marked Submerge-managed block contains both automatic rules and rules created through
-the Submerge manual editor. Ownership is persisted in SQLite with the operation and commit
-audit:
+the Submerge manual editor. Ownership is persisted in SQLite with the operation and content
+digest audit:
 
 - an untouched automatic rule remains `Auto` and may be removed only by an explicit admin
   action or a separately approved future cleanup policy;
-- editing an automatic rule manually changes ownership to `Manual` atomically with the Git
+- editing an automatic rule manually changes ownership to `Manual` atomically with the file
   mutation, so automation never rewrites the override;
 - a rule created through the manual editor starts as `Manual` and bypasses candidate
-  evidence thresholds, but still passes syntax, coverage-preview, local Git, activation, and
+  evidence thresholds, but still passes syntax, coverage-preview, file-integrity, activation, and
   audit safeguards;
 - pre-existing lines outside the managed block are preserved byte-for-byte and are
   read-only in the UI until an explicit future adoption design is approved.
 
-Manual add/edit/delete and automatic add share the same publisher, lock, idempotency,
+Manual add/edit/delete and automatic add share the same rule writer, lock, idempotency,
 activation, and audit pipeline. Public suffix scope is the absolute widening
 ceiling; the editor never offers rules such as `+.com` or `+.co.uk`.
 
@@ -912,8 +889,8 @@ Pipeline:
 
 1. acquire a global apply lock;
 2. verify observer health, current topology, target channel, and complete coverage;
-3. require the already provisioned private local repository on `main`, a clean worktree,
-   zero remotes/credential or execution config, and a current provider activation proof;
+3. require the already provisioned canonical file, a safe dedicated directory, no stale
+   cross-process lock, and a current provider activation proof;
 4. branch by action kind under the same lock: for every candidate-derived request in
    review or automatic mode, re-read and require both `status == confirmed` and
    `reviewState == active`, then re-evaluate evidence and scope; for a distinct free-form
@@ -923,29 +900,25 @@ Pipeline:
    daily budget for automatic additions, or record explicit manual authorization;
 6. deterministically mutate only the marked managed block in `custom.txt`;
 7. sort that managed block and preserve unrelated file bytes/order;
-8. validate syntax/duplicates and run `git diff --check`;
-9. create one local commit carrying the operation ID, without running hooks or contacting
-   a remote;
-10. attest the commit parent/path/mode/blob and atomically finalize commit SHA, ownership,
-    and budget state in SQLite;
-11. atomically materialize the exact committed blob to the code-owned Mihomo HomeDir path;
-12. force-reload the full generated Mihomo configuration through the existing serialized
+8. validate syntax, duplicates, line endings, and maximum size;
+9. re-attest the expected source digest, atomically replace and fsync `custom.txt`;
+10. attest the resulting path/mode/content digest and atomically finalize ownership and
+    budget state in SQLite;
+11. force-reload the full generated Mihomo configuration through the existing serialized
     config coordinator;
-13. verify materialized digest, provider identity, resulting coverage, and routing to the
+12. verify canonical digest, provider identity, resulting coverage, and routing to the
     configured VPN channel;
-14. persist complete/partial activation audit and the final report.
+13. persist complete/partial activation audit and the final report.
 
-A dirty worktree, unexpected local history, incomplete coverage, unstable proxy, or failed
-activation stops the pipeline. It never edits a Mihomo cache: the materialized `custom.txt`
-is the source file of the declared local provider. A committed-but-not-activated change is
+A source-digest mismatch, unsafe local file, incomplete coverage, unstable proxy, or failed
+activation stops the pipeline. It never edits a Mihomo cache: the canonical `custom.txt`
+is the source file of the declared local provider. A written-but-not-activated change is
 recorded and safely resumed from its journal.
 
-Rollback selects an attested Submerge commit from audit, persists a prepared rollback row
-with target SHA and expected revert blob, creates a normal local revert commit, and runs the
-same materialization, config reload, and route verification. Conflicts or unknown ancestry
-fail closed; Submerge never resets or force-rewrites history. An optional host exporter
-receives an immutable audited SHA through a separate host-owned mirror/snapshot and cannot
-read-write mount the app repository or active materialization.
+Automatic rollback is unavailable until audited prior content snapshots are implemented.
+Operator recovery restores an explicit file backup while apply is disabled, then runs the
+same config reload and route verification path. The optional synchronizer independently
+records Git history after observing the canonical file; Submerge does not depend on it.
 
 ## 13. Scheduler and lifecycle
 
@@ -957,7 +930,7 @@ The validation scheduler follows the existing Submerge patterns:
   during an active pass is coalesced into one trailing pass;
 - single-flight per operation and global validation/apply serialization;
 - all errors contained and reported once per failure streak;
-- `AbortSignal` propagated through resolver/probe/publisher operations;
+- `AbortSignal` propagated through resolver, probe, and rule-store operations;
 - graceful shutdown aborts current bounded work and waits for its transport cleanup;
 - an executor that does not finish cleanup within the hard bounded drain moves the runtime
   into a failed-closed state, and no config mutation may cross that suspension barrier;
@@ -1048,14 +1021,15 @@ Component/browser tests cover:
 7. consistent source/scope/rule data across dark, light, report, automatic, mobile, and
    detail states;
 8. populated, empty, accumulating, degraded, publication-in-progress, activation-error,
-   and success states at the repository-required responsive widths.
+   and success states at the required responsive widths.
 
-Integration tests use mocked Mihomo log, `/connections`, DNS, DIRECT/PROXY HTTP, local Git,
-and config-reload/provider boundaries with reserved `example.com` fixtures. They verify
+Integration tests use mocked Mihomo log, `/connections`, DNS, DIRECT/PROXY HTTP, local
+rule-store, and config-reload/provider boundaries with reserved `example.com` fixtures. They verify
 that PROXY probes enter the dedicated authenticated listener through the active topology
 and exit through the configured target group, that manual add/edit/delete uses the same
-safe publication pipeline, and that committed-but-not-activated retries preserve ownership
-and daily-budget accounting. A zero-timeout lifecycle test proves automatic scheduling
+safe rule-write pipeline, and that written-but-not-activated retries preserve ownership
+and daily-budget accounting. Digest-race tests prove that an external file change cannot
+be overwritten silently. A zero-timeout lifecycle test proves automatic scheduling
 enqueues and releases its validation lease before the separate apply worker performs
 serialized runtime stop, full config reload, provider/route proof, and runtime resume; the
 coordinator must never await its own caller. No test uses real browsing history or the
@@ -1071,18 +1045,18 @@ requires only the existing Mihomo access already held by Submerge.
 
 Apply additionally requires:
 
-- a persistent private `domain-rules` repository mounted read-write only into Submerge;
-- a separate code-owned materialization directory in the existing Mihomo HomeDir, written
-  by Submerge and over-mounted read-only into Mihomo;
-- the Git CLI in the Submerge runtime for local init/commit only;
+- a dedicated persistent `domain-rules` volume mounted read-write into Submerge and
+  read-only at Mihomo's provider path;
 - a stable generated `submerge-custom` file-provider routed to the configured VPN channel;
 - backup of changed deployment/config files;
-- verified disable, retry, local-revert, and config-reload runbooks.
+- verified disable, retry, explicit-backup recovery, and config-reload runbooks.
 
-External synchronization is optional. When configured, it is a host-side read/push-only
-job operating on a separate host-owned mirror/snapshot, with an explicit destination and
-credential outside every Submerge mount. It must not write or configure the app repository.
-Submerge neither configures nor reports it, and local apply does not wait for the mirror.
+External synchronization is optional. When configured, it is a separate service with a
+private Git repository volume, explicit remote and credentials outside Submerge, and
+read access to the dedicated rule volume. It may commit and push local changes online.
+Remote changes may be fetched and staged privately, but cannot replace the canonical file
+in this release because that would bypass SQLite ownership/audit. Submerge neither
+configures nor waits for the service, and local apply continues offline.
 
 ### 15.1 New install and migration
 
@@ -1090,24 +1064,26 @@ The deployment procedure runs before `DOMAIN_RULES_MODE=apply` is set:
 
 1. back up the current generated config, deployment file, and every existing custom-list
    source/cache that may later be retired;
-2. create the private repository directory with Submerge ownership and no group/world
-   write; do not initialize Git or add a remote from the host;
+2. create the dedicated rule volume with the Submerge runtime uid and no group/world
+   write; mount it read-write into Submerge and read-only into Mihomo;
 3. for a new install, leave it empty and let provisioning create an empty managed
-   baseline; for an existing custom list, copy its source `custom.txt` into the private
-   directory while report mode is active and verify exact bytes before restart;
+   baseline; for an existing custom list, copy its source `custom.txt` into the dedicated
+   volume while report mode is active and verify exact bytes before restart;
 4. switch the deployment-only mode to `apply` and restart; provisioning preserves all
-   pre-seeded bytes in the baseline commit and adds the local provider **alongside** every
+   pre-seeded bytes and adds the local provider **alongside** every
    existing provider, so cutover cannot remove coverage;
-5. require clean repository/blob/materialization attestation, successful config reload,
+5. require safe file and digest attestation, successful config reload,
    parsed local coverage, and route proof before capability becomes available;
 6. only after a separate coverage-equivalence report may the operator remove the former
    external custom provider. Submerge never removes or rewrites it automatically.
 
-If the active materialization path already exists with bytes different from the intended
-baseline, provisioning reports `local-store-migration-required` and does not overwrite it.
+If the canonical file contains invalid or ambiguous bytes, provisioning reports
+`local-store-unsafe` and does not overwrite it. If an initialized file disappears, or an
+older preview database has operation/ownership history without the content-revision marker,
+provisioning reports `local-store-migration-required` and does not create a new baseline.
 Rolling back provisioning restores the backed-up deployment/config, returns
-`DOMAIN_RULES_MODE` to `report`, reloads the previous config, and leaves the private local
-repository intact for audit/export. No rollback deletes rules or rewrites Git history.
+`DOMAIN_RULES_MODE` to `report`, reloads the previous config, and leaves the dedicated rule
+volume intact for inspection and synchronization. No rollback deletes rules.
 
 Installing/enabling apply is a separate production action. It does not change DNS,
 networking, VPN nodes, VLESS, or log level.
@@ -1124,15 +1100,15 @@ networking, VPN nodes, VLESS, or log level.
 | Application denial response | High | false routing diagnosis | any valid HTTP response is transport success |
 | PROXY/node outage | Medium | false comparison | unstable PROXY blocks decision and trips breaker |
 | Unsupported provider coverage | Medium | duplicate/conflicting rule | incomplete coverage blocks recommendation/apply |
-| Local Git race | Low | lost local change | Submerge-exclusive worktree, global apply lock, clean-tree and blob/commit attestation |
-| External mirror fails | Medium | backup is stale | local activation is independent; host job alerts and safely retries push |
+| Concurrent rule writer | Low | lost local change | shared cross-process lock, expected-digest CAS, atomic replace, reconciliation stop |
+| External sync fails or conflicts | Medium | remote backup is stale | local activation is independent; sync service alerts and leaves canonical file unchanged |
 | Apply runaway | Low | list pollution | disabled/report default, consent gate, atomic three-rule UTC daily budget |
 | Module bug | Low | Submerge instability | bounded async tasks, error containment, feature flag, tests |
 
 Mass pollution is prevented by independent gates: actual connection observations, visible
 and confirmed scope, protected multi-tenant boundaries, hard telemetry exclusions,
 complete active-list coverage, three spaced DIRECT failures, stable PROXY evidence, fresh
-pre-commit scope and coverage revalidation, a three-rule cap, report-only default, and
+pre-write scope and coverage revalidation, a three-rule cap, report-only default, and
 multiple apply interlocks. Any uncertainty blocks apply.
 
 ## 17. First-install and deployment decisions
@@ -1141,7 +1117,7 @@ There is no hidden factory value for `defaultRuleScope`. The first-install UI re
 administrator to choose `exact` or `site` before observation can be enabled; the approved
 mockups show `site` only as a configured example.
 
-Shipping the publisher code does not authorize a production mutation. Apply stays
+Shipping the rule-store code does not authorize a production mutation. Apply stays
 fail-closed until the persistent local rule store, generated file-provider, target channel,
-backup, and rollback verification are supplied by a separate deployment change. No remote
-credential is a prerequisite for local apply.
+backup, and operator recovery verification are supplied by a separate deployment change. No Git
+binary, repository, or remote credential is a prerequisite for local apply.

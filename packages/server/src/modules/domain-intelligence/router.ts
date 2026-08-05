@@ -1,4 +1,3 @@
-import { dirname, join } from "node:path";
 import {
   type DomainCandidateApplyActionInput,
   type DomainCandidateList,
@@ -27,7 +26,6 @@ import {
   domainRuleApplyOperationResultSchema,
 } from "@submerge/shared";
 import { readDomainRulesDeploymentCapability } from "../../config/domain-rules.js";
-import { env } from "../../config/env.js";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import {
@@ -38,7 +36,7 @@ import {
   submitDomainRuleApplyOperation,
 } from "../logs/singleton.js";
 import { applyConfirmedDomainCandidate } from "./candidate-apply.js";
-import { prepareLocalDomainRuleMutationIntent } from "./publisher.js";
+import { DOMAIN_RULE_DIRECTORY_PATH, prepareLocalDomainRuleMutationIntent } from "./rule-store.js";
 import {
   DomainCandidateReviewError,
   getDomainIntelligenceOverview,
@@ -118,9 +116,6 @@ export function makeDomainIntelligenceRouter(service: DomainIntelligenceService)
   });
 }
 
-const domainRuleTrustedParentPath = join(dirname(env.DB_PATH), "domain-rules");
-const domainRuleRepositoryPath = join(domainRuleTrustedParentPath, "repository");
-
 const domainIntelligenceService: DomainIntelligenceService = {
   settings: () => getDomainIntelligenceSettingsView(db),
   setSettings: (input) =>
@@ -161,10 +156,12 @@ const domainIntelligenceService: DomainIntelligenceService = {
     applyConfirmedDomainCandidate(input, {
       db,
       readCapability: readDomainRulesDeploymentCapability,
-      prepareIntent: prepareLocalDomainRuleMutationIntent,
+      prepareIntent: (operation) =>
+        prepareLocalDomainRuleMutationIntent({
+          ...operation,
+          ruleDirectoryPath: DOMAIN_RULE_DIRECTORY_PATH,
+        }),
       submit: submitDomainRuleApplyOperation,
-      repositoryPath: domainRuleRepositoryPath,
-      trustedParentPath: domainRuleTrustedParentPath,
     }),
 };
 

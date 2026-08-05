@@ -6,7 +6,7 @@ import { createProductionDomainRuleApplyWorker } from "./apply-worker-production
 const completed = (operationId: string) => ({
   operationId,
   phase: "completed" as const,
-  commitSha: "b".repeat(40),
+  contentSha256: "b".repeat(64),
   activationAttempt: 1,
 });
 

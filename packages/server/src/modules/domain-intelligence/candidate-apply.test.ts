@@ -20,8 +20,7 @@ const APPLY_READY: DomainIntelligenceDeploymentCapability = {
   mode: "apply",
   apply: {
     available: true,
-    repository: "local",
-    branch: "main",
+    store: "local-file",
     path: "custom.txt",
     providerName: "submerge-custom",
     providerPath: "./domain-rules/custom.txt",
@@ -63,7 +62,7 @@ function setup() {
     })
     .run();
   const prepareIntent = vi.fn(async () => ({
-    expectedParentCommit: "a".repeat(40),
+    expectedSourceRevision: "a".repeat(40),
     intendedContentSha256: "b".repeat(64),
   }));
   const submit = vi.fn(async (prepare: (signal: AbortSignal) => string | Promise<string>) => {
@@ -71,7 +70,7 @@ function setup() {
     return {
       operationId,
       phase: "completed" as const,
-      commitSha: "c".repeat(40),
+      contentSha256: "b".repeat(64),
       activationAttempt: 1,
     };
   });
@@ -84,8 +83,6 @@ function setup() {
       readCapability: () => APPLY_READY,
       prepareIntent,
       submit,
-      repositoryPath: "/runtime/domain-rules/repository",
-      trustedParentPath: "/runtime/domain-rules",
       now: () => NOW,
     },
   };
@@ -103,14 +100,12 @@ describe("applyConfirmedDomainCandidate", () => {
     ).resolves.toEqual({
       operationId: "manual-add-review-1",
       phase: "completed",
-      commitSha: "c".repeat(40),
+      contentSha256: "b".repeat(64),
       activationAttempt: 1,
     });
 
     expect(submit).toHaveBeenCalledTimes(1);
     expect(prepareIntent).toHaveBeenCalledWith({
-      repositoryPath: "/runtime/domain-rules/repository",
-      trustedParentPath: "/runtime/domain-rules",
       upsertRules: ["+.service.example"],
       deleteRules: [],
       signal: expect.any(AbortSignal),
@@ -136,7 +131,7 @@ describe("applyConfirmedDomainCandidate", () => {
       { mode: "report", apply: { available: false, reason: "deployment-report-only" } },
     ],
     ["unready apply", { mode: "apply", apply: { available: false, reason: "provider-inactive" } }],
-  ] as const)("fails before Git intent in %s", async (_label, capability) => {
+  ] as const)("fails before file intent in %s", async (_label, capability) => {
     const { dependencies, prepareIntent } = setup();
     dependencies.readCapability = () => capability;
 
@@ -149,7 +144,7 @@ describe("applyConfirmedDomainCandidate", () => {
     expect(prepareIntent).not.toHaveBeenCalled();
   });
 
-  it("fails before Git intent when current candidate authorization is stale", async () => {
+  it("fails before file intent when current candidate authorization is stale", async () => {
     const { db, dependencies, prepareIntent } = setup();
     db.update(domainCandidates).set({ reviewState: "rejected", nextValidationAt: 0 }).run();
 
@@ -162,7 +157,7 @@ describe("applyConfirmedDomainCandidate", () => {
     expect(prepareIntent).not.toHaveBeenCalled();
   });
 
-  it("replays the same durable request without recalculating Git intent", async () => {
+  it("replays the same durable request without recalculating file intent", async () => {
     const { db, dependencies, prepareIntent } = setup();
     const input = { fqdn: "api.service.example", operationId: "manual-add-review-1" };
 
@@ -197,7 +192,7 @@ describe("applyConfirmedDomainCandidate", () => {
     ).resolves.toEqual({
       operationId: "manual-add-review-1",
       phase: "queued",
-      commitSha: null,
+      contentSha256: null,
       activationAttempt: 0,
     });
     expect(db.select().from(domainRuleOperations).get()).toMatchObject({
@@ -224,7 +219,7 @@ describe("applyConfirmedDomainCandidate", () => {
     await expect(applyConfirmedDomainCandidate(input, dependencies)).resolves.toEqual({
       operationId: input.operationId,
       phase: "queued",
-      commitSha: null,
+      contentSha256: null,
       activationAttempt: 0,
     });
 
@@ -236,7 +231,7 @@ describe("applyConfirmedDomainCandidate", () => {
     const { db, dependencies } = setup();
     dependencies.submit = vi.fn(async (prepare) => {
       await prepare(new AbortController().signal);
-      throw new Error("Git attestation failed");
+      throw new Error("rule-file attestation failed");
     });
 
     await expect(
@@ -244,7 +239,7 @@ describe("applyConfirmedDomainCandidate", () => {
         { fqdn: "api.service.example", operationId: "manual-add-review-1" },
         dependencies,
       ),
-    ).rejects.toThrow("Git attestation failed");
+    ).rejects.toThrow("rule-file attestation failed");
     expect(db.select().from(domainRuleOperations).get()).toMatchObject({ phase: "prepared" });
   });
 
@@ -279,8 +274,8 @@ describe("applyConfirmedDomainCandidate", () => {
     db.update(domainRuleOperations)
       .set({
         phase: "completed",
-        commitSha: "c".repeat(40),
-        committedContentSha256: "b".repeat(64),
+        resultingRevision: "c".repeat(40),
+        resultingContentSha256: "b".repeat(64),
         activationStatus: "succeeded",
         activationAttemptCount: 1,
         lastActivationAttemptAt: NOW,
@@ -295,7 +290,7 @@ describe("applyConfirmedDomainCandidate", () => {
     await expect(applyConfirmedDomainCandidate(input, dependencies)).resolves.toEqual({
       operationId: input.operationId,
       phase: "completed",
-      commitSha: "c".repeat(40),
+      contentSha256: "b".repeat(64),
       activationAttempt: 1,
     });
     expect(dependencies.submit).not.toHaveBeenCalled();
@@ -319,7 +314,7 @@ describe("applyConfirmedDomainCandidate", () => {
     ).rejects.toThrow("domain-rule idempotency conflict");
   });
 
-  it("rejects the apply journal if validation claims the candidate during Git intent", async () => {
+  it("rejects the apply journal if validation claims the candidate during file intent", async () => {
     const { db, dependencies } = setup();
     db.update(domainCandidates).set({ nextValidationAt: NOW }).run();
     dependencies.prepareIntent = vi.fn(async () => {
@@ -335,7 +330,7 @@ describe("applyConfirmedDomainCandidate", () => {
         }),
       ).toMatchObject({ status: "claimed" });
       return {
-        expectedParentCommit: "a".repeat(40),
+        expectedSourceRevision: "a".repeat(40),
         intendedContentSha256: "b".repeat(64),
       };
     });

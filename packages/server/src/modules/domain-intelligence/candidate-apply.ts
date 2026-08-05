@@ -18,21 +18,19 @@ import type { DomainRuleApplyOperationResult as InternalApplyResult } from "./ap
 import type {
   PreparedLocalDomainRuleMutationIntent,
   PrepareLocalDomainRuleMutationIntentInput,
-} from "./publisher.js";
+} from "./rule-store.js";
 import { getDomainIntelligenceSettingsView } from "./service.js";
 
 export interface ConfirmedDomainCandidateApplyDependencies {
   db: Db;
   now?: () => number;
   prepareIntent: (
-    input: PrepareLocalDomainRuleMutationIntentInput,
+    input: Omit<PrepareLocalDomainRuleMutationIntentInput, "ruleDirectoryPath">,
   ) => Promise<PreparedLocalDomainRuleMutationIntent>;
   readCapability: () => unknown;
-  repositoryPath: string;
   submit: (
     prepare: (signal: AbortSignal) => string | Promise<string>,
   ) => Promise<InternalApplyResult>;
-  trustedParentPath: string;
 }
 
 function requireApplyReady(value: unknown): DomainIntelligenceDeploymentCapability {
@@ -49,7 +47,7 @@ type DurableCandidateApplyOperation = Pick<
   | "action"
   | "candidateFqdn"
   | "phase"
-  | "commitSha"
+  | "resultingContentSha256"
   | "activationAttemptCount"
   | "activationErrorCategory"
 >;
@@ -64,7 +62,7 @@ function readDurableCandidateApplyOperation(
       action: domainRuleOperations.action,
       candidateFqdn: domainRuleOperations.candidateFqdn,
       phase: domainRuleOperations.phase,
-      commitSha: domainRuleOperations.commitSha,
+      resultingContentSha256: domainRuleOperations.resultingContentSha256,
       activationAttemptCount: domainRuleOperations.activationAttemptCount,
       activationErrorCategory: domainRuleOperations.activationErrorCategory,
     })
@@ -96,7 +94,7 @@ function projectDurableCandidateApplyResult(
     return domainRuleApplyOperationResultSchema.parse({
       operationId: operation.id,
       phase: "completed",
-      commitSha: operation.commitSha,
+      contentSha256: operation.resultingContentSha256,
       activationAttempt: operation.activationAttemptCount,
     });
   }
@@ -104,7 +102,7 @@ function projectDurableCandidateApplyResult(
     return domainRuleApplyOperationResultSchema.parse({
       operationId: operation.id,
       phase: "partial",
-      commitSha: operation.commitSha,
+      contentSha256: operation.resultingContentSha256,
       activationAttempt: operation.activationAttemptCount,
       errorCategory: operation.activationErrorCategory,
     });
@@ -113,14 +111,14 @@ function projectDurableCandidateApplyResult(
     return domainRuleApplyOperationResultSchema.parse({
       operationId: operation.id,
       phase: "aborted",
-      commitSha: null,
+      contentSha256: null,
       activationAttempt: 0,
     });
   }
   return domainRuleApplyOperationResultSchema.parse({
     operationId: operation.id,
     phase: "queued",
-    commitSha: null,
+    contentSha256: null,
     activationAttempt: 0,
   });
 }
@@ -183,8 +181,6 @@ export async function applyConfirmedDomainCandidate(
       }
 
       const intent = await dependencies.prepareIntent({
-        repositoryPath: dependencies.repositoryPath,
-        trustedParentPath: dependencies.trustedParentPath,
         upsertRules: [candidate.proposedRule],
         deleteRules: [],
         signal,
@@ -197,7 +193,7 @@ export async function applyConfirmedDomainCandidate(
           idempotencyKey: input.operationId,
           action: "manual-add",
           candidateFqdn: candidate.fqdn,
-          expectedParentCommit: intent.expectedParentCommit,
+          expectedSourceRevision: intent.expectedSourceRevision,
           intendedContentSha256: intent.intendedContentSha256,
           proposedRule: candidate.proposedRule,
           ownershipDelta: {

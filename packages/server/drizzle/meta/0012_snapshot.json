@@ -1008,13 +1008,12 @@
           ],
           "isUnique": false
         },
-        "domain_rule_operations_commit_unique_idx": {
-          "name": "domain_rule_operations_commit_unique_idx",
+        "domain_rule_operations_revision_idx": {
+          "name": "domain_rule_operations_revision_idx",
           "columns": [
             "commit_sha"
           ],
-          "isUnique": true,
-          "where": "\"domain_rule_operations\".\"commit_sha\" is not null"
+          "isUnique": false
         }
       },
       "foreignKeys": {

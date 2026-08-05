@@ -1,5 +1,8 @@
 import { getConnections, openLogStream } from "../../clients/mihomo.js";
-import { registerDomainRulesDeploymentCapabilitySource } from "../../config/domain-rules.js";
+import {
+  registerDomainRulesDeploymentCapabilitySource,
+  registerManagedDomainRuleProviderActiveSource,
+} from "../../config/domain-rules.js";
 import { env } from "../../config/env.js";
 import { db } from "../../db/client.js";
 import { log, operationalLog } from "../../log.js";
@@ -107,9 +110,7 @@ const deploymentOwnership = registerConfigApplyOwner({ db }, (applyConfigDirect)
   });
   deploymentController = createProductionDomainRuleDeploymentController({
     applyConfigDirect,
-    databasePath: env.DB_PATH,
     db,
-    mihomoConfigPath: env.MIHOMO_CONFIG_PATH,
     mode: env.DOMAIN_RULES_MODE,
     runConfigApply: (apply) => runtimeCoordinator.runConfigApply(apply),
   });
@@ -121,13 +122,15 @@ const deploymentOwnership = registerConfigApplyOwner({ db }, (applyConfigDirect)
 export const domainIntelligenceRuntimeCoordinator = deploymentOwnership.owner.runtimeCoordinator;
 const domainRuleDeploymentController = deploymentOwnership.owner.deploymentController;
 registerDomainRulesDeploymentCapabilitySource(domainRuleDeploymentController.capabilitySource);
+registerManagedDomainRuleProviderActiveSource(() =>
+  domainRuleDeploymentController.isManagedProviderActive(),
+);
 const domainRuleDeploymentLifecycle = new DomainRuleDeploymentLifecycle(
   domainRuleDeploymentController,
 );
 const domainRuleApplyOperationDependencies = createProductionDomainRuleApplyOperationDependencies({
   controller: domainRuleDeploymentController,
-  databasePath: env.DB_PATH,
-  mihomoConfigPath: env.MIHOMO_CONFIG_PATH,
+  db,
   preflightPrepared: createProductionDomainRulePreparedPreflight({
     db,
     observationHealthy: () => domainIntelligenceScheduler.health().status === "healthy",

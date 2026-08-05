@@ -36,8 +36,7 @@ const applySettings: DomainIntelligenceSettingsView = {
     mode: "apply",
     apply: {
       available: true,
-      repository: "local",
-      branch: "main",
+      store: "local-file",
       path: "custom.txt",
       providerName: "submerge-custom",
       providerPath: "./domain-rules/custom.txt",
@@ -267,22 +266,6 @@ test("populated dark desktop matches the approved Auto Rules hierarchy", async (
 
   await page.screenshot({ path: "/tmp/submerge-auto-rules-dark-1440.png", fullPage: true });
   await expectNoDocumentOverflow(page);
-});
-
-test("an older settings payload without deployment capability fails closed", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1024 });
-  const legacySettings = {
-    configurationState: settings.configurationState,
-    settings: settings.settings,
-    automatic: { available: false, reason: "publisher-unavailable" },
-  } as DomainIntelligenceSettingsView;
-
-  await openDomainIntelligence(page, legacySettings);
-
-  await expect(page.getByText("только отчёт", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Добавить" }).first()).toHaveAccessibleDescription(
-    "Применение недоступно, пока сервер работает в режиме только отчёта",
-  );
 });
 
 for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
@@ -591,7 +574,7 @@ for (const width of [320, 390, 425, 1440]) {
               data: {
                 operationId: "manual-add-browser-fixture",
                 phase: "completed",
-                commitSha: "c".repeat(40),
+                contentSha256: "c".repeat(64),
                 activationAttempt: 1,
               },
             },

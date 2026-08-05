@@ -1,7 +1,7 @@
 import type { DomainIntelligenceDeploymentCapability } from "@submerge/shared";
 import { describe, expect, it, vi } from "vitest";
-import { DomainRuleMaterializationError } from "./materialization.js";
 import { DomainRuleDeploymentProvisioner, DomainRuleProvisioningError } from "./provisioning.js";
+import { DomainRuleStoreError } from "./rule-store.js";
 
 function dependencies() {
   return {
@@ -16,8 +16,7 @@ const readyCapability: DomainIntelligenceDeploymentCapability = {
   mode: "apply",
   apply: {
     available: true,
-    repository: "local",
-    branch: "main",
+    store: "local-file",
     path: "custom.txt",
     providerName: "submerge-custom",
     providerPath: "./domain-rules/custom.txt",
@@ -118,8 +117,8 @@ describe("DomainRuleDeploymentProvisioner", () => {
 
   it.each([
     [
-      "typed materialization failure",
-      new DomainRuleMaterializationError("local-store-unsafe", "filesystem detail"),
+      "typed local-store failure",
+      new DomainRuleStoreError("local-store-unsafe", "filesystem detail"),
       "local-store-unsafe",
     ],
     [

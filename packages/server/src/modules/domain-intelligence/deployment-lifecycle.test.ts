@@ -37,6 +37,7 @@ describe("DomainRuleDeploymentLifecycle", () => {
         available = true;
         return applied;
       }),
+      requiresManagedProviderRecovery: vi.fn(() => false),
     };
     const lifecycle = new DomainRuleDeploymentLifecycle(controller);
 
@@ -59,6 +60,7 @@ describe("DomainRuleDeploymentLifecycle", () => {
           }) as const,
       ),
       reconcile: vi.fn(async () => applied),
+      requiresManagedProviderRecovery: vi.fn(() => false),
     };
     const lifecycle = new DomainRuleDeploymentLifecycle(controller);
 
@@ -72,6 +74,7 @@ describe("DomainRuleDeploymentLifecycle", () => {
     const controller = {
       readCapability: vi.fn(() => ({ mode: "apply" }) as never),
       reconcile: vi.fn(async () => applied),
+      requiresManagedProviderRecovery: vi.fn(() => false),
     };
     const lifecycle = new DomainRuleDeploymentLifecycle(controller);
 
@@ -81,17 +84,46 @@ describe("DomainRuleDeploymentLifecycle", () => {
     expect(controller.reconcile).toHaveBeenCalledTimes(2);
   });
 
+  it("retries report-mode activation when an initialized provider proof is missing", async () => {
+    let recoveryRequired = true;
+    const controller = {
+      readCapability: vi.fn(
+        () =>
+          ({
+            mode: "report",
+            apply: { available: false, reason: "deployment-report-only" },
+          }) as const,
+      ),
+      reconcile: vi.fn(async () => {
+        const result = applied;
+        if (controller.reconcile.mock.calls.length > 1) recoveryRequired = false;
+        return result;
+      }),
+      requiresManagedProviderRecovery: vi.fn(() => recoveryRequired),
+    };
+    const lifecycle = new DomainRuleDeploymentLifecycle(controller);
+
+    await lifecycle.reconcile();
+    await expect(lifecycle.recoverIfNeeded()).resolves.toEqual(applied);
+
+    expect(controller.reconcile).toHaveBeenCalledTimes(2);
+    expect(controller.requiresManagedProviderRecovery).toHaveBeenCalled();
+  });
+
   it("aborts and drains pending store provisioning before shutdown resolves", async () => {
     const provisioningStarted = deferred();
     const releaseCleanup = deferred();
     const cleanupFinished = vi.fn();
     const deps: DomainRuleDeploymentControllerDeps = {
       applyConfigDirect: vi.fn(async () => applied),
+      inspectStore: vi.fn(async () => null),
+      storePreviouslyInitialized: vi.fn(() => false),
       provisionStore: vi.fn(async (signal) => {
         provisioningStarted.resolve();
         await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve()));
         await releaseCleanup.promise;
         cleanupFinished();
+        return { ruleCount: 0 };
       }),
       resolveTargetGroupName: vi.fn(() => "AUTO"),
       runConfigApply: vi.fn(async (apply) => apply()),

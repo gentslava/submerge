@@ -1,6 +1,6 @@
-# 0006 — Local domain-rule store with optional host-side export
+# 0006 — Plain local domain-rule file with external synchronization
 
-**Status:** accepted (2026-08-04)
+**Status:** accepted (amended 2026-08-05)
 
 **Amends:** [ADR-0005](0005-mihomo-native-domain-intelligence.md), specifically its
 source-of-truth and publication boundary
@@ -8,98 +8,123 @@ source-of-truth and publication boundary
 ## Context
 
 ADR-0005 originally treated `gentslava/mihomo-rules/custom.txt` and GitHub Raw as the
-durable source and activation path. That was deployment context, not a valid product
-boundary for a general self-hosted VPN console.
+durable source and activation path. The first ADR-0006 revision removed the remote but
+kept a private Git repository inside Submerge for local history and rollback.
 
-Making Submerge push to an external repository would require repository-specific URLs,
-network convergence, and SSH/token credentials inside the application container. It
-would also make local routing depend on an unrelated hosted service. Different
-self-hosted installations may want no external copy, a private forge, GitHub, or a
-completely different backup mechanism.
+That local repository is still the wrong product boundary. It makes the application
+responsible for Git installation, repository provisioning, history validation, locks,
+commits, recovery, and Git-specific audit data even when an installation never wants a
+remote copy. It also makes a later bidirectional synchronizer compete with Submerge for
+ownership of the same repository.
 
-Mihomo supports a `file` rule-provider whose path is inside its HomeDir. Submerge already
-writes that persistent HomeDir through its existing config boundary, so local activation
-does not need an HTTP provider.
+The product needs a safe, inspectable local `custom.txt`; it does not need Git semantics.
+Repository configuration, credentials, remote convergence, merge policy, pull, and push
+belong to a separate deployment service.
 
 ## Decision
 
-Submerge owns a dedicated persistent local repository on branch `main`. Its worktree is
-private to Submerge and contains `custom.txt`; it is not mounted into Mihomo. The
-publisher atomically materializes the attested committed blob to a separate code-owned
-`domain-rules/custom.txt` inside Mihomo's HomeDir. Mihomo sees that one file as a
-read-only source, never the repository or `.git` metadata.
+Submerge owns only a plain persistent local rule file and its activation transaction.
+The canonical file is `domain-rules/custom.txt` in a dedicated shared rule volume. Mihomo
+mounts that volume read-only and declares the same file as the stable
+`submerge-custom` file provider.
 
-- `DOMAIN_RULES_MODE=report|apply` is a deployment-only switch and defaults to `report`.
-  Changing it to `apply` triggers a separate provisioning transition before candidate
-  apply can become available.
-- Provisioning initializes or validates the private repository, creates a byte-preserving
-  baseline commit, materializes that exact blob, declares the stable local provider, and
-  verifies a serialized Mihomo config reload. Candidate apply remains unavailable until
-  every provisioning proof succeeds.
-- It deterministically updates only its managed block, validates the resulting file, and
-  creates a local commit with fixed non-secret author metadata.
-- Generated Mihomo configuration references the materialized file through a stable
-  `type: file`, `behavior: domain`, `format: text` provider and a `RULE-SET` route to the
-  configured VPN channel.
-- Every activation atomically materializes the committed blob, force-reloads the full
-  generated config through the existing serialized coordinator, and verifies the blob,
-  provider, and resulting route. It does not wait for GitHub Raw or another mirror.
-- Submerge never accepts a remote URL, deploy key, token, SSH agent, hook, or arbitrary
-  publisher command. It never fetches or pushes.
-- Any remote backup/mirror is an optional host responsibility. A host-side script may
-  export an attested immutable commit through a separate host-owned mirror/snapshot and
-  push to an explicit host-configured destination using credentials outside every
-  Submerge mount. It must never write the app repository or persist a remote, credential,
-  hook, helper, socket, alternate, or promisor configuration there.
+- `DOMAIN_RULES_MODE=report|apply` remains a deployment-only switch and defaults to
+  `report`.
+- Apply provisioning validates the dedicated directory and file, preserves an optional
+  seed byte-for-byte, declares the stable provider, force-reloads Mihomo, and verifies
+  the resulting route before apply becomes available.
+- Submerge deterministically changes only its marked managed block, validates the full
+  file, and publishes it with an atomic replace while holding the local rule-store lock.
+- SQLite records a SHA-256-derived expected source revision, the intended and resulting
+  full SHA-256 digests, operation ID,
+  ownership delta, budget reservation, and activation result. These digests replace Git
+  parent/commit identifiers as the crash-reconciliation authority.
+- Startup and retry reconcile an unfinished operation against the expected or resulting
+  file digest. An unknown third state fails closed as
+  `local-store-reconciliation-required`.
+- Mihomo reads the canonical file directly. There is no second materialized copy and no
+  `.git` directory in a Mihomo mount.
+- Submerge does not install or execute Git and has no repository, branch, remote, commit,
+  credential, hook, SSH-agent, fetch, pull, merge, or push code.
 
-Before every file/Git mutation, Submerge persists an apply-operation journal containing
-the operation ID, expected parent, intended content digest and ownership delta, plus any
-automatic budget reservation. The operation ID is embedded in non-secret commit metadata.
-Startup/retry reconciliation attests parent, path, blob, and operation ID under the global
-apply lock, then finalizes ownership/budget exactly once or fails closed on unknown history.
+An optional synchronization service is a separate deployment component. It may read the
+dedicated rule volume plus own a private repository volume. It owns all Git configuration,
+credentials, polling, commits, fetches, conflict handling, and pushes. It runs with the same
+numeric uid as Submerge and receives neither the Mihomo config nor SQLite volume. Submerge
+continues to work offline when this service is absent or unhealthy.
 
-Report remains the default. Local initialization, commits, configuration changes, and
-activation remain behind explicit apply readiness and the existing review/automatic
+The initial safe publication direction is local-to-remote only. The service may observe a
+stable canonical file and replicate it into Git. It may fetch and stage remote updates in
+its private repository, but may not replace the canonical file: Submerge rejects any
+unjournaled digest change even across a restart because it would bypass SQLite ownership
+and operation audit. A later authenticated Submerge import/reconciliation interface may
+serialize file validation, SQLite reconciliation, activation, and route proof. The
+synchronizer never controls Mihomo.
+
+Before every file mutation, Submerge persists an apply-operation journal containing the
+operation ID, expected source digest, intended digest, ownership delta, and any automatic
+budget reservation. The journal is finalized exactly once after the resulting digest is
+attested, then the provider is force-reloaded and verified.
+
+Report remains the default. Local initialization, file changes, configuration changes,
+and activation remain behind explicit apply readiness and the existing review/automatic
 consent gates.
+
+Switching an initialized deployment to report mode disables mutations without removing
+the attested provider from generated configuration. A missing, unsafe, or digest-mismatched
+store blocks reconciliation; it does not silently reroute previously confirmed rules.
 
 ## Alternatives considered
 
-### Push from Submerge to a pinned GitHub repository
+### Keep a private Git repository inside Submerge
 
-- (+) Preserves the existing public list workflow.
-- (-) Couples a general self-hosted product to one account, forge, and raw URL.
-- (-) Requires sensitive credentials and SSH/network policy in the app container.
-- (-) Makes local activation wait for an external publication path.
+- (+) Provides local history and familiar commit identifiers.
+- (-) Retains Git runtime and recovery complexity in every installation.
+- (-) Couples the application transaction to Git internals.
+- (-) Creates ambiguous ownership when a bidirectional synchronizer is added.
 
-Rejected. External replication is useful for one deployment but is not product logic.
+Rejected. SQLite already provides the operation audit needed by the product, while the
+plain file is the portable artifact.
 
-### Let a host script both edit and publish the active list
+### Push from Submerge to a pinned external repository
 
-- (+) Keeps Git completely outside the container.
-- (-) Splits rule ownership and transactional audit between two writers.
-- (-) Makes activation timing and rollback ambiguous.
+- (+) Preserves one existing public-list workflow.
+- (-) Couples a general self-hosted product to a forge and account.
+- (-) Requires credentials and network policy in the application container.
+- (-) Makes local routing depend on external convergence.
 
-Rejected. Submerge must own the local rule transaction it presents in the UI. The host
-script may copy commits outward but may not mutate the worktree.
+Rejected. External replication is deployment logic.
+
+### Let the synchronization service activate Mihomo directly
+
+- (+) Keeps the application unaware of externally pulled changes.
+- (-) Splits provider/config ownership between two services.
+- (-) Bypasses Submerge's serialized configuration coordinator and route proof.
+
+Rejected. The current synchronizer only reads the canonical file and writes its private
+Git working tree. A future authenticated import API may ask Submerge to change the
+canonical file, but the synchronizer never replaces it directly. In every case Submerge
+remains the sole owner of Mihomo configuration and activation verification.
 
 ### Store rules only in SQLite or inline Mihomo configuration
 
-- (+) Removes Git from the runtime.
-- (-) Loses a simple inspectable history and a portable `custom.txt` artifact.
-- (-) Makes optional external synchronization harder.
+- (+) Removes the shared file.
+- (-) Removes the portable `custom.txt` artifact required for optional synchronization.
+- (-) Makes operator inspection and recovery harder.
 
-Rejected. A local repository is small, familiar, and useful without imposing a remote.
+Rejected. The plain file is a useful stable integration boundary without requiring Git.
 
 ## Consequences
 
-- (+) Local rule application works offline and has no Git-host dependency.
-- (+) No SSH key, token, cookie, or repository credential enters Submerge.
-- (+) Every installation chooses independently whether and where to mirror its rules.
-- (+) Mihomo reads only an attested materialization from its own safe HomeDir and cannot
-  read or modify `.git`.
-- (+) The local commit SHA remains a durable audit and rollback reference.
-- (-) The runtime image needs the Git CLI for local init/commit operations.
-- (-) Operators who want an external copy must configure and monitor a separate
-  host-side sync job.
-- (-) The private repository and active materialization require two persistent paths and
-  a crash-reconciled copy/reload step.
+- (+) Local rule application works offline and has no Git dependency.
+- (+) The runtime image is smaller and contains no repository tooling.
+- (+) No Git credentials or forge configuration can enter Submerge.
+- (+) A separate synchronizer can evolve independently and receive only read access to the
+  rule volume plus its private repository and credentials.
+- (+) SQLite audit and content digests are sufficient for deterministic retry and recovery.
+- (-) Git history and remote conflict resolution are unavailable unless the separate
+  synchronization service is deployed.
+- (-) Remote-to-local application is deferred until a coordinated import API exists;
+  current remote updates can only be fetched and staged outside the canonical volume.
+- (-) Automatic rollback remains unavailable until audited prior file snapshots are added;
+  operator recovery uses an explicit backup in the meantime.

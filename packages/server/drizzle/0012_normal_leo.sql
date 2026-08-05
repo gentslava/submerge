@@ -67,7 +67,7 @@ CREATE TABLE `domain_rule_operations` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `domain_rule_operations_idempotency_key_unique` ON `domain_rule_operations` (`idempotency_key`);--> statement-breakpoint
 CREATE INDEX `domain_rule_operations_recovery_idx` ON `domain_rule_operations` (`phase`,`created_at`);--> statement-breakpoint
-CREATE UNIQUE INDEX `domain_rule_operations_commit_unique_idx` ON `domain_rule_operations` (`commit_sha`) WHERE "domain_rule_operations"."commit_sha" is not null;--> statement-breakpoint
+CREATE INDEX `domain_rule_operations_revision_idx` ON `domain_rule_operations` (`commit_sha`);--> statement-breakpoint
 CREATE TABLE `domain_rule_ownership` (
 	`rule` text PRIMARY KEY NOT NULL,
 	`ownership` text NOT NULL,

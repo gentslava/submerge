@@ -1,10 +1,8 @@
-import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { DomainDecisionReason, DomainProbeCategory } from "@submerge/shared";
 import type { MihomoConnection } from "./clients/mihomo.js";
 import type { Db } from "./db/client.js";
 import { observationFromConnection } from "./modules/domain-intelligence/observer.js";
-import { LocalGitCommandError } from "./modules/domain-intelligence/publisher.js";
 import {
   buildDomainIntelligenceReport,
   type DomainIntelligenceReport,
@@ -14,12 +12,7 @@ import {
 import type { DomainValidationExecution } from "./modules/domain-intelligence/scheduler.js";
 import type { DueDomainCandidate } from "./modules/domain-intelligence/service.js";
 
-type DomainIntelligenceCliAction =
-  | "collect-snapshot"
-  | "validate"
-  | "report"
-  | "apply"
-  | "recover-publisher-lock";
+type DomainIntelligenceCliAction = "collect-snapshot" | "validate" | "report";
 
 export interface DomainIntelligenceCliOptions {
   action: DomainIntelligenceCliAction;
@@ -27,15 +20,11 @@ export interface DomainIntelligenceCliOptions {
   outputDir?: string;
 }
 
-type DomainIntelligenceCliErrorCode =
-  | "invalid-arguments"
-  | "dry-run-required"
-  | "publisher-unavailable";
+type DomainIntelligenceCliErrorCode = "invalid-arguments" | "dry-run-required";
 
 const cliErrorMessages: Record<DomainIntelligenceCliErrorCode, string> = {
   "invalid-arguments": "invalid domain intelligence arguments",
   "dry-run-required": "diagnostic command requires --dry-run",
-  "publisher-unavailable": "domain intelligence publisher is unavailable",
 };
 
 export class DomainIntelligenceCliError extends Error {
@@ -69,7 +58,6 @@ export interface DomainValidationDryRunResult {
 
 export interface DomainIntelligenceCliDeps {
   collectSnapshotDryRun: () => Promise<DomainCollectionDryRunResult>;
-  recoverPublisherLock: () => Promise<boolean>;
   validateDryRun: () => Promise<DomainValidationDryRunResult>;
   readReport: () => Promise<DomainIntelligenceReport>;
   writeReportArtifacts: (
@@ -93,10 +81,6 @@ export function parseDomainIntelligenceCliArgs(
       actions.push("validate");
     } else if (argument === "--report") {
       actions.push("report");
-    } else if (argument === "--apply") {
-      actions.push("apply");
-    } else if (argument === "--recover-publisher-lock") {
-      actions.push("recover-publisher-lock");
     } else if (argument === "--dry-run") {
       if (dryRun) {
         throw new DomainIntelligenceCliError("invalid-arguments", "--dry-run was provided twice");
@@ -126,12 +110,6 @@ export function parseDomainIntelligenceCliArgs(
   if ((action === "collect-snapshot" || action === "validate") && !dryRun) {
     throw new DomainIntelligenceCliError("dry-run-required", `${action} requires --dry-run`);
   }
-  if (action === "recover-publisher-lock" && dryRun) {
-    throw new DomainIntelligenceCliError(
-      "invalid-arguments",
-      "publisher-lock recovery cannot be a dry-run",
-    );
-  }
   if (outputDir !== undefined && action !== "report") {
     throw new DomainIntelligenceCliError(
       "invalid-arguments",
@@ -150,16 +128,6 @@ export async function runDomainIntelligenceCli(
   deps: DomainIntelligenceCliDeps,
 ): Promise<void> {
   const options = parseDomainIntelligenceCliArgs(argv);
-  if (options.action === "recover-publisher-lock") {
-    writeSummary(deps, {
-      action: "recover-publisher-lock",
-      recovered: await deps.recoverPublisherLock(),
-    });
-    return;
-  }
-  if (options.action === "apply") {
-    throw new DomainIntelligenceCliError("publisher-unavailable");
-  }
   if (options.action === "collect-snapshot") {
     writeSummary(deps, await deps.collectSnapshotDryRun());
     return;
@@ -309,18 +277,6 @@ function createProductionCliDeps(): DomainIntelligenceCliDeps {
       const mihomo = await import("./clients/mihomo.js");
       return collectDomainSnapshotDryRun(() => mihomo.getConnections());
     },
-    recoverPublisherLock: async () => {
-      const [{ env }, publisher] = await Promise.all([
-        import("./config/env.js"),
-        import("./modules/domain-intelligence/publisher.js"),
-      ]);
-      const dataDirectoryPath = dirname(env.DB_PATH);
-      const trustedParentPath = join(dataDirectoryPath, "domain-rules");
-      return publisher.recoverStaleLocalRuleRepositoryLock(join(trustedParentPath, "repository"), {
-        operatorConfirmedStopped: true,
-        trustedParentPath,
-      });
-    },
     validateDryRun: async () => {
       const { db, executor, service } = await loadState();
       return validateDomainCandidateDryRun({
@@ -345,28 +301,8 @@ export async function main(argv: readonly string[] = process.argv.slice(2)): Pro
 
 export function formatDomainIntelligenceCliError(error: unknown): string {
   if (error instanceof DomainIntelligenceCliError) return error.message;
-  if (error instanceof LocalGitCommandError) {
-    return `local Git ${error.stage} failed (${error.reason})`;
-  }
-  if (error instanceof Error && safePublisherErrorMessages.has(error.message)) {
-    return error.message;
-  }
   return "domain intelligence command failed";
 }
-
-const safePublisherErrorMessages = new Set([
-  "local domain-rule repository is busy",
-  "unsafe local domain-rule repository lock",
-  "unsafe local Git lock",
-  "unsafe local Git recovery artifact",
-  "unsafe local Git configuration",
-  "unexpected local Git state",
-  "unsafe local domain-rule repository",
-  "unsafe local domain-rule recovery artifact",
-  "unsafe local baseline staging state",
-  "trusted Git binary unavailable",
-  "local domain-rule history limit reached",
-]);
 
 const invokedPath = process.argv[1];
 if (invokedPath && import.meta.url === pathToFileURL(invokedPath).href) {

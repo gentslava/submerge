@@ -12,18 +12,17 @@ import {
   beginDomainRuleActivation,
   completeDomainRuleActivation,
   type DomainRuleJournalOptions,
-  finalizeDomainRuleCommit,
+  finalizeDomainRuleWrite,
   markDomainRuleOperationReconciliationRequired,
 } from "./apply-journal.js";
-import { DomainRuleMaterializationError } from "./materialization.js";
 import {
   type AttestedLocalDomainRuleOperationState,
-  type CommittedDomainRules,
   isLocalDomainRuleReconciliationFailure,
-} from "./publisher.js";
+  type WrittenDomainRules,
+} from "./rule-store.js";
 
 type DomainRuleOperation = typeof domainRuleOperations.$inferSelect;
-const SHA1_PATTERN = /^[0-9a-f]{40}$/u;
+const REVISION_PATTERN = /^[0-9a-f]{40}$/u;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
 const ACTIVATION_ERROR_CATEGORIES = new Set<string>(DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES);
 
@@ -43,36 +42,35 @@ export interface DomainRuleApplyOperationDependencies {
   assertExecutionAllowed: (signal?: AbortSignal) => void | Promise<void>;
   /** Revalidate mutable policy, coverage, topology, and capability under the global apply lock. */
   preflightPrepared: (operation: DomainRuleOperation, signal?: AbortSignal) => Promise<void>;
-  /** Attest whether HEAD is still the prepared parent or the exact journaled child commit. */
+  /** Attest whether the file is still at the prepared revision or already contains the intent. */
   attestOperation: (input: {
-    committedContentSha256: string;
-    expectedParent: string;
+    expectedSourceRevision: string;
+    intendedContentSha256: string;
     operationId: string;
     signal?: AbortSignal | undefined;
   }) => Promise<AttestedLocalDomainRuleOperationState>;
-  /** Apply only the journaled ownership delta and create the attested local commit. */
+  /** Apply only the journaled ownership delta and atomically replace the local file. */
   commitPrepared: (input: {
     deleteRules: readonly string[];
-    expectedParent: string;
+    expectedSourceRevision: string;
     intendedContentSha256: string;
     operationId: string;
     signal?: AbortSignal | undefined;
     upsertRules: readonly string[];
-  }) => Promise<CommittedDomainRules>;
-  /** Materialize the exact committed blob into the active Mihomo provider path. */
-  materializeCommitted: (input: {
-    committedContentSha256: string;
-    commitSha: string;
-    expectedParent: string;
+  }) => Promise<WrittenDomainRules>;
+  /** Re-attest the written file before Mihomo activation. */
+  attestWritten: (input: {
+    contentSha256: string;
     operationId: string;
+    revision: string;
     signal?: AbortSignal | undefined;
   }) => Promise<void>;
   /** Serialize config reload and live provider/coverage/route proofs. */
   activateCommitted: (
     input: {
       attempt: number;
-      commitSha: string;
       operation: DomainRuleOperation;
+      revision: string;
     },
     signal?: AbortSignal,
   ) => Promise<DomainRuleActivationOutcome>;
@@ -86,20 +84,20 @@ export type DomainRuleApplyOperationResult =
   | {
       operationId: string;
       phase: "completed";
-      commitSha: string;
+      contentSha256: string;
       activationAttempt: number;
     }
   | {
       operationId: string;
       phase: "partial";
-      commitSha: string;
+      contentSha256: string;
       activationAttempt: number;
       errorCategory: DomainRuleActivationErrorCategory;
     }
   | {
       operationId: string;
       phase: "aborted";
-      commitSha: null;
+      contentSha256: null;
       activationAttempt: 0;
     };
 
@@ -112,7 +110,7 @@ function assertDependencies(
     typeof dependencies.preflightPrepared !== "function" ||
     typeof dependencies.attestOperation !== "function" ||
     typeof dependencies.commitPrepared !== "function" ||
-    typeof dependencies.materializeCommitted !== "function" ||
+    typeof dependencies.attestWritten !== "function" ||
     typeof dependencies.activateCommitted !== "function"
   ) {
     throw new Error("domain-rule apply dependencies unavailable");
@@ -134,22 +132,22 @@ function signalOptions(signal: AbortSignal | undefined): { signal?: AbortSignal 
   return signal === undefined ? {} : { signal };
 }
 
-function assertCommittedResult(
+function assertWrittenResult(
   operation: DomainRuleOperation,
-  committed: CommittedDomainRules,
+  written: WrittenDomainRules,
   requireChanged: boolean,
-): CommittedDomainRules {
+): WrittenDomainRules {
   if (
-    !SHA1_PATTERN.test(committed.head) ||
-    committed.head === operation.expectedParentCommit ||
-    committed.parent !== operation.expectedParentCommit ||
-    committed.contentSha256 !== operation.intendedContentSha256 ||
-    !SHA256_PATTERN.test(committed.contentSha256) ||
-    (requireChanged && committed.changed !== true)
+    !REVISION_PATTERN.test(written.revision) ||
+    written.revision === operation.expectedSourceRevision ||
+    written.previousRevision !== operation.expectedSourceRevision ||
+    written.contentSha256 !== operation.intendedContentSha256 ||
+    !SHA256_PATTERN.test(written.contentSha256) ||
+    (requireChanged && written.changed !== true)
   ) {
-    throw new Error("domain-rule committed result does not match prepared intent");
+    throw new Error("domain-rule written result does not match prepared intent");
   }
-  return committed;
+  return written;
 }
 
 function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
@@ -170,61 +168,61 @@ function parseAttestation(
   }
   const record = value as Record<string, unknown>;
   if (
-    value.state === "parent" &&
-    hasExactKeys(record, ["state", "head", "contentSha256"]) &&
-    typeof record.head === "string" &&
-    record.head === operation.expectedParentCommit &&
+    value.state === "expected" &&
+    hasExactKeys(record, ["state", "revision", "contentSha256"]) &&
+    typeof record.revision === "string" &&
+    record.revision === operation.expectedSourceRevision &&
     typeof record.contentSha256 === "string" &&
     SHA256_PATTERN.test(record.contentSha256)
   ) {
     return {
-      state: "parent",
-      head: record.head,
+      state: "expected",
+      revision: record.revision,
       contentSha256: record.contentSha256,
     };
   }
   if (
-    value.state === "committed" &&
-    hasExactKeys(record, ["state", "head", "parent", "contentSha256"]) &&
-    typeof record.head === "string" &&
-    SHA1_PATTERN.test(record.head) &&
-    record.head !== operation.expectedParentCommit &&
-    typeof record.parent === "string" &&
-    record.parent === operation.expectedParentCommit &&
+    value.state === "written" &&
+    hasExactKeys(record, ["state", "revision", "previousRevision", "contentSha256"]) &&
+    typeof record.revision === "string" &&
+    REVISION_PATTERN.test(record.revision) &&
+    record.revision !== operation.expectedSourceRevision &&
+    typeof record.previousRevision === "string" &&
+    record.previousRevision === operation.expectedSourceRevision &&
     typeof record.contentSha256 === "string" &&
     record.contentSha256 === operation.intendedContentSha256 &&
     SHA256_PATTERN.test(record.contentSha256)
   ) {
     return {
-      state: "committed",
-      head: record.head,
-      parent: record.parent,
+      state: "written",
+      revision: record.revision,
+      previousRevision: record.previousRevision,
       contentSha256: record.contentSha256,
     };
   }
   throw new Error("domain-rule attestation returned an invalid result");
 }
 
-function assertJournaledCommit(operation: DomainRuleOperation): {
-  commitSha: string;
-  committedContentSha256: string;
+function assertJournaledWrite(operation: DomainRuleOperation): {
+  resultingContentSha256: string;
+  revision: string;
 } {
-  if (!operation.commitSha || !SHA1_PATTERN.test(operation.commitSha)) {
-    throw new Error("domain-rule operation has no committed content");
+  if (!operation.resultingRevision || !REVISION_PATTERN.test(operation.resultingRevision)) {
+    throw new Error("domain-rule operation has no written content");
   }
-  if (operation.commitSha === operation.expectedParentCommit) {
-    throw new Error("domain-rule commit must be a child of the prepared parent");
+  if (operation.resultingRevision === operation.expectedSourceRevision) {
+    throw new Error("domain-rule write must advance the prepared revision");
   }
   if (
-    !operation.committedContentSha256 ||
-    !SHA256_PATTERN.test(operation.committedContentSha256) ||
-    operation.committedContentSha256 !== operation.intendedContentSha256
+    !operation.resultingContentSha256 ||
+    !SHA256_PATTERN.test(operation.resultingContentSha256) ||
+    operation.resultingContentSha256 !== operation.intendedContentSha256
   ) {
-    throw new Error("domain-rule committed content does not match prepared intent");
+    throw new Error("domain-rule written content does not match prepared intent");
   }
   return {
-    commitSha: operation.commitSha,
-    committedContentSha256: operation.committedContentSha256,
+    resultingContentSha256: operation.resultingContentSha256,
+    revision: operation.resultingRevision,
   };
 }
 
@@ -251,14 +249,14 @@ function parseActivationOutcome(value: unknown): DomainRuleActivationOutcome {
 
 function partialResult(
   operationId: string,
-  commitSha: string,
+  contentSha256: string,
   attempt: number,
   errorCategory: DomainRuleActivationErrorCategory,
 ): DomainRuleApplyOperationResult {
   return {
     operationId,
     phase: "partial",
-    commitSha,
+    contentSha256,
     activationAttempt: attempt,
     errorCategory,
   };
@@ -268,7 +266,7 @@ function abortedResult(operationId: string): DomainRuleApplyOperationResult {
   return {
     operationId,
     phase: "aborted",
-    commitSha: null,
+    contentSha256: null,
     activationAttempt: 0,
   };
 }
@@ -276,8 +274,6 @@ function abortedResult(operationId: string): DomainRuleApplyOperationResult {
 function isReconciliationFailure(error: unknown): boolean {
   return (
     error instanceof DomainRuleOperationReconciliationError ||
-    (error instanceof DomainRuleMaterializationError &&
-      error.reason === "local-store-reconciliation-required") ||
     isLocalDomainRuleReconciliationFailure(error)
   );
 }
@@ -303,11 +299,11 @@ export async function executeDomainRuleOperation(
     return abortedResult(operation.id);
   }
   if (operation.phase === "completed") {
-    const committed = assertJournaledCommit(operation);
+    const committed = assertJournaledWrite(operation);
     return {
       operationId: operation.id,
       phase: "completed",
-      commitSha: committed.commitSha,
+      contentSha256: committed.resultingContentSha256,
       activationAttempt: operation.activationAttemptCount,
     };
   }
@@ -323,8 +319,8 @@ export async function executeDomainRuleOperation(
     try {
       rawAttestation = await dependencies.attestOperation({
         operationId: operation.id,
-        expectedParent: operation.expectedParentCommit,
-        committedContentSha256: operation.intendedContentSha256,
+        expectedSourceRevision: operation.expectedSourceRevision,
+        intendedContentSha256: operation.intendedContentSha256,
         ...signalOptions(options.signal),
       });
     } catch (error) {
@@ -336,21 +332,21 @@ export async function executeDomainRuleOperation(
     const attested = parseAttestation(rawAttestation, operation);
     options.signal?.throwIfAborted();
 
-    let committed: CommittedDomainRules;
-    if (attested.state === "committed") {
-      committed = assertCommittedResult(
+    let written: WrittenDomainRules;
+    if (attested.state === "written") {
+      written = assertWrittenResult(
         operation,
         {
           changed: false,
-          head: attested.head,
-          parent: attested.parent,
+          revision: attested.revision,
+          previousRevision: attested.previousRevision,
           contentSha256: attested.contentSha256,
         },
         false,
       );
     } else {
-      if (attested.head !== operation.expectedParentCommit) {
-        throw new Error("domain-rule attestation does not match prepared parent");
+      if (attested.revision !== operation.expectedSourceRevision) {
+        throw new Error("domain-rule attestation does not match prepared revision");
       }
       try {
         await dependencies.preflightPrepared(operation, options.signal);
@@ -364,19 +360,19 @@ export async function executeDomainRuleOperation(
         try {
           aborted = await abortPreparedDomainRuleOperation(db, operation.id, {
             ...options,
-            assertPreCommitState: async (intent) => {
+            assertPreWriteState: async (intent) => {
               const state = parseAttestation(
                 await dependencies.attestOperation({
                   operationId: intent.operationId,
-                  expectedParent: intent.expectedParentCommit,
-                  committedContentSha256: intent.intendedContentSha256,
+                  expectedSourceRevision: intent.expectedSourceRevision,
+                  intendedContentSha256: intent.intendedContentSha256,
                   ...signalOptions(options.signal),
                 }),
                 operation,
               );
-              if (state.state !== "parent") {
+              if (state.state !== "expected") {
                 throw new DomainRuleOperationReconciliationError(
-                  "domain-rule preflight veto raced a local commit",
+                  "domain-rule preflight veto raced a local write",
                 );
               }
             },
@@ -396,11 +392,11 @@ export async function executeDomainRuleOperation(
       }
       options.signal?.throwIfAborted();
       try {
-        committed = assertCommittedResult(
+        written = assertWrittenResult(
           operation,
           await dependencies.commitPrepared({
             operationId: operation.id,
-            expectedParent: operation.expectedParentCommit,
+            expectedSourceRevision: operation.expectedSourceRevision,
             intendedContentSha256: operation.intendedContentSha256,
             upsertRules: operation.ownershipDelta.upserts.map(({ rule }) => rule),
             deleteRules: operation.ownershipDelta.deletes,
@@ -415,12 +411,12 @@ export async function executeDomainRuleOperation(
         throw error;
       }
     }
-    finalizeDomainRuleCommit(
+    finalizeDomainRuleWrite(
       db,
       {
         operationId: operation.id,
-        commitSha: committed.head,
-        committedContentSha256: committed.contentSha256,
+        resultingRevision: written.revision,
+        resultingContentSha256: written.contentSha256,
       },
       options,
     );
@@ -434,19 +430,18 @@ export async function executeDomainRuleOperation(
   ) {
     throw new Error("domain-rule operation cannot be applied");
   }
-  assertJournaledCommit(operation);
+  assertJournaledWrite(operation);
 
   const activation = beginDomainRuleActivation(db, operation.id, options);
   const attempt = activation.attempt;
   operation = readOperation(db, operation.id);
-  const { commitSha, committedContentSha256 } = assertJournaledCommit(operation);
+  const { revision, resultingContentSha256 } = assertJournaledWrite(operation);
 
   try {
-    await dependencies.materializeCommitted({
+    await dependencies.attestWritten({
       operationId: operation.id,
-      expectedParent: operation.expectedParentCommit,
-      commitSha,
-      committedContentSha256,
+      revision,
+      contentSha256: resultingContentSha256,
       ...signalOptions(options.signal),
     });
     options.signal?.throwIfAborted();
@@ -461,25 +456,57 @@ export async function executeDomainRuleOperation(
       { operationId: operation.id, attempt, outcome: "failed", errorCategory },
       options,
     );
-    return partialResult(operation.id, commitSha, attempt, errorCategory);
+    return partialResult(operation.id, resultingContentSha256, attempt, errorCategory);
   }
 
-  let outcome: DomainRuleActivationOutcome;
+  let outcome: DomainRuleActivationOutcome | undefined;
+  let activationErrorCategory: DomainRuleActivationErrorCategory | undefined;
   try {
     outcome = parseActivationOutcome(
-      await dependencies.activateCommitted({ operation, attempt, commitSha }, options.signal),
+      await dependencies.activateCommitted({ operation, attempt, revision }, options.signal),
     );
     options.signal?.throwIfAborted();
   } catch {
-    const errorCategory = options.signal?.aborted ? "shutdown" : "infrastructure-failure";
+    activationErrorCategory = options.signal?.aborted ? "shutdown" : "infrastructure-failure";
+  }
+
+  try {
+    await dependencies.attestWritten({
+      operationId: operation.id,
+      revision,
+      contentSha256: resultingContentSha256,
+      ...signalOptions(options.signal),
+    });
+    options.signal?.throwIfAborted();
+  } catch (error) {
+    if (isReconciliationFailure(error)) {
+      markDomainRuleOperationReconciliationRequired(db, operation.id, options);
+      throw error;
+    }
+    const errorCategory = options.signal?.aborted ? "shutdown" : "materialization-failure";
     completeDomainRuleActivation(
       db,
       { operationId: operation.id, attempt, outcome: "failed", errorCategory },
       options,
     );
-    return partialResult(operation.id, commitSha, attempt, errorCategory);
+    return partialResult(operation.id, resultingContentSha256, attempt, errorCategory);
   }
 
+  if (activationErrorCategory) {
+    completeDomainRuleActivation(
+      db,
+      {
+        operationId: operation.id,
+        attempt,
+        outcome: "failed",
+        errorCategory: activationErrorCategory,
+      },
+      options,
+    );
+    return partialResult(operation.id, resultingContentSha256, attempt, activationErrorCategory);
+  }
+
+  if (!outcome) throw new Error("domain-rule activation outcome unavailable");
   if (outcome.outcome === "failed") {
     completeDomainRuleActivation(
       db,
@@ -491,7 +518,7 @@ export async function executeDomainRuleOperation(
       },
       options,
     );
-    return partialResult(operation.id, commitSha, attempt, outcome.errorCategory);
+    return partialResult(operation.id, resultingContentSha256, attempt, outcome.errorCategory);
   }
 
   completeDomainRuleActivation(
@@ -502,7 +529,7 @@ export async function executeDomainRuleOperation(
   return {
     operationId: operation.id,
     phase: "completed",
-    commitSha,
+    contentSha256: resultingContentSha256,
     activationAttempt: attempt,
   };
 }

@@ -335,7 +335,7 @@ describe("db", () => {
     expect(testDb.select().from(domainAutomaticConsents).all()).toEqual([]);
     expect(testDb.select().from(domainRuleOwnership).all()).toEqual([]);
     const baseOperation = {
-      expectedParentCommit: "1".repeat(40),
+      expectedSourceRevision: "1".repeat(40),
       intendedContentSha256: "a".repeat(64),
       proposedRule: "api.service.example",
       ownershipDelta: {
@@ -345,6 +345,31 @@ describe("db", () => {
       createdAt: 100,
       updatedAt: 200,
     };
+    for (const id of ["repeated-content-a", "repeated-content-b"]) {
+      testDb
+        .insert(domainRuleOperations)
+        .values({
+          ...baseOperation,
+          id,
+          idempotencyKey: id,
+          action: "manual-add",
+          phase: "completed",
+          resultingRevision: "2".repeat(40),
+          resultingContentSha256: "a".repeat(64),
+          activationStatus: "succeeded",
+          activationAttemptCount: 1,
+          lastActivationAttemptAt: 200,
+          completedAt: 200,
+        })
+        .run();
+    }
+    expect(
+      testDb
+        .select({ id: domainRuleOperations.id })
+        .from(domainRuleOperations)
+        .all()
+        .filter(({ id }) => id.startsWith("repeated-content-")),
+    ).toHaveLength(2);
     expect(() =>
       testDb
         .insert(domainRuleOperations)
@@ -378,7 +403,7 @@ describe("db", () => {
           idempotencyKey: "invalid-half-commit",
           action: "manual-add",
           phase: "committed",
-          commitSha: "2".repeat(40),
+          resultingRevision: "2".repeat(40),
         })
         .run(),
     ).toThrow(/commit_pair_check/u);
@@ -391,8 +416,8 @@ describe("db", () => {
           idempotencyKey: "invalid-completed",
           action: "manual-add",
           phase: "completed",
-          commitSha: "2".repeat(40),
-          committedContentSha256: "a".repeat(64),
+          resultingRevision: "2".repeat(40),
+          resultingContentSha256: "a".repeat(64),
           activationStatus: "succeeded",
           activationAttemptCount: 1,
           lastActivationAttemptAt: 200,
@@ -408,8 +433,8 @@ describe("db", () => {
           idempotencyKey: "invalid-activation-time",
           action: "manual-add",
           phase: "partial",
-          commitSha: "2".repeat(40),
-          committedContentSha256: "a".repeat(64),
+          resultingRevision: "2".repeat(40),
+          resultingContentSha256: "a".repeat(64),
           activationStatus: "failed",
           activationAttemptCount: 1,
           lastActivationAttemptAt: 50,
@@ -426,8 +451,8 @@ describe("db", () => {
           idempotencyKey: "invalid-failed-reason",
           action: "manual-add",
           phase: "partial",
-          commitSha: "2".repeat(40),
-          committedContentSha256: "a".repeat(64),
+          resultingRevision: "2".repeat(40),
+          resultingContentSha256: "a".repeat(64),
           activationStatus: "failed",
           activationAttemptCount: 1,
           lastActivationAttemptAt: 200,

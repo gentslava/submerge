@@ -6,7 +6,7 @@ import { DomainRuleApplyWorker } from "./apply-worker.js";
 const completed = (operationId: string): DomainRuleApplyOperationResult => ({
   operationId,
   phase: "completed",
-  commitSha: "b".repeat(40),
+  contentSha256: "b".repeat(64),
   activationAttempt: 1,
 });
 
@@ -303,7 +303,7 @@ describe("DomainRuleApplyWorker", () => {
             return {
               operationId,
               phase: "partial",
-              commitSha: "b".repeat(40),
+              contentSha256: "b".repeat(64),
               activationAttempt: 1,
               errorCategory: "config-reload-failure",
             };
@@ -342,7 +342,7 @@ describe("DomainRuleApplyWorker", () => {
     const partial: DomainRuleApplyOperationResult = {
       operationId: "manual-1",
       phase: "partial",
-      commitSha: "b".repeat(40),
+      contentSha256: "b".repeat(64),
       activationAttempt: 1,
       errorCategory: "provider-proof-failure",
     };
@@ -363,7 +363,7 @@ describe("DomainRuleApplyWorker", () => {
     const partial: DomainRuleApplyOperationResult = {
       operationId: "manual-1",
       phase: "partial",
-      commitSha: "b".repeat(40),
+      contentSha256: "b".repeat(64),
       activationAttempt: 1,
       errorCategory: "route-proof-failure",
     };
@@ -410,7 +410,7 @@ describe("DomainRuleApplyWorker", () => {
     }
   });
 
-  it("parks a recoverable pre-commit deferral without poisoning later recovery", async () => {
+  it("parks a recoverable pre-write deferral without poisoning later recovery", async () => {
     vi.useFakeTimers();
     try {
       const onReady = vi.fn();
@@ -492,7 +492,7 @@ describe("DomainRuleApplyWorker", () => {
               resolve({
                 operationId,
                 phase: "partial",
-                commitSha: "b".repeat(40),
+                contentSha256: "b".repeat(64),
                 activationAttempt: 1,
                 errorCategory: "shutdown",
               }),

@@ -60,7 +60,7 @@ function applyResult() {
   return {
     operationId: "manual-add-review-1",
     phase: "completed" as const,
-    commitSha: "a".repeat(40),
+    contentSha256: "a".repeat(64),
     activationAttempt: 1,
   };
 }
@@ -258,7 +258,7 @@ describe("domain intelligence router", () => {
       setSettings: vi.fn(() => ({ view: settingsView(), applied: true })),
       overview: vi.fn(() => overview()),
       list: vi.fn((_input: DomainCandidateListInput) => candidateList()),
-      setScope: vi.fn(() => ({ ...actionResult(), commitSha: "secret" })),
+      setScope: vi.fn(() => ({ ...actionResult(), resultingRevision: "secret" })),
       setRejected: vi.fn(() => actionResult()),
       recheck: vi.fn(() => actionResult()),
       applyCandidate: vi.fn(() => applyResult()),
