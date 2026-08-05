@@ -130,19 +130,19 @@ under `:root` (light) / `.dark` (dark), exposed as Tailwind utilities via `@them
 | `text-secondary` | `#9BA1AD` | `#585E6A` |
 | `text-tertiary` | `#6A707D` | `#6F7682` |
 | `text-disabled` | `#4A4F5A` | `#A9AEB9` |
-| `accent` | `#6366F1` | `#6366F1` |
-| `accent-hover` | `#7B7DF4` | `#5457E0` |
+| `accent` | `#5558E6` | `#5558E6` |
+| `accent-hover` | `#5B5EEA` | `#4F52D8` |
 | `accent-fg` | `#FFFFFF` | `#FFFFFF` |
 | `accent-text` | `#ADB0F8` | `#4F46E5` |
-| `accent-bg` | `#6366F126` | `#6366F114` |
-| `accent-border` | `#6366F14D` | `#6366F133` |
+| `accent-bg` | `#5558E626` | `#5558E614` |
+| `accent-border` | `#5558E64D` | `#5558E633` |
 | `online` / `online-bg` | `#3FB950` / `…1F` | `#2E7D32` / `…1F` |
 | `slow` / `slow-bg` | `#D9A33A` / `…1F` | `#A16207` / `…1F` |
 | `timeout` / `timeout-bg` | `#E5534B` / `…1F` | `#C81E1E` / `…1F` |
 | `idle` | `#6A707D` | `#9AA0AC` |
 | `chart-track` | `#2E3150` | `#D8DAF3` |
 
-> The accent is `#6366F1`. Do **not** confuse it with the abandoned `c-accent #6E8BFF`.
+> The accent is `#5558E6`. Do **not** confuse it with the abandoned `c-accent #6E8BFF`.
 
 ### Radii, fonts, spacing
 
@@ -177,6 +177,10 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
   Logs 10/12, Settings 16/16, More 14/16, and Routing 12/20.
   At the wide app-main boundary the common page gap is 22px; Connections and Routing
   retain their measured 20px gap, Settings 26px, and More 16px.
+- **Skip link**: the first keyboard-focusable control is hidden off-canvas until focus,
+  then appears over the desktop brand area (or at the compact screen's top edge). Its
+  visible label is `Перейти к содержимому`; activation moves focus to `#main-content`
+  without navigating away from the current route.
 - **Mobile tab bar:** `bg-surface` + top `border-subtle`; 8px top / 12px bottom inset;
   each item is 48px high with a 21px icon, 4px icon/label gap and 11px label
   (`text-tertiary` 500, active `accent-text` 600).
@@ -204,6 +208,17 @@ These are the proven‑correct specs for the components reworked to match `I4hmn
   free), width 360, `bg-surface` + `border-subtle` + `rounded-lg`; title `cardtitle`,
   body `sub`/`text-secondary`; actions right‑aligned — `secondary` (Отмена) +
   `destructive`; scrim `--color-scrim`; backdrop click closes.
+- **ResponsiveDialog** (domain-rule editor frame `IgxF5`): Base UI `Dialog` provides
+  centered `bg-surface` / `border-default` / `radius-xl` surfaces on desktop: 560px
+  for rule-scope editors and 520px for domain-filter editors (`XDlUV`).
+  Below 768px Base UI `Drawer` provides a full-width bottom sheet with velocity-aware
+  drag/swipe dismissal and a visible handle. Both variants keep header/footer fixed,
+  use one internal scrolling body, animate entry/exit, respect reduced motion, and
+  restore focus after Escape, backdrop press, close action, or swipe. Both variants
+  show a close icon from the shared button system. In the mobile drawer it keeps a
+  44×44 hit target around a compact 32×32 visual surface: the handle remains a fast
+  gesture affordance, while the icon makes dismissal discoverable without requiring
+  knowledge of swipe behavior.
 
 ## Enforcement
 

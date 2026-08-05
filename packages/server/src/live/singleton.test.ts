@@ -7,10 +7,13 @@ vi.mock("../log.js", () => ({
 }));
 vi.mock("../clients/mihomo.js", () => ({
   getDelay: vi.fn(async () => ({ delay: 42 })),
+  getConnections: vi.fn(async () => []),
   getProxies: vi.fn(async () => ({
     proxies: { PROXY: { name: "PROXY", type: "Selector", all: ["A"], history: [] } },
   })),
   getTotals: vi.fn(),
+  openLogStream: vi.fn(async function* () {}),
+  prepareForcedRouteProof: vi.fn(),
   streamTraffic: vi.fn(),
 }));
 vi.mock("../modules/channels/instance.js", () => ({
@@ -20,10 +23,25 @@ vi.mock("../modules/channels/service.js", () => ({
   policyProbe: vi.fn(() => ({ url: "https://probe/check", intervalSec: 30 })),
   readDefaultPolicy: vi.fn(() => ({})),
 }));
+vi.mock("../modules/logs/singleton.js", () => ({
+  domainIntelligenceRuntimeCoordinator: { recoverIfNeeded: vi.fn(async () => undefined) },
+  recoverDomainRuleDeploymentIfNeeded: vi.fn(async () => undefined),
+  reconcileDomainRuleDeployment: vi.fn(async () => ({
+    nodes: 0,
+    applied: true,
+    activationVerified: true,
+  })),
+  startDomainRuleApplyWorker: vi.fn(async () => undefined),
+  wakeDomainRuleApplyWorker: vi.fn(() => true),
+}));
 vi.mock("../modules/nodes/service.js", () => ({
+  applyConfig: vi.fn(async () => ({ nodes: 0, applied: true })),
+  collectActiveRoutingInputs: vi.fn(() => ({ inputs: [], inventory: [] })),
   collectProxies: vi.fn(() => []),
   getExcludedSet: vi.fn(() => new Set()),
+  hasDomainValidationRoute: vi.fn(() => false),
   proxyMeta: vi.fn(),
+  readDomainValidationProxyPassword: vi.fn(() => null),
   toNodeView: vi.fn(() => ({ now: null, autoNow: null, all: [] })),
   mergeDbInventory: vi.fn((view) => view),
 }));
@@ -34,11 +52,21 @@ async function load() {
   const channels = await import("../modules/channels/instance.js");
   const mihomo = await import("../clients/mihomo.js");
   const logger = await import("../log.js");
+  const domainIntelligence = await import("../modules/logs/singleton.js");
   const singleton = await import("./singleton.js");
   return {
     ...singleton,
     getProxiesMock: vi.mocked(mihomo.getProxies),
     operationalLogMock: vi.mocked(logger.operationalLog),
+    reconcileDomainRuleDeploymentMock: vi.mocked(domainIntelligence.reconcileDomainRuleDeployment),
+    recoverDomainRuleDeploymentIfNeededMock: vi.mocked(
+      domainIntelligence.recoverDomainRuleDeploymentIfNeeded,
+    ),
+    recoverIfNeededMock: vi.mocked(
+      domainIntelligence.domainIntelligenceRuntimeCoordinator.recoverIfNeeded,
+    ),
+    startDomainRuleApplyWorkerMock: vi.mocked(domainIntelligence.startDomainRuleApplyWorker),
+    wakeDomainRuleApplyWorkerMock: vi.mocked(domainIntelligence.wakeDomainRuleApplyWorker),
     registryRunOnce: vi.mocked(channels.registry.runOnce),
   };
 }
@@ -74,5 +102,51 @@ describe("live singleton wiring", () => {
     await liveHub.pollOnce();
 
     expect(operationalLogMock).toHaveBeenCalledWith("mihomo-live-failed", { scope: "poll" }, err);
+  });
+
+  it("retries deployment before runtime activation on the first healthy engine poll", async () => {
+    const {
+      liveHub,
+      recoverDomainRuleDeploymentIfNeededMock,
+      recoverIfNeededMock,
+      startDomainRuleApplyWorkerMock,
+      wakeDomainRuleApplyWorkerMock,
+    } = await load();
+    const events: string[] = [];
+    recoverDomainRuleDeploymentIfNeededMock.mockImplementationOnce(async () => {
+      events.push("deployment");
+    });
+    startDomainRuleApplyWorkerMock.mockImplementationOnce(async () => {
+      events.push("apply-worker");
+    });
+    wakeDomainRuleApplyWorkerMock.mockImplementationOnce(() => {
+      events.push("apply-worker:wake");
+      return true;
+    });
+    recoverIfNeededMock.mockImplementationOnce(async () => {
+      events.push("runtime");
+    });
+
+    await liveHub.pollOnce();
+
+    await vi.waitFor(() => expect(recoverIfNeededMock).toHaveBeenCalledOnce());
+    expect(events).toEqual(["deployment", "apply-worker", "apply-worker:wake", "runtime"]);
+  });
+
+  it("runs full deployment reconciliation after a genuine engine reconnect", async () => {
+    const {
+      getProxiesMock,
+      liveHub,
+      reconcileDomainRuleDeploymentMock,
+      wakeDomainRuleApplyWorkerMock,
+    } = await load();
+    await liveHub.pollOnce();
+    getProxiesMock.mockRejectedValueOnce(new Error("engine restarting"));
+    await liveHub.pollOnce();
+
+    await liveHub.pollOnce();
+
+    await vi.waitFor(() => expect(reconcileDomainRuleDeploymentMock).toHaveBeenCalledOnce());
+    expect(wakeDomainRuleApplyWorkerMock).toHaveBeenCalledTimes(2);
   });
 });

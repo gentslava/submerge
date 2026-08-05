@@ -1,6 +1,7 @@
 // Generate a multi-channel mihomo config.yaml. The default channel owns the
 // canonical, unprefixed proxy and group names.
 import { createHash } from "node:crypto";
+import { isIP } from "node:net";
 import {
   type ChannelPolicy,
   cidrVersion,
@@ -51,6 +52,23 @@ export interface DirectChannelConfigInput extends MatcherConfigInput {
 }
 
 export type ChannelConfigInput = ProxyChannelConfigInput | DirectChannelConfigInput;
+
+export const DOMAIN_VALIDATION_LISTENER_NAME = "submerge-domain-validation";
+export const DOMAIN_VALIDATION_USERNAME = "submerge-domain-validation";
+
+export interface DomainValidationListenerInput {
+  listen: string;
+  port: number;
+  password: string;
+  targetGroupName: string;
+}
+
+export const MANAGED_DOMAIN_RULE_PROVIDER_NAME = "submerge-custom";
+export const MANAGED_DOMAIN_RULE_PROVIDER_PATH = "./domain-rules/custom.txt";
+
+export interface ManagedDomainRulesProviderInput {
+  targetGroupName: string;
+}
 
 // A channel's top-level member is either a shared proxy (referenced by its index
 // into the global proxy list, so the final post-dedupe name resolves) or a
@@ -139,9 +157,14 @@ const PROVIDER_EXT: Record<RuleProviderFormat, string> = {
 // behavior; the format is a function of the url). Two channels referencing the
 // same list collapse to one definition and one name. The `rp-` prefix + hex
 // digest keeps it out of the (separate) proxy/proxy-group namespace by construction.
-function ruleProviderName(ref: RuleProviderRef): string {
+export function ruleProviderName(ref: RuleProviderRef): string {
   const key = `${ref.url}|${ref.behavior}`;
   return `rp-${createHash("sha1").update(key).digest("hex").slice(0, 8)}`;
+}
+
+export function ruleProviderRelativePath(ref: RuleProviderRef): string {
+  const format = ruleProviderFormat(ref.url);
+  return `providers/${ruleProviderName(ref)}.${PROVIDER_EXT[format]}`;
 }
 
 // Collect every distinct rule-provider referenced by the non-default channels
@@ -149,7 +172,12 @@ function ruleProviderName(ref: RuleProviderRef): string {
 // extension (mihomo trusts the declared format). mihomo (not submerge) fetches
 // each list — `proxy: DIRECT` so the fetch never loops through the tunnel it
 // configures — and caches it under the mihomo Home Dir (`./providers/...`, gitignored).
-function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, unknown> {
+export const RULE_PROVIDER_REFRESH_INTERVAL_SECONDS = 86_400;
+
+function buildRuleProviders(
+  nonDefault: ChannelConfigInput[],
+  managedDomainRules?: ManagedDomainRulesProviderInput,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const channel of nonDefault) {
     for (const ref of channel.ruleProviders ?? []) {
@@ -161,12 +189,20 @@ function buildRuleProviders(nonDefault: ChannelConfigInput[]): Record<string, un
         url: ref.url,
         behavior: ref.behavior,
         format,
-        interval: 86400, // daily auto-update
+        interval: RULE_PROVIDER_REFRESH_INTERVAL_SECONDS, // daily auto-update
         proxy: "DIRECT",
-        path: `./providers/${name}.${PROVIDER_EXT[format]}`,
+        path: `./${ruleProviderRelativePath(ref)}`,
         "size-limit": 0,
       };
     }
+  }
+  if (managedDomainRules) {
+    out[MANAGED_DOMAIN_RULE_PROVIDER_NAME] = {
+      type: "file",
+      behavior: "domain",
+      format: "text",
+      path: MANAGED_DOMAIN_RULE_PROVIDER_PATH,
+    };
   }
   return out;
 }
@@ -224,10 +260,16 @@ function buildRules(
   noProxies: boolean,
   defaultGroupName: string,
   nonDefaultProxyCount: number,
+  managedDomainRules?: ManagedDomainRulesProviderInput,
 ): string[] {
   // With no exit nodes anywhere there is nothing to route — everything is DIRECT.
   if (noProxies) return ["MATCH,DIRECT"];
   const rules: string[] = [];
+  if (managedDomainRules) {
+    rules.push(
+      `RULE-SET,${MANAGED_DOMAIN_RULE_PROVIDER_NAME},${managedDomainRules.targetGroupName}`,
+    );
+  }
   // Per channel, in priority order: keyword, domain-suffix, then rule-set — all
   // point at the channel's own group, so intra-channel order is irrelevant;
   // cross-channel precedence is the channel order (= priority).
@@ -272,6 +314,8 @@ function buildRules(
 export function buildMultiConfig(
   channels: ChannelConfigInput[],
   secret: string = env.MIHOMO_SECRET,
+  domainValidation?: DomainValidationListenerInput,
+  managedDomainRules?: ManagedDomainRulesProviderInput,
 ): string {
   const proxyChannels = channels.filter(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
@@ -414,9 +458,48 @@ export function buildMultiConfig(
   // With no exit nodes the config is all-DIRECT (buildRules short-circuits and
   // emits no RULE-SET lines), so defined providers would be dead weight — skip them.
   const noProxies = unique.length === 0;
-  const ruleProviders = noProxies ? {} : buildRuleProviders(nonDefault);
+  if (managedDomainRules) {
+    const target = [...builds.values()].find(
+      (build) => build.channel.groupName === managedDomainRules.targetGroupName,
+    );
+    if (!target || raceNames(target).length === 0) {
+      throw new Error("managed domain rules target group is unavailable");
+    }
+  }
+  const ruleProviders = noProxies ? {} : buildRuleProviders(nonDefault, managedDomainRules);
   const hasProviders = Object.keys(ruleProviders).length > 0;
   const geo = noProxies ? null : geoTopLevel(nonDefault);
+
+  let validationListeners: Record<string, unknown>[] = [];
+  if (domainValidation) {
+    const target = [...builds.values()].find(
+      (build) => build.channel.groupName === domainValidation.targetGroupName,
+    );
+    if (!target || raceNames(target).length === 0) {
+      throw new Error("validation target group is unavailable");
+    }
+    if (
+      isIP(domainValidation.listen) === 0 ||
+      !Number.isInteger(domainValidation.port) ||
+      domainValidation.port < 1 ||
+      domainValidation.port > 65_535 ||
+      domainValidation.port === 7890 ||
+      domainValidation.port === 9090 ||
+      !/^[A-Za-z0-9_-]{32,128}$/u.test(domainValidation.password)
+    ) {
+      throw new Error("invalid domain validation listener configuration");
+    }
+    validationListeners = [
+      {
+        name: DOMAIN_VALIDATION_LISTENER_NAME,
+        type: "http",
+        listen: domainValidation.listen,
+        port: domainValidation.port,
+        users: [{ username: DOMAIN_VALIDATION_USERNAME, password: domainValidation.password }],
+        proxy: domainValidation.targetGroupName,
+      },
+    ];
+  }
 
   const cfg = {
     "mixed-port": 7890,
@@ -427,6 +510,7 @@ export function buildMultiConfig(
     ipv6: false,
     "external-controller": "0.0.0.0:9090",
     secret,
+    ...(validationListeners.length > 0 ? { listeners: validationListeners } : {}),
     // Keep the host resolver for LAN/split DNS, but reject fake IPs owned by
     // another mihomo instance. Native DIRECT needs a real destination or a
     // router → fake-IP → submerge loop is possible.
@@ -455,7 +539,13 @@ export function buildMultiConfig(
       ...probeGroup,
     ],
     rules: probeRules(noProxies).concat(
-      buildRules(nonDefault, noProxies, defaultGroupName, nonDefaultProxy.length),
+      buildRules(
+        nonDefault,
+        noProxies,
+        defaultGroupName,
+        nonDefaultProxy.length,
+        managedDomainRules,
+      ),
     ),
   };
   return yaml.dump(cfg, { lineWidth: -1 });

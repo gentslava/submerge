@@ -12,6 +12,7 @@ describe("parseEnv", () => {
     expect(env.HOST).toBe("0.0.0.0");
     expect(env.DB_PATH).toBe(resolve(serverRoot, "data/submerge.db"));
     expect(env.ADMIN_PASSWORD).toBeUndefined();
+    expect(env.DOMAIN_RULES_MODE).toBe("report");
   });
   it("parses PORT from a string", () => {
     expect(parseEnv({ PORT: "8080" }).PORT).toBe(8080);
@@ -27,8 +28,71 @@ describe("parseEnv", () => {
     expect(env.MIHOMO_CONFIG_PATH).toBe("/mihomo/config.yaml");
     expect(env.MIHOMO_CONFIG_TARGET).toBe("/root/.config/mihomo/config.yaml");
     expect(env.HWID_FILE).toBe("/mihomo/hwid.txt");
+    expect(env.DOMAIN_VALIDATION_TOPOLOGY).toBe("compose");
+    expect(env.DOMAIN_VALIDATION_PROXY_ENDPOINT).toBe("http://mihomo:7891");
+    expect(env.DOMAIN_VALIDATION_LISTEN).toBe("0.0.0.0");
+    expect(env.DOMAIN_VALIDATION_PORT).toBe(7891);
   });
   it("overrides config path from the environment", () => {
     expect(parseEnv({ MIHOMO_CONFIG_PATH: "/tmp/c.yaml" }).MIHOMO_CONFIG_PATH).toBe("/tmp/c.yaml");
+  });
+
+  it("accepts only the explicit domain-rules deployment modes", () => {
+    expect(parseEnv({ DOMAIN_RULES_MODE: "report" }).DOMAIN_RULES_MODE).toBe("report");
+    expect(parseEnv({ DOMAIN_RULES_MODE: "apply" }).DOMAIN_RULES_MODE).toBe("apply");
+    for (const value of ["", "true", "automatic", "APPLY"]) {
+      expect(() => parseEnv({ DOMAIN_RULES_MODE: value })).toThrow();
+    }
+  });
+
+  it("accepts only a literal loopback validation endpoint for host development", () => {
+    expect(
+      parseEnv({
+        DOMAIN_VALIDATION_TOPOLOGY: "host",
+        DOMAIN_VALIDATION_PROXY_ENDPOINT: "http://127.0.0.1:17891",
+        DOMAIN_VALIDATION_PORT: "17891",
+      }).DOMAIN_VALIDATION_PROXY_ENDPOINT,
+    ).toBe("http://127.0.0.1:17891");
+    expect(
+      parseEnv({
+        DOMAIN_VALIDATION_TOPOLOGY: "host",
+        DOMAIN_VALIDATION_PROXY_ENDPOINT: "http://[::1]:17891",
+        DOMAIN_VALIDATION_PORT: "17891",
+      }).DOMAIN_VALIDATION_PROXY_ENDPOINT,
+    ).toBe("http://[::1]:17891");
+
+    for (const endpoint of [
+      "http://localhost:7891",
+      "http://192.168.1.100:7891",
+      "http://mihomo:7891",
+    ]) {
+      expect(() =>
+        parseEnv({
+          DOMAIN_VALIDATION_TOPOLOGY: "host",
+          DOMAIN_VALIDATION_PROXY_ENDPOINT: endpoint,
+        }),
+      ).toThrow();
+    }
+  });
+
+  it("accepts only the private mihomo authority in compose topology", () => {
+    for (const endpoint of [
+      "http://127.0.0.1:7891",
+      "http://other-service:7891",
+      "http://user:secret@mihomo:7891",
+      "https://mihomo:7891",
+      "http://mihomo:7891/path",
+      "http://mihomo:17891",
+    ]) {
+      expect(() => parseEnv({ DOMAIN_VALIDATION_PROXY_ENDPOINT: endpoint })).toThrow();
+    }
+    for (const port of [7890, 9090]) {
+      expect(() =>
+        parseEnv({
+          DOMAIN_VALIDATION_PROXY_ENDPOINT: `http://mihomo:${port}`,
+          DOMAIN_VALIDATION_PORT: String(port),
+        }),
+      ).toThrow();
+    }
   });
 });

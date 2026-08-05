@@ -125,9 +125,7 @@ export function AutoStrategyCard({
                 onClick={key === "auto" ? onAuto : onManual}
                 className={cn(
                   "nodes-auto-strategy-tab flex flex-1 items-center justify-center gap-[7px] rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:pointer-events-none disabled:opacity-60",
-                  active
-                    ? "bg-accent text-accent-fg"
-                    : "text-text-secondary hover:text-text-primary",
+                  active ? "bg-accent on-accent-fg" : "text-text-secondary hover:text-text-primary",
                 )}
               >
                 <Icon className="h-[15px] w-[15px]" aria-hidden="true" />

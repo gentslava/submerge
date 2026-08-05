@@ -20,14 +20,19 @@ import {
   getDelay,
   getExternalIpTrace,
   getProxies,
+  getRuleProviders,
+  getRules,
   getRuntimeConfig,
   getTotals,
   getVersion,
   openLogStream,
+  prepareForcedRouteProof,
+  probeMihomoCredential,
   probeThroughProxy,
   reloadConfig,
   selectProxy,
   setMihomoSecret,
+  setMihomoSecretRecovery,
   streamTraffic,
 } from "./mihomo.js";
 
@@ -92,6 +97,64 @@ describe("mihomo client", () => {
     await expect(getVersion()).rejects.toThrow();
   });
 
+  it("uses the previous controller secret only as an authentication fallback", async () => {
+    const authenticatedWithNext = vi.fn();
+    setMihomoSecretRecovery("next-secret", "previous-secret", authenticatedWithNext);
+    const authorizations: string[] = [];
+    mockFetch((_url, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? "";
+      authorizations.push(authorization);
+      return authorization === "Bearer next-secret"
+        ? json({ message: "unauthorized" }, { status: 401 })
+        : json({ version: "v1.19.12" });
+    });
+
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    expect(authorizations).toEqual(["Bearer next-secret", "Bearer previous-secret"]);
+    expect(authenticatedWithNext).not.toHaveBeenCalled();
+
+    mockFetch((_url, init) => {
+      authorizations.push(new Headers(init?.headers).get("authorization") ?? "");
+      return json({ version: "v1.19.12" });
+    });
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    expect(authorizations.at(-1)).toBe("Bearer next-secret");
+    expect(authenticatedWithNext).toHaveBeenCalledOnce();
+  });
+
+  it("retries durable credential finalization after a transient callback failure", async () => {
+    const finalize = vi
+      .fn<() => boolean>()
+      .mockImplementationOnce(() => {
+        throw new Error("sqlite busy");
+      })
+      .mockReturnValue(true);
+    setMihomoSecretRecovery("next-secret", "previous-secret", finalize);
+    mockFetch(() => json({ version: "v1.19.12" }));
+
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+    await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+
+    expect(finalize).toHaveBeenCalledTimes(2);
+  });
+
+  it("probes a candidate controller secret without changing the live credential", async () => {
+    setMihomoSecret("live-secret");
+    const authorizations: string[] = [];
+    mockFetch((_url, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? "";
+      authorizations.push(authorization);
+      return authorization === "Bearer candidate-secret"
+        ? json({ version: "v1.19.12" })
+        : json({ message: "unauthorized" }, { status: 401 });
+    });
+
+    await expect(probeMihomoCredential("candidate-secret")).resolves.toBe(true);
+    await expect(getVersion()).rejects.toThrow("HTTP 401");
+    expect(authorizations).toEqual(["Bearer candidate-secret", "Bearer live-secret"]);
+  });
+
   it("parses nullable runtime config fields without inventing defaults", async () => {
     mockFetch(() =>
       json({ mode: "rule", dns: { enable: true }, ipv6: false, tun: { enable: false } }),
@@ -127,6 +190,101 @@ describe("mihomo client", () => {
     const res = await getProxies();
     expect(res.proxies.PROXY?.now).toBe("A");
     expect(seenAuth).toMatch(/^Bearer/);
+  });
+
+  it("parses active rule providers without exposing unbounded response fields", async () => {
+    mockFetch((url) => {
+      expect(url).toContain("/providers/rules");
+      return json({
+        providers: {
+          "submerge-custom": {
+            behavior: "domain",
+            format: "Text",
+            name: "submerge-custom",
+            ruleCount: 2,
+            type: "Rule",
+            vehicleType: "File",
+            updatedAt: "2026-08-04T00:00:00Z",
+            ignored: { secret: "must-not-cross-the-client-boundary" },
+          },
+        },
+      });
+    });
+
+    await expect(getRuleProviders()).resolves.toEqual({
+      providers: {
+        "submerge-custom": {
+          behavior: "domain",
+          format: "Text",
+          name: "submerge-custom",
+          ruleCount: 2,
+          type: "Rule",
+          vehicleType: "File",
+        },
+      },
+    });
+
+    mockFetch(() =>
+      json({
+        providers: {
+          "submerge-custom": {
+            behavior: "domain",
+            format: "Text",
+            name: "submerge-custom",
+            ruleCount: -1,
+            type: "Rule",
+            vehicleType: "File",
+          },
+        },
+      }),
+    );
+    await expect(getRuleProviders()).rejects.toThrow();
+  });
+
+  it("parses the active rule route returned by Mihomo", async () => {
+    mockFetch((url) => {
+      expect(url).toMatch(/\/rules$/u);
+      return json({
+        rules: [
+          {
+            index: 1,
+            type: "RuleSet",
+            payload: "submerge-custom",
+            proxy: "AUTO",
+            // Mihomo uses -1 for rules whose match size is not enumerable.
+            size: -1,
+            extra: { disabled: false, hitCount: 4 },
+          },
+        ],
+      });
+    });
+
+    await expect(getRules()).resolves.toEqual({
+      rules: [
+        {
+          index: 1,
+          type: "RuleSet",
+          payload: "submerge-custom",
+          proxy: "AUTO",
+          size: -1,
+          extra: { disabled: false },
+        },
+      ],
+    });
+
+    mockFetch(() =>
+      json({
+        rules: [{ index: 0, type: "RuleSet", payload: 7, proxy: "AUTO", size: -1 }],
+      }),
+    );
+    await expect(getRules()).rejects.toThrow();
+
+    mockFetch(() =>
+      json({
+        rules: [{ index: 0, type: "RuleSet", payload: "x", proxy: "AUTO", size: -2 }],
+      }),
+    );
+    await expect(getRules()).rejects.toThrow();
   });
 
   it("parses a delay response", async () => {
@@ -317,7 +475,14 @@ describe("mihomo client", () => {
         connections: [
           {
             id: "c1",
-            metadata: { network: "tcp", host: "youtube.com", sourceIP: "192.168.1.9" },
+            metadata: {
+              network: "tcp",
+              host: "youtube.com",
+              sourceIP: "192.168.1.9",
+              inboundName: "submerge-domain-validation",
+              inboundUser: "submerge-domain-validation",
+              inboundPort: "7891",
+            },
             upload: 100,
             download: 200,
             start: "2026-07-06T20:00:00Z",
@@ -331,6 +496,194 @@ describe("mihomo client", () => {
     expect(conns[0]?.id).toBe("c1");
     expect(conns[0]?.chains[0]).toBe("nl-ams-01");
     expect(conns[0]?.metadata.process).toBe(""); // defaulted
+    expect(conns[0]?.metadata.inboundName).toBe("submerge-domain-validation");
+    expect(conns[0]?.metadata.inboundUser).toBe("submerge-domain-validation");
+    expect(conns[0]?.metadata.inboundPort).toBe("7891");
+  });
+
+  it("proves a new forced-listener connection and its target group without selecting it", async () => {
+    const snapshots = [
+      [
+        {
+          id: "old",
+          metadata: {
+            network: "tcp",
+            host: "",
+            destinationIP: "1.1.1.1",
+            destinationPort: "443",
+            sourceIP: "172.20.0.2",
+            process: "",
+            inboundName: "submerge-domain-validation",
+            inboundUser: "submerge-domain-validation",
+            inboundPort: "7891",
+          },
+          upload: 0,
+          download: 0,
+          start: "",
+          chains: ["node-a", "AUTO"],
+        },
+      ],
+      [
+        {
+          id: "old",
+          metadata: {
+            network: "tcp",
+            host: "",
+            destinationIP: "1.1.1.1",
+            destinationPort: "443",
+            sourceIP: "172.20.0.2",
+            process: "",
+            inboundName: "submerge-domain-validation",
+            inboundUser: "submerge-domain-validation",
+            inboundPort: "7891",
+          },
+          upload: 0,
+          download: 0,
+          start: "",
+          chains: ["node-a", "CUSTOM"],
+        },
+      ],
+      [
+        {
+          id: "new",
+          metadata: {
+            network: "tcp",
+            host: "",
+            destinationIP: "1.1.1.1",
+            destinationPort: "443",
+            sourceIP: "172.20.0.2",
+            process: "",
+            inboundName: "submerge-domain-validation",
+            inboundUser: "submerge-domain-validation",
+            inboundPort: "7891",
+          },
+          upload: 0,
+          download: 0,
+          start: "",
+          chains: ["node-b", "CUSTOM"],
+        },
+      ],
+    ];
+    const fetchConnections = vi.fn(async () => snapshots.shift() ?? []);
+    const verify = await prepareForcedRouteProof(
+      {
+        inboundName: "submerge-domain-validation",
+        inboundUser: "submerge-domain-validation",
+        inboundPort: 7891,
+        targetGroupName: "CUSTOM",
+      },
+      { fetchConnections, pollIntervalMs: 1, timeoutMs: 20 },
+    );
+
+    await expect(verify({ address: "1.1.1.1", port: 443 })).resolves.toBeUndefined();
+    expect(fetchConnections).toHaveBeenCalledTimes(3);
+  });
+
+  it("fails closed when the observed connection has the wrong inbound, user, port, or chain", async () => {
+    for (const mismatch of ["inbound", "user", "port", "chain"] as const) {
+      let calls = 0;
+      const verify = await prepareForcedRouteProof(
+        {
+          inboundName: "submerge-domain-validation",
+          inboundUser: "submerge-domain-validation",
+          inboundPort: 7891,
+          targetGroupName: "CUSTOM",
+        },
+        {
+          timeoutMs: 2,
+          pollIntervalMs: 1,
+          fetchConnections: async () => {
+            calls += 1;
+            if (calls === 1) return [];
+            return [
+              {
+                id: `new-${mismatch}`,
+                metadata: {
+                  network: "tcp",
+                  host: "",
+                  destinationIP: "1.1.1.1",
+                  destinationPort: "443",
+                  sourceIP: "172.20.0.2",
+                  process: "",
+                  inboundName: mismatch === "inbound" ? "wrong" : "submerge-domain-validation",
+                  inboundUser: mismatch === "user" ? "wrong" : "submerge-domain-validation",
+                  inboundPort: mismatch === "port" ? "7892" : "7891",
+                },
+                upload: 0,
+                download: 0,
+                start: "",
+                chains: ["node-b", mismatch === "chain" ? "OTHER" : "CUSTOM"],
+              },
+            ];
+          },
+        },
+      );
+
+      await expect(verify({ address: "1.1.1.1", port: 443 })).rejects.toThrow(
+        "forced route could not be proven",
+      );
+    }
+  });
+
+  it("preserves caller cancellation while waiting for forced-route proof", async () => {
+    const controller = new AbortController();
+    const reason = new Error("shutdown");
+    const verify = await prepareForcedRouteProof(
+      {
+        inboundName: "submerge-domain-validation",
+        inboundUser: "submerge-domain-validation",
+        inboundPort: 7891,
+        targetGroupName: "CUSTOM",
+      },
+      { fetchConnections: async () => [] },
+    );
+    controller.abort(reason);
+
+    await expect(verify({ address: "1.1.1.1", port: 443, signal: controller.signal })).rejects.toBe(
+      reason,
+    );
+  });
+
+  it("matches equivalent canonical IPv6 spellings in route proof", async () => {
+    let calls = 0;
+    const verify = await prepareForcedRouteProof(
+      {
+        inboundName: "submerge-domain-validation",
+        inboundUser: "submerge-domain-validation",
+        inboundPort: 7891,
+        targetGroupName: "CUSTOM",
+      },
+      {
+        fetchConnections: async () => {
+          calls += 1;
+          if (calls === 1) return [];
+          return [
+            {
+              id: "ipv6",
+              metadata: {
+                network: "tcp",
+                host: "",
+                destinationIP: "2606:4700:4700::1111",
+                destinationPort: "443",
+                sourceIP: "fd00::2",
+                process: "",
+                inboundName: "submerge-domain-validation",
+                inboundUser: "submerge-domain-validation",
+                inboundPort: "7891",
+              },
+              upload: 0,
+              download: 0,
+              start: "",
+              chains: ["node-v6", "CUSTOM"],
+            },
+          ];
+        },
+      },
+    );
+
+    await expect(
+      verify({ address: "2606:4700:4700:0:0:0:0:1111", port: 443 }),
+    ).resolves.toBeUndefined();
   });
 
   it("normalizes an idle /connections null list to an empty snapshot", async () => {
@@ -339,6 +692,19 @@ describe("mihomo client", () => {
       return json({ downloadTotal: 0, uploadTotal: 0, connections: null });
     });
     await expect(getConnections()).resolves.toEqual([]);
+  });
+
+  it("forwards an abort signal to the bounded /connections request", async () => {
+    const controller = new AbortController();
+    mockFetch((_url, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      expect(init?.signal).not.toBe(controller.signal);
+      controller.abort();
+      expect(init?.signal?.aborted).toBe(true);
+      throw init?.signal?.reason;
+    });
+
+    await expect(getConnections(controller.signal)).rejects.toMatchObject({ name: "AbortError" });
   });
 
   it("closes a connection via DELETE and tolerates a 404", async () => {

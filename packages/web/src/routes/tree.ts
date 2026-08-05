@@ -1,4 +1,5 @@
 import { createRoute, createRouter } from "@tanstack/react-router";
+import { AutoRulesRoute } from "./auto-rules";
 import { ConnectionsRoute } from "./connections";
 import { DiagnosticsRoute } from "./diagnostics";
 import { LogsRoute } from "./logs";
@@ -55,12 +56,18 @@ const moreRoute = createRoute({
   path: "/more",
   component: MoreRoute,
 });
+const autoRulesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auto-rules",
+  component: AutoRulesRoute,
+});
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   trafficRoute,
   logsRoute,
   diagnosticsRoute,
+  autoRulesRoute,
   sourcesRoute,
   connectionsRoute,
   routingRoute,

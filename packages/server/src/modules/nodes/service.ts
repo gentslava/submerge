@@ -24,10 +24,50 @@ import { operationalLog } from "../../log.js";
 import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
-import { getSetting } from "../settings/service.js";
+import { getDomainIntelligenceSettingsView } from "../domain-intelligence/service.js";
+import {
+  confirmPendingMihomoSecretRotation,
+  prepareMihomoSecretForConfig,
+} from "../settings/secret-rotation.js";
+import { getOrCreateInternalSecret, getSetting } from "../settings/service.js";
 import { groupProxies } from "./config.js";
-import type { ChannelConfigInput } from "./multiConfig.js";
+import type {
+  ChannelConfigInput,
+  DomainValidationListenerInput,
+  ManagedDomainRulesProviderInput,
+  ProxyChannelConfigInput,
+} from "./multiConfig.js";
 import { buildMultiConfig } from "./multiConfig.js";
+
+const DOMAIN_VALIDATION_PASSWORD_KEY = "internal.domainValidationProxyPassword";
+
+function domainValidationTarget(
+  inputs: readonly ChannelConfigInput[],
+  targetChannelId: string,
+): ProxyChannelConfigInput | null {
+  return (
+    inputs.find(
+      (input): input is ProxyChannelConfigInput =>
+        input.target === "proxy" && input.id === targetChannelId,
+    ) ?? null
+  );
+}
+
+function domainValidationListener(
+  db: Db,
+  inputs: readonly ChannelConfigInput[],
+): DomainValidationListenerInput | undefined {
+  const view = getDomainIntelligenceSettingsView(db);
+  if (view.configurationState !== "ready" || !view.settings.enabled) return undefined;
+  const target = domainValidationTarget(inputs, view.settings.customTargetChannelId);
+  if (!target || (target.race ?? target.proxies).length === 0) return undefined;
+  return {
+    listen: env.DOMAIN_VALIDATION_LISTEN,
+    port: env.DOMAIN_VALIDATION_PORT,
+    password: getOrCreateInternalSecret(db, DOMAIN_VALIDATION_PASSWORD_KEY),
+    targetGroupName: target.groupName,
+  };
+}
 
 // The mihomo API secret — a Settings value wins over the env default (env only seeds it
 // on first run). Used BOTH as the panel's client credential AND as the `secret:` written
@@ -69,6 +109,120 @@ export interface ApplyResult {
   // e.g. mihomo is down. It applies on the engine's next successful reload, so
   // callers must report "saved, engine pending", never a hard failure.
   applied: boolean;
+  // true only when this call received a successful Mihomo reload response.
+  // A byte-identical file skips reload and therefore cannot prove activation
+  // after an earlier reload failure.
+  activationVerified: boolean;
+}
+
+type ConfigApplyCoordinator = (
+  apply: (managedDomainRules?: ManagedDomainRulesProviderInput) => Promise<ApplyResult>,
+) => Promise<ApplyResult>;
+let configApplyCoordinator: ConfigApplyCoordinator | null = null;
+
+export type ForcedConfigApply = (input: {
+  force: true;
+  managedDomainRules?: ManagedDomainRulesProviderInput;
+}) => Promise<ApplyResult>;
+
+interface ConfigApplyOwnerBinding {
+  configPath?: string;
+  db: Db;
+  targetPath?: string;
+}
+
+interface ConfigApplyOwnerComposition<T> {
+  coordinator: ConfigApplyCoordinator;
+  owner: T;
+}
+
+export function registerConfigApplyCoordinator(coordinator: ConfigApplyCoordinator): () => void {
+  if (configApplyCoordinator) throw new Error("config apply coordinator is already registered");
+  configApplyCoordinator = coordinator;
+  return () => {
+    if (configApplyCoordinator === coordinator) configApplyCoordinator = null;
+  };
+}
+
+export function registerConfigApplyOwner<T>(
+  binding: ConfigApplyOwnerBinding,
+  compose: (applyDirect: ForcedConfigApply) => ConfigApplyOwnerComposition<T>,
+): { owner: T; unregister: () => void } {
+  if (configApplyCoordinator) throw new Error("config apply coordinator is already registered");
+  const configPath = binding.configPath ?? env.MIHOMO_CONFIG_PATH;
+  const targetPath = binding.targetPath ?? env.MIHOMO_CONFIG_TARGET;
+  const applyDirect: ForcedConfigApply = (input) =>
+    applyConfigNow(binding.db, configPath, targetPath, input);
+  const composition = compose(applyDirect);
+  return {
+    owner: composition.owner,
+    unregister: registerConfigApplyCoordinator(composition.coordinator),
+  };
+}
+
+export interface ActiveRoutingInputs {
+  inputs: ChannelConfigInput[];
+  inventory: ProxyConfig[];
+}
+
+// One canonical projection of persisted channels into the exact inputs used by
+// config generation. Domain coverage reads this same projection so it cannot
+// drift from the rules Mihomo actually receives.
+export function collectActiveRoutingInputs(db: Db): ActiveRoutingInputs {
+  const allProxies = collectProxies(db);
+  const excluded = getExcludedSet(db);
+  const keep = (proxies: ProxyConfig[]): ProxyConfig[] =>
+    proxies.filter((proxy) => !excluded.has(proxy.name));
+  const inventory = keep(allProxies);
+  const inputs: ChannelConfigInput[] = listChannels(db)
+    .filter((channel) => (channel.target === "proxy" && channel.isDefault) || channel.enabled)
+    .map((channel): ChannelConfigInput => {
+      const base = {
+        target: channel.target,
+        id: channel.id,
+        isDefault: channel.isDefault,
+        domains: resolveMatcherDomains(channel.matcher),
+        keywords: channel.matcher.keywords,
+        ruleProviders: channel.matcher.ruleProviders,
+        geosite: channel.matcher.geosite,
+        geoip: channel.matcher.geoip,
+        cidrs: channel.matcher.cidrs,
+      };
+      if (channel.target === "direct") {
+        return {
+          ...base,
+          target: "direct",
+          id: "direct",
+          isDefault: false,
+          directPresets: channel.directPresets,
+        };
+      }
+      const pool = keep(resolveChannelProxies(db, channel, allProxies));
+      const proxyBase = {
+        ...base,
+        target: "proxy" as const,
+        groupName: groupNameFor(channel),
+        policy: channel.policy,
+      };
+      return channel.isDefault
+        ? { ...proxyBase, proxies: inventory, race: pool }
+        : { ...proxyBase, proxies: pool };
+    });
+  return { inputs, inventory };
+}
+
+export function readDomainValidationProxyPassword(db: Db): string | null {
+  return getSetting(db, DOMAIN_VALIDATION_PASSWORD_KEY) || null;
+}
+
+export function hasDomainValidationRoute(db: Db): boolean {
+  const view = getDomainIntelligenceSettingsView(db);
+  if (view.configurationState !== "ready" || !view.settings.enabled) return false;
+  const target = domainValidationTarget(
+    collectActiveRoutingInputs(db).inputs,
+    view.settings.customTargetChannelId,
+  );
+  return target !== null && (target.race ?? target.proxies).length > 0;
 }
 
 // Read the config currently on disk, or null if it doesn't exist / can't be read.
@@ -95,20 +249,48 @@ export async function applyConfig(
   db: Db,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
-  opts: { force?: boolean } = {},
+  opts: {
+    afterConfigActivationAttempt?: (
+      result: Pick<ApplyResult, "applied" | "activationVerified">,
+    ) => void;
+    force?: boolean;
+    stageConfigMutation?: () => () => void;
+  } = {},
 ): Promise<ApplyResult> {
-  const allProxies = collectProxies(db);
-  // Global deny-list: excluded names are dropped from the whole config — never
-  // defined, pinged, routed, or in PROXY. `keep` filters both the inventory and each
-  // channel's resolved pool (a source-ref pool can otherwise re-introduce them).
-  const excluded = getExcludedSet(db);
-  const keep = (ps: ProxyConfig[]): ProxyConfig[] => ps.filter((p) => !excluded.has(p.name));
-  const inventory = keep(allProxies);
+  const apply = (managedDomainRules?: ManagedDomainRulesProviderInput) =>
+    applyConfigNow(db, configPath, targetPath, {
+      ...(opts.afterConfigActivationAttempt === undefined
+        ? {}
+        : { afterConfigActivationAttempt: opts.afterConfigActivationAttempt }),
+      ...(opts.force === undefined ? {} : { force: opts.force }),
+      ...(managedDomainRules === undefined ? {} : { managedDomainRules }),
+      ...(opts.stageConfigMutation === undefined
+        ? {}
+        : { stageConfigMutation: opts.stageConfigMutation }),
+    });
+  return configApplyCoordinator ? configApplyCoordinator(apply) : apply();
+}
+
+async function applyConfigNow(
+  db: Db,
+  configPath: string,
+  targetPath: string,
+  opts: {
+    afterConfigActivationAttempt?: (
+      result: Pick<ApplyResult, "applied" | "activationVerified">,
+    ) => void;
+    force?: boolean;
+    managedDomainRules?: ManagedDomainRulesProviderInput;
+    stageConfigMutation?: () => () => void;
+  } = {},
+): Promise<ApplyResult> {
+  const { inputs, inventory } = collectActiveRoutingInputs(db);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
   // The config's `secret:` is the editable panel secret (seeded from env on first run):
   // the panel owns mihomo's config, so editing the secret rotates the engine too. The
-  // settings router re-points the client in a `finally`, so a failed reload can't lock out.
+  // settings router stages that mutation in this serialized apply and re-points the
+  // client only after a no-op/reload activation attempt; pre-reload failures roll it back.
   //
   // Write atomically (temp file + rename) so mihomo never reads a half-written config on
   // reload: an in-place writeFileSync truncates first, and mihomo can catch that empty
@@ -116,64 +298,63 @@ export async function applyConfig(
   // A disabled non-default channel is dropped from routing entirely — no group,
   // no DOMAIN-SUFFIX rules — until re-enabled. The Default is the catch-all and
   // stays active regardless of its own `enabled` flag.
-  const inputs: ChannelConfigInput[] = listChannels(db)
-    .filter((ch) => (ch.target === "proxy" && ch.isDefault) || ch.enabled)
-    .map((ch): ChannelConfigInput => {
-      const base = {
-        target: ch.target,
-        id: ch.id,
-        isDefault: ch.isDefault,
-        domains: resolveMatcherDomains(ch.matcher),
-        keywords: ch.matcher.keywords,
-        ruleProviders: ch.matcher.ruleProviders,
-        geosite: ch.matcher.geosite,
-        geoip: ch.matcher.geoip,
-        cidrs: ch.matcher.cidrs,
-      };
-      if (ch.target === "direct") {
-        return {
-          ...base,
-          target: "direct",
-          id: "direct",
-          isDefault: false,
-          directPresets: ch.directPresets,
-        };
-      }
-      const pool = keep(resolveChannelProxies(db, ch, allProxies));
-      const proxyBase = {
-        ...base,
-        target: "proxy" as const,
-        groupName: groupNameFor(ch),
-        policy: ch.policy,
-      };
-      // The Default channel DEFINES the whole (non-excluded) inventory — every node is
-      // written to the config, pinged by the prober, and manually selectable via PROXY
-      // — while its AUTO group RACES only the pool. Other channels define + race their
-      // pool. Excluded nodes are already filtered out of both `inventory` and `pool`.
-      return ch.isDefault
-        ? { ...proxyBase, proxies: inventory, race: pool }
-        : { ...proxyBase, proxies: pool };
-    });
-  const content = buildMultiConfig(inputs, readMihomoSecret(db));
-  // Unchanged config → skip the write + the destructive reload so mihomo keeps its
-  // delay history (the charts don't blank on every no-op apply — rename, re-saved
-  // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and
-  // still reload. `force` (reconnect recovery) always pushes.
-  if (!opts.force && readExistingConfig(configPath) === content) {
-    return { nodes: inventory.length, applied: true };
-  }
-  const tmpPath = `${configPath}.tmp`;
-  writeFileSync(tmpPath, content, "utf8");
-  renameSync(tmpPath, configPath);
-  // The reload is the only network step — its failure must not read as "not saved":
-  // the DB row and the config file are already updated. fs errors above still throw.
+  let rollbackConfigMutation: (() => void) | undefined;
+  let activationAttempted = false;
+  let rollbackSafe = true;
   try {
-    await reloadConfig(targetPath);
-  } catch (err) {
-    operationalLog("config-reload-failed", {}, err);
-    return { nodes: inventory.length, applied: false };
+    rollbackConfigMutation = opts.stageConfigMutation?.();
+    const secretPreparation = await prepareMihomoSecretForConfig(db);
+    rollbackSafe = secretPreparation.rollbackSafe;
+    const content = buildMultiConfig(
+      inputs,
+      secretPreparation.secret,
+      domainValidationListener(db, inputs),
+      opts.managedDomainRules,
+    );
+    // Unchanged config → skip the write + the destructive reload so mihomo keeps its
+    // delay history (the charts don't blank on every no-op apply — rename, re-saved
+    // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and
+    // still reload. `force` (reconnect recovery) always pushes.
+    if (!opts.force && readExistingConfig(configPath) === content) {
+      activationAttempted = true;
+      const pendingSecretConfirmed =
+        !secretPreparation.pending || (await confirmPendingMihomoSecretRotation(db));
+      if (pendingSecretConfirmed) {
+        opts.afterConfigActivationAttempt?.({ applied: true, activationVerified: false });
+        return { nodes: inventory.length, applied: true, activationVerified: false };
+      }
+      // Bytes alone are insufficient during a rotation: a previous attempt may
+      // have written the new file but failed before Mihomo accepted it. Continue
+      // through the reload path until the new credential authenticates.
+    }
+    const tmpPath = `${configPath}.tmp`;
+    writeFileSync(tmpPath, content, "utf8");
+    renameSync(tmpPath, configPath);
+    // The reload is the only network step — its failure must not read as "not saved":
+    // the DB row and the config file are already updated. fs errors above still throw.
+    try {
+      // Once the request is sent, a lost response cannot prove whether Mihomo
+      // accepted the new secret. Keep the durable rotation journal in that
+      // ambiguous state; recovery probes both credentials on the next apply.
+      activationAttempted = true;
+      await reloadConfig(targetPath);
+    } catch (err) {
+      operationalLog("config-reload-failed", {}, err);
+      await confirmPendingMihomoSecretRotation(db);
+      opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+      return { nodes: inventory.length, applied: false, activationVerified: false };
+    }
+    const pendingSecretConfirmed = await confirmPendingMihomoSecretRotation(db);
+    if (secretPreparation.pending && !pendingSecretConfirmed) {
+      opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+      return { nodes: inventory.length, applied: false, activationVerified: false };
+    }
+    opts.afterConfigActivationAttempt?.({ applied: true, activationVerified: true });
+    return { nodes: inventory.length, applied: true, activationVerified: true };
+  } catch (error) {
+    if (!activationAttempted && rollbackSafe) rollbackConfigMutation?.();
+    throw error;
   }
-  return { nodes: inventory.length, applied: true };
 }
 
 // Transport + security of a node, keyed by name. mihomo's /proxies doesn't expose

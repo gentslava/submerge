@@ -1,11 +1,16 @@
 import type { LogLevel } from "@submerge/shared";
+import type { DomainValidationExecutorFailureCategory } from "../domain-intelligence/scheduler.js";
 import type { LogDraft } from "./hub.js";
 
 export type OperationalEventKey =
   | "server-listening"
   | "boot-config-apply-failed"
+  | "boot-domain-rules-failed"
   | "config-reload-failed"
   | "secret-rotation-write-failed"
+  | "domain-validation-config-write-failed"
+  | "domain-validation-scheduler-failed"
+  | "domain-rule-apply-worker-failed"
   | "mihomo-live-failed"
   | "source-refresh-failed"
   | "source-refresh-scheduler-failed";
@@ -18,6 +23,14 @@ interface OperationalEventDefinition {
 }
 
 const noFields = (): undefined => undefined;
+const domainValidationFailureCategories = {
+  "coverage-failure": true,
+  "direct-probe-failure": true,
+  "proxy-probe-failure": true,
+  "decision-failure": true,
+  "policy-changed": true,
+  "infrastructure-failure": true,
+} satisfies Record<DomainValidationExecutorFailureCategory, true>;
 
 const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
   "server-listening": {
@@ -37,6 +50,12 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     stdoutMessage: "boot config apply failed",
     fields: noFields,
   },
+  "boot-domain-rules-failed": {
+    level: "warning",
+    uiMessage: "Не удалось восстановить локальные правила при запуске",
+    stdoutMessage: "boot domain rules recovery failed",
+    fields: noFields,
+  },
   "config-reload-failed": {
     level: "warning",
     uiMessage: "Конфигурация записана, но mihomo не перезагрузил её",
@@ -47,6 +66,28 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     level: "warning",
     uiMessage: "Не удалось записать конфигурацию после смены секрета mihomo",
     stdoutMessage: "config write after secret rotation failed",
+    fields: noFields,
+  },
+  "domain-validation-config-write-failed": {
+    level: "warning",
+    uiMessage: "Не удалось обновить защищённый маршрут проверки доменов",
+    stdoutMessage: "domain validation config write failed",
+    fields: noFields,
+  },
+  "domain-validation-scheduler-failed": {
+    level: "warning",
+    uiMessage: "Фоновая проверка доменов временно остановлена",
+    stdoutMessage: "domain validation scheduler failed",
+    fields: (input) =>
+      typeof input.category === "string" &&
+      Object.hasOwn(domainValidationFailureCategories, input.category)
+        ? { category: input.category }
+        : undefined,
+  },
+  "domain-rule-apply-worker-failed": {
+    level: "warning",
+    uiMessage: "Применение локального правила остановлено до восстановления",
+    stdoutMessage: "domain rule apply worker failed",
     fields: noFields,
   },
   "mihomo-live-failed": {

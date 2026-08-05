@@ -21,6 +21,8 @@ export interface LogDraft {
 interface LogHubDeps {
   now?: () => Date;
   openLogStream?: (signal: AbortSignal) => Promise<AsyncGenerator<MihomoLogFrame>>;
+  onMihomoFrame?: (frame: MihomoLogFrame, observedAt: number) => void;
+  onMihomoFrameError?: (error: unknown) => void;
 }
 
 type SnapshotMessage = Extract<LogStreamMessage, { type: "snapshot" }>;
@@ -31,6 +33,8 @@ export class LogHub {
   readonly emitter = new EventEmitter();
   private readonly now: () => Date;
   private readonly openLogStream?: LogHubDeps["openLogStream"];
+  private readonly onMihomoFrame?: LogHubDeps["onMihomoFrame"];
+  private readonly onMihomoFrameError?: LogHubDeps["onMihomoFrameError"];
   private readonly events: LogEvent[] = [];
   private sequence = 0;
   private upstream: LogUpstreamState = "connecting";
@@ -40,6 +44,8 @@ export class LogHub {
   constructor(deps: LogHubDeps = {}) {
     this.now = deps.now ?? (() => new Date());
     this.openLogStream = deps.openLogStream;
+    this.onMihomoFrame = deps.onMihomoFrame;
+    this.onMihomoFrameError = deps.onMihomoFrameError;
     this.emitter.setMaxListeners(0);
   }
 
@@ -61,11 +67,15 @@ export class LogHub {
   }
 
   push(draft: LogDraft): LogEvent {
+    return this.pushAt(draft, this.now());
+  }
+
+  private pushAt(draft: LogDraft, receivedAt: Date): LogEvent {
     const cursor = this.nextCursor();
     const event: LogEvent = {
       ...draft,
       id: cursor,
-      time: this.now().toISOString(),
+      time: receivedAt.toISOString(),
     };
     this.events.push(event);
     if (this.events.length > LOG_CAPACITY) this.events.splice(0, this.events.length - LOG_CAPACITY);
@@ -150,7 +160,9 @@ export class LogHub {
         this.setUpstream("live", null);
         for await (const frame of stream) {
           if (this.captureAbort !== controller || controller.signal.aborted) return;
-          this.push({ source: "mihomo", ...frame });
+          const receivedAt = this.now();
+          this.pushAt({ source: "mihomo", ...frame }, receivedAt);
+          this.observeMihomoFrame(frame, receivedAt.getTime());
         }
       } catch {
         // A failed open/read is handled by the same reconnect path as clean EOF.
@@ -165,6 +177,18 @@ export class LogHub {
       const nextRetryAt = new Date(this.now().getTime() + delayMs).toISOString();
       this.setUpstream("reconnecting", nextRetryAt);
       await waitForRetry(delayMs, controller.signal);
+    }
+  }
+
+  private observeMihomoFrame(frame: MihomoLogFrame, observedAt: number): void {
+    try {
+      this.onMihomoFrame?.(frame, observedAt);
+    } catch (error) {
+      try {
+        this.onMihomoFrameError?.(error);
+      } catch {
+        // Observer diagnostics must not stop the upstream log pump.
+      }
     }
   }
 }

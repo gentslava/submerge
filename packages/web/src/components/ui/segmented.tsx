@@ -30,7 +30,7 @@ export function Segmented({ options, value, onChange, "aria-label": ariaLabel }:
             aria-current={active ? "true" : undefined}
             className={cn(
               "rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border",
-              active ? "bg-accent text-accent-fg" : "text-text-secondary hover:text-text-primary",
+              active ? "bg-accent on-accent-fg" : "text-text-secondary hover:text-text-primary",
             )}
           >
             {opt.label}

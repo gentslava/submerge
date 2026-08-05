@@ -2,12 +2,12 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type { ComponentPropsWithRef } from "react";
 import { cn } from "@/lib/utils";
 
-const button = cva(
+export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border disabled:opacity-50 disabled:pointer-events-none cursor-pointer",
   {
     variants: {
       variant: {
-        primary: "bg-accent text-accent-fg hover:bg-accent-hover",
+        primary: "bg-accent on-accent-fg hover:bg-accent-hover",
         // Bright label (text-primary) + muted icon (text-secondary) per the mockup —
         // a fully-muted label made these read as "disabled".
         secondary:
@@ -26,8 +26,8 @@ const button = cva(
   },
 );
 
-export type ButtonProps = ComponentPropsWithRef<"button"> & VariantProps<typeof button>;
+export type ButtonProps = ComponentPropsWithRef<"button"> & VariantProps<typeof buttonVariants>;
 
 export function Button({ className, variant, size, ...props }: ButtonProps) {
-  return <button className={cn(button({ variant, size }), className)} {...props} />;
+  return <button className={cn(buttonVariants({ variant, size }), className)} {...props} />;
 }

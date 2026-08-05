@@ -17,9 +17,12 @@ services:
     restart: unless-stopped
     volumes:
       - ./mihomo:/root/.config/mihomo
+      - ./domain-rules:/root/.config/mihomo/domain-rules:ro
     ports:
       - "127.0.0.1:7890:7890"   # SOCKS5 + HTTP (для клиентов / роутера / matter)
       - "127.0.0.1:9090:9090"   # mihomo API (отладка; submerge ходит внутри сети по http://mihomo:9090)
+    expose:
+      - "7891"                    # authenticated validation listener; private Compose network only
 
   submerge:
     image: ghcr.io/gentslava/submerge:latest
@@ -28,6 +31,10 @@ services:
     environment:
       MIHOMO_API: "http://mihomo:9090"
       MIHOMO_SECRET: "${MIHOMO_SECRET:-poc}"
+      DOMAIN_VALIDATION_TOPOLOGY: "compose"
+      DOMAIN_VALIDATION_PROXY_ENDPOINT: "http://mihomo:7891"
+      # Deployment capability only. Report mode cannot provision or mutate local rules.
+      DOMAIN_RULES_MODE: "${DOMAIN_RULES_MODE:-report}"
       HAPP_DECODER_URL: "http://happ-decoder:8080"
       # Auth is OFF unless ADMIN_PASSWORD is set — leave empty for open localhost use,
       # set a strong value in `.env` before exposing the panel to the internet.
@@ -36,14 +43,17 @@ services:
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     volumes:
       - ./mihomo:/mihomo            # shared config + hwid.txt (server writes config.yaml)
+      - ./domain-rules:/domain-rules # canonical custom.txt; prepare owner/mode before first start
       - submerge-data:/app/data     # persistent SQLite DB
     ports:
       # Bind to loopback by default. Front it with a TLS reverse-proxy; only set
       # SUBMERGE_BIND=0.0.0.0 if you deliberately expose the port directly.
       - "${SUBMERGE_BIND:-127.0.0.1}:3000:3000"
     depends_on:
-      - mihomo
-      - happ-decoder
+      mihomo:
+        condition: service_started
+      happ-decoder:
+        condition: service_started
 
   happ-decoder:
     image: ghcr.io/gentslava/submerge-happ-decoder:latest
