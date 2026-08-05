@@ -34,6 +34,7 @@ import {
   lt,
   lte,
   ne,
+  notExists,
   or,
   sql,
 } from "drizzle-orm";
@@ -47,9 +48,11 @@ import {
   domainDailyStats,
   domainDecisions,
   domainObservations,
+  domainRuleOperations,
   domainValidationAttempts,
   domainValidationRuns,
   settings,
+  UNFINISHED_DOMAIN_RULE_OPERATION_PHASES,
 } from "../../db/schema.js";
 import { getSetting } from "../settings/service.js";
 import {
@@ -479,12 +482,14 @@ const candidateDecisionSchema = z
     if (decision.evidence.directSpacedFailures > decision.evidence.directQualifyingFailures) {
       context.addIssue({ code: "custom", message: "spaced failures exceed qualifying failures" });
     }
-    const exactFailClosedDecision =
+    const exactTerminalDecision =
       decision.status === "blocked" &&
       decision.reasons.length === 1 &&
-      (decision.reasons[0] === "invalid-policy" || decision.reasons[0] === "invalid-evidence") &&
+      (decision.reasons[0] === "invalid-policy" ||
+        decision.reasons[0] === "invalid-evidence" ||
+        decision.reasons[0] === "already-covered") &&
       isEmptyDecisionEvidence(decision.evidence);
-    if (decision.windowStart === null && !exactFailClosedDecision) {
+    if (decision.windowStart === null && !exactTerminalDecision) {
       context.addIssue({
         code: "custom",
         message: "null window requires an exact fail-closed decision",
@@ -494,7 +499,7 @@ const candidateDecisionSchema = z
       context.addIssue({ code: "custom", message: "invalid policy decision cannot have a window" });
     }
     if (
-      !exactFailClosedDecision &&
+      !exactTerminalDecision &&
       !decision.evidence.directAddressDiversityRequired &&
       !decision.evidence.directAddressDiversitySatisfied
     ) {
@@ -970,6 +975,17 @@ export function leaseDomainCandidate(
           lte(domainCandidates.updatedAt, parsed.now),
           lt(domainCandidates.leaseGeneration, 1_000_000_000),
           or(isNull(domainCandidates.leaseUntil), lte(domainCandidates.leaseUntil, parsed.now)),
+          notExists(
+            tx
+              .select({ id: domainRuleOperations.id })
+              .from(domainRuleOperations)
+              .where(
+                and(
+                  eq(domainRuleOperations.candidateFqdn, domainCandidates.fqdn),
+                  inArray(domainRuleOperations.phase, UNFINISHED_DOMAIN_RULE_OPERATION_PHASES),
+                ),
+              ),
+          ),
         ),
       )
       .run().changes;
@@ -1060,6 +1076,17 @@ export function listDueDomainCandidates(
             Math.max(0, parsed.now - DOMAIN_OPERATIONAL_RETENTION_DAYS * DAY_MS),
           ),
           or(isNull(domainCandidates.leaseUntil), lte(domainCandidates.leaseUntil, parsed.now)),
+          notExists(
+            db
+              .select({ id: domainRuleOperations.id })
+              .from(domainRuleOperations)
+              .where(
+                and(
+                  eq(domainRuleOperations.candidateFqdn, domainCandidates.fqdn),
+                  inArray(domainRuleOperations.phase, UNFINISHED_DOMAIN_RULE_OPERATION_PHASES),
+                ),
+              ),
+          ),
         ),
       )
       .orderBy(domainCandidates.nextValidationAt, domainCandidates.fqdn)
@@ -1286,6 +1313,17 @@ export function claimDomainValidationRun(
           lte(domainCandidates.updatedAt, parsed.now),
           lt(domainCandidates.leaseGeneration, 1_000_000_000),
           or(isNull(domainCandidates.leaseUntil), lte(domainCandidates.leaseUntil, parsed.now)),
+          notExists(
+            tx
+              .select({ id: domainRuleOperations.id })
+              .from(domainRuleOperations)
+              .where(
+                and(
+                  eq(domainRuleOperations.candidateFqdn, domainCandidates.fqdn),
+                  inArray(domainRuleOperations.phase, UNFINISHED_DOMAIN_RULE_OPERATION_PHASES),
+                ),
+              ),
+          ),
         ),
       )
       .run().changes;

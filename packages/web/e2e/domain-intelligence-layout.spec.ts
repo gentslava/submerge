@@ -30,6 +30,21 @@ const settings: DomainIntelligenceSettingsView = {
   },
 };
 
+const applySettings: DomainIntelligenceSettingsView = {
+  ...settings,
+  deployment: {
+    mode: "apply",
+    apply: {
+      available: true,
+      repository: "local",
+      branch: "main",
+      path: "custom.txt",
+      providerName: "submerge-custom",
+      providerPath: "./domain-rules/custom.txt",
+    },
+  },
+};
+
 const overview: DomainIntelligenceOverview = {
   generatedAt: now,
   period: { from: now - 24 * 60 * 60 * 1_000, to: now },
@@ -374,9 +389,9 @@ for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
         expect(
           Math.abs((actions?.y ?? 0) - (rowBox?.y ?? 0) - baselineActionOffset),
         ).toBeLessThanOrEqual(1);
-        const observed = await row.locator(".domain-observed-name").boundingBox();
-        expect(observed).not.toBeNull();
-        expect(Math.abs((actions?.y ?? 0) - (observed?.y ?? 0))).toBeLessThanOrEqual(1);
+        const rule = await row.locator(".domain-candidate-rule").boundingBox();
+        expect(rule).not.toBeNull();
+        expect(Math.abs((actions?.y ?? 0) - (rule?.y ?? 0))).toBeLessThanOrEqual(1);
       }
       const actionColumns = await row
         .locator(".domain-candidate-actions")
@@ -411,26 +426,38 @@ for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
       }
       expect(
         await row.locator(".domain-candidate-rule").evaluate((element) => {
-          const textRects = Array.from(
+          const entries = Array.from(
             element.querySelectorAll<HTMLElement>(
               ".domain-observed-name, .domain-generated-group, .domain-rule-scope",
             ),
-            (child) => child.getBoundingClientRect(),
+            (child) => ({ name: child.className, rect: child.getBoundingClientRect() }),
           );
-          return textRects.every((rect, index) =>
-            textRects.slice(index + 1).every((other) => {
+          return entries.flatMap((entry, index) =>
+            entries.slice(index + 1).flatMap((other) => {
               const overlapWidth =
-                Math.min(rect.right, other.right) - Math.max(rect.left, other.left);
+                Math.min(entry.rect.right, other.rect.right) -
+                Math.max(entry.rect.left, other.rect.left);
               const overlapHeight =
-                Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top);
-              return overlapWidth <= 0 || overlapHeight <= 0;
+                Math.min(entry.rect.bottom, other.rect.bottom) -
+                Math.max(entry.rect.top, other.rect.top);
+              return overlapWidth > 0 && overlapHeight > 0
+                ? [
+                    {
+                      first: entry.name,
+                      second: other.name,
+                      overlapHeight,
+                      overlapWidth,
+                    },
+                  ]
+                : [];
             }),
           );
         }),
-      ).toBe(true);
+      ).toEqual([]);
       expect(
         await row.locator(".domain-candidate-proposal").evaluate((element) => {
-          const boundary = element.getBoundingClientRect();
+          const boundary = element.parentElement?.getBoundingClientRect();
+          if (!boundary) return false;
           return Array.from(element.children).every((child) => {
             const rect = child.getBoundingClientRect();
             return (
@@ -473,41 +500,22 @@ for (const width of [984, 1024, 1271, 1272, 1280, 1440, 1915]) {
           const generatedRect = generated.getBoundingClientRect();
           const actionsRect = actions.getBoundingClientRect();
           return {
-            observedTop: observedRect.top,
-            generatedTop: generatedRect.top,
+            observedCenter: observedRect.top + observedRect.height / 2,
+            generatedCenter: generatedRect.top + generatedRect.height / 2,
             actionsTop: actionsRect.top,
+            ruleTop: element.getBoundingClientRect().top,
           };
         });
       expect(longIdentityGeometry).not.toBeNull();
-      expect(longIdentityGeometry?.generatedTop ?? Number.NEGATIVE_INFINITY).toBeGreaterThanOrEqual(
-        (longIdentityGeometry?.observedTop ?? Number.POSITIVE_INFINITY) - 1,
-      );
       expect(
         Math.abs(
-          (longIdentityGeometry?.observedTop ?? 0) - (longIdentityGeometry?.actionsTop ?? 0),
+          (longIdentityGeometry?.observedCenter ?? 0) -
+            (longIdentityGeometry?.generatedCenter ?? 0),
         ),
       ).toBeLessThanOrEqual(1);
-    }
-
-    if (width === 984 || width === 1272) {
-      const constrainedLongRule = await rows
-        .nth(3)
-        .locator(".domain-candidate-rule")
-        .evaluate((element) => {
-          const observed = element.querySelector<HTMLElement>(".domain-observed-name");
-          const generated = element.querySelector<HTMLElement>(".domain-generated-group");
-          if (!observed || !generated) return null;
-          const observedRect = observed.getBoundingClientRect();
-          const generatedRect = generated.getBoundingClientRect();
-          return {
-            observedBottom: observedRect.bottom,
-            generatedTop: generatedRect.top,
-          };
-        });
-      expect(constrainedLongRule).not.toBeNull();
-      expect(constrainedLongRule?.generatedTop ?? 0).toBeGreaterThan(
-        constrainedLongRule?.observedBottom ?? Number.POSITIVE_INFINITY,
-      );
+      expect(
+        Math.abs((longIdentityGeometry?.actionsTop ?? 0) - (longIdentityGeometry?.ruleTop ?? 0)),
+      ).toBeLessThanOrEqual(1);
     }
 
     await page.screenshot({ path: `/tmp/submerge-domain-candidate-actions-${width}.png` });
@@ -559,6 +567,61 @@ for (const width of [320, 390, 425, 768, 983]) {
     expect(Math.abs((rejectBox?.width ?? 0) - (statusBox?.width ?? 0))).toBeLessThanOrEqual(1);
     expect((rejectBox?.x ?? 0) + (rejectBox?.width ?? 0)).toBeLessThanOrEqual(statusBox?.x ?? 0);
     await expectNoDocumentOverflow(page);
+  });
+}
+
+for (const width of [320, 390, 425, 1440]) {
+  test(`enabled candidate apply keeps a legible stable pending control at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: width < 768 ? 844 : 1024 });
+    await openDomainIntelligence(page, applySettings);
+
+    let releaseApply = () => {};
+    const applyGate = new Promise<void>((resolve) => {
+      releaseApply = resolve;
+    });
+    await page.route("**/trpc/domainIntelligence.applyCandidate*", async (route) => {
+      await applyGate;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            result: {
+              data: {
+                operationId: "manual-add-browser-fixture",
+                phase: "completed",
+                commitSha: "c".repeat(40),
+                activationAttempt: 1,
+              },
+            },
+          },
+        ]),
+      });
+    });
+
+    const ready = page.getByRole("button", { name: "Добавить www.service.example" });
+    await expect(ready).toBeEnabled();
+    await expect(ready).not.toHaveAttribute("aria-disabled", "true");
+    await expect(ready).toHaveCSS("color", "rgb(255, 255, 255)");
+    const readyBox = await ready.boundingBox();
+    expect(readyBox).not.toBeNull();
+
+    await ready.click();
+    const pending = page.getByRole("button", { name: "Добавляется www.service.example" });
+    await expect(pending).toHaveAttribute("aria-busy", "true");
+    await expect(pending).toContainText("В работе…");
+    await expect(pending).toHaveCSS("color", "rgb(255, 255, 255)");
+    const pendingBox = await pending.boundingBox();
+    expect(pendingBox).not.toBeNull();
+    expect(Math.abs((pendingBox?.width ?? 0) - (readyBox?.width ?? 0))).toBeLessThanOrEqual(1);
+    expect(Math.abs((pendingBox?.height ?? 0) - (readyBox?.height ?? 0))).toBeLessThanOrEqual(1);
+
+    await page.screenshot({ path: `/tmp/submerge-domain-apply-pending-${width}.png` });
+    await expectNoDocumentOverflow(page);
+
+    releaseApply();
+    await expect(ready).toBeVisible();
   });
 }
 

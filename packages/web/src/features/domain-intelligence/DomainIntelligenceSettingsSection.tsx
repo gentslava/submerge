@@ -209,7 +209,7 @@ function ScopePicker({
           onClick={() => onChange(scope)}
           className={cn(
             "rounded-sm px-3 py-[7px] text-sub font-medium disabled:text-text-disabled",
-            value === scope ? "bg-accent text-accent-fg" : "text-text-secondary",
+            value === scope ? "bg-accent on-accent-fg" : "text-text-secondary",
           )}
         >
           {label}

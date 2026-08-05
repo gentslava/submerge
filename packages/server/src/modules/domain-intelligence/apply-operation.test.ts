@@ -7,6 +7,8 @@ import { createDb, type Db } from "../../db/client.js";
 import {
   domainAutomaticBudgets,
   domainAutomaticConsents,
+  domainCandidates,
+  domainDecisions,
   domainRuleOperations,
   domainRuleOwnership,
   settings,
@@ -73,6 +75,48 @@ function prepareAutomatic(db: Db, id = "automatic-add-1") {
       revision: buildDomainAutomaticConsentRevision(automatic),
       enabledAt: NOW - 2_000,
       revokedAt: null,
+    })
+    .run();
+  db.insert(domainCandidates)
+    .values({
+      fqdn: "api.service.example",
+      registrableSite: "service.example",
+      selectedScope: "site",
+      proposedRule: "+.service.example",
+      exclusionReason: null,
+      status: "confirmed",
+      reviewState: "active",
+      firstSeenAt: NOW - 86_400_000,
+      lastSeenAt: NOW - 2_000,
+      nextValidationAt: NOW,
+      lastValidationAt: NOW - 2_000,
+      failureStreak: 0,
+      leaseId: null,
+      leaseUntil: null,
+      leaseGeneration: 0,
+      updatedAt: NOW - 2_000,
+    })
+    .run();
+  db.insert(domainDecisions)
+    .values({
+      id: "confirmed-api-service-example",
+      fqdn: "api.service.example",
+      evaluatedAt: NOW - 2_000,
+      status: "confirmed",
+      confidence: "high",
+      reasons: [],
+      windowStart: NOW - 86_400_000,
+      evidence: {
+        directQualifyingFailures: 3,
+        directSpacedFailures: 3,
+        directAddressDiversityRequired: false,
+        directAddressDiversitySatisfied: true,
+        proxyHttpSuccesses: 2,
+        proxyTransportFailures: 0,
+        proxyUncertainFailures: 0,
+      },
+      selectedScope: "site",
+      proposedRule: "+.service.example",
     })
     .run();
   return prepareDomainRuleOperation(
@@ -237,6 +281,39 @@ describe("executeDomainRuleOperation", () => {
       consumedSlots: 1,
     });
     expect(db.select().from(domainRuleOwnership).get()).toMatchObject({ ownership: "automatic" });
+  });
+
+  it("removes a committed candidate from the active queue across partial activation retry", async () => {
+    const db = migratedDb();
+    prepareAutomatic(db);
+    const firstDependencies = successfulDependencies();
+    vi.mocked(firstDependencies.materializeCommitted).mockRejectedValue(
+      new Error("disk unavailable"),
+    );
+
+    await expect(
+      executeDomainRuleOperation(db, "automatic-add-1", firstDependencies, { clock: () => NOW }),
+    ).resolves.toMatchObject({ phase: "partial" });
+    expect(
+      db
+        .select()
+        .from(domainCandidates)
+        .where(eq(domainCandidates.fqdn, "api.service.example"))
+        .get(),
+    ).toMatchObject({ status: "blocked", nextValidationAt: 8_640_000_000_000_000 });
+
+    await expect(
+      executeDomainRuleOperation(db, "automatic-add-1", successfulDependencies(), {
+        clock: () => NOW + 1_000,
+      }),
+    ).resolves.toMatchObject({ phase: "completed" });
+    expect(
+      db
+        .select()
+        .from(domainDecisions)
+        .where(eq(domainDecisions.fqdn, "api.service.example"))
+        .all(),
+    ).toHaveLength(2);
   });
 
   it("rejects a fresh commit that aliases its prepared parent", async () => {

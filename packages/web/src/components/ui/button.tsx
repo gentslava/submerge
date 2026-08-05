@@ -7,7 +7,7 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-accent text-accent-fg hover:bg-accent-hover",
+        primary: "bg-accent on-accent-fg hover:bg-accent-hover",
         // Bright label (text-primary) + muted icon (text-secondary) per the mockup —
         // a fully-muted label made these read as "disabled".
         secondary:

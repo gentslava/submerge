@@ -10,6 +10,8 @@ import { createDb, type Db } from "../../db/client.js";
 import {
   domainAutomaticBudgets,
   domainAutomaticConsents,
+  domainCandidates,
+  domainDecisions,
   domainRuleOperations,
   domainRuleOwnership,
   settings,
@@ -24,6 +26,7 @@ import {
   listUnfinishedDomainRuleOperations,
   prepareDomainRuleOperation,
 } from "./apply-journal.js";
+import { claimDomainValidationRun, listDomainCandidateReport } from "./service.js";
 
 const migrationsFolder = fileURLToPath(new URL("../../../drizzle", import.meta.url));
 const PARENT_SHA = "1".repeat(40);
@@ -39,6 +42,51 @@ function automaticSettings(maximumAutomaticRulesPerDay = 3): DomainIntelligenceR
     defaultRuleScope: "site",
     maximumAutomaticRulesPerDay,
   };
+}
+
+function insertConfirmedCandidate(db: Db, fqdn: string, site: string, proposedRule: string): void {
+  db.insert(domainCandidates)
+    .values({
+      fqdn,
+      registrableSite: site,
+      selectedScope: "site",
+      proposedRule,
+      exclusionReason: null,
+      status: "confirmed",
+      reviewState: "active",
+      firstSeenAt: DAY_START - 86_400_000,
+      lastSeenAt: DAY_START,
+      nextValidationAt: DAY_START,
+      lastValidationAt: DAY_START,
+      failureStreak: 0,
+      leaseId: null,
+      leaseUntil: null,
+      leaseGeneration: 0,
+      updatedAt: DAY_START,
+    })
+    .run();
+  db.insert(domainDecisions)
+    .values({
+      id: `confirmed-${fqdn.replaceAll(".", "-")}`,
+      fqdn,
+      evaluatedAt: DAY_START,
+      status: "confirmed",
+      confidence: "high",
+      reasons: [],
+      windowStart: DAY_START - 86_400_000,
+      evidence: {
+        directQualifyingFailures: 3,
+        directSpacedFailures: 3,
+        directAddressDiversityRequired: false,
+        directAddressDiversitySatisfied: true,
+        proxyHttpSuccesses: 2,
+        proxyTransportFailures: 0,
+        proxyUncertainFailures: 0,
+      },
+      selectedScope: "site",
+      proposedRule,
+    })
+    .run();
 }
 
 function migratedDb(maximumAutomaticRulesPerDay = 3): Db {
@@ -59,22 +107,29 @@ function migratedDb(maximumAutomaticRulesPerDay = 3): Db {
       revokedAt: null,
     })
     .run();
+  insertConfirmedCandidate(db, "api.service.example", "service.example", "+.service.example");
   return db;
 }
 
-function prepareAutomatic(db: Db, id = "auto-2026-08-05-1", now = DAY_START + 100) {
+function prepareAutomatic(
+  db: Db,
+  id = "auto-2026-08-05-1",
+  now = DAY_START + 100,
+  fqdn = "api.service.example",
+  proposedRule = "+.service.example",
+) {
   return prepareDomainRuleOperation(
     db,
     {
       id,
       idempotencyKey: id,
       action: "automatic-add",
-      candidateFqdn: "api.service.example",
+      candidateFqdn: fqdn,
       expectedParentCommit: PARENT_SHA,
       intendedContentSha256: CONTENT_SHA,
-      proposedRule: "+.service.example",
+      proposedRule,
       ownershipDelta: {
-        upserts: [{ rule: "+.service.example", ownership: "automatic" }],
+        upserts: [{ rule: proposedRule, ownership: "automatic" }],
         deletes: [],
       },
     },
@@ -207,10 +262,17 @@ describe("domain-rule apply journal", () => {
   it("enforces the persisted automatic UTC-day ceiling across operations", () => {
     const db = migratedDb(1);
     prepareAutomatic(db);
+    insertConfirmedCandidate(db, "api.other.example", "other.example", "+.other.example");
 
-    expect(() => prepareAutomatic(db, "auto-2026-08-05-2")).toThrow(
-      "automatic domain-rule daily budget exhausted",
-    );
+    expect(() =>
+      prepareAutomatic(
+        db,
+        "auto-2026-08-05-2",
+        DAY_START + 100,
+        "api.other.example",
+        "+.other.example",
+      ),
+    ).toThrow("automatic domain-rule daily budget exhausted");
     expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
       reservedSlots: 1,
       consumedSlots: 0,
@@ -416,6 +478,43 @@ describe("domain-rule apply journal", () => {
       operationId: "auto-2026-08-05-1",
       commitSha: COMMIT_SHA,
     });
+    expect(
+      db
+        .select()
+        .from(domainCandidates)
+        .where(eq(domainCandidates.fqdn, "api.service.example"))
+        .get(),
+    ).toMatchObject({ status: "blocked", reviewState: "active" });
+    expect(
+      db
+        .select()
+        .from(domainDecisions)
+        .where(eq(domainDecisions.fqdn, "api.service.example"))
+        .orderBy(domainDecisions.evaluatedAt)
+        .all()
+        .at(-1),
+    ).toMatchObject({
+      status: "blocked",
+      confidence: "none",
+      reasons: ["already-covered"],
+      windowStart: null,
+      proposedRule: "+.service.example",
+    });
+    expect(
+      listDomainCandidateReport(db, { view: "exclusions", limit: 50 }, null).items,
+    ).toContainEqual(
+      expect.objectContaining({
+        fqdn: "api.service.example",
+        exclusionReason: "already-covered",
+        evidenceAvailable: true,
+        evidenceIntegrityIssue: null,
+        decision: expect.objectContaining({
+          status: "blocked",
+          reasons: ["already-covered"],
+          windowStart: null,
+        }),
+      }),
+    );
 
     db.update(domainRuleOwnership)
       .set({ ownership: "manual", updatedAt: DAY_START + 400 })
@@ -426,6 +525,57 @@ describe("domain-rule apply journal", () => {
       phase: "committed",
       commitSha: COMMIT_SHA,
     });
+  });
+
+  it("fences candidate validation while a durable apply operation is unfinished", async () => {
+    const db = migratedDb();
+    prepareAutomatic(db);
+
+    expect(
+      claimDomainValidationRun(db, {
+        runId: "validation-while-apply",
+        fqdn: "api.service.example",
+        leaseId: "validation-lease",
+        now: DAY_START + 200,
+        leaseUntil: DAY_START + 60_200,
+        rateWindowMs: 60_000,
+        maximumStarts: 20,
+      }),
+    ).toEqual({ status: "unavailable" });
+
+    await abortPreparedDomainRuleOperation(db, "auto-2026-08-05-1", {
+      clock: () => DAY_START + 300,
+      assertPreCommitState: async () => undefined,
+    });
+    expect(
+      claimDomainValidationRun(db, {
+        runId: "validation-after-abort",
+        fqdn: "api.service.example",
+        leaseId: "validation-lease-after-abort",
+        now: DAY_START + 400,
+        leaseUntil: DAY_START + 60_400,
+        rateWindowMs: 60_000,
+        maximumStarts: 20,
+      }),
+    ).toMatchObject({ status: "claimed" });
+  });
+
+  it("rejects a candidate-bound operation when validation already owns the candidate", () => {
+    const db = migratedDb();
+    expect(
+      claimDomainValidationRun(db, {
+        runId: "validation-first",
+        fqdn: "api.service.example",
+        leaseId: "validation-first-lease",
+        now: DAY_START + 100,
+        leaseUntil: DAY_START + 60_100,
+        rateWindowMs: 60_000,
+        maximumStarts: 20,
+      }),
+    ).toMatchObject({ status: "claimed" });
+
+    expect(() => prepareAutomatic(db)).toThrow("candidate apply authorization unavailable");
+    expect(db.select().from(domainRuleOperations).all()).toEqual([]);
   });
 
   it("rejects the prepared parent as an operation commit without consuming durable intent", () => {
@@ -846,7 +996,14 @@ describe("domain-rule apply journal", () => {
   it("releases only an attested pre-commit reservation and exposes unfinished recovery work", async () => {
     const db = migratedDb();
     prepareAutomatic(db);
-    prepareAutomatic(db, "auto-2026-08-05-2");
+    insertConfirmedCandidate(db, "api.other.example", "other.example", "+.other.example");
+    prepareAutomatic(
+      db,
+      "auto-2026-08-05-2",
+      DAY_START + 100,
+      "api.other.example",
+      "+.other.example",
+    );
 
     await expect(
       abortPreparedDomainRuleOperation(db, "auto-2026-08-05-1", {

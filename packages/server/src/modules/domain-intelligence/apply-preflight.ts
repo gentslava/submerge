@@ -118,9 +118,9 @@ export function createDomainRulePreparedPreflight(
   const decide = dependencies.decide ?? decideCandidate;
   return async (operation: DomainRuleOperation, signal?: AbortSignal): Promise<void> => {
     signal?.throwIfAborted();
-    if (operation.action !== "automatic-add") {
-      if (operation.candidateFqdn !== null) {
-        throw new DomainRulePreparedVetoError("manual operation cannot claim candidate evidence");
+    if (operation.candidateFqdn === null) {
+      if (operation.action === "automatic-add") {
+        throw new DomainRulePreparedVetoError("domain-rule automatic candidate unavailable");
       }
       assertManualProposedRuleScope(operation);
       const settings = dependencies.readSettings();
@@ -143,15 +143,21 @@ export function createDomainRulePreparedPreflight(
 
     const settings = dependencies.readSettings();
     if (!settings?.enabled) {
-      throw new DomainRulePreparedVetoError("domain-rule automatic settings unavailable");
+      throw new DomainRulePreparedVetoError("domain-rule candidate settings unavailable");
+    }
+    if (operation.action !== "automatic-add" && operation.action !== "manual-add") {
+      throw new DomainRulePreparedVetoError("domain-rule candidate action unavailable");
+    }
+    if (operation.action === "manual-add" && settings.automationMode !== "review") {
+      throw new DomainRulePreparedVetoError("domain-rule review authorization unavailable");
     }
     const fqdn = operation.candidateFqdn;
     if (!fqdn || !operation.proposedRule) {
-      throw new DomainRulePreparedVetoError("domain-rule automatic candidate unavailable");
+      throw new DomainRulePreparedVetoError("domain-rule candidate unavailable");
     }
     const candidate = dependencies.readCandidate(fqdn);
     if (!candidate || candidate.fqdn !== fqdn) {
-      throw new DomainRulePreparedVetoError("domain-rule automatic candidate unavailable");
+      throw new DomainRulePreparedVetoError("domain-rule candidate unavailable");
     }
     if (candidate.reviewState !== "active") {
       throw new DomainRulePreparedVetoError("domain-rule candidate is not active");

@@ -158,6 +158,17 @@ export interface CommitPreparedDomainRuleMutationInput extends LocalRuleReposito
   upsertRules: readonly string[];
 }
 
+export interface PrepareLocalDomainRuleMutationIntentInput extends LocalRuleRepositoryOptions {
+  deleteRules: readonly string[];
+  repositoryPath: string;
+  upsertRules: readonly string[];
+}
+
+export interface PreparedLocalDomainRuleMutationIntent {
+  expectedParentCommit: string;
+  intendedContentSha256: string;
+}
+
 export type AttestedLocalDomainRuleOperationState =
   | {
       state: "parent";
@@ -2577,6 +2588,38 @@ export async function commitPreparedDomainRuleMutation(
       context,
       true,
     );
+  });
+}
+
+export async function prepareLocalDomainRuleMutationIntent(
+  input: PrepareLocalDomainRuleMutationIntentInput,
+): Promise<PreparedLocalDomainRuleMutationIntent> {
+  assertNotAborted(input.signal);
+  assertTrustedGitBinary();
+  const context = resolveRepositoryContext(input.repositoryPath, input.trustedParentPath);
+  return withRepositoryLock(context, async () => {
+    const state = await validateExistingLocalRuleRepository(context, input.signal, false);
+    if (!hasLocalRuleHistoryCapacity(state.operationIds.length)) {
+      throw new Error("local domain-rule history limit reached");
+    }
+    const mutation = applyManagedDomainRuleDelta(
+      state.content,
+      input.upsertRules,
+      input.deleteRules,
+    );
+    assertNotAborted(input.signal);
+    const reattested = await validateExistingLocalRuleRepository(context, input.signal, false);
+    if (
+      reattested.head !== state.head ||
+      reattested.contentSha256 !== state.contentSha256 ||
+      reattested.content !== state.content
+    ) {
+      throw new Error("local domain-rule repository changed while preparing mutation");
+    }
+    return {
+      expectedParentCommit: reattested.head,
+      intendedContentSha256: sha256(mutation.content),
+    };
   });
 }
 

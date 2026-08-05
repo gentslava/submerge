@@ -19,6 +19,7 @@ import {
   commitManagedDomainRules as commitManagedDomainRulesImpl,
   commitPreparedDomainRuleMutation as commitPreparedDomainRuleMutationImpl,
   hasLocalRuleHistoryCapacity,
+  prepareLocalDomainRuleMutationIntent as prepareLocalDomainRuleMutationIntentImpl,
   prepareLocalRuleRepositoryDirectories,
   provisionLocalRuleRepository as provisionLocalRuleRepositoryImpl,
   recoverStaleLocalRuleRepositoryLock as recoverStaleLocalRuleRepositoryLockImpl,
@@ -146,6 +147,15 @@ function commitPreparedDomainRuleMutation(
   input: Omit<Parameters<typeof commitPreparedDomainRuleMutationImpl>[0], "trustedParentPath">,
 ) {
   return commitPreparedDomainRuleMutationImpl({
+    trustedParentPath: dirname(input.repositoryPath),
+    ...input,
+  });
+}
+
+function prepareLocalDomainRuleMutationIntent(
+  input: Omit<Parameters<typeof prepareLocalDomainRuleMutationIntentImpl>[0], "trustedParentPath">,
+) {
+  return prepareLocalDomainRuleMutationIntentImpl({
     trustedParentPath: dirname(input.repositoryPath),
     ...input,
   });
@@ -1685,6 +1695,53 @@ describe("attestLocalDomainRuleOperationState", () => {
       }),
     ).rejects.toThrow("unexpected local Git state");
     expect(() => statSync(join(repositoryPath, ".git"))).toThrow();
+  });
+});
+
+describe("prepareLocalDomainRuleMutationIntent", () => {
+  it("attests a deterministic mutation intent without changing Git or the worktree", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    const before =
+      "# operator-owned\n+.legacy.example\n# BEGIN SUBMERGE MANAGED\n# END SUBMERGE MANAGED\n";
+    writeFileSync(join(repositoryPath, "custom.txt"), before, { mode: 0o600 });
+    const repository = await provisionLocalRuleRepository(repositoryPath);
+
+    const intent = await prepareLocalDomainRuleMutationIntent({
+      repositoryPath,
+      upsertRules: ["+.service.example"],
+      deleteRules: [],
+    });
+
+    expect(intent).toEqual({
+      expectedParentCommit: repository.head,
+      intendedContentSha256: sha256(
+        "# operator-owned\n+.legacy.example\n# BEGIN SUBMERGE MANAGED\n+.service.example\n# END SUBMERGE MANAGED\n",
+      ),
+    });
+    expect(readFileSync(join(repositoryPath, "custom.txt"), "utf8")).toBe(before);
+    expect(git(repositoryPath, ["rev-parse", "HEAD"]).trim()).toBe(repository.head);
+    expect(git(repositoryPath, ["status", "--porcelain=v1", "--untracked-files=all"])).toBe("");
+  });
+
+  it("rejects a missing delete target before a journal row can be prepared", async () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-local-rules-"));
+    temporaryDirectories.push(root);
+    const repositoryPath = join(root, "repository");
+    mkdirSync(repositoryPath, { mode: 0o700 });
+    chmodSync(repositoryPath, 0o700);
+    await provisionLocalRuleRepository(repositoryPath);
+
+    await expect(
+      prepareLocalDomainRuleMutationIntent({
+        repositoryPath,
+        upsertRules: [],
+        deleteRules: ["missing.example"],
+      }),
+    ).rejects.toThrow("mutation target is missing");
   });
 });
 

@@ -119,9 +119,22 @@
 }
 
 .domain-candidate-rule--with-proposal {
-  display: flex;
-  align-items: start;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.8fr) minmax(0, 1.2fr) auto;
+  align-items: center;
+}
+
+.domain-candidate-rule--with-proposal > .domain-observed-name {
+  width: 100%;
+  max-width: none;
+}
+
+.domain-candidate-rule--with-proposal > .domain-candidate-proposal {
+  display: contents;
+}
+
+.domain-candidate-rule--with-proposal .domain-generated-group {
+  width: 100%;
 }
 
 .domain-candidate-proposal {
@@ -514,6 +527,10 @@
     gap: 0.5rem;
   }
 
+  .domain-candidate-rule--with-proposal {
+    display: flex;
+  }
+
   .domain-candidate-proposal {
     display: contents;
   }
@@ -566,7 +583,7 @@
   }
 
   .domain-candidate-actions > button:not(.domain-candidate-expand),
-  .domain-candidate-actions > [role="status"] {
+  .domain-candidate-actions > [role="status"]:not(.sr-only) {
     min-height: 2.75rem;
     min-width: 0;
     width: auto;

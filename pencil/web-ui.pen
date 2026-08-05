@@ -95526,13 +95526,13 @@
       "type": "color",
       "value": [
         {
-          "value": "#6366F1",
+          "value": "#5558E6",
           "theme": {
             "mode": "dark"
           }
         },
         {
-          "value": "#6366F1",
+          "value": "#5558E6",
           "theme": {
             "mode": "light"
           }
@@ -95543,13 +95543,13 @@
       "type": "color",
       "value": [
         {
-          "value": "#7B7DF4",
+          "value": "#5B5EEA",
           "theme": {
             "mode": "dark"
           }
         },
         {
-          "value": "#5457E0",
+          "value": "#4F52D8",
           "theme": {
             "mode": "light"
           }
@@ -95560,13 +95560,13 @@
       "type": "color",
       "value": [
         {
-          "value": "#5356E0",
+          "value": "#4F52D8",
           "theme": {
             "mode": "dark"
           }
         },
         {
-          "value": "#4A4DD4",
+          "value": "#484BCD",
           "theme": {
             "mode": "light"
           }

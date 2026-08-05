@@ -35,7 +35,7 @@ export function Checkbox({
         checked ? "border-accent bg-accent" : "border-border-strong bg-transparent",
       )}
     >
-      {checked && <Check className="h-3 w-3 text-accent-fg" aria-hidden="true" />}
+      {checked && <Check className="h-3 w-3 on-accent-fg" aria-hidden="true" />}
     </button>
   );
 }

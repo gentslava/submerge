@@ -6,7 +6,7 @@ import {
 } from "@submerge/shared";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DomainIntelligenceScreen } from "./DomainIntelligenceScreen";
 
 const now = Date.parse("2026-08-04T12:00:00.000Z");
@@ -18,7 +18,12 @@ const mocks = vi.hoisted(() => ({
     {
       mutate: ReturnType<typeof vi.fn>;
       isPending: boolean;
-      callbacks?: { onSuccess?: (result: unknown) => void; onError?: () => void };
+      variables?: { fqdn: string };
+      callbacks?: {
+        onSuccess?: (result: unknown) => void;
+        onError?: () => void;
+        onSettled?: (result: unknown, error: unknown, variables: { fqdn: string }) => void;
+      };
     }
   >(),
   queryOptions: vi.fn((kind: string) => ({ kind })),
@@ -58,7 +63,11 @@ vi.mock("@tanstack/react-query", () => ({
   },
   useMutation: (options: {
     kind: string;
-    options?: { onSuccess?: (result: unknown) => void; onError?: () => void };
+    options?: {
+      onSuccess?: (result: unknown) => void;
+      onError?: () => void;
+      onSettled?: (result: unknown, error: unknown, variables: { fqdn: string }) => void;
+    };
   }) => {
     const state = mocks.mutationStates.get(options.kind);
     if (state && options.options) state.callbacks = options.options;
@@ -95,6 +104,9 @@ vi.mock("@/lib/trpc", () => ({
         mutationOptions: (options: unknown) => mocks.mutationOptions("rejected", options),
       },
       recheck: { mutationOptions: (options: unknown) => mocks.mutationOptions("recheck", options) },
+      applyCandidate: {
+        mutationOptions: (options: unknown) => mocks.mutationOptions("apply", options),
+      },
     },
   }),
 }));
@@ -300,7 +312,7 @@ function arrange(view = settingsView(), exclusionItems = emptyExclusions) {
     ["list:exclusions", queryState(exclusionItems)],
   ]);
   mocks.mutationStates = new Map(
-    ["settings", "scope", "rejected", "recheck"].map((kind) => [
+    ["settings", "scope", "rejected", "recheck", "apply"].map((kind) => [
       kind,
       { mutate: vi.fn(), isPending: false },
     ]),
@@ -318,6 +330,10 @@ beforeEach(() => {
   mocks.toast.error.mockReset();
   mocks.toast.info.mockReset();
   mocks.toast.success.mockReset();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("DomainIntelligenceScreen", () => {
@@ -341,7 +357,7 @@ describe("DomainIntelligenceScreen", () => {
     arrange();
     render(<DomainIntelligenceScreen />);
 
-    const addButton = screen.getAllByRole("button", { name: "Добавить" })[0];
+    const addButton = screen.getByRole("button", { name: "Добавить www.service.example" });
     expect(addButton).toHaveAttribute("aria-disabled", "true");
     expect(addButton).not.toBeDisabled();
     addButton?.focus();
@@ -365,7 +381,9 @@ describe("DomainIntelligenceScreen", () => {
 
     expect(() => render(<DomainIntelligenceScreen />)).not.toThrow();
     expect(screen.getByText("только отчёт", { exact: true })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAccessibleDescription(
+    expect(
+      screen.getByRole("button", { name: "Добавить www.service.example" }),
+    ).toHaveAccessibleDescription(
       "Применение недоступно, пока сервер работает в режиме только отчёта",
     );
   });
@@ -395,12 +413,14 @@ describe("DomainIntelligenceScreen", () => {
 
     expect(screen.getByText("Локальное хранилище правил ещё не подготовлено.")).toBeInTheDocument();
     expect(screen.queryByText("только отчёт", { exact: true })).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAccessibleDescription(
+    expect(
+      screen.getByRole("button", { name: "Добавить www.service.example" }),
+    ).toHaveAccessibleDescription(
       "Применение недоступно: локальное хранилище правил не подготовлено",
     );
   });
 
-  it("keeps the unfinished UI action honest when deployment apply is ready", () => {
+  it("submits a confirmed candidate when deployment apply is ready", async () => {
     arrange(
       settingsView({
         deployment: {
@@ -419,9 +439,193 @@ describe("DomainIntelligenceScreen", () => {
     render(<DomainIntelligenceScreen />);
 
     expect(screen.getByText("Локальный список готов к применению.")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAccessibleDescription(
-      "Добавление из интерфейса ещё не подключено",
+    const addButton = screen.getByRole("button", { name: "Добавить www.service.example" });
+    expect(addButton).toBeEnabled();
+    expect(addButton).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(addButton as HTMLElement);
+    expect(mocks.mutationStates.get("apply")?.mutate).toHaveBeenCalledWith({
+      fqdn: "www.service.example",
+      operationId: expect.stringMatching(/^manual-add-[a-f0-9-]+$/u),
+    });
+
+    await act(async () => {
+      await mocks.mutationStates.get("apply")?.callbacks?.onSuccess?.({
+        operationId: "manual-add-review-1",
+        phase: "completed",
+        commitSha: "a".repeat(40),
+        activationAttempt: 1,
+      });
+    });
+    expect(mocks.toast.success).toHaveBeenCalledWith("Правило добавлено и активировано");
+    expect(mocks.invalidateQueries).toHaveBeenCalled();
+  });
+
+  it("creates an idempotency key when randomUUID is unavailable on plain HTTP", () => {
+    vi.stubGlobal("crypto", {});
+    arrange(
+      settingsView({
+        deployment: {
+          mode: "apply",
+          apply: {
+            available: true,
+            repository: "local",
+            branch: "main",
+            path: "custom.txt",
+            providerName: "submerge-custom",
+            providerPath: "./domain-rules/custom.txt",
+          },
+        },
+      }),
     );
+    render(<DomainIntelligenceScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Добавить www.service.example" }));
+    expect(mocks.mutationStates.get("apply")?.mutate).toHaveBeenCalledWith({
+      fqdn: "www.service.example",
+      operationId: expect.stringMatching(/^manual-add-[a-z0-9]+-[a-z0-9]+$/u),
+    });
+  });
+
+  it("does not offer apply outside manual-review mode even when deployment is ready", () => {
+    arrange(
+      settingsView({
+        settings: {
+          ...DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+          defaultRuleScope: "site",
+        },
+        deployment: {
+          mode: "apply",
+          apply: {
+            available: true,
+            repository: "local",
+            branch: "main",
+            path: "custom.txt",
+            providerName: "submerge-custom",
+            providerPath: "./domain-rules/custom.txt",
+          },
+        },
+      }),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    expect(
+      screen.getByRole("button", { name: "Добавить www.service.example" }),
+    ).toHaveAccessibleDescription("Добавление доступно в режиме «Подтверждать вручную»");
+  });
+
+  it("reports durable deferred apply as queued instead of a terminal failure", async () => {
+    arrange();
+    render(<DomainIntelligenceScreen />);
+
+    await act(async () => {
+      await mocks.mutationStates.get("apply")?.callbacks?.onSuccess?.({
+        operationId: "manual-add-review-1",
+        phase: "queued",
+        commitSha: null,
+        activationAttempt: 0,
+      });
+    });
+
+    expect(mocks.toast.info).toHaveBeenCalledWith(
+      "Правило принято. Применение продолжится после восстановления",
+    );
+    expect(mocks.toast.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps a queued candidate locked against a second operation id", async () => {
+    arrange(
+      settingsView({
+        deployment: {
+          mode: "apply",
+          apply: {
+            available: true,
+            repository: "local",
+            branch: "main",
+            path: "custom.txt",
+            providerName: "submerge-custom",
+            providerPath: "./domain-rules/custom.txt",
+          },
+        },
+      }),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Добавить www.service.example" }));
+    const apply = mocks.mutationStates.get("apply");
+    expect(apply?.mutate).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await apply?.callbacks?.onSettled?.(
+        {
+          operationId: "manual-add-review-1",
+          phase: "queued",
+          commitSha: null,
+          activationAttempt: 0,
+        },
+        null,
+        { fqdn: "www.service.example" },
+      );
+    });
+
+    const queued = screen.getByRole("button", { name: "Добавляется www.service.example" });
+    expect(queued).toHaveAttribute("aria-busy", "true");
+    fireEvent.click(queued);
+    expect(apply?.mutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles concurrent apply progress independently in reverse order", async () => {
+    arrange(
+      settingsView({
+        deployment: {
+          mode: "apply",
+          apply: {
+            available: true,
+            repository: "local",
+            branch: "main",
+            path: "custom.txt",
+            providerName: "submerge-custom",
+            providerPath: "./domain-rules/custom.txt",
+          },
+        },
+      }),
+    );
+    render(<DomainIntelligenceScreen />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Добавить www.service.example" }));
+    fireEvent.click(screen.getByRole("button", { name: "Добавить app.pages.example" }));
+
+    expect(screen.getByRole("button", { name: "Добавляется www.service.example" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Добавляется app.pages.example" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.getAllByText("В работе…", { exact: true })).toHaveLength(2);
+    expect(screen.getByText("Правило для www.service.example добавляется")).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
+
+    await act(async () => {
+      await mocks.mutationStates
+        .get("apply")
+        ?.callbacks?.onSettled?.(undefined, null, { fqdn: "app.pages.example" });
+    });
+    expect(screen.getByRole("button", { name: "Добавляется www.service.example" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Добавить app.pages.example" })).not.toHaveAttribute(
+      "aria-busy",
+    );
+
+    await act(async () => {
+      await mocks.mutationStates
+        .get("apply")
+        ?.callbacks?.onSettled?.(undefined, null, { fqdn: "www.service.example" });
+    });
+    expect(screen.queryByText("В работе…", { exact: true })).toBeNull();
   });
 
   it("separates a pending check from the unavailable add action", () => {
@@ -439,7 +643,7 @@ describe("DomainIntelligenceScreen", () => {
 
     expect(screen.getByRole("status", { name: "Проверяется" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Проверяется" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Добавить" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Добавить /u })).toBeNull();
     const details = screen.getByRole("button", {
       name: "Открыть детали www.service.example",
     });
@@ -473,7 +677,7 @@ describe("DomainIntelligenceScreen", () => {
       fqdn: "www.service.example",
       rejected: true,
     });
-    expect(screen.getAllByRole("button", { name: "Добавить" })[0]).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Добавить www.service.example" })).toHaveAttribute(
       "aria-disabled",
       "true",
     );

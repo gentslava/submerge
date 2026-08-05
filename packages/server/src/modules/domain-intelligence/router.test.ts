@@ -56,6 +56,15 @@ function actionResult(): DomainCandidateReviewActionResult {
   };
 }
 
+function applyResult() {
+  return {
+    operationId: "manual-add-review-1",
+    phase: "completed" as const,
+    commitSha: "a".repeat(40),
+    activationAttempt: 1,
+  };
+}
+
 function settingsView(): DomainIntelligenceSettingsView {
   return {
     configurationState: "unconfigured",
@@ -87,6 +96,7 @@ describe("domain intelligence router", () => {
       setScope: vi.fn(() => actionResult()),
       setRejected: vi.fn(() => actionResult()),
       recheck: vi.fn(() => actionResult()),
+      applyCandidate: vi.fn(() => applyResult()),
     };
 
     await expect(caller(service).domainIntelligence.overview()).resolves.toEqual(overview());
@@ -117,6 +127,7 @@ describe("domain intelligence router", () => {
       setScope: vi.fn(() => actionResult()),
       setRejected: vi.fn(() => actionResult()),
       recheck: vi.fn(() => actionResult()),
+      applyCandidate: vi.fn(() => applyResult()),
     };
     const api = caller(service).domainIntelligence;
 
@@ -138,6 +149,7 @@ describe("domain intelligence router", () => {
       setScope: vi.fn(() => actionResult()),
       setRejected: vi.fn(() => actionResult()),
       recheck: vi.fn(() => actionResult()),
+      applyCandidate: vi.fn(() => applyResult()),
     };
     const unauthenticated = caller(service, false).domainIntelligence;
 
@@ -156,6 +168,12 @@ describe("domain intelligence router", () => {
     await expect(unauthenticated.recheck({ fqdn: "api.service.example" })).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
+    await expect(
+      unauthenticated.applyCandidate({
+        fqdn: "api.service.example",
+        operationId: "manual-add-review-1",
+      }),
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     expect(service.settings).not.toHaveBeenCalled();
     expect(service.setSettings).not.toHaveBeenCalled();
     expect(service.overview).not.toHaveBeenCalled();
@@ -163,6 +181,7 @@ describe("domain intelligence router", () => {
     expect(service.setScope).not.toHaveBeenCalled();
     expect(service.setRejected).not.toHaveBeenCalled();
     expect(service.recheck).not.toHaveBeenCalled();
+    expect(service.applyCandidate).not.toHaveBeenCalled();
   });
 
   it("rejects service output outside the shared privacy contract", async () => {
@@ -177,6 +196,7 @@ describe("domain intelligence router", () => {
       setScope: vi.fn(() => actionResult()),
       setRejected: vi.fn(() => actionResult()),
       recheck: vi.fn(() => actionResult()),
+      applyCandidate: vi.fn(() => applyResult()),
     };
     const api = caller(unsafe as never).domainIntelligence;
 
@@ -194,11 +214,13 @@ describe("domain intelligence router", () => {
       setScope: vi.fn(() => actionResult()),
       setRejected: vi.fn(() => ({ ...actionResult(), reviewState: "rejected" as const })),
       recheck: vi.fn(() => actionResult()),
+      applyCandidate: vi.fn(() => applyResult()),
     };
     const api = caller(service as never).domainIntelligence as unknown as {
       setScope: (input: { fqdn: string; selectedScope: "exact" | "site" }) => Promise<unknown>;
       setRejected: (input: { fqdn: string; rejected: boolean }) => Promise<unknown>;
       recheck: (input: { fqdn: string }) => Promise<unknown>;
+      applyCandidate: (input: { fqdn: string; operationId: string }) => Promise<unknown>;
     };
 
     expect(api.setScope).toBeTypeOf("function");
@@ -212,6 +234,9 @@ describe("domain intelligence router", () => {
       ok: true,
       candidate: actionResult(),
     });
+    await expect(
+      api.applyCandidate({ fqdn: "api.service.example", operationId: "manual-add-review-1" }),
+    ).resolves.toEqual(applyResult());
     expect(service.setScope).toHaveBeenCalledWith({
       fqdn: "api.service.example",
       selectedScope: "site",
@@ -221,6 +246,10 @@ describe("domain intelligence router", () => {
       rejected: true,
     });
     expect(service.recheck).toHaveBeenCalledWith({ fqdn: "api.service.example" });
+    expect(service.applyCandidate).toHaveBeenCalledWith({
+      fqdn: "api.service.example",
+      operationId: "manual-add-review-1",
+    });
   });
 
   it("rejects apply-shaped review input and output outside the safe action contract", async () => {
@@ -232,6 +261,7 @@ describe("domain intelligence router", () => {
       setScope: vi.fn(() => ({ ...actionResult(), commitSha: "secret" })),
       setRejected: vi.fn(() => actionResult()),
       recheck: vi.fn(() => actionResult()),
+      applyCandidate: vi.fn(() => applyResult()),
     };
     const api = caller(service as never).domainIntelligence;
 
@@ -271,6 +301,7 @@ describe("domain intelligence router", () => {
       recheck: vi.fn(() => {
         throw new DomainCandidateReviewError("policy-unavailable");
       }),
+      applyCandidate: vi.fn(() => applyResult()),
     };
     const api = caller(service).domainIntelligence;
 

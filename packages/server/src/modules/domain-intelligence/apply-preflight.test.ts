@@ -194,6 +194,30 @@ describe("createDomainRulePreparedPreflight", () => {
     );
   });
 
+  it("re-evaluates explicit review-mode candidate confirmation without automatic budget", async () => {
+    const { dependencies, preflight } = setup();
+    dependencies.readSettings.mockReturnValue({ ...SETTINGS, automationMode: "review" });
+
+    await expect(
+      preflight(
+        operation({
+          action: "manual-add",
+          automaticConsentId: null,
+          automaticConsentRevision: null,
+          automaticBudgetDay: null,
+          automaticBudgetSlots: 0,
+          ownershipDelta: {
+            upserts: [{ rule: "+.service.example", ownership: "manual" }],
+            deletes: [],
+          },
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(dependencies.readCandidate).toHaveBeenCalledWith("www.service.example");
+    expect(dependencies.decide).toHaveBeenCalledTimes(1);
+  });
+
   it("allows only distinct candidate-free manual operations to bypass evidence", async () => {
     const { dependencies, preflight } = setup();
 
@@ -216,6 +240,7 @@ describe("createDomainRulePreparedPreflight", () => {
     ).resolves.toBeUndefined();
     expect(dependencies.readCandidate).not.toHaveBeenCalled();
 
+    dependencies.readSettings.mockReturnValue({ ...SETTINGS, automationMode: "automatic" });
     await expect(
       preflight(
         operation({
@@ -224,9 +249,13 @@ describe("createDomainRulePreparedPreflight", () => {
           automaticConsentRevision: null,
           automaticBudgetDay: null,
           automaticBudgetSlots: 0,
+          ownershipDelta: {
+            upserts: [{ rule: "+.service.example", ownership: "manual" }],
+            deletes: [],
+          },
         }),
       ),
-    ).rejects.toThrow("manual operation cannot claim candidate evidence");
+    ).rejects.toThrow("review authorization unavailable");
   });
 
   it("rechecks feature state, observer health, and coverage for manual additions", async () => {

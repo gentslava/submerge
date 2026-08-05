@@ -16,6 +16,7 @@ describe("Button", () => {
     const btn = screen.getByRole("button", { name: "Пинг всех" });
     expect(btn).toBeInTheDocument();
     expect(btn.className).toContain("bg-accent");
+    expect(btn.className).toContain("on-accent-fg");
   });
   it("applies the secondary variant (bordered)", () => {
     render(<Button variant="secondary">Обновить</Button>);

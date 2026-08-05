@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DomainIntelligenceDeploymentCapability } from "./domain-intelligence.js";
 import {
   DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
+  domainCandidateApplyActionInputSchema,
   domainCandidateListInputSchema,
   domainCandidateListSchema,
   domainCandidateRecheckActionInputSchema,
@@ -15,6 +16,7 @@ import {
   domainIntelligenceSettingsMutationResultSchema,
   domainIntelligenceSettingsViewSchema,
   domainProbeCategorySchema,
+  domainRuleApplyOperationResultSchema,
 } from "./domain-intelligence.js";
 
 const health = {
@@ -298,6 +300,56 @@ describe("domain intelligence shared contracts", () => {
         ok: false,
         reason: "scope-unavailable",
         internalPolicy: true,
+      }),
+    ).toThrow();
+  });
+
+  it("strictly validates candidate apply requests and public operation results", () => {
+    expect(
+      domainCandidateApplyActionInputSchema.parse({
+        fqdn: "api.service.example",
+        operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
+      }),
+    ).toEqual({
+      fqdn: "api.service.example",
+      operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
+    });
+    expect(() =>
+      domainCandidateApplyActionInputSchema.parse({
+        fqdn: "api.service.example",
+        operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
+        proposedRule: "+.service.example",
+      }),
+    ).toThrow();
+    expect(() =>
+      domainCandidateApplyActionInputSchema.parse({
+        fqdn: "api.service.example",
+        operationId: "not a safe operation id",
+      }),
+    ).toThrow();
+
+    expect(
+      domainRuleApplyOperationResultSchema.parse({
+        operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
+        phase: "completed",
+        commitSha: "a".repeat(40),
+        activationAttempt: 1,
+      }),
+    ).toMatchObject({ phase: "completed", activationAttempt: 1 });
+    expect(
+      domainRuleApplyOperationResultSchema.parse({
+        operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
+        phase: "queued",
+        commitSha: null,
+        activationAttempt: 0,
+      }),
+    ).toMatchObject({ phase: "queued", activationAttempt: 0 });
+    expect(() =>
+      domainRuleApplyOperationResultSchema.parse({
+        operationId: "manual-add-018f47d2-198a-7b81-8f17-1e0ec7ed3f47",
+        phase: "aborted",
+        commitSha: "a".repeat(40),
+        activationAttempt: 0,
       }),
     ).toThrow();
   });
@@ -668,6 +720,26 @@ describe("domain intelligence shared contracts", () => {
             bucket: "exclusion",
             exclusionReason: "invalid-evidence",
             decision: invalidEvidenceDecision,
+          },
+        ],
+      }),
+    ).not.toThrow();
+    const appliedDecision = {
+      ...invalidEvidenceDecision,
+      evaluatedAt: Date.parse("2026-08-04T09:00:00.000Z"),
+      reasons: ["already-covered" as const],
+      windowStart: null,
+    };
+    expect(() =>
+      domainCandidateListSchema.parse({
+        ...list,
+        items: [
+          {
+            ...safeItem,
+            status: "blocked",
+            bucket: "exclusion",
+            exclusionReason: "already-covered",
+            decision: appliedDecision,
           },
         ],
       }),

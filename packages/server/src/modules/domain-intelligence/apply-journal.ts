@@ -5,7 +5,7 @@ import {
   domainIntelligenceReportSettingsSchema,
   MAX_SETTING_VALUE_BYTES,
 } from "@submerge/shared";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "../../db/client.js";
 import {
@@ -15,9 +15,13 @@ import {
   type DomainRuleOwnershipDeltaJson,
   domainAutomaticBudgets,
   domainAutomaticConsents,
+  domainCandidates,
+  domainDecisions,
   domainRuleOperations,
   domainRuleOwnership,
+  domainValidationRuns,
   settings,
+  UNFINISHED_DOMAIN_RULE_OPERATION_PHASES,
 } from "../../db/schema.js";
 import { DomainRulePreparedVetoError } from "./apply-errors.js";
 import { normalizeObservedFqdn } from "./observer.js";
@@ -366,6 +370,51 @@ export function prepareDomainRuleOperation(
         .get();
       if (blocking) throw new Error("domain-rule reconciliation required");
     };
+    const assertCandidateApplyAvailable = (): void => {
+      if (!input.candidateFqdn) return;
+      const candidate = tx
+        .select({
+          status: domainCandidates.status,
+          reviewState: domainCandidates.reviewState,
+          proposedRule: domainCandidates.proposedRule,
+          leaseId: domainCandidates.leaseId,
+          leaseUntil: domainCandidates.leaseUntil,
+        })
+        .from(domainCandidates)
+        .where(eq(domainCandidates.fqdn, input.candidateFqdn))
+        .get();
+      const runningValidation = tx
+        .select({ id: domainValidationRuns.id })
+        .from(domainValidationRuns)
+        .where(
+          and(
+            eq(domainValidationRuns.fqdn, input.candidateFqdn),
+            eq(domainValidationRuns.status, "running"),
+          ),
+        )
+        .get();
+      const unfinishedApply = tx
+        .select({ id: domainRuleOperations.id })
+        .from(domainRuleOperations)
+        .where(
+          and(
+            eq(domainRuleOperations.candidateFqdn, input.candidateFqdn),
+            inArray(domainRuleOperations.phase, UNFINISHED_DOMAIN_RULE_OPERATION_PHASES),
+          ),
+        )
+        .get();
+      if (
+        candidate?.status !== "confirmed" ||
+        candidate.reviewState !== "active" ||
+        candidate.proposedRule !== input.proposedRule ||
+        candidate.leaseId !== null ||
+        candidate.leaseUntil !== null ||
+        runningValidation ||
+        unfinishedApply
+      ) {
+        throw new Error("candidate apply authorization unavailable");
+      }
+    };
     const authorizeAutomaticOperation = (): {
       settings: DomainIntelligenceReportSettings;
       consent: CurrentAutomaticConsent;
@@ -419,6 +468,7 @@ export function prepareDomainRuleOperation(
 
     assertNoBlockingReconciliation();
     assertAutomaticOwnershipAvailable();
+    assertCandidateApplyAvailable();
     const automaticAuthorization = authorizeAutomaticOperation();
     if (input.action === "rollback") {
       const rollbackTargetCommit = sha1Schema.parse(input.rollbackTargetCommit);
@@ -680,6 +730,65 @@ export function finalizeDomainRuleCommit(
         .run();
     }
 
+    if (operation.candidateFqdn !== null) {
+      const candidate = tx
+        .select()
+        .from(domainCandidates)
+        .where(eq(domainCandidates.fqdn, operation.candidateFqdn))
+        .get();
+      const latestDecision = tx
+        .select()
+        .from(domainDecisions)
+        .where(eq(domainDecisions.fqdn, operation.candidateFqdn))
+        .orderBy(desc(domainDecisions.evaluatedAt), desc(domainDecisions.id))
+        .get();
+      if (
+        candidate?.status !== "confirmed" ||
+        candidate.reviewState !== "active" ||
+        candidate.proposedRule !== operation.proposedRule ||
+        candidate.leaseId !== null ||
+        candidate.leaseUntil !== null ||
+        latestDecision?.status !== "confirmed" ||
+        latestDecision.proposedRule !== operation.proposedRule
+      ) {
+        throw new Error("candidate apply authorization unavailable at commit");
+      }
+      tx.insert(domainDecisions)
+        .values({
+          id: `applied-${createHash("sha256").update(operation.id).digest("hex").slice(0, 40)}`,
+          fqdn: operation.candidateFqdn,
+          evaluatedAt: now,
+          status: "blocked",
+          confidence: "none",
+          reasons: ["already-covered"],
+          windowStart: null,
+          evidence: {
+            directQualifyingFailures: 0,
+            directSpacedFailures: 0,
+            directAddressDiversityRequired: false,
+            directAddressDiversitySatisfied: false,
+            proxyHttpSuccesses: 0,
+            proxyTransportFailures: 0,
+            proxyUncertainFailures: 0,
+          },
+          selectedScope: candidate.selectedScope,
+          proposedRule: operation.proposedRule,
+        })
+        .run();
+      tx.update(domainCandidates)
+        .set({
+          status: "blocked",
+          nextValidationAt: MAX_DATE_MS,
+          lastValidationAt: now,
+          failureStreak: 0,
+          leaseId: null,
+          leaseUntil: null,
+          updatedAt: now,
+        })
+        .where(eq(domainCandidates.fqdn, operation.candidateFqdn))
+        .run();
+    }
+
     tx.update(domainRuleOperations)
       .set({
         phase: "committed",
@@ -928,15 +1037,7 @@ export function listUnfinishedDomainRuleOperations(
   return db
     .select()
     .from(domainRuleOperations)
-    .where(
-      inArray(domainRuleOperations.phase, [
-        "prepared",
-        "committed",
-        "activating",
-        "partial",
-        "reconciliation-required",
-      ]),
-    )
+    .where(inArray(domainRuleOperations.phase, [...UNFINISHED_DOMAIN_RULE_OPERATION_PHASES]))
     .orderBy(asc(domainRuleOperations.createdAt), asc(domainRuleOperations.id))
     .all();
 }

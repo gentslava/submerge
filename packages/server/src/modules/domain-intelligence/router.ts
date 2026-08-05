@@ -1,4 +1,6 @@
+import { dirname, join } from "node:path";
 import {
+  type DomainCandidateApplyActionInput,
   type DomainCandidateList,
   type DomainCandidateListInput,
   type DomainCandidateRecheckActionInput,
@@ -10,6 +12,8 @@ import {
   type DomainIntelligenceReportSettings,
   type DomainIntelligenceSettingsMutationResult,
   type DomainIntelligenceSettingsView,
+  type DomainRuleApplyOperationResult,
+  domainCandidateApplyActionInputSchema,
   domainCandidateListInputSchema,
   domainCandidateListSchema,
   domainCandidateRecheckActionInputSchema,
@@ -20,7 +24,10 @@ import {
   domainIntelligenceReportSettingsSchema,
   domainIntelligenceSettingsMutationResultSchema,
   domainIntelligenceSettingsViewSchema,
+  domainRuleApplyOperationResultSchema,
 } from "@submerge/shared";
+import { readDomainRulesDeploymentCapability } from "../../config/domain-rules.js";
+import { env } from "../../config/env.js";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import {
@@ -28,7 +35,10 @@ import {
   domainIntelligenceScheduler,
   domainValidationScheduler,
   serializeDomainRuleAuthorizationMutation,
+  submitDomainRuleApplyOperation,
 } from "../logs/singleton.js";
+import { applyConfirmedDomainCandidate } from "./candidate-apply.js";
+import { prepareLocalDomainRuleMutationIntent } from "./publisher.js";
 import {
   DomainCandidateReviewError,
   getDomainIntelligenceOverview,
@@ -57,6 +67,9 @@ export interface DomainIntelligenceService {
   recheck: (
     input: DomainCandidateRecheckActionInput,
   ) => DomainCandidateReviewActionResult | Promise<DomainCandidateReviewActionResult>;
+  applyCandidate: (
+    input: DomainCandidateApplyActionInput,
+  ) => DomainRuleApplyOperationResult | Promise<DomainRuleApplyOperationResult>;
 }
 
 async function executeReviewAction(
@@ -98,8 +111,15 @@ export function makeDomainIntelligenceRouter(service: DomainIntelligenceService)
       .input(domainCandidateRecheckActionInputSchema)
       .output(domainCandidateReviewMutationResultSchema)
       .mutation(({ input }) => executeReviewAction(() => service.recheck(input))),
+    applyCandidate: protectedProcedure
+      .input(domainCandidateApplyActionInputSchema)
+      .output(domainRuleApplyOperationResultSchema)
+      .mutation(({ input }) => service.applyCandidate(input)),
   });
 }
+
+const domainRuleTrustedParentPath = join(dirname(env.DB_PATH), "domain-rules");
+const domainRuleRepositoryPath = join(domainRuleTrustedParentPath, "repository");
 
 const domainIntelligenceService: DomainIntelligenceService = {
   settings: () => getDomainIntelligenceSettingsView(db),
@@ -136,6 +156,15 @@ const domainIntelligenceService: DomainIntelligenceService = {
       const candidate = recheckDomainCandidate(db, { ...input, filterPolicy, now: Date.now() });
       domainValidationScheduler.wake();
       return candidate;
+    }),
+  applyCandidate: (input) =>
+    applyConfirmedDomainCandidate(input, {
+      db,
+      readCapability: readDomainRulesDeploymentCapability,
+      prepareIntent: prepareLocalDomainRuleMutationIntent,
+      submit: submitDomainRuleApplyOperation,
+      repositoryPath: domainRuleRepositoryPath,
+      trustedParentPath: domainRuleTrustedParentPath,
     }),
 };
 

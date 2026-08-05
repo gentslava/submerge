@@ -476,12 +476,14 @@ const candidateDecisionSchema = z
     if (decision.evidence.directSpacedFailures > decision.evidence.directQualifyingFailures) {
       context.addIssue({ code: "custom", message: "spaced failures exceed qualifying failures" });
     }
-    const exactFailClosed =
+    const exactTerminalDecision =
       decision.status === "blocked" &&
       decision.reasons.length === 1 &&
-      (decision.reasons[0] === "invalid-policy" || decision.reasons[0] === "invalid-evidence") &&
+      (decision.reasons[0] === "invalid-policy" ||
+        decision.reasons[0] === "invalid-evidence" ||
+        decision.reasons[0] === "already-covered") &&
       isEmptyEvidence(decision.evidence);
-    if (decision.windowStart === null && !exactFailClosed) {
+    if (decision.windowStart === null && !exactTerminalDecision) {
       context.addIssue({ code: "custom", message: "decision window is missing" });
     }
     if (decision.reasons[0] === "invalid-policy" && decision.windowStart !== null) {
@@ -495,7 +497,7 @@ const candidateDecisionSchema = z
       context.addIssue({ code: "custom", message: "decision window is outside report bounds" });
     }
     if (
-      !exactFailClosed &&
+      !exactTerminalDecision &&
       !decision.evidence.directAddressDiversityRequired &&
       !decision.evidence.directAddressDiversitySatisfied
     ) {
@@ -745,6 +747,61 @@ export const domainCandidateRecheckActionInputSchema = z.object({ fqdn: fqdnSche
 export type DomainCandidateRecheckActionInput = z.infer<
   typeof domainCandidateRecheckActionInputSchema
 >;
+
+const domainRuleOperationIdSchema = z.string().regex(/^[a-zA-Z0-9._-]{1,128}$/u);
+export const domainCandidateApplyActionInputSchema = z
+  .object({ fqdn: fqdnSchema, operationId: domainRuleOperationIdSchema })
+  .strict();
+export type DomainCandidateApplyActionInput = z.infer<typeof domainCandidateApplyActionInputSchema>;
+
+const domainRuleCommitShaSchema = z.string().regex(/^[0-9a-f]{40}$/u);
+const domainRuleActivationAttemptSchema = z.number().int().min(0).max(1_000_000);
+const domainRuleActivationErrorCategorySchema = z.enum([
+  "shutdown",
+  "materialization-failure",
+  "config-reload-failure",
+  "provider-proof-failure",
+  "coverage-proof-failure",
+  "route-proof-failure",
+  "infrastructure-failure",
+]);
+
+export const domainRuleApplyOperationResultSchema = z.discriminatedUnion("phase", [
+  z
+    .object({
+      operationId: domainRuleOperationIdSchema,
+      phase: z.literal("queued"),
+      commitSha: z.null(),
+      activationAttempt: z.literal(0),
+    })
+    .strict(),
+  z
+    .object({
+      operationId: domainRuleOperationIdSchema,
+      phase: z.literal("completed"),
+      commitSha: domainRuleCommitShaSchema,
+      activationAttempt: domainRuleActivationAttemptSchema.min(1),
+    })
+    .strict(),
+  z
+    .object({
+      operationId: domainRuleOperationIdSchema,
+      phase: z.literal("partial"),
+      commitSha: domainRuleCommitShaSchema,
+      activationAttempt: domainRuleActivationAttemptSchema.min(1),
+      errorCategory: domainRuleActivationErrorCategorySchema,
+    })
+    .strict(),
+  z
+    .object({
+      operationId: domainRuleOperationIdSchema,
+      phase: z.literal("aborted"),
+      commitSha: z.null(),
+      activationAttempt: z.literal(0),
+    })
+    .strict(),
+]);
+export type DomainRuleApplyOperationResult = z.infer<typeof domainRuleApplyOperationResultSchema>;
 
 export const domainCandidateReviewActionResultSchema = z
   .object({

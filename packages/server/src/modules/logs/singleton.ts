@@ -3,6 +3,7 @@ import { registerDomainRulesDeploymentCapabilitySource } from "../../config/doma
 import { env } from "../../config/env.js";
 import { db } from "../../db/client.js";
 import { log, operationalLog } from "../../log.js";
+import type { DomainRuleApplyOperationResult } from "../domain-intelligence/apply-operation.js";
 import { createProductionDomainRuleApplyOperationDependencies } from "../domain-intelligence/apply-operation-production.js";
 import { createProductionDomainRulePreparedPreflight } from "../domain-intelligence/apply-preflight.js";
 import { createProductionDomainRuleApplyWorker } from "../domain-intelligence/apply-worker-production.js";
@@ -163,6 +164,12 @@ export function startDomainRuleApplyWorker(): Promise<void> {
 
 export function wakeDomainRuleApplyWorker(): boolean {
   return domainRuleApplyWorker.wake();
+}
+
+export function submitDomainRuleApplyOperation(
+  prepare: (signal: AbortSignal) => string | Promise<string>,
+): Promise<DomainRuleApplyOperationResult> {
+  return domainRuleApplyWorker.submit(prepare);
 }
 
 export function serializeDomainRuleAuthorizationMutation<T>(

@@ -351,7 +351,7 @@ function NoNodesState() {
       </p>
       <Link
         to="/sources"
-        className="mt-1 inline-flex h-9 items-center justify-center rounded-lg bg-accent px-[13px] text-sub font-semibold text-accent-fg transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
+        className="mt-1 inline-flex h-9 items-center justify-center rounded-lg bg-accent px-[13px] text-sub font-semibold on-accent-fg transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-border"
       >
         Перейти к источникам
       </Link>

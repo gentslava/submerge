@@ -498,6 +498,13 @@ export const DOMAIN_RULE_OPERATION_PHASES = [
   "reconciliation-required",
 ] as const;
 export type DomainRuleOperationPhase = (typeof DOMAIN_RULE_OPERATION_PHASES)[number];
+export const UNFINISHED_DOMAIN_RULE_OPERATION_PHASES = [
+  "prepared",
+  "committed",
+  "activating",
+  "partial",
+  "reconciliation-required",
+] as const satisfies readonly DomainRuleOperationPhase[];
 
 export const DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES = [
   "shutdown",

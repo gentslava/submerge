@@ -4,6 +4,7 @@ import {
   type DomainCandidateReviewMutationResult,
   type DomainIntelligenceApplyReadiness,
   type DomainIntelligenceReportSettings,
+  type DomainIntelligenceSettingsView,
   type DomainProbeCategory,
   type DomainReportExclusionReason,
   type DomainRuleScope,
@@ -74,12 +75,35 @@ function resolveApplyReadiness(settingsView: unknown): DomainIntelligenceApplyRe
   return REPORT_ONLY_APPLY_READINESS;
 }
 
+function candidateApplyUnavailableMessage(
+  settingsView: DomainIntelligenceSettingsView,
+  deployment: DomainIntelligenceApplyReadiness,
+): string | null {
+  if (!deployment.available) return applyActionUnavailableMessage(deployment);
+  if (settingsView.configurationState !== "ready") {
+    return "Сначала выберите область правила и включите наблюдение";
+  }
+  if (!settingsView.settings.enabled || settingsView.settings.automationMode !== "review") {
+    return "Добавление доступно в режиме «Подтверждать вручную»";
+  }
+  return null;
+}
+
+function createManualApplyOperationId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  if (typeof randomUuid === "function") {
+    return `manual-add-${randomUuid.call(globalThis.crypto)}`;
+  }
+  return `manual-add-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
 export function DomainIntelligenceScreen() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   const [exclusionsOpen, setExclusionsOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [firstInstallScope, setFirstInstallScope] = useState<DomainRuleScope | null>(null);
+  const [applyingFqdns, setApplyingFqdns] = useState<ReadonlySet<string>>(() => new Set());
 
   const settingsQuery = useQuery(trpc.domainIntelligence.settings.queryOptions());
   const overviewQuery = useQuery(trpc.domainIntelligence.overview.queryOptions());
@@ -132,6 +156,31 @@ export function DomainIntelligenceScreen() {
   const recheckMutation = useMutation(
     trpc.domainIntelligence.recheck.mutationOptions(reviewCallbacks),
   );
+  const candidateApplyMutation = useMutation(
+    trpc.domainIntelligence.applyCandidate.mutationOptions({
+      onSuccess: async (result) => {
+        if (result.phase === "completed") {
+          toast.success("Правило добавлено и активировано");
+        } else if (result.phase === "partial") {
+          toast.error("Правило сохранено, но Mihomo не подтвердил активацию");
+        } else if (result.phase === "queued") {
+          toast.info("Правило принято. Применение продолжится после восстановления");
+        } else {
+          toast.info("Кандидат изменился — правило не добавлено");
+        }
+        await invalidate();
+      },
+      onError: () => toast.error("Не удалось добавить правило"),
+      onSettled: (result, _error, variables) => {
+        if (result?.phase === "queued") return;
+        setApplyingFqdns((current) => {
+          const next = new Set(current);
+          next.delete(variables.fqdn);
+          return next;
+        });
+      },
+    }),
+  );
 
   const loading = settingsQuery.isLoading || overviewQuery.isLoading;
   const failed = settingsQuery.isError || overviewQuery.isError;
@@ -169,6 +218,12 @@ export function DomainIntelligenceScreen() {
       defaultRuleScope: firstInstallScope,
       automationMode: "review",
     });
+  }
+
+  function applyCandidate(fqdn: string) {
+    if (applyingFqdns.has(fqdn)) return;
+    setApplyingFqdns((current) => new Set(current).add(fqdn));
+    candidateApplyMutation.mutate({ fqdn, operationId: createManualApplyOperationId() });
   }
 
   return (
@@ -241,15 +296,17 @@ export function DomainIntelligenceScreen() {
             exclusionsHaveMore={exclusionsQuery.hasNextPage}
             exclusionsLoadingMore={exclusionsQuery.isFetchingNextPage}
             expanded={expanded}
-            applyReadiness={applyReadiness}
             scopePending={scopeMutation.isPending}
             rejectionPending={rejectionMutation.isPending}
             recheckPending={recheckMutation.isPending}
+            applyingFqdns={applyingFqdns}
+            applyUnavailableMessage={candidateApplyUnavailableMessage(settingsView, applyReadiness)}
             onToggleExclusions={() => setExclusionsOpen((open) => !open)}
             onExpand={(fqdn) => setExpanded((current) => (current === fqdn ? null : fqdn))}
             onScope={(fqdn, selectedScope) => scopeMutation.mutate({ fqdn, selectedScope })}
             onReject={(fqdn, rejected) => rejectionMutation.mutate({ fqdn, rejected })}
             onRecheck={(fqdn) => recheckMutation.mutate({ fqdn })}
+            onApply={applyCandidate}
             onRetryCandidates={() => void candidatesQuery.refetch()}
             onRetryExclusions={() => void exclusionsQuery.refetch()}
             onLoadMoreCandidates={() => void candidatesQuery.fetchNextPage()}
@@ -376,7 +433,7 @@ function ModeCard({
                 className={cn(
                   "whitespace-nowrap rounded-sm px-[13px] py-[7px] text-sub font-medium transition-colors disabled:text-text-disabled",
                   mode === option
-                    ? "bg-accent text-accent-fg disabled:bg-accent disabled:text-accent-fg"
+                    ? "bg-accent on-accent-fg disabled:bg-accent disabled:on-accent-fg"
                     : "text-text-secondary hover:text-text-primary",
                 )}
               >
@@ -505,15 +562,17 @@ function CandidatePanel({
   exclusionsHaveMore,
   exclusionsLoadingMore,
   expanded,
-  applyReadiness,
   scopePending,
   rejectionPending,
   recheckPending,
+  applyingFqdns,
+  applyUnavailableMessage,
   onToggleExclusions,
   onExpand,
   onScope,
   onReject,
   onRecheck,
+  onApply,
   onRetryCandidates,
   onRetryExclusions,
   onLoadMoreCandidates,
@@ -533,15 +592,17 @@ function CandidatePanel({
   exclusionsHaveMore: boolean;
   exclusionsLoadingMore: boolean;
   expanded: string | null;
-  applyReadiness: DomainIntelligenceApplyReadiness;
   scopePending: boolean;
   rejectionPending: boolean;
   recheckPending: boolean;
+  applyingFqdns: ReadonlySet<string>;
+  applyUnavailableMessage: string | null;
   onToggleExclusions: () => void;
   onExpand: (fqdn: string) => void;
   onScope: (fqdn: string, scope: DomainRuleScope) => void;
   onReject: (fqdn: string, rejected: boolean) => void;
   onRecheck: (fqdn: string) => void;
+  onApply: (fqdn: string) => void;
   onRetryCandidates: () => void;
   onRetryExclusions: () => void;
   onLoadMoreCandidates: () => void;
@@ -620,14 +681,16 @@ function CandidatePanel({
               hasMore={exclusionsHaveMore}
               loadingMore={exclusionsLoadingMore}
               expanded={expanded}
-              applyReadiness={applyReadiness}
               scopePending={scopePending}
               rejectionPending={rejectionPending}
               recheckPending={recheckPending}
+              applyingFqdns={applyingFqdns}
+              applyUnavailableMessage={applyUnavailableMessage}
               onExpand={onExpand}
               onScope={onScope}
               onReject={onReject}
               onRecheck={onRecheck}
+              onApply={onApply}
               onRetry={onRetryExclusions}
               onLoadMore={onLoadMoreExclusions}
             />
@@ -641,7 +704,7 @@ function CandidatePanel({
               <span
                 className={cn(
                   "rounded-full px-2 py-0.5 font-mono text-fine font-bold",
-                  candidatesCount > 0 ? "bg-accent text-accent-fg" : "bg-hover text-text-tertiary",
+                  candidatesCount > 0 ? "bg-accent on-accent-fg" : "bg-hover text-text-tertiary",
                 )}
               >
                 {candidatesCount}
@@ -665,14 +728,16 @@ function CandidatePanel({
             hasMore={candidatesHaveMore}
             loadingMore={candidatesLoadingMore}
             expanded={expanded}
-            applyReadiness={applyReadiness}
             scopePending={scopePending}
             rejectionPending={rejectionPending}
             recheckPending={recheckPending}
+            applyingFqdns={applyingFqdns}
+            applyUnavailableMessage={applyUnavailableMessage}
             onExpand={onExpand}
             onScope={onScope}
             onReject={onReject}
             onRecheck={onRecheck}
+            onApply={onApply}
             onRetry={onRetryCandidates}
             onLoadMore={onLoadMoreCandidates}
           />
@@ -699,14 +764,16 @@ function CandidateListBody({
   hasMore,
   loadingMore,
   expanded,
-  applyReadiness,
   scopePending,
   rejectionPending,
   recheckPending,
+  applyingFqdns,
+  applyUnavailableMessage,
   onExpand,
   onScope,
   onReject,
   onRecheck,
+  onApply,
   onRetry,
   onLoadMore,
 }: {
@@ -717,14 +784,16 @@ function CandidateListBody({
   hasMore: boolean;
   loadingMore: boolean;
   expanded: string | null;
-  applyReadiness: DomainIntelligenceApplyReadiness;
   scopePending: boolean;
   rejectionPending: boolean;
   recheckPending: boolean;
+  applyingFqdns: ReadonlySet<string>;
+  applyUnavailableMessage: string | null;
   onExpand: (fqdn: string) => void;
   onScope: (fqdn: string, scope: DomainRuleScope) => void;
   onReject: (fqdn: string, rejected: boolean) => void;
   onRecheck: (fqdn: string) => void;
+  onApply: (fqdn: string) => void;
   onRetry: () => void;
   onLoadMore: () => void;
 }) {
@@ -777,14 +846,16 @@ function CandidateListBody({
               key={item.fqdn}
               item={item}
               expanded={expanded === item.fqdn}
-              applyReadiness={applyReadiness}
               scopePending={scopePending}
               rejectionPending={rejectionPending}
               recheckPending={recheckPending}
+              applyPending={applyingFqdns.has(item.fqdn)}
+              applyUnavailableMessage={applyUnavailableMessage}
               onExpand={() => onExpand(item.fqdn)}
               onScope={(scope) => onScope(item.fqdn, scope)}
               onReject={(rejected) => onReject(item.fqdn, rejected)}
               onRecheck={() => onRecheck(item.fqdn)}
+              onApply={() => onApply(item.fqdn)}
             />
           ),
         )}
@@ -860,25 +931,29 @@ function domainCountLabel(count: number): string {
 function CandidateRow({
   item,
   expanded,
-  applyReadiness,
   scopePending,
   rejectionPending,
   recheckPending,
+  applyPending,
+  applyUnavailableMessage,
   onExpand,
   onScope,
   onReject,
   onRecheck,
+  onApply,
 }: {
   item: DomainCandidateReportItem;
   expanded: boolean;
-  applyReadiness: DomainIntelligenceApplyReadiness;
   scopePending: boolean;
   rejectionPending: boolean;
   recheckPending: boolean;
+  applyPending: boolean;
+  applyUnavailableMessage: string | null;
   onExpand: () => void;
   onScope: (scope: DomainRuleScope) => void;
   onReject: (rejected: boolean) => void;
   onRecheck: () => void;
+  onApply: () => void;
 }) {
   const exactOnly = item.eligibleScopes.length === 1 && item.eligibleScopes[0] === "exact";
   const observedDomain = observedDomainParts(item.fqdn, item.siteGroup);
@@ -888,9 +963,7 @@ function CandidateRow({
       : item.selectedScope === "site"
         ? "сайт целиком"
         : "только точный адрес";
-  const addUnavailableMessage = applyReadiness.available
-    ? "Добавление из интерфейса ещё не подключено"
-    : applyActionUnavailableMessage(applyReadiness);
+  const addUnavailableMessage = applyUnavailableMessage;
   const identity = (
     <>
       <div
@@ -990,15 +1063,29 @@ function CandidateRow({
               </Button>
               {item.status === "confirmed" ? (
                 <Button
-                  variant="secondary"
+                  variant={addUnavailableMessage === null ? "primary" : "secondary"}
                   size="sm"
-                  aria-disabled="true"
-                  aria-describedby={`domain-add-state-${item.fqdn}`}
-                  className="domain-candidate-apply-action cursor-not-allowed border-border-subtle bg-hover text-text-disabled hover:bg-hover [&_svg]:text-text-disabled"
-                  onClick={() => toast.info(addUnavailableMessage)}
+                  aria-label={`${applyPending ? "Добавляется" : "Добавить"} ${item.fqdn}`}
+                  aria-busy={applyPending || undefined}
+                  aria-disabled={
+                    applyPending || addUnavailableMessage !== null ? "true" : undefined
+                  }
+                  aria-describedby={
+                    addUnavailableMessage === null ? undefined : `domain-add-state-${item.fqdn}`
+                  }
+                  className={cn(
+                    "domain-candidate-apply-action",
+                    addUnavailableMessage !== null &&
+                      "cursor-not-allowed border-border-subtle bg-hover text-text-disabled hover:bg-hover [&_svg]:text-text-disabled",
+                  )}
+                  onClick={() => {
+                    if (applyPending) return;
+                    if (addUnavailableMessage === null) onApply();
+                    else if (addUnavailableMessage) toast.info(addUnavailableMessage);
+                  }}
                 >
                   <Plus aria-hidden="true" size={14} />
-                  Добавить
+                  {applyPending ? "В работе…" : "Добавить"}
                 </Button>
               ) : (
                 <span
@@ -1012,9 +1099,14 @@ function CandidateRow({
                   Проверяется
                 </span>
               )}
-              {item.status === "confirmed" ? (
+              {item.status === "confirmed" && addUnavailableMessage ? (
                 <span id={`domain-add-state-${item.fqdn}`} className="sr-only">
                   {addUnavailableMessage}
+                </span>
+              ) : null}
+              {item.status === "confirmed" && applyPending ? (
+                <span role="status" aria-live="polite" className="sr-only">
+                  Правило для {item.fqdn} добавляется
                 </span>
               ) : null}
             </>
@@ -1197,7 +1289,7 @@ function ScopeButtons({
 function scopeButtonClass(active: boolean) {
   return cn(
     "rounded-sm px-3 py-[7px] text-sub font-medium transition-colors disabled:text-text-disabled",
-    active ? "bg-accent text-accent-fg" : "text-text-secondary hover:text-text-primary",
+    active ? "bg-accent on-accent-fg" : "text-text-secondary hover:text-text-primary",
   );
 }
 

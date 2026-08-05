@@ -1,4 +1,7 @@
-import { DomainRuleOperationDeferredError } from "./apply-errors.js";
+import {
+  DomainRuleOperationDeferredError,
+  DomainRuleWorkerNotAcceptingError,
+} from "./apply-errors.js";
 import type {
   DomainRuleApplyOperationResult,
   ExecuteDomainRuleOperationOptions,
@@ -280,8 +283,8 @@ export class DomainRuleApplyWorker {
     this.dependencies.onError(error, operationId);
   }
 
-  private notAcceptingError(): Error {
-    return new Error("domain-rule apply worker is not accepting work");
+  private notAcceptingError(): DomainRuleWorkerNotAcceptingError {
+    return new DomainRuleWorkerNotAcceptingError("domain-rule apply worker is not accepting work");
   }
 
   private stoppedError(): Error {
