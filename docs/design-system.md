@@ -130,8 +130,8 @@ under `:root` (light) / `.dark` (dark), exposed as Tailwind utilities via `@them
 | `text-secondary` | `#9BA1AD` | `#585E6A` |
 | `text-tertiary` | `#6A707D` | `#6F7682` |
 | `text-disabled` | `#4A4F5A` | `#A9AEB9` |
-| `accent` | `#6366F1` | `#6366F1` |
-| `accent-hover` | `#7B7DF4` | `#5457E0` |
+| `accent` | `#5558E6` | `#5558E6` |
+| `accent-hover` | `#5B5EEA` | `#4F52D8` |
 | `accent-fg` | `#FFFFFF` | `#FFFFFF` |
 | `accent-text` | `#ADB0F8` | `#4F46E5` |
 | `accent-bg` | `#6366F126` | `#6366F114` |
@@ -142,7 +142,7 @@ under `:root` (light) / `.dark` (dark), exposed as Tailwind utilities via `@them
 | `idle` | `#6A707D` | `#9AA0AC` |
 | `chart-track` | `#2E3150` | `#D8DAF3` |
 
-> The accent is `#6366F1`. Do **not** confuse it with the abandoned `c-accent #6E8BFF`.
+> The accent is `#5558E6`. Do **not** confuse it with the abandoned `c-accent #6E8BFF`.
 
 ### Radii, fonts, spacing
 

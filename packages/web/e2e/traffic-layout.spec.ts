@@ -184,7 +184,7 @@ test("light desktop uses the approved light latency history palette", async ({ p
   );
   await expect(latencyBars.last().locator("span")).toHaveCSS(
     "background-color",
-    "rgb(99, 102, 241)",
+    "rgb(85, 88, 230)",
   );
   await page.screenshot({ path: "/tmp/traffic-light-1440.png", fullPage: true });
   await expectNoDocumentOverflow(page);

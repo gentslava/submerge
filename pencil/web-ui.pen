@@ -4799,7 +4799,7 @@
                               "id": "d4pJfm",
                               "name": "h",
                               "fill": "$text-tertiary",
-                              "content": "#6366F1",
+                              "content": "#5557E6",
                               "fontFamily": "$font-mono",
                               "fontSize": 10,
                               "fontWeight": "normal"
@@ -4840,7 +4840,7 @@
                               "id": "Ixjh9",
                               "name": "h",
                               "fill": "$text-tertiary",
-                              "content": "#7B7DF4",
+                              "content": "#5B5EEB",
                               "fontFamily": "$font-mono",
                               "fontSize": 10,
                               "fontWeight": "normal"
