@@ -112,6 +112,7 @@ Responsibilities:
 - `resolver.ts`: real public IP resolution used only for DIRECT validation.
 - `probe.ts`: bounded DIRECT/PROXY HTTPS transport probes.
 - `coverage.ts`: active custom/notblocked/third-party rule coverage.
+- `geosite.ts`: bounded local Mihomo GeoSite database materialization for active categories.
 - `decision.ts`: pure thresholds and reason codes.
 - `report.ts`: protected JSON/Markdown artifacts or API read model.
 - `rule-store.ts`: optional deterministic plain-file transaction and digest attestation.
@@ -560,6 +561,17 @@ DOMAIN,example.com
 DOMAIN-SUFFIX,example.com
 ```
 
+Active plain `GEOSITE` categories are checked against the same local GeoSite database used
+by Mihomo. Both deployed `geosite.dat` and canonical `GeoSite.dat` casing are supported;
+distinct files with both names are ambiguous and fail closed. The decoder performs a bounded
+structural pass over the complete protobuf and materializes only `Plain`, `RootDomain`, and
+`Full` entries. At most 64 active selectors and 250,000 total entries are processed per
+snapshot. Database identifiers and values are accepted only when coverage can preserve Mihomo's
+matching semantics without trimming, trailing-dot removal, or IDNA rewriting. Missing
+categories, attribute selectors, regex entries, malformed data, unsafe
+permissions, symlinked or multi-link files, oversized files, or a directory/database replaced
+during a validation snapshot remain opaque and therefore block recommendation/apply.
+
 If an active provider format cannot be checked reliably, coverage is incomplete and the
 candidate cannot be recommended or applied. Materialization accepts at most 64 distinct active
 providers and 16 MiB in aggregate per snapshot, rejects symlinked cache roots/parents and files
@@ -568,6 +580,8 @@ stale for the current daily provider refresh contract. The managed local
 `submerge-custom` provider is age-exempt: unchanged rules may remain valid indefinitely.
 Its coverage is trusted only when the canonical SHA-256, generated provider identity/path,
 and current config-activation proof all agree.
+Provider domain values that would require trimming, trailing-dot removal, or IDNA rewriting are
+also incomplete rather than normalized into a potentially false coverage proof.
 
 Every candidate keeps both its observation and its selected rule scope:
 

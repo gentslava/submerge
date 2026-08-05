@@ -21,6 +21,7 @@ import {
   ruleProviderName,
   ruleProviderRelativePath,
 } from "../nodes/multiConfig.js";
+import type { GeositeRule } from "./geosite.js";
 import { normalizeObservedFqdn } from "./observer.js";
 
 export type CoverageRuleKind = "exact" | "suffix" | "keyword";
@@ -296,6 +297,7 @@ export function materializeManagedDomainRuleProviderSnapshot(
 export function coverageModelFromActiveChannels(
   channels: readonly ChannelConfigInput[],
   materializedProviders: ReadonlyMap<string, ProviderMaterialization>,
+  materializedGeosite: ReadonlyMap<string, readonly GeositeRule[] | null> = new Map(),
 ): DomainCoverageModel {
   const hasExitNode = channels.some(
     (channel) => channel.target === "proxy" && channel.proxies.length > 0,
@@ -329,7 +331,12 @@ export function coverageModelFromActiveChannels(
       });
     }
     for (const value of channel.geosite ?? []) {
-      opaqueMatchers.push({ kind: "geosite", value, sourceId });
+      const geositeRules = materializedGeosite.get(value.trim().toLowerCase());
+      if (geositeRules) {
+        for (const rule of geositeRules) rules.push({ ...rule, sourceId });
+      } else {
+        opaqueMatchers.push({ kind: "geosite", value, sourceId });
+      }
     }
   }
   if (providerLimitExceeded) {
@@ -349,12 +356,29 @@ function hasDomainSuffix(fqdn: string, suffix: string): boolean {
   return fqdn === suffix || fqdn.endsWith(`.${suffix}`);
 }
 
+function normalizeCoverageDomain(value: string): string | null {
+  if (value !== value.trim() || value.endsWith(".") || !/^[\x21-\x7e]+$/.test(value)) {
+    return null;
+  }
+  const lowercase = value.toLowerCase();
+  const normalized = normalizeObservedFqdn(value);
+  if (normalized) return normalized === lowercase ? normalized : null;
+
+  const probePrefix = "submerge-probe.";
+  const withProbe = normalizeObservedFqdn(`${probePrefix}${value}`);
+  const singleLabel = withProbe?.startsWith(probePrefix)
+    ? withProbe.slice(probePrefix.length)
+    : null;
+  return singleLabel === lowercase ? singleLabel : null;
+}
+
 function normalizeRule(rule: ActiveDomainRule): ActiveDomainRule | null {
   if (rule.kind === "keyword") {
-    const value = rule.value.trim().toLowerCase();
+    if (rule.value !== rule.value.trim() || !/^[\x21-\x7e]+$/.test(rule.value)) return null;
+    const value = rule.value.toLowerCase();
     return isValidKeyword(value) ? { ...rule, value } : null;
   }
-  const value = normalizeObservedFqdn(rule.value);
+  const value = normalizeCoverageDomain(rule.value);
   return value ? { ...rule, value } : null;
 }
 
@@ -394,9 +418,10 @@ function boundedLines(content: string): string[] | null {
 function textEntries(content: string, allowEmpty: boolean = false): string[] | null {
   const lines = boundedLines(content);
   if (!lines) return null;
-  const entries = lines
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("#"));
+  const entries = lines.filter((line) => {
+    const trimmed = line.trim();
+    return trimmed.length > 0 && !trimmed.startsWith("#");
+  });
   return (allowEmpty || entries.length > 0) && entries.length <= MAX_PROVIDER_ENTRIES
     ? entries
     : null;
@@ -443,7 +468,7 @@ function yamlEntries(content: string): string[] | null {
     try {
       const scalar: unknown = yaml.load(match[1], { schema: yaml.FAILSAFE_SCHEMA });
       if (typeof scalar !== "string" || !scalar.trim()) return null;
-      entries.push(scalar.trim());
+      entries.push(scalar);
       if (entries.length > MAX_PROVIDER_ENTRIES) return null;
     } catch {
       return null;
@@ -477,6 +502,7 @@ const IP_NETWORK_RULES = new Set([
   "SRC-IP-SUFFIX",
 ]);
 const PORT_RULES = new Set(["DST-PORT", "IN-PORT", "SRC-PORT"]);
+const PROCESS_RULES = new Set(["PROCESS-NAME"]);
 
 function validIpNetwork(value: string): boolean {
   const slash = value.lastIndexOf("/");
@@ -524,22 +550,28 @@ function validIpRule(kind: string, value: string, rest: readonly string[]): bool
 function classicalProviderRule(entry: string, sourceId: string): ClassicalEntry {
   const [rawKind, rawValue, ...rest] = entry.split(",");
   if (rawKind === undefined || rawValue === undefined) return { status: "incomplete" };
-  const kind = rawKind.trim().toUpperCase();
+  if (rawKind !== rawKind.trim()) return { status: "incomplete" };
+  const kind = rawKind.toUpperCase();
   const value = rawValue.trim();
   if (kind === "DOMAIN" && rest.length === 0) {
-    return { status: "rule", rule: { kind: "exact", value, sourceId } };
+    return { status: "rule", rule: { kind: "exact", value: rawValue, sourceId } };
   }
   if (kind === "DOMAIN-SUFFIX" && rest.length === 0) {
-    return { status: "rule", rule: { kind: "suffix", value, sourceId } };
+    return { status: "rule", rule: { kind: "suffix", value: rawValue, sourceId } };
   }
   if (kind === "DOMAIN-KEYWORD" && rest.length === 0) {
-    return { status: "rule", rule: { kind: "keyword", value, sourceId } };
+    return { status: "rule", rule: { kind: "keyword", value: rawValue, sourceId } };
   }
   if (TARGET_IP_RULES.has(kind) || SOURCE_IP_RULES.has(kind)) {
     return validIpRule(kind, value, rest) ? { status: "irrelevant" } : { status: "incomplete" };
   }
   if (PORT_RULES.has(kind)) {
     return validPortExpression([value, ...rest].join(","))
+      ? { status: "irrelevant" }
+      : { status: "incomplete" };
+  }
+  if (PROCESS_RULES.has(kind)) {
+    return value.length > 0 && rest.length === 0
       ? { status: "irrelevant" }
       : { status: "incomplete" };
   }

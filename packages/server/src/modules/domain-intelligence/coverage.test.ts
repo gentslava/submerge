@@ -114,6 +114,77 @@ describe("evaluateDomainCoverage", () => {
     expect(evaluateDomainCoverage("notservice.example", model).status).toBe("uncovered");
   });
 
+  it("accepts a single-label suffix emitted by a domain provider", () => {
+    const model: DomainCoverageModel = {
+      ...emptyModel,
+      providers: [
+        {
+          sourceId: "provider:zones",
+          sourceKind: "third-party",
+          behavior: "domain",
+          format: "text",
+          content: "+.example\n",
+        },
+      ],
+    };
+
+    expect(evaluateDomainCoverage("api.example", model)).toMatchObject({
+      status: "covered",
+      match: { kind: "suffix", rule: "example", sourceId: "provider:zones" },
+    });
+  });
+
+  it.each(["+.example.\n", "+.ｅxample\n"])(
+    "fails closed when a single-label provider rule needs semantic normalization: %j",
+    (content) => {
+      const model: DomainCoverageModel = {
+        ...emptyModel,
+        providers: [
+          {
+            sourceId: "provider:unsafe-zone",
+            sourceKind: "third-party",
+            behavior: "domain",
+            format: "text",
+            content,
+          },
+        ],
+      };
+
+      expect(evaluateDomainCoverage("api.example", model)).toEqual({
+        status: "incomplete",
+        match: null,
+        incompleteSourceIds: ["provider:unsafe-zone"],
+      });
+    },
+  );
+
+  it.each([
+    ["text" as const, " +.example\n", "domain" as const],
+    ["yaml" as const, "payload:\n  - ' +.example'\n", "domain" as const],
+    ["text" as const, "DOMAIN, example\n", "classical" as const],
+    ["text" as const, " DOMAIN,example\n", "classical" as const],
+    ["text" as const, "DOMAIN-KEYWORD, example\n", "classical" as const],
+  ])("preserves semantic whitespace in %s provider rules", (format, content, behavior) => {
+    const model: DomainCoverageModel = {
+      ...emptyModel,
+      providers: [
+        {
+          sourceId: "provider:whitespace",
+          sourceKind: "third-party",
+          behavior,
+          format,
+          content,
+        },
+      ],
+    };
+
+    expect(evaluateDomainCoverage("api.example", model)).toEqual({
+      status: "incomplete",
+      match: null,
+      incompleteSourceIds: ["provider:whitespace"],
+    });
+  });
+
   it("reads a YAML domain provider payload", () => {
     const model: DomainCoverageModel = {
       ...emptyModel,
@@ -264,7 +335,7 @@ describe("evaluateDomainCoverage", () => {
           sourceKind: "third-party",
           behavior: "classical",
           format: "text",
-          content: "IP-CIDR,203.0.113.0/24,no-resolve\nDST-PORT,443\n",
+          content: "IP-CIDR,203.0.113.0/24,no-resolve\nDST-PORT,443\nPROCESS-NAME,curl\n",
         },
       ],
     };

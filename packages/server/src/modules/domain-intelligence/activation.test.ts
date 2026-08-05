@@ -3,7 +3,7 @@ import { type DomainRuleActivationError, verifyManagedDomainRuleActivation } fro
 
 const activeProvider = {
   behavior: "Domain",
-  format: "Text",
+  format: "TextRule",
   name: "submerge-custom",
   ruleCount: 2,
   type: "Rule",
@@ -49,6 +49,14 @@ describe("verifyManagedDomainRuleActivation", () => {
     ).resolves.toEqual({ providerRuleCount: 2 });
     expect(deps.readRuleProviders).toHaveBeenCalledOnce();
     expect(deps.readRules).toHaveBeenCalledOnce();
+  });
+
+  it("accepts the legacy Text provider format alias", async () => {
+    const deps = dependencies({ ...activeProvider, format: "Text" });
+
+    await expect(
+      verifyManagedDomainRuleActivation({ targetGroupName: "AUTO" }, deps),
+    ).resolves.toEqual({ providerRuleCount: 2 });
   });
 
   it.each([

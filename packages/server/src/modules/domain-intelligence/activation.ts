@@ -39,6 +39,11 @@ function normalizedKind(value: string): string {
   return value.replace(/[-_\s]/gu, "").toLowerCase();
 }
 
+function isTextRuleProviderFormat(value: string): boolean {
+  const normalized = normalizedKind(value);
+  return normalized === "text" || normalized === "textrule";
+}
+
 function isExpectedProbeRule(rule: ActiveRulesResponse["rules"][number] | undefined): boolean {
   return Boolean(
     rule &&
@@ -69,7 +74,7 @@ export async function verifyManagedDomainRuleActivation(
     if (
       !provider ||
       normalizedKind(provider.behavior) !== "domain" ||
-      normalizedKind(provider.format) !== "text" ||
+      !isTextRuleProviderFormat(provider.format) ||
       provider.name !== MANAGED_DOMAIN_RULE_PROVIDER_NAME ||
       normalizedKind(provider.type) !== "rule" ||
       normalizedKind(provider.vehicleType) !== "file"

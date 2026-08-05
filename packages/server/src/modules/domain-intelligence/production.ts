@@ -19,6 +19,7 @@ import {
   materializeManagedDomainRuleProviderSnapshot,
 } from "./coverage.js";
 import { DomainValidationExecutor } from "./executor.js";
+import { materializeActiveGeositeSnapshot } from "./geosite.js";
 import type { DomainObservation } from "./observer.js";
 import { probeDirectHttps, probeProxyHttps } from "./probe.js";
 import { DOMAIN_RULE_DIRECTORY_PATH } from "./rule-store.js";
@@ -151,14 +152,22 @@ export function createProductionDomainCoverageSnapshot(
   input: ProductionDomainCoverageSnapshotInput,
 ): ProductionDomainCoverageSnapshot {
   const providers = materializeActiveRuleProviderSnapshot(input.channels, input.mihomoDirectory);
+  const geosite = materializeActiveGeositeSnapshot(
+    input.mihomoDirectory,
+    input.channels.flatMap((channel) => channel.geosite ?? []),
+  );
   const managed = input.managedProviderActive
     ? materializeManagedDomainRuleProviderSnapshot(input.managedRuleDirectory)
     : null;
-  const base = coverageModelFromActiveChannels(input.channels, providers.providers);
+  const base = coverageModelFromActiveChannels(
+    input.channels,
+    providers.providers,
+    geosite.categories,
+  );
   const model = managed ? withManagedProvider(base, managed.provider.content) : base;
   return {
     readCoverage: (fqdn) => evaluateDomainCoverage(fqdn, model),
-    isCurrent: () => providers.isCurrent() && (managed?.isCurrent() ?? true),
+    isCurrent: () => providers.isCurrent() && geosite.isCurrent() && (managed?.isCurrent() ?? true),
   };
 }
 
