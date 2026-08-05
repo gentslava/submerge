@@ -134,8 +134,8 @@ under `:root` (light) / `.dark` (dark), exposed as Tailwind utilities via `@them
 | `accent-hover` | `#5B5EEA` | `#4F52D8` |
 | `accent-fg` | `#FFFFFF` | `#FFFFFF` |
 | `accent-text` | `#ADB0F8` | `#4F46E5` |
-| `accent-bg` | `#6366F126` | `#6366F114` |
-| `accent-border` | `#6366F14D` | `#6366F133` |
+| `accent-bg` | `#5558E626` | `#5558E614` |
+| `accent-border` | `#5558E64D` | `#5558E633` |
 | `online` / `online-bg` | `#3FB950` / `…1F` | `#2E7D32` / `…1F` |
 | `slow` / `slow-bg` | `#D9A33A` / `…1F` | `#A16207` / `…1F` |
 | `timeout` / `timeout-bg` | `#E5534B` / `…1F` | `#C81E1E` / `…1F` |

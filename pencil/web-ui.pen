@@ -4289,7 +4289,7 @@
                           "fill": "$text-secondary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "Индиго #6366F1 закреплён за брендом: первичные действия, активный узел, фокус. Он никогда не используется для статусов.",
+                          "content": "Индиго #5558E6 закреплён за брендом: первичные действия, активный узел, фокус. Он никогда не используется для статусов.",
                           "lineHeight": 1.55,
                           "fontFamily": "$font-sans",
                           "fontSize": 13,
@@ -23123,7 +23123,7 @@
                       "cornerRadius": 7,
                       "id": "jImK8",
                       "name": "sw",
-                      "fill": "#6366F1",
+                      "fill": "#5558E6",
                       "width": "fill_container",
                       "height": 32,
                       "stroke": "#334155",
@@ -23271,7 +23271,7 @@
                       "type": "frame",
                       "id": "Q5a82w",
                       "name": "Btn",
-                      "fill": "#6366F1",
+                      "fill": "#5558E6",
                       "cornerRadius": 8,
                       "padding": [
                         6,
@@ -37341,7 +37341,7 @@
                       "cornerRadius": 8,
                       "id": "bYI7u",
                       "name": "sw",
-                      "fill": "#6366F1",
+                      "fill": "#5558E6",
                       "width": "fill_container",
                       "height": 40,
                       "stroke": "#2A2E39",
@@ -37362,7 +37362,7 @@
                       "id": "c42U5k",
                       "name": "h",
                       "fill": "#6A707D",
-                      "content": "#6366F1",
+                      "content": "#5558E6",
                       "fontFamily": "JetBrains Mono",
                       "fontSize": 10,
                       "fontWeight": "normal"
@@ -95594,13 +95594,13 @@
       "type": "color",
       "value": [
         {
-          "value": "#6366F126",
+          "value": "#5558E626",
           "theme": {
             "mode": "dark"
           }
         },
         {
-          "value": "#6366F114",
+          "value": "#5558E614",
           "theme": {
             "mode": "light"
           }
@@ -95611,13 +95611,13 @@
       "type": "color",
       "value": [
         {
-          "value": "#6366F14D",
+          "value": "#5558E64D",
           "theme": {
             "mode": "dark"
           }
         },
         {
-          "value": "#6366F133",
+          "value": "#5558E633",
           "theme": {
             "mode": "light"
           }
