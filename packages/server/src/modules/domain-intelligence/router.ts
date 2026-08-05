@@ -27,6 +27,7 @@ import {
   domainIntelligenceRuntimeCoordinator,
   domainIntelligenceScheduler,
   domainValidationScheduler,
+  serializeDomainRuleAuthorizationMutation,
 } from "../logs/singleton.js";
 import {
   DomainCandidateReviewError,
@@ -103,34 +104,39 @@ export function makeDomainIntelligenceRouter(service: DomainIntelligenceService)
 const domainIntelligenceService: DomainIntelligenceService = {
   settings: () => getDomainIntelligenceSettingsView(db),
   setSettings: (input) =>
-    updateDomainIntelligenceReportSettings(db, input, {
-      reconcile: () => domainIntelligenceRuntimeCoordinator.reconcile(),
-    }),
+    serializeDomainRuleAuthorizationMutation(() =>
+      updateDomainIntelligenceReportSettings(db, input, {
+        reconcile: () => domainIntelligenceRuntimeCoordinator.reconcile(),
+      }),
+    ),
   overview: () =>
     getDomainIntelligenceOverview(db, {
       now: Date.now(),
       health: domainIntelligenceScheduler.health(),
     }),
   list: (input) => listDomainCandidateReport(db, input, readDomainIntelligenceFilterPolicy(db)),
-  setScope: (input) => {
-    const filterPolicy = readDomainIntelligenceFilterPolicy(db);
-    if (!filterPolicy) throw new DomainCandidateReviewError("policy-unavailable");
-    return selectDomainCandidateScope(db, { ...input, filterPolicy, now: Date.now() });
-  },
-  setRejected: (input) => {
-    return setDomainCandidateRejection(db, {
-      ...input,
-      filterPolicy: readDomainIntelligenceFilterPolicy(db),
-      now: Date.now(),
-    });
-  },
-  recheck: (input) => {
-    const filterPolicy = readDomainIntelligenceFilterPolicy(db);
-    if (!filterPolicy) throw new DomainCandidateReviewError("policy-unavailable");
-    const candidate = recheckDomainCandidate(db, { ...input, filterPolicy, now: Date.now() });
-    domainValidationScheduler.wake();
-    return candidate;
-  },
+  setScope: (input) =>
+    serializeDomainRuleAuthorizationMutation(() => {
+      const filterPolicy = readDomainIntelligenceFilterPolicy(db);
+      if (!filterPolicy) throw new DomainCandidateReviewError("policy-unavailable");
+      return selectDomainCandidateScope(db, { ...input, filterPolicy, now: Date.now() });
+    }),
+  setRejected: (input) =>
+    serializeDomainRuleAuthorizationMutation(() =>
+      setDomainCandidateRejection(db, {
+        ...input,
+        filterPolicy: readDomainIntelligenceFilterPolicy(db),
+        now: Date.now(),
+      }),
+    ),
+  recheck: (input) =>
+    serializeDomainRuleAuthorizationMutation(() => {
+      const filterPolicy = readDomainIntelligenceFilterPolicy(db);
+      if (!filterPolicy) throw new DomainCandidateReviewError("policy-unavailable");
+      const candidate = recheckDomainCandidate(db, { ...input, filterPolicy, now: Date.now() });
+      domainValidationScheduler.wake();
+      return candidate;
+    }),
 };
 
 export const domainIntelligenceRouter = makeDomainIntelligenceRouter(domainIntelligenceService);

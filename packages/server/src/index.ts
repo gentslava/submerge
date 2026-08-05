@@ -14,6 +14,7 @@ import {
   logHub,
   reconcileDomainRuleDeployment,
   shutdownDomainIntelligenceRuntime,
+  startDomainRuleApplyWorker,
 } from "./modules/logs/singleton.js";
 import { restorePendingMihomoSecretRotation } from "./modules/settings/secret-rotation.js";
 import { sourceRefreshScheduler } from "./modules/sources/instance.js";
@@ -82,10 +83,10 @@ logHub.start();
 // reads the fresh file on its own start); the reload is best-effort and fire-and-forget
 // so a not-yet-ready engine can't block or crash boot — the live loop keeps it in sync.
 const shutdownController = new AbortController();
-const bootConfigApply = reconcileDomainRuleDeployment().catch((err) =>
-  operationalLog("boot-config-apply-failed", {}, err),
-);
-void startSchedulerAfter(bootConfigApply, sourceRefreshScheduler, shutdownController.signal);
+const bootDomainRules = reconcileDomainRuleDeployment()
+  .then(() => startDomainRuleApplyWorker())
+  .catch((err) => operationalLog("boot-domain-rules-failed", {}, err));
+void startSchedulerAfter(bootDomainRules, sourceRefreshScheduler, shutdownController.signal);
 
 // Begin polling mihomo + pumping its traffic stream; fans out to live subscribers
 liveHub.start();

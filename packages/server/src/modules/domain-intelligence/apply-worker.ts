@@ -1,3 +1,4 @@
+import { DomainRuleOperationDeferredError } from "./apply-errors.js";
 import type {
   DomainRuleApplyOperationResult,
   ExecuteDomainRuleOperationOptions,
@@ -16,6 +17,7 @@ export interface DomainRuleApplyWorkerDependencies {
     options?: ExecuteDomainRuleOperationOptions,
   ) => Promise<DomainRuleApplyOperationResult>;
   onError: (error: unknown, operationId: string | null) => void;
+  onReady?: () => void;
 }
 
 export type DomainRuleApplyWorkerHealth = {
@@ -66,7 +68,7 @@ export class DomainRuleApplyWorker {
     this.startup = recovery.then(
       () => {
         if (this.state === "recovering" && !this.drainScheduled && !this.wakeRequested) {
-          this.state = "ready";
+          this.becomeReady();
         }
       },
       (error: unknown) => {
@@ -119,6 +121,14 @@ export class DomainRuleApplyWorker {
     });
   }
 
+  /** Serialize deployment and authorization mutations with local publication. */
+  serializeMutation<T>(mutation: () => T | Promise<T>): Promise<T> {
+    if (this.state === "stopping" || this.state === "stopped") {
+      return Promise.reject(this.stoppedError());
+    }
+    return this.enqueueSerialized(async () => mutation());
+  }
+
   async whenIdle(): Promise<void> {
     while (true) {
       const pending = this.tail;
@@ -141,7 +151,15 @@ export class DomainRuleApplyWorker {
     const operations = this.dependencies.listUnfinished();
     for (const operation of operations) {
       this.abortController.signal.throwIfAborted();
-      const result = await this.executeOne(operation.id, this.abortController.signal);
+      let result: DomainRuleApplyOperationResult;
+      try {
+        result = await this.executeOne(operation.id, this.abortController.signal);
+      } catch (error) {
+        if (error instanceof DomainRuleOperationDeferredError) {
+          return false;
+        }
+        throw error;
+      }
       this.abortController.signal.throwIfAborted();
       if (result.phase === "partial") {
         this.requireRecovery();
@@ -158,13 +176,21 @@ export class DomainRuleApplyWorker {
     try {
       return await this.dependencies.execute(operationId, signal);
     } catch (error) {
+      if (error instanceof DomainRuleOperationDeferredError) {
+        this.requireRecovery();
+        throw error;
+      }
       this.fail(error, operationId);
       throw error;
     }
   }
 
   private enqueueExclusive<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    const result = this.tail.then(() => task(this.abortController.signal));
+    return this.enqueueSerialized(() => task(this.abortController.signal));
+  }
+
+  private enqueueSerialized<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(task);
     this.tail = result.then(
       () => undefined,
       () => undefined,
@@ -190,6 +216,15 @@ export class DomainRuleApplyWorker {
     this.state = "recovery-required";
   }
 
+  private becomeReady(): void {
+    this.state = "ready";
+    try {
+      this.dependencies.onReady?.();
+    } catch {
+      // Readiness notification is advisory and cannot poison durable recovery.
+    }
+  }
+
   private scheduleDrain(): void {
     if (this.drainScheduled) return;
     this.drainScheduled = true;
@@ -207,7 +242,7 @@ export class DomainRuleApplyWorker {
         if (!recovered) return;
         if (this.wakeRequested) await this.waitForTimerBoundary(signal);
       }
-      if (this.state === "recovering") this.state = "ready";
+      if (this.state === "recovering") this.becomeReady();
     });
     void pass.then(
       () => {

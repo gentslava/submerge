@@ -23,6 +23,7 @@ import {
   MAX_PROVIDER_CONTENT_BYTES,
   materializeActiveRuleProviderSnapshot,
   materializeActiveRuleProviders,
+  materializeManagedDomainRuleProviderSnapshot,
 } from "./coverage.js";
 
 const roots: string[] = [];
@@ -100,6 +101,38 @@ describe("active provider materialization", () => {
     writeFileSync(replacement, "cdn.service.example\n", "utf8");
     renameSync(replacement, path);
 
+    expect(snapshot.isCurrent()).toBe(false);
+  });
+
+  it("materializes and tracks the managed custom provider outside the third-party cache", () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-managed-provider-"));
+    roots.push(root);
+    const path = join(root, "domain-rules", "custom.txt");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "+.service.example\napi.exact.example\n", "utf8");
+
+    const snapshot = materializeManagedDomainRuleProviderSnapshot(root);
+    expect(snapshot.provider).toEqual({
+      content: "+.service.example\napi.exact.example\n",
+      sourceKind: "custom",
+    });
+
+    const replacement = `${path}.replacement`;
+    writeFileSync(replacement, "other.example\n", "utf8");
+    renameSync(replacement, path);
+    expect(snapshot.isCurrent()).toBe(false);
+  });
+
+  it("does not follow a managed custom provider symlink", () => {
+    const root = mkdtempSync(join(tmpdir(), "submerge-managed-provider-symlink-"));
+    roots.push(root);
+    mkdirSync(join(root, "domain-rules"));
+    const outside = join(root, "outside-secret.txt");
+    writeFileSync(outside, "must-not-be-read\n", "utf8");
+    symlinkSync(outside, join(root, "domain-rules", "custom.txt"));
+
+    const snapshot = materializeManagedDomainRuleProviderSnapshot(root);
+    expect(snapshot.provider).toEqual({ content: null, sourceKind: "custom" });
     expect(snapshot.isCurrent()).toBe(false);
   });
 

@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
+import { DomainRuleOperationDeferredError } from "./apply-errors.js";
 import {
   finalizeDomainRuleCommit,
   listUnfinishedDomainRuleOperations,
@@ -84,8 +85,8 @@ describe("createProductionDomainRuleApplyOperationDependencies", () => {
       apply: { available: false, reason: "provider-inactive" },
     });
 
-    await expect(dependencies.preflightPrepared(operation)).rejects.toThrow(
-      "domain-rule apply capability unavailable",
+    await expect(dependencies.preflightPrepared(operation)).rejects.toBeInstanceOf(
+      DomainRuleOperationDeferredError,
     );
     expect(preflightPrepared).not.toHaveBeenCalled();
   });

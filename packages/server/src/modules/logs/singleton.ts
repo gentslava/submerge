@@ -3,6 +3,9 @@ import { registerDomainRulesDeploymentCapabilitySource } from "../../config/doma
 import { env } from "../../config/env.js";
 import { db } from "../../db/client.js";
 import { log, operationalLog } from "../../log.js";
+import { createProductionDomainRuleApplyOperationDependencies } from "../domain-intelligence/apply-operation-production.js";
+import { createProductionDomainRulePreparedPreflight } from "../domain-intelligence/apply-preflight.js";
+import { createProductionDomainRuleApplyWorker } from "../domain-intelligence/apply-worker-production.js";
 import { DomainRuleDeploymentLifecycle } from "../domain-intelligence/deployment-lifecycle.js";
 import { createProductionDomainRuleDeploymentController } from "../domain-intelligence/deployment-production.js";
 import {
@@ -12,6 +15,7 @@ import {
 import {
   createProductionDomainValidationExecutor,
   persistObservationAndQueueCandidate,
+  readProductionDomainCoverage,
 } from "../domain-intelligence/production.js";
 import { DomainIntelligenceRuntimeCoordinator } from "../domain-intelligence/runtime.js";
 import {
@@ -24,6 +28,8 @@ import { hasDomainValidationRoute, registerConfigApplyOwner } from "../nodes/ser
 import { LogHub } from "./hub.js";
 
 let wakeDomainValidation = (): void => undefined;
+let wakeDomainRuleApplyRecovery = (): void => undefined;
+let domainRuleApplyReady = (): boolean => env.DOMAIN_RULES_MODE === "report";
 let domainIntelligenceRuntimeEnabled = false;
 
 export const domainIntelligenceObserver = new DomainIntelligenceObserver({
@@ -37,6 +43,9 @@ export const domainIntelligenceObserver = new DomainIntelligenceObserver({
 export const domainIntelligenceScheduler = new DomainIntelligenceScheduler({
   fetchConnections: getConnections,
   observer: domainIntelligenceObserver,
+  onHealth: (health) => {
+    if (health.status === "healthy") wakeDomainRuleApplyRecovery();
+  },
 });
 const domainValidationExecutor = createProductionDomainValidationExecutor(
   db,
@@ -48,6 +57,7 @@ export const domainValidationScheduler = new DomainValidationScheduler({
     const view = getDomainIntelligenceSettingsView(db);
     return (
       domainIntelligenceRuntimeEnabled &&
+      domainRuleApplyReady() &&
       view.configurationState === "ready" &&
       view.settings.enabled
     );
@@ -113,18 +123,58 @@ registerDomainRulesDeploymentCapabilitySource(domainRuleDeploymentController.cap
 const domainRuleDeploymentLifecycle = new DomainRuleDeploymentLifecycle(
   domainRuleDeploymentController,
 );
+const domainRuleApplyOperationDependencies = createProductionDomainRuleApplyOperationDependencies({
+  controller: domainRuleDeploymentController,
+  databasePath: env.DB_PATH,
+  mihomoConfigPath: env.MIHOMO_CONFIG_PATH,
+  preflightPrepared: createProductionDomainRulePreparedPreflight({
+    db,
+    observationHealthy: () => domainIntelligenceScheduler.health().status === "healthy",
+    readCoverage: (fqdn) => readProductionDomainCoverage(db, fqdn),
+  }),
+});
+const domainRuleApplyWorker = createProductionDomainRuleApplyWorker({
+  controller: domainRuleDeploymentController,
+  db,
+  operationDependencies: domainRuleApplyOperationDependencies,
+  onError: (error, operationId) =>
+    operationalLog("domain-rule-apply-worker-failed", { operationId }, error),
+  onReady: () => domainValidationScheduler.wake(),
+});
+domainRuleApplyReady = () =>
+  env.DOMAIN_RULES_MODE === "report" || domainRuleApplyWorker.health().accepting;
+wakeDomainRuleApplyRecovery = () => {
+  domainRuleApplyWorker.wake();
+};
 
 export function reconcileDomainRuleDeployment() {
-  return domainRuleDeploymentLifecycle.reconcile();
+  return domainRuleApplyWorker.serializeMutation(() => domainRuleDeploymentLifecycle.reconcile());
 }
 
 export function recoverDomainRuleDeploymentIfNeeded() {
-  return domainRuleDeploymentLifecycle.recoverIfNeeded();
+  return domainRuleApplyWorker.serializeMutation(() =>
+    domainRuleDeploymentLifecycle.recoverIfNeeded(),
+  );
+}
+
+export function startDomainRuleApplyWorker(): Promise<void> {
+  return domainRuleApplyWorker.start();
+}
+
+export function wakeDomainRuleApplyWorker(): boolean {
+  return domainRuleApplyWorker.wake();
+}
+
+export function serializeDomainRuleAuthorizationMutation<T>(
+  mutation: () => T | Promise<T>,
+): Promise<T> {
+  return domainRuleApplyWorker.serializeMutation(mutation);
 }
 
 export function shutdownDomainIntelligenceRuntime(): Promise<void> {
   domainIntelligenceRuntimeLifecycle.beginShutdown();
   return Promise.allSettled([
+    domainRuleApplyWorker.stop(),
     domainRuleDeploymentLifecycle.stop(),
     domainIntelligenceRuntimeCoordinator.stop(),
   ]).then(() => undefined);

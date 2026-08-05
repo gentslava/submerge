@@ -11,6 +11,7 @@ import {
   domainRuleOwnership,
   settings,
 } from "../../db/schema.js";
+import { DomainRulePreparedVetoError } from "./apply-errors.js";
 import {
   beginDomainRuleActivation,
   buildDomainAutomaticConsentRevision,
@@ -211,12 +212,12 @@ describe("executeDomainRuleOperation", () => {
 
     await expect(
       executeDomainRuleOperation(db, "automatic-add-1", dependencies, { clock: () => NOW }),
-    ).rejects.toThrow("automatic domain-rule consent unavailable or stale");
+    ).resolves.toMatchObject({ phase: "aborted" });
 
     expect(dependencies.commitPrepared).not.toHaveBeenCalled();
-    expect(row(db, "automatic-add-1")).toMatchObject({ phase: "prepared", commitSha: null });
+    expect(row(db, "automatic-add-1")).toMatchObject({ phase: "aborted", commitSha: null });
     expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
-      reservedSlots: 1,
+      reservedSlots: 0,
       consumedSlots: 0,
     });
     expect(db.select().from(domainRuleOwnership).all()).toEqual([]);
@@ -536,6 +537,32 @@ describe("executeDomainRuleOperation", () => {
       commitSha: null,
       activationAttemptCount: 0,
     });
+  });
+
+  it("attests and aborts an automatic operation after an ordinary pre-commit veto", async () => {
+    const db = migratedDb();
+    prepareAutomatic(db, "automatic-veto");
+    const dependencies = successfulDependencies();
+    vi.mocked(dependencies.preflightPrepared).mockRejectedValue(
+      new DomainRulePreparedVetoError("candidate evidence changed"),
+    );
+
+    await expect(
+      executeDomainRuleOperation(db, "automatic-veto", dependencies, { clock: () => NOW }),
+    ).resolves.toEqual({
+      operationId: "automatic-veto",
+      phase: "aborted",
+      commitSha: null,
+      activationAttempt: 0,
+    });
+
+    expect(dependencies.attestOperation).toHaveBeenCalledTimes(2);
+    expect(row(db, "automatic-veto")).toMatchObject({ phase: "aborted", commitSha: null });
+    expect(db.select().from(domainAutomaticBudgets).get()).toMatchObject({
+      reservedSlots: 0,
+      consumedSlots: 0,
+    });
+    expect(dependencies.commitPrepared).not.toHaveBeenCalled();
   });
 
   it("fails closed on reconciliation-required operations and missing dependencies", async () => {

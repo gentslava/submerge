@@ -19,6 +19,7 @@ import {
   domainRuleOwnership,
   settings,
 } from "../../db/schema.js";
+import { DomainRulePreparedVetoError } from "./apply-errors.js";
 import { normalizeObservedFqdn } from "./observer.js";
 
 const MAX_DATE_MS = 8_640_000_000_000_000;
@@ -542,7 +543,9 @@ export function assertPreparedAutomaticOperationAuthorized(
         .where(eq(domainRuleOwnership.rule, rule))
         .get();
       if (existingOwnership?.ownership === "manual") {
-        throw new Error("automatic domain rule cannot replace manual ownership");
+        throw new DomainRulePreparedVetoError(
+          "automatic domain rule cannot replace manual ownership",
+        );
       }
     }
 
@@ -551,19 +554,33 @@ export function assertPreparedAutomaticOperationAuthorized(
       .from(settings)
       .where(eq(settings.key, "domainIntelligence"))
       .get()?.value;
-    const automaticSettings = parseStoredAutomaticSettings(rawSettings);
+    let automaticSettings: ReturnType<typeof parseStoredAutomaticSettings>;
+    try {
+      automaticSettings = parseStoredAutomaticSettings(rawSettings);
+    } catch (error) {
+      throw new DomainRulePreparedVetoError(
+        error instanceof Error ? error.message : "automatic domain-rule authorization changed",
+      );
+    }
     const activeConsent =
       tx
         .select({ id: domainAutomaticConsents.id, revision: domainAutomaticConsents.revision })
         .from(domainAutomaticConsents)
         .where(isNull(domainAutomaticConsents.revokedAt))
         .get() ?? null;
-    const consent = assertCurrentAutomaticConsent(automaticSettings, activeConsent);
+    let consent: ReturnType<typeof assertCurrentAutomaticConsent>;
+    try {
+      consent = assertCurrentAutomaticConsent(automaticSettings, activeConsent);
+    } catch (error) {
+      throw new DomainRulePreparedVetoError(
+        error instanceof Error ? error.message : "automatic domain-rule authorization changed",
+      );
+    }
     if (
       operation.automaticConsentId !== consent.id ||
       operation.automaticConsentRevision !== consent.revision
     ) {
-      throw new Error("automatic domain-rule consent unavailable or stale");
+      throw new DomainRulePreparedVetoError("automatic domain-rule consent unavailable or stale");
     }
     return { consentId: consent.id, consentRevision: consent.revision };
   });

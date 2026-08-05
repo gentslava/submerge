@@ -1,6 +1,7 @@
 import { dirname } from "node:path";
 import { domainIntelligenceDeploymentCapabilitySchema } from "@submerge/shared";
 import type { ApplyResult } from "../nodes/service.js";
+import { DomainRuleOperationDeferredError } from "./apply-errors.js";
 import type {
   DomainRuleActivationOutcome,
   DomainRuleApplyOperationDependencies,
@@ -57,7 +58,7 @@ function assertApplyMode(controller: ProductionDomainRuleApplyController): void 
 function assertApplyReady(controller: ProductionDomainRuleApplyController): void {
   const capability = readApplyCapability(controller);
   if (!capability.apply.available) {
-    throw new Error("domain-rule apply capability unavailable");
+    throw new DomainRuleOperationDeferredError("domain-rule apply capability unavailable");
   }
 }
 

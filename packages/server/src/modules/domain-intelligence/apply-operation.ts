@@ -5,7 +5,9 @@ import {
   type DomainRuleActivationErrorCategory,
   domainRuleOperations,
 } from "../../db/schema.js";
+import { DomainRulePreparedVetoError } from "./apply-errors.js";
 import {
+  abortPreparedDomainRuleOperation,
   assertPreparedAutomaticOperationAuthorized,
   beginDomainRuleActivation,
   completeDomainRuleActivation,
@@ -262,6 +264,15 @@ function partialResult(
   };
 }
 
+function abortedResult(operationId: string): DomainRuleApplyOperationResult {
+  return {
+    operationId,
+    phase: "aborted",
+    commitSha: null,
+    activationAttempt: 0,
+  };
+}
+
 function isReconciliationFailure(error: unknown): boolean {
   return (
     error instanceof DomainRuleOperationReconciliationError ||
@@ -289,12 +300,7 @@ export async function executeDomainRuleOperation(
     throw new Error("domain-rule reconciliation required");
   }
   if (operation.phase === "aborted") {
-    return {
-      operationId: operation.id,
-      phase: "aborted",
-      commitSha: null,
-      activationAttempt: 0,
-    };
+    return abortedResult(operation.id);
   }
   if (operation.phase === "completed") {
     const committed = assertJournaledCommit(operation);
@@ -346,11 +352,49 @@ export async function executeDomainRuleOperation(
       if (attested.head !== operation.expectedParentCommit) {
         throw new Error("domain-rule attestation does not match prepared parent");
       }
-      await dependencies.preflightPrepared(operation, options.signal);
-      options.signal?.throwIfAborted();
-      if (operation.action === "automatic-add") {
-        assertPreparedAutomaticOperationAuthorized(db, operation.id);
+      try {
+        await dependencies.preflightPrepared(operation, options.signal);
+        options.signal?.throwIfAborted();
+        if (operation.action === "automatic-add") {
+          assertPreparedAutomaticOperationAuthorized(db, operation.id);
+        }
+      } catch (error) {
+        if (!(error instanceof DomainRulePreparedVetoError)) throw error;
+        let aborted: boolean;
+        try {
+          aborted = await abortPreparedDomainRuleOperation(db, operation.id, {
+            ...options,
+            assertPreCommitState: async (intent) => {
+              const state = parseAttestation(
+                await dependencies.attestOperation({
+                  operationId: intent.operationId,
+                  expectedParent: intent.expectedParentCommit,
+                  committedContentSha256: intent.intendedContentSha256,
+                  ...signalOptions(options.signal),
+                }),
+                operation,
+              );
+              if (state.state !== "parent") {
+                throw new DomainRuleOperationReconciliationError(
+                  "domain-rule preflight veto raced a local commit",
+                );
+              }
+            },
+          });
+        } catch (abortError) {
+          if (isReconciliationFailure(abortError)) {
+            markDomainRuleOperationReconciliationRequired(db, operation.id, options);
+          }
+          throw abortError;
+        }
+        if (!aborted) {
+          throw new DomainRuleOperationReconciliationError(
+            "domain-rule preflight veto could not abort prepared operation",
+          );
+        }
+        return abortedResult(operation.id);
       }
+      options.signal?.throwIfAborted();
       try {
         committed = assertCommittedResult(
           operation,

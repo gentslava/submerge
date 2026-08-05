@@ -31,6 +31,8 @@ vi.mock("../modules/logs/singleton.js", () => ({
     applied: true,
     activationVerified: true,
   })),
+  startDomainRuleApplyWorker: vi.fn(async () => undefined),
+  wakeDomainRuleApplyWorker: vi.fn(() => true),
 }));
 vi.mock("../modules/nodes/service.js", () => ({
   applyConfig: vi.fn(async () => ({ nodes: 0, applied: true })),
@@ -63,6 +65,8 @@ async function load() {
     recoverIfNeededMock: vi.mocked(
       domainIntelligence.domainIntelligenceRuntimeCoordinator.recoverIfNeeded,
     ),
+    startDomainRuleApplyWorkerMock: vi.mocked(domainIntelligence.startDomainRuleApplyWorker),
+    wakeDomainRuleApplyWorkerMock: vi.mocked(domainIntelligence.wakeDomainRuleApplyWorker),
     registryRunOnce: vi.mocked(channels.registry.runOnce),
   };
 }
@@ -101,10 +105,23 @@ describe("live singleton wiring", () => {
   });
 
   it("retries deployment before runtime activation on the first healthy engine poll", async () => {
-    const { liveHub, recoverDomainRuleDeploymentIfNeededMock, recoverIfNeededMock } = await load();
+    const {
+      liveHub,
+      recoverDomainRuleDeploymentIfNeededMock,
+      recoverIfNeededMock,
+      startDomainRuleApplyWorkerMock,
+      wakeDomainRuleApplyWorkerMock,
+    } = await load();
     const events: string[] = [];
     recoverDomainRuleDeploymentIfNeededMock.mockImplementationOnce(async () => {
       events.push("deployment");
+    });
+    startDomainRuleApplyWorkerMock.mockImplementationOnce(async () => {
+      events.push("apply-worker");
+    });
+    wakeDomainRuleApplyWorkerMock.mockImplementationOnce(() => {
+      events.push("apply-worker:wake");
+      return true;
     });
     recoverIfNeededMock.mockImplementationOnce(async () => {
       events.push("runtime");
@@ -113,11 +130,16 @@ describe("live singleton wiring", () => {
     await liveHub.pollOnce();
 
     await vi.waitFor(() => expect(recoverIfNeededMock).toHaveBeenCalledOnce());
-    expect(events).toEqual(["deployment", "runtime"]);
+    expect(events).toEqual(["deployment", "apply-worker", "apply-worker:wake", "runtime"]);
   });
 
   it("runs full deployment reconciliation after a genuine engine reconnect", async () => {
-    const { getProxiesMock, liveHub, reconcileDomainRuleDeploymentMock } = await load();
+    const {
+      getProxiesMock,
+      liveHub,
+      reconcileDomainRuleDeploymentMock,
+      wakeDomainRuleApplyWorkerMock,
+    } = await load();
     await liveHub.pollOnce();
     getProxiesMock.mockRejectedValueOnce(new Error("engine restarting"));
     await liveHub.pollOnce();
@@ -125,5 +147,6 @@ describe("live singleton wiring", () => {
     await liveHub.pollOnce();
 
     await vi.waitFor(() => expect(reconcileDomainRuleDeploymentMock).toHaveBeenCalledOnce());
+    expect(wakeDomainRuleApplyWorkerMock).toHaveBeenCalledTimes(2);
   });
 });

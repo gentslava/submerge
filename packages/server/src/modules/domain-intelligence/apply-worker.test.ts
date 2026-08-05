@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DomainRuleOperationDeferredError } from "./apply-errors.js";
 import type { DomainRuleApplyOperationResult } from "./apply-operation.js";
 import { DomainRuleApplyWorker } from "./apply-worker.js";
 
@@ -19,7 +20,7 @@ function deferred<T>() {
   return { promise, reject, resolve };
 }
 
-function setup(options: { enabled?: boolean; unfinished?: string[] } = {}) {
+function setup(options: { enabled?: boolean; unfinished?: string[]; onReady?: () => void } = {}) {
   const unfinished = options.unfinished ?? [];
   const execute = vi.fn(async (operationId: string) => completed(operationId));
   const onError = vi.fn();
@@ -28,6 +29,7 @@ function setup(options: { enabled?: boolean; unfinished?: string[] } = {}) {
     listUnfinished: () => unfinished.map((id) => ({ id })),
     execute,
     onError,
+    ...(options.onReady ? { onReady: options.onReady } : {}),
   });
   return { execute, onError, worker };
 }
@@ -178,6 +180,34 @@ describe("DomainRuleApplyWorker", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("serializes deployment and authorization mutations against local publication", async () => {
+    const publication = deferred<DomainRuleApplyOperationResult>();
+    const events: string[] = [];
+    const { execute, worker } = setup();
+    execute.mockImplementationOnce(async () => {
+      events.push("publish:start");
+      const result = await publication.promise;
+      events.push("publish:done");
+      return result;
+    });
+    await worker.start();
+
+    const submitted = worker.submit(async () => "manual-1");
+    await vi.waitFor(() => expect(events).toEqual(["publish:start"]));
+    const externalMutation = worker.serializeMutation(async () => {
+      events.push("reconcile");
+      return "updated";
+    });
+    await Promise.resolve();
+    expect(events).toEqual(["publish:start"]);
+
+    publication.resolve(completed("manual-1"));
+    await expect(submitted).resolves.toEqual(completed("manual-1"));
+    await expect(externalMutation).resolves.toBe("updated");
+    expect(events).toEqual(["publish:start", "publish:done", "reconcile"]);
+    await worker.stop();
   });
 
   it("preserves an accepted submit ahead of a later same-tick durable wake", async () => {
@@ -371,8 +401,39 @@ describe("DomainRuleApplyWorker", () => {
       await expect(worker.submit(async () => "manual-2")).rejects.toThrow(
         "domain-rule apply worker is not accepting work",
       );
+      await expect(worker.serializeMutation(async () => "reconciled")).resolves.toBe("reconciled");
       await vi.runAllTimersAsync();
       expect(execute).toHaveBeenCalledTimes(1);
+      await worker.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("parks a recoverable pre-commit deferral without poisoning later recovery", async () => {
+    vi.useFakeTimers();
+    try {
+      const onReady = vi.fn();
+      const { execute, onError, worker } = setup({
+        unfinished: ["prepared-1"],
+        onReady,
+      });
+      execute
+        .mockRejectedValueOnce(new DomainRuleOperationDeferredError("observer accumulating"))
+        .mockResolvedValueOnce(completed("prepared-1"));
+
+      await expect(worker.start()).resolves.toBeUndefined();
+      expect(worker.health()).toEqual({ status: "recovery-required", accepting: false });
+      expect(onError).not.toHaveBeenCalled();
+
+      expect(worker.wake()).toBe(true);
+      await vi.runAllTimersAsync();
+      await worker.whenIdle();
+
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(worker.health()).toEqual({ status: "ready", accepting: true });
+      expect(onError).not.toHaveBeenCalled();
+      expect(onReady).toHaveBeenCalledOnce();
       await worker.stop();
     } finally {
       vi.useRealTimers();

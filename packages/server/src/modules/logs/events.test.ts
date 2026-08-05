@@ -18,10 +18,12 @@ const toxicFields: Record<string, unknown> = {
 const keys: OperationalEventKey[] = [
   "server-listening",
   "boot-config-apply-failed",
+  "boot-domain-rules-failed",
   "config-reload-failed",
   "secret-rotation-write-failed",
   "domain-validation-config-write-failed",
   "domain-validation-scheduler-failed",
+  "domain-rule-apply-worker-failed",
   "mihomo-live-failed",
   "source-refresh-failed",
   "source-refresh-scheduler-failed",
@@ -59,9 +61,11 @@ describe("operational event registry", () => {
 
   it.each([
     "boot-config-apply-failed",
+    "boot-domain-rules-failed",
     "config-reload-failed",
     "secret-rotation-write-failed",
     "domain-validation-config-write-failed",
+    "domain-rule-apply-worker-failed",
     "source-refresh-scheduler-failed",
   ])("does not expose context fields for %s", (key) => {
     expect(makeOperationalEvent(key, toxicFields).draft.fields).toBeUndefined();

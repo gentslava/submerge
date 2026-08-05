@@ -96,6 +96,7 @@ function readBoundedProvider(
   path: string,
   now: number,
   remainingBytes: number,
+  options: { allowEmpty?: boolean; requireFresh?: boolean } = {},
 ): { content: string; bytes: number; identity: ProviderFileIdentity } | null {
   let descriptor: number | null = null;
   try {
@@ -103,11 +104,12 @@ function readBoundedProvider(
     const before = fstatSync(descriptor);
     if (
       !before.isFile() ||
-      before.size === 0 ||
+      (!options.allowEmpty && before.size === 0) ||
       before.size > MAX_PROVIDER_CONTENT_BYTES ||
       before.size > remainingBytes ||
-      before.mtimeMs < now - MAX_PROVIDER_CACHE_AGE_MS ||
-      before.mtimeMs > now + MAX_PROVIDER_FUTURE_SKEW_MS
+      (options.requireFresh !== false &&
+        (before.mtimeMs < now - MAX_PROVIDER_CACHE_AGE_MS ||
+          before.mtimeMs > now + MAX_PROVIDER_FUTURE_SKEW_MS))
     ) {
       return null;
     }
@@ -147,28 +149,36 @@ function readBoundedProvider(
   }
 }
 
-function safeProviderDirectory(mihomoDirectory: string): string | null {
-  const providersDirectory = join(mihomoDirectory, "providers");
+function safeChildDirectory(mihomoDirectory: string, childName: string): string | null {
+  const childDirectory = join(mihomoDirectory, childName);
   try {
     const rootStats = lstatSync(mihomoDirectory);
-    const providerStats = lstatSync(providersDirectory);
+    const childStats = lstatSync(childDirectory);
     if (
       rootStats.isSymbolicLink() ||
-      providerStats.isSymbolicLink() ||
+      childStats.isSymbolicLink() ||
       !rootStats.isDirectory() ||
-      !providerStats.isDirectory()
+      !childStats.isDirectory()
     ) {
       return null;
     }
     const realRoot = realpathSync(mihomoDirectory);
-    const realProviders = realpathSync(providersDirectory);
-    return dirname(realProviders) === realRoot ? realProviders : null;
+    const realChild = realpathSync(childDirectory);
+    return dirname(realChild) === realRoot ? realChild : null;
   } catch {
     return null;
   }
 }
 
-function currentProviderIdentity(identity: ProviderFileIdentity, now: number): boolean {
+function safeProviderDirectory(mihomoDirectory: string): string | null {
+  return safeChildDirectory(mihomoDirectory, "providers");
+}
+
+function currentProviderIdentity(
+  identity: ProviderFileIdentity,
+  now: number,
+  requireFresh: boolean = true,
+): boolean {
   let descriptor: number | null = null;
   try {
     descriptor = openSync(identity.path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -180,8 +190,9 @@ function currentProviderIdentity(identity: ProviderFileIdentity, now: number): b
       current.size === identity.size &&
       current.mtimeMs === identity.mtimeMs &&
       current.ctimeMs === identity.ctimeMs &&
-      current.mtimeMs >= now - MAX_PROVIDER_CACHE_AGE_MS &&
-      current.mtimeMs <= now + MAX_PROVIDER_FUTURE_SKEW_MS
+      (!requireFresh ||
+        (current.mtimeMs >= now - MAX_PROVIDER_CACHE_AGE_MS &&
+          current.mtimeMs <= now + MAX_PROVIDER_FUTURE_SKEW_MS))
     );
   } catch {
     return false;
@@ -245,6 +256,31 @@ export function materializeActiveRuleProviders(
   now: number = Date.now(),
 ): ReadonlyMap<string, ProviderMaterialization> {
   return materializeActiveRuleProviderSnapshot(channels, mihomoDirectory, now).providers;
+}
+
+export interface ManagedDomainRuleProviderSnapshot {
+  provider: ProviderMaterialization;
+  isCurrent: () => boolean;
+}
+
+export function materializeManagedDomainRuleProviderSnapshot(
+  mihomoDirectory: string,
+  now: number = Date.now(),
+): ManagedDomainRuleProviderSnapshot {
+  const directory = safeChildDirectory(mihomoDirectory, "domain-rules");
+  const read = directory
+    ? readBoundedProvider(join(directory, "custom.txt"), now, MAX_PROVIDER_CONTENT_BYTES, {
+        allowEmpty: true,
+        requireFresh: false,
+      })
+    : null;
+  return {
+    provider: { content: read?.content ?? null, sourceKind: "custom" },
+    isCurrent: () =>
+      directory === safeChildDirectory(mihomoDirectory, "domain-rules") &&
+      read !== null &&
+      currentProviderIdentity(read.identity, Date.now(), false),
+  };
 }
 
 export function coverageModelFromActiveChannels(
@@ -345,13 +381,15 @@ function boundedLines(content: string): string[] | null {
   return lines;
 }
 
-function textEntries(content: string): string[] | null {
+function textEntries(content: string, allowEmpty: boolean = false): string[] | null {
   const lines = boundedLines(content);
   if (!lines) return null;
   const entries = lines
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith("#"));
-  return entries.length > 0 && entries.length <= MAX_PROVIDER_ENTRIES ? entries : null;
+  return (allowEmpty || entries.length > 0) && entries.length <= MAX_PROVIDER_ENTRIES
+    ? entries
+    : null;
 }
 
 function domainProviderRule(entry: string, sourceId: string): ActiveDomainRule {
@@ -408,7 +446,9 @@ function providerEntries(provider: ActiveRuleProvider): string[] | null {
   if (provider.content === null || provider.format === "mrs" || provider.format === "unknown") {
     return null;
   }
-  if (provider.format === "text") return textEntries(provider.content);
+  if (provider.format === "text") {
+    return textEntries(provider.content, provider.sourceKind === "custom");
+  }
   return yamlEntries(provider.content);
 }
 

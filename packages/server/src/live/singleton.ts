@@ -8,6 +8,8 @@ import {
   domainIntelligenceRuntimeCoordinator,
   reconcileDomainRuleDeployment,
   recoverDomainRuleDeploymentIfNeeded,
+  startDomainRuleApplyWorker,
+  wakeDomainRuleApplyWorker,
 } from "../modules/logs/singleton.js";
 import { recordPassiveBandwidth } from "../modules/nodes/passiveBandwidth.js";
 import {
@@ -66,6 +68,8 @@ export const liveHub = new LiveHub({
   // exactly once on first availability. No-op when boot already succeeded.
   onFirstConnect: async () => {
     await recoverDomainRuleDeploymentIfNeeded();
+    await startDomainRuleApplyWorker();
+    wakeDomainRuleApplyWorker();
     await domainIntelligenceRuntimeCoordinator.recoverIfNeeded();
   },
   // mihomo restarting under submerge (image update, crash) loses its config —
@@ -73,5 +77,6 @@ export const liveHub = new LiveHub({
   // reconnect also needs one. Best-effort: the hub already guards this call.
   onReconnect: async () => {
     await reconcileDomainRuleDeployment();
+    wakeDomainRuleApplyWorker();
   },
 });
