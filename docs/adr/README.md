@@ -2,7 +2,7 @@
 
 Short records of accepted architectural decisions and their rationale. Format: Context → Decision → Consequences. Goal: prevent agents and developers from re-discovering what has already been decided.
 
-When a new significant decision is made, add a file `NNNN-short-name.md` with the next number and a line in the index below.
+When a new significant decision is made, add a file `NNNN-short-name.md` with the next number and a line in the index below. An accepted ADR is clarified in place: edit the text and add a `**Revised:** YYYY-MM-DD — what changed` line under the header, so readers see what changed and when. To reverse a decision, add a new ADR and mark the old one `Superseded by NNNN`.
 
 ## Index
 
