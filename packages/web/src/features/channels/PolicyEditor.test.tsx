@@ -1,5 +1,5 @@
 import type { ChannelPolicy } from "@submerge/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { PolicyEditor } from "./PolicyEditor";
@@ -28,6 +28,80 @@ function Harness({
 }
 
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+
+describe("PolicyEditor — eligible priority nodes", () => {
+  it("does not switch to manual while there are no eligible candidates", () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyEditor
+        policy={{ kind: "optimal", testUrl: "https://x/gen", intervalSec: 30 }}
+        nodeNames={[]}
+        nodeNamesUnavailable="Загрузка пула узлов…"
+        onChange={onChange}
+      />,
+    );
+    click("Приоритетный узел");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+  it("shows a placeholder when the saved pin leaves the pool without selecting a replacement", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <PolicyEditor
+        policy={{ kind: "manual", pinnedNode: "NL-1", onFailure: "hold" }}
+        nodeNames={["NL-1", "DE-1"]}
+        onChange={onChange}
+      />,
+    );
+    rerender(
+      <PolicyEditor
+        policy={{ kind: "manual", pinnedNode: "NL-1", onFailure: "hold" }}
+        nodeNames={["DE-1"]}
+        onChange={onChange}
+      />,
+    );
+    const select = screen.getByRole("combobox", { name: "Приоритетный узел" });
+    expect(select).toHaveValue("");
+    expect(within(select).queryByRole("option", { name: "NL-1" })).not.toBeInTheDocument();
+    expect(within(select).getByRole("option", { name: "Выберите узел из пула" })).toBeDisabled();
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(select, { target: { value: "DE-1" } });
+    expect(onChange).toHaveBeenCalledWith({
+      kind: "manual",
+      pinnedNode: "DE-1",
+      onFailure: "hold",
+    });
+  });
+
+  it("disables selection when no pool nodes are available", () => {
+    render(
+      <PolicyEditor
+        policy={{ kind: "manual", pinnedNode: "gone", onFailure: "hold" }}
+        nodeNames={[]}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("combobox", { name: "Приоритетный узел" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Нет доступных узлов в пуле" })).toBeVisible();
+  });
+
+  it("seeds manual policy from an eligible node when the current exit is outside the pool", () => {
+    const onChange = vi.fn();
+    render(
+      <PolicyEditor
+        policy={{ kind: "optimal", testUrl: "https://x/gen", intervalSec: 30 }}
+        nodeNames={["DE-1"]}
+        activeNode="NL-1"
+        onChange={onChange}
+      />,
+    );
+    click("Приоритетный узел");
+    expect(onChange).toHaveBeenCalledWith({
+      kind: "manual",
+      pinnedNode: "DE-1",
+      onFailure: "fallback",
+    });
+  });
+});
 
 describe("PolicyEditor — settings preserved across policy switches", () => {
   it("keeps the check interval through a round-trip via «Приоритетный узел»", () => {

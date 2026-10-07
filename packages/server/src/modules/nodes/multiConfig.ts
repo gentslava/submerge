@@ -317,6 +317,17 @@ export function buildMultiConfig(
   domainValidation?: DomainValidationListenerInput,
   managedDomainRules?: ManagedDomainRulesProviderInput,
 ): string {
+  return buildMultiConfigDocument(channels, secret, domainValidation, managedDomainRules).yaml;
+}
+
+// Expose the same post-allocation pool names used in the emitted channel groups.
+// Callers returning names to the UI must never return this internal YAML/config.
+export function buildMultiConfigDocument(
+  channels: ChannelConfigInput[],
+  secret: string = env.MIHOMO_SECRET,
+  domainValidation?: DomainValidationListenerInput,
+  managedDomainRules?: ManagedDomainRulesProviderInput,
+): { yaml: string; nodeNamesByChannel: Map<string, string[]> } {
   const proxyChannels = channels.filter(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
   );
@@ -548,5 +559,8 @@ export function buildMultiConfig(
       ),
     ),
   };
-  return yaml.dump(cfg, { lineWidth: -1 });
+  return {
+    yaml: yaml.dump(cfg, { lineWidth: -1 }),
+    nodeNamesByChannel: new Map(Array.from(builds, ([id, build]) => [id, raceNames(build)])),
+  };
 }

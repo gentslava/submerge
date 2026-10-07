@@ -52,7 +52,7 @@ vi.mock("@/features/auth/useAuth", () => ({
   useAuthStatus: () => ({ data: { required: false } }),
   useLogout: () => ({ isPending: false, mutate: vi.fn() }),
 }));
-vi.mock("@/features/channels/PolicyEditor", () => ({ PolicyEditor: () => null }));
+vi.mock("@/features/channels/ChannelPolicyEditor", () => ({ ChannelPolicyEditor: () => null }));
 vi.mock("@/features/domain-intelligence/DomainIntelligenceSettingsSection", () => ({
   DomainIntelligenceSettingsSection: () => null,
 }));

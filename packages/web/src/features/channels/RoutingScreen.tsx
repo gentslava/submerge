@@ -23,7 +23,6 @@ import {
   DEFAULT_AUTO_TEST_URL,
   type DirectChannel,
   type ProxyChannel,
-  PSEUDO_NODE_SET,
   type UpdateDirectInput,
 } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -75,15 +74,11 @@ export function RoutingScreen() {
   const userProxyChannelCount = nonDefaultChannels.filter(
     (channel) => channel.target === "proxy",
   ).length;
-  const nodesQuery = useQuery(trpc.nodes.list.queryOptions());
-  // Real (pinnable) exit nodes for each card's policy editor — same derivation as
-  // the Settings screen (mihomo's built-in groups/policies aren't valid pins).
-  const nodeNames = (nodesQuery.data?.all ?? [])
-    .map((n) => n.name)
-    .filter((n) => !PSEUDO_NODE_SET.has(n));
-
   const invalidateChannels = () =>
-    qc.invalidateQueries({ queryKey: trpc.channels.list.queryKey() });
+    Promise.all([
+      qc.invalidateQueries({ queryKey: trpc.channels.list.queryKey() }),
+      qc.resetQueries({ queryKey: trpc.channels.policyNodes.queryKey() }),
+    ]);
 
   const updateMutation = useMutation(
     trpc.channels.update.mutationOptions({
@@ -269,7 +264,6 @@ export function RoutingScreen() {
                     channel={channel}
                     canMoveUp={index > 0}
                     canMoveDown={index < nonDefaultChannels.length - 1}
-                    nodeNames={nodeNames}
                     busy={updateMutation.isPending && updateMutation.variables?.id === channel.id}
                     initiallyExpanded={channel.id === justCreatedId}
                     onToggleEnabled={(enabled) =>
@@ -301,7 +295,6 @@ export function RoutingScreen() {
                 ) : (
                   <ChannelCard
                     channel={activeChannel}
-                    nodeNames={nodeNames}
                     className="shadow-lg"
                     reorderControl={<OverlayGrip />}
                     onToggleEnabled={(enabled) =>
@@ -323,7 +316,6 @@ export function RoutingScreen() {
           {defaultChannel && (
             <ChannelCard
               channel={defaultChannel}
-              nodeNames={nodeNames}
               busy={updateMutation.isPending && updateMutation.variables?.id === defaultChannel.id}
               onToggleEnabled={(enabled) =>
                 updateMutation.mutate({ id: defaultChannel.id, enabled })
@@ -364,7 +356,6 @@ interface SortableChannelCardBaseProps {
 
 interface SortableProxyChannelCardProps extends SortableChannelCardBaseProps {
   channel: ProxyChannel;
-  nodeNames: string[];
   onToggleEnabled: (enabled: boolean) => void;
   onUpdateName: (name: string) => void;
   onUpdateMatcher: (matcher: ProxyChannel["matcher"]) => void;
@@ -455,7 +446,6 @@ function SortableChannelCard(props: SortableChannelCardProps) {
     <ChannelCard
       {...common}
       channel={props.channel}
-      nodeNames={props.nodeNames}
       onToggleEnabled={props.onToggleEnabled}
       onUpdateName={props.onUpdateName}
       onUpdateMatcher={props.onUpdateMatcher}

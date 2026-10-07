@@ -2,7 +2,7 @@ import { type DirectChannel, emptyChannelMatcher } from "@submerge/shared";
 import { TRPCError } from "@trpc/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCallerFactory, router } from "../../trpc/trpc.js";
-import { applyConfig } from "../nodes/service.js";
+import { applyConfig, getPolicyNodeNames } from "../nodes/service.js";
 import * as pool from "./pool.js";
 import { channelsRouter } from "./router.js";
 import * as service from "./service.js";
@@ -29,7 +29,10 @@ vi.mock("./pool.js", () => ({
   getPool: vi.fn(() => []),
   setPool: vi.fn(),
 }));
-vi.mock("../nodes/service.js", () => ({ applyConfig: vi.fn() }));
+vi.mock("../nodes/service.js", () => ({
+  applyConfig: vi.fn(),
+  getPolicyNodeNames: vi.fn(() => []),
+}));
 
 const ctx = { authed: true, authRequired: false, req: {} as never, res: {} as never };
 const caller = createCallerFactory(router({ channels: channelsRouter }))(ctx);
@@ -48,6 +51,12 @@ beforeEach(() => {
 });
 
 describe("channels router — engine-apply status on every config mutation", () => {
+  it("reads canonical policy candidates without applying the config", async () => {
+    vi.mocked(getPolicyNodeNames).mockReturnValueOnce(["AUTO-2"]);
+    expect(await caller.channels.policyNodes({ id: "default" })).toEqual(["AUTO-2"]);
+    expect(getPolicyNodeNames).toHaveBeenCalledWith({}, "default");
+    expect(applyConfig).not.toHaveBeenCalled();
+  });
   it("create surfaces applied alongside the created channel", async () => {
     vi.mocked(service.createChannel).mockReturnValue({ id: "ch1", name: "X" } as never);
     applyConfigMock.mockResolvedValueOnce({ nodes: 0, applied: false });

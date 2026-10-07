@@ -37,7 +37,7 @@ import type {
   ManagedDomainRulesProviderInput,
   ProxyChannelConfigInput,
 } from "./multiConfig.js";
-import { buildMultiConfig } from "./multiConfig.js";
+import { buildMultiConfig, buildMultiConfigDocument } from "./multiConfig.js";
 
 const DOMAIN_VALIDATION_PASSWORD_KEY = "internal.domainValidationProxyPassword";
 
@@ -168,14 +168,22 @@ export interface ActiveRoutingInputs {
 // One canonical projection of persisted channels into the exact inputs used by
 // config generation. Domain coverage reads this same projection so it cannot
 // drift from the rules Mihomo actually receives.
-export function collectActiveRoutingInputs(db: Db): ActiveRoutingInputs {
+export function collectActiveRoutingInputs(
+  db: Db,
+  includeDisabledChannelId?: string,
+): ActiveRoutingInputs {
   const allProxies = collectProxies(db);
   const excluded = getExcludedSet(db);
   const keep = (proxies: ProxyConfig[]): ProxyConfig[] =>
     proxies.filter((proxy) => !excluded.has(proxy.name));
   const inventory = keep(allProxies);
   const inputs: ChannelConfigInput[] = listChannels(db)
-    .filter((channel) => (channel.target === "proxy" && channel.isDefault) || channel.enabled)
+    .filter(
+      (channel) =>
+        (channel.target === "proxy" && channel.isDefault) ||
+        channel.enabled ||
+        channel.id === includeDisabledChannelId,
+    )
     .map((channel): ChannelConfigInput => {
       const base = {
         target: channel.target,
@@ -209,6 +217,14 @@ export function collectActiveRoutingInputs(db: Db): ActiveRoutingInputs {
         : { ...proxyBase, proxies: pool };
     });
   return { inputs, inventory };
+}
+
+// Read-only preview of the exact pool targets config generation assigns. A
+// disabled channel is projected as enabled for editing, without a DB write.
+export function getPolicyNodeNames(db: Db, channelId: string): string[] {
+  const { inputs } = collectActiveRoutingInputs(db, channelId);
+  const document = buildMultiConfigDocument(inputs, "");
+  return document.nodeNamesByChannel.get(channelId) ?? [];
 }
 
 export function readDomainValidationProxyPassword(db: Db): string | null {
