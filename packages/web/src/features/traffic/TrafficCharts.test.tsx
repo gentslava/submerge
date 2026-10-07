@@ -256,7 +256,8 @@ describe("ThroughputChart", () => {
       "datetime",
       "1970-01-01T00:00:00.000Z/1970-01-01T00:00:03.000Z",
     );
-    expect(tooltip).toHaveStyle({ right: "0.75rem" });
+    // Assert the declared offset; jsdom 30 resolves rem to px in computed styles.
+    expect(tooltip.style.right).toBe("0.75rem");
   });
 
   it("announces keyboard inspection and resumes when focus leaves", async () => {
