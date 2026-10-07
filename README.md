@@ -154,7 +154,7 @@ The runtime `mihomo/config.yaml` contains your nodes and is git-ignored — neve
 
 ## Development
 
-Node 24 LTS · pnpm workspaces · strict TypeScript · Biome · Vitest.
+Node 24 LTS (24.15.0+) · pnpm workspaces · strict TypeScript · Biome · Vitest.
 
 ```bash
 pnpm install

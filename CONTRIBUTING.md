@@ -4,7 +4,7 @@ Guide for developers and AI agents. Detailed agent rules: [AGENTS.md](AGENTS.md)
 
 ## Requirements
 
-- Node **24 LTS**, pnpm, Docker (for happ-decoder/mihomo and builds).
+- Node **24 LTS (24.15.0+)**, pnpm, Docker (for happ-decoder/mihomo and builds).
 
 ## Getting started (v2)
 

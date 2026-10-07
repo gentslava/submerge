@@ -20,7 +20,7 @@ Audience: **self-hosted product**, single-admin (optional password), deployed vi
 
 ## Stack (v2)
 
-Node **24 LTS**, strict TypeScript, pnpm workspaces, Biome, Vitest/Playwright.
+Node **24 LTS (24.15.0+)**, strict TypeScript, pnpm workspaces, Biome, Vitest/Playwright.
 - **server**: tRPC v11 · Drizzle ORM + SQLite (better-sqlite3, WAL) · Zod 4 · pino · session auth (@node-rs/argon2) · SSE hub.
 - **web**: Vite · React 19 · shadcn/ui · Tailwind v4 · TanStack Query/Router · uPlot · lucide-react · sonner.
 - **shared**: domain Zod schemas + inferred types (single contract).
