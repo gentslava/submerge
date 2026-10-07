@@ -107,6 +107,7 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
         fields.sourceId = input.sourceId;
       if (
         input.kind === "sub" ||
+        input.kind === "node" ||
         input.kind === "happ" ||
         input.kind === "vless" ||
         input.kind === "hysteria2" ||

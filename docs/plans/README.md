@@ -6,6 +6,7 @@ for their status. Mark a plan **done** here when its feature is merged to master
 
 | Plan | Status |
 |---|---|
+| [Single-node JSON/YAML import](2026-10-07-single-node-import.md) | complete and verified locally; prepared for PR, not deployed |
 | [Phase 1 — scaffold](2026-06-29-submerge-v2-phase1-scaffold.md) | done |
 | [Phase 2 — ingest](2026-06-29-submerge-v2-phase2-ingest.md) | done |
 | [Phase 3 — web SPA](2026-06-29-submerge-v2-phase3-web.md) | done |

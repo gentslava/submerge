@@ -113,10 +113,7 @@ export function SourcesScreen() {
 
   return (
     <div className="responsive-page responsive-page--sources page-content page-stack flex flex-col">
-      <PageHeader
-        title="Источники"
-        subtitle="Подписки и одиночные ссылки, из которых собираются узлы"
-      />
+      <PageHeader title="Источники" subtitle="Подписки, ссылки и конфиги одиночных узлов" />
 
       <SourceForm />
 
@@ -194,7 +191,7 @@ export function SourcesScreen() {
           </DndContext>
         ) : (
           <div className="sources-list-state flex flex-col items-center gap-3 rounded-lg border border-border-subtle bg-surface p-10 text-center text-text-secondary">
-            <span>Пока нет источников — вставьте ссылку в форму выше.</span>
+            <span>Пока нет источников — вставьте ссылку или конфиг в форму выше.</span>
             <Button
               variant="secondary"
               size="sm"

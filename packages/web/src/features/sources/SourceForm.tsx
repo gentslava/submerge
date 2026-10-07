@@ -17,7 +17,7 @@ import { detectKindHint, KIND_LABEL } from "./detectKind";
 // Use z.input to get the pre-default type: hwid?: boolean | undefined
 type FormValues = z.input<typeof addSourceInput>;
 
-const MAX_CONF_BYTES = 512_000; // a WireGuard/subscription file is tiny; guard against a wrong pick
+const MAX_CONF_BYTES = 512_000;
 
 export function SourceForm() {
   const trpc = useTRPC();
@@ -64,13 +64,17 @@ export function SourceForm() {
       toast.error("Файл слишком большой для конфига источника");
       return;
     }
-    const text = await file.text();
-    setValue("value", text, { shouldValidate: true, shouldDirty: true });
+    try {
+      const text = await file.text();
+      setValue("value", text, { shouldValidate: true, shouldDirty: true });
+    } catch {
+      toast.error("Не удалось прочитать файл конфига");
+    }
   }
 
   function onSubmit(data: FormValues) {
     // After zodResolver transforms, hwid defaults to false if undefined
-    addMutation.mutate({ value: data.value, hwid: data.hwid ?? false });
+    addMutation.mutate({ value: data.value, hwid: kindHint !== "node" && (data.hwid ?? false) });
   }
 
   return (
@@ -89,7 +93,9 @@ export function SourceForm() {
             <Textarea
               id="source-value"
               {...register("value")}
-              placeholder={"vless://…   ·   happ://…   ·   https://…/sub/…   ·   AmneziaWG .conf"}
+              placeholder={
+                "Ссылка узла или подписки · JSON / YAML одного узла · WireGuard / AmneziaWG .conf"
+              }
               aria-label="Ссылка источника"
               className="h-[120px] resize-none p-3.5"
               onDragOver={(e) => {
@@ -105,12 +111,12 @@ export function SourceForm() {
             />
           </div>
           {/* File affordance — a .conf is easier to attach than to copy out of a file. */}
-          <div className="flex items-center gap-2 text-fine text-text-tertiary">
+          <div className="flex flex-wrap items-center gap-2 text-fine text-text-tertiary">
             <input
               ref={fileRef}
               id={fileInputId}
               type="file"
-              accept=".conf,.txt,text/plain"
+              accept=".json,.yaml,.yml,.conf,.txt,application/json,text/plain,application/yaml"
               className="sr-only"
               onChange={(e) => {
                 void loadFile(e.target.files?.[0]);
@@ -125,7 +131,7 @@ export function SourceForm() {
               <Upload className="h-3.5 w-3.5" aria-hidden="true" />
               Выбрать файл
             </button>
-            <span>или перетащите .conf сюда</span>
+            <span>или перетащите конфиг сюда</span>
           </div>
         </div>
 
@@ -144,33 +150,39 @@ export function SourceForm() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Controller
-              name="hwid"
-              control={control}
-              render={({ field }) => (
-                <Switch
-                  id="hwid-switch"
-                  checked={field.value ?? false}
-                  onCheckedChange={field.onChange}
-                  aria-label="Передавать HWID"
-                />
-              )}
-            />
-            <label htmlFor="hwid-switch" className="flex cursor-pointer flex-col gap-[3px]">
-              <span className="text-sub font-medium text-text-primary">Передавать HWID</span>
-              <span className="max-w-[320px] text-fine text-text-tertiary">
-                Привязка к устройству — сервер выдаёт узлы только для текущего HWID
-              </span>
-            </label>
-          </div>
+          {kindHint === "node" ? (
+            <span className="text-fine text-text-tertiary">
+              Только один прокси-узел. DNS и правила маршрутизации не импортируются.
+            </span>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Controller
+                name="hwid"
+                control={control}
+                render={({ field }) => (
+                  <Switch
+                    id="hwid-switch"
+                    checked={field.value ?? false}
+                    onCheckedChange={field.onChange}
+                    aria-label="Передавать HWID"
+                  />
+                )}
+              />
+              <label htmlFor="hwid-switch" className="flex cursor-pointer flex-col gap-[3px]">
+                <span className="text-sub font-medium text-text-primary">Передавать HWID</span>
+                <span className="max-w-[320px] text-fine text-text-tertiary">
+                  Привязка к устройству — сервер выдаёт узлы только для текущего HWID
+                </span>
+              </label>
+            </div>
+          )}
         </div>
 
         <div className="source-form-submit flex">
           {/* The button sets disabled:pointer-events-none, so hover passes to this
               span — its title explains why Добавить is inactive while empty. */}
           <span
-            title={typed ? undefined : "Вставьте ссылку источника"}
+            title={typed ? undefined : "Вставьте ссылку или конфиг источника"}
             className="source-form-submit-wrap inline-flex w-full"
           >
             <Button

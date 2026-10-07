@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchSubscription, ingestHapp, ingestSource } from "./ingest.js";
+import { xrayConfig } from "./single-node.fixture.js";
 
 const text = (body: string, init: ResponseInit = {}) =>
   new Response(body, { status: 200, ...init });
@@ -73,6 +74,33 @@ describe("fetchSubscription", () => {
 });
 
 describe("ingestSource", () => {
+  it("recognizes flow YAML after comments and document markers without fetching embedded URLs", async () => {
+    const fetch = vi.fn(() => {
+      throw new Error("must not fetch inline configs");
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await ingestSource(
+      '# comment\n---\n{name: Node, type: trojan, server: example.com, port: 443, password: secret, ws-opts: {path: "https://example.com/socket"}}',
+    );
+    expect(result.kind).toBe("node");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("automatically imports one JSON node without fetching its embedded DNS URL", async () => {
+    const fetch = vi.fn(() => {
+      throw new Error("must not fetch inline configs");
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await ingestSource(JSON.stringify(xrayConfig), true, "HWID");
+    expect(result).toMatchObject({
+      kind: "node",
+      label: "My single node",
+      meta: null,
+      subUrl: null,
+      skipped: [],
+    });
+    expect(result.proxies).toHaveLength(1);
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("ingests a single vless node", async () => {
     const res = await ingestSource("vless://u@ex.com:443?security=tls#NL", false);
     expect(res.kind).toBe("vless");

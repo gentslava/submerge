@@ -1,4 +1,7 @@
+import { isNodeConfigText } from "@submerge/shared";
+
 export type KindHint =
+  | "node"
   | "vless"
   | "hysteria2"
   | "vmess"
@@ -30,6 +33,7 @@ const SINGLE_LINK_HINT: Record<string, KindHint> = {
 export function detectKindHint(value: string): KindHint {
   const v = value.trim();
   if (!v) return "unknown";
+  if (isNodeConfigText(v)) return "node";
   // A .conf (INI) has no scheme, so detect it before the scheme-based checks.
   if (/^\s*\[Interface\]/m.test(v) && /PrivateKey\s*=/i.test(v))
     return /^\s*(Jc|Jmin|Jmax|S1|S2|S3|S4|H1|H2|H3|H4|Itime|I1|I2|I3|I4|I5|J1|J2|J3)\s*=/im.test(v)
@@ -44,6 +48,7 @@ export function detectKindHint(value: string): KindHint {
 }
 
 export const KIND_LABEL: Record<KindHint, string> = {
+  node: "один узел · JSON / YAML",
   vless: "VLESS",
   hysteria2: "Hysteria2",
   vmess: "VMess",

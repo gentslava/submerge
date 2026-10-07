@@ -122,6 +122,16 @@ describe("SourceRefreshScheduler", () => {
       .returning()
       .get();
     const calls: number[] = [];
+    const node = db
+      .insert(sources)
+      .values({
+        kind: "node",
+        value: '{"outbounds": []}',
+        label: "Static node",
+        updatedAt: "2026-07-20 00:00:00",
+      })
+      .returning()
+      .get();
     const coordinator = {
       refresh: vi.fn(async (id: number) => {
         calls.push(id);
@@ -148,6 +158,7 @@ describe("SourceRefreshScheduler", () => {
     );
     expect(rows.find((row) => row.id === vless.id)?.nextRefreshAttemptAt).toBeNull();
     expect(rows.find((row) => row.id === inline.id)?.nextRefreshAttemptAt).toBeNull();
+    expect(rows.find((row) => row.id === node.id)?.nextRefreshAttemptAt).toBeNull();
   });
 
   it("joins overlapping pulses", async () => {
