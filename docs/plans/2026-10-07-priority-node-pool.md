@@ -103,3 +103,27 @@ An empty pool retains its existing all-nodes meaning.
   (46.4s), at the same eight widths and themes. Refreshed screenshots were inspected.
 - Independent final reviewer `/root/final_code_review` rechecked all 18 paths
   against the new base and installed query/tRPC behavior: **No findings**.
+
+## CI database isolation follow-up
+
+- PR #46 failed with `SQLITE_BUSY` during the `db/client` singleton import in
+  `nodes/service.test.ts`. Concurrent test workers used the same default runtime
+  database file even when their test fixtures later called `createDb(":memory:")`.
+- Keep production database behavior unchanged. Set `DB_PATH=:memory:` in the
+  server Vitest environment before module imports, covering all server suites.
+- [x] Red singleton-isolation regression using an explicit external file path.
+- [x] Config fix, full static gate and parallel server-suite verification.
+- [x] Independent incremental and final `/code-review`, findings resolved.
+- Publication target: existing PR #46 on `codex/priority-node-pool`. Remote head
+  and CI results are verified separately from the local validation below.
+- The regression failed against an external `DB_PATH` before the configuration
+  change and passed afterward together with the production environment-default
+  tests (10 tests). An exclusive SQLite lock was held on the external file for
+  the entire server suite with eight workers: **1271 passed**, two existing skips.
+- Full `pnpm verify:static` passed: 140 shared / 1271 server / 294 web tests,
+  repository lint, token drift, typecheck and production builds. This follow-up
+  changes only test configuration and its regression; the existing 42 passing
+  browser scenarios remain the UI evidence for the feature.
+- Incremental reviewer `/root/incremental_code_review` and whole-change final
+  reviewer `/root/final_code_review`: **No findings**. Both checked pre-import
+  environment overrides, explicit file fixtures and production defaults.
