@@ -73,7 +73,6 @@ const directChannel: DirectChannel = {
 
 function channelProps() {
   return {
-    nodeNames: ["NL-1"],
     onToggleEnabled: vi.fn(),
     onUpdateName: vi.fn(),
     onUpdateMatcher: vi.fn(),

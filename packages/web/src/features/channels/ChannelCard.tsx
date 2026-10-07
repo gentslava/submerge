@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
+import { ChannelPolicyEditor } from "./ChannelPolicyEditor";
 import { DirectChannelEditor } from "./DirectChannelEditor";
 import { DomainTags } from "./DomainTags";
 import { GeoIpTags, GeoSiteTags } from "./GeoTags";
@@ -31,7 +32,6 @@ import {
   type MatcherSummaryItem,
   matcherSummaryItems,
 } from "./matcher-summary";
-import { PolicyEditor } from "./PolicyEditor";
 import { PoolPicker } from "./PoolPicker";
 import { PresetChips } from "./PresetChips";
 import { RuleProviderRows } from "./RuleProviderRows";
@@ -53,10 +53,6 @@ interface ChannelCardBaseProps {
 
 interface ProxyChannelCardProps extends ChannelCardBaseProps {
   channel: ProxyChannel;
-  // Real (pinnable) exit nodes for the policy editor's manual-pin dropdown — same
-  // pseudo-filtered derivation as the Settings screen (nodesQuery.all minus
-  // PSEUDO_NODE_SET), passed down so both screens share one implementation.
-  nodeNames: string[];
   onToggleEnabled: (enabled: boolean) => void;
   onUpdateName: (name: string) => void;
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
@@ -153,7 +149,6 @@ export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(
             ) : (
               <ChannelEditor
                 channel={props.channel}
-                nodeNames={props.nodeNames}
                 onUpdateName={props.onUpdateName}
                 onUpdateMatcher={props.onUpdateMatcher}
                 onUpdatePolicy={props.onUpdatePolicy}
@@ -358,14 +353,12 @@ function DefaultRow({
 // already edits the Default's policy through the same setPolicy call).
 function ChannelEditor({
   channel,
-  nodeNames,
   onUpdateName,
   onUpdateMatcher,
   onUpdatePolicy,
   onRemove,
 }: {
   channel: ProxyChannel;
-  nodeNames: string[];
   onUpdateName: (name: string) => void;
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
   onUpdatePolicy: (policy: ChannelPolicy) => void;
@@ -458,7 +451,11 @@ function ChannelEditor({
       {/* PolicyEditor renders its own label/sub + border-bottom per row (shared
           with Settings) — no extra padding wrapper here, or every row would be
           double-indented. */}
-      <PolicyEditor policy={channel.policy} nodeNames={nodeNames} onChange={onUpdatePolicy} />
+      <ChannelPolicyEditor
+        channelId={channel.id}
+        policy={channel.policy}
+        onChange={onUpdatePolicy}
+      />
       {!channel.isDefault && (
         <div className="flex w-full justify-end px-[18px] py-4">
           <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>

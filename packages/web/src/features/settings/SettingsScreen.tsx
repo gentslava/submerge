@@ -1,9 +1,4 @@
-import {
-  type ChannelPolicy,
-  DEFAULT_POLL_INTERVAL,
-  DEFAULT_SPEED_POLICY,
-  PSEUDO_NODE_SET,
-} from "@submerge/shared";
+import { type ChannelPolicy, DEFAULT_POLL_INTERVAL, DEFAULT_SPEED_POLICY } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
@@ -15,7 +10,7 @@ import { LabeledControlRow as Row } from "@/components/ui/labeled-control-row";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStatus, useLogout } from "@/features/auth/useAuth";
-import { PolicyEditor } from "@/features/channels/PolicyEditor";
+import { ChannelPolicyEditor } from "@/features/channels/ChannelPolicyEditor";
 import { DomainIntelligenceSettingsSection } from "@/features/domain-intelligence/DomainIntelligenceSettingsSection";
 import { liveIndicator } from "@/features/live/status";
 import { warnIfNotApplied } from "@/lib/apply-toast";
@@ -84,11 +79,6 @@ export function SettingsScreen() {
   // speed default while channelQuery hasn't loaded yet (PolicyEditor takes a required,
   // never-undefined policy — the loading placeholder is this screen's concern).
   const policy: ChannelPolicy = channelQuery.data?.policy ?? DEFAULT_SPEED_POLICY;
-  // Real (pinnable) exit nodes for the manual policy's dropdown — mihomo's built-in
-  // groups/policies aren't valid pin targets.
-  const nodeNames = (nodesQuery.data?.all ?? [])
-    .map((n) => n.name)
-    .filter((n) => !PSEUDO_NODE_SET.has(n));
   // The node the Default channel is actually routing through right now, resolved
   // past AUTO — seeds PolicyEditor's manual pin with "wherever we already are"
   // instead of an arbitrary first entry when switching Авто → Приоритетный узел.
@@ -149,9 +139,9 @@ export function SettingsScreen() {
           </Section>
 
           <Section title="Авто-выбор узла" desc="Как submerge держит активным лучший узел.">
-            <PolicyEditor
+            <ChannelPolicyEditor
               policy={policy}
-              nodeNames={nodeNames}
+              channelId="default"
               {...(activeNode !== undefined ? { activeNode } : {})}
               onChange={(p) => setPolicyMutation.mutate({ id: "default", policy: p })}
             />

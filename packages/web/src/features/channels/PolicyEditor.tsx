@@ -45,10 +45,12 @@ export function PolicyEditor({
   onChange,
   nodeNames,
   activeNode,
+  nodeNamesUnavailable,
 }: {
   policy: ChannelPolicy;
   onChange: (next: ChannelPolicy) => void;
   nodeNames: string[];
+  nodeNamesUnavailable?: string;
   // The node currently carrying this channel's traffic (already resolved past
   // AUTO — e.g. `now === "AUTO" ? autoNow : now`), used ONLY to seed the manual
   // policy's pin when switching into it: "priority node" should default to
@@ -125,7 +127,7 @@ export function PolicyEditor({
       const pinnedNode =
         activeNode !== undefined && nodeNames.includes(activeNode) ? activeNode : nodeNames[0];
       if (!pinnedNode) {
-        toast.error("Нет доступных узлов для закрепления");
+        toast.error(nodeNamesUnavailable ?? "Нет доступных узлов для закрепления");
         return;
       }
       onChange({ kind: "manual", pinnedNode, onFailure: d.onFailure });
@@ -254,18 +256,32 @@ export function PolicyEditor({
         </>
       ) : policy.kind === "manual" ? (
         <>
-          <Row label="Приоритетный узел" sub="Через него идёт трафик большую часть времени">
+          <Row
+            label="Приоритетный узел"
+            sub={
+              nodeNamesUnavailable ??
+              (nodeNames.includes(policy.pinnedNode)
+                ? "Через него идёт трафик большую часть времени"
+                : "Сохранённый узел недоступен в пуле. Выберите другой.")
+            }
+          >
             <Select
               aria-label="Приоритетный узел"
-              value={policy.pinnedNode}
-              onChange={(e) => updateManual({ pinnedNode: e.target.value })}
+              value={nodeNames.includes(policy.pinnedNode) ? policy.pinnedNode : ""}
+              disabled={nodeNames.length === 0}
+              onChange={(e) => {
+                if (nodeNames.includes(e.target.value))
+                  updateManual({ pinnedNode: e.target.value });
+              }}
               className="policy-node-select w-full"
             >
-              {/* Keep the current pin present even if it's momentarily absent from the live list. */}
-              {(nodeNames.includes(policy.pinnedNode)
-                ? nodeNames
-                : [policy.pinnedNode, ...nodeNames]
-              ).map((n) => (
+              {!nodeNames.includes(policy.pinnedNode) && (
+                <option value="" disabled>
+                  {nodeNamesUnavailable ??
+                    (nodeNames.length > 0 ? "Выберите узел из пула" : "Нет доступных узлов в пуле")}
+                </option>
+              )}
+              {nodeNames.map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>

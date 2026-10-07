@@ -57,13 +57,17 @@ export function PoolPicker({ channelId }: PoolPickerProps) {
   const setPoolMutation = useMutation(
     trpc.channels.setPool.mutationOptions({
       onSuccess: (data) => {
-        void qc.invalidateQueries({ queryKey: trpc.channels.list.queryKey() });
-        void qc.invalidateQueries({
-          queryKey: trpc.channels.getPool.queryKey({ id: channelId }),
-        });
         warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
+      // The DB write precedes engine apply, which can fail. Always re-read the
+      // persisted pool; keep the mutation pending until eligibility is current.
+      onSettled: () =>
+        Promise.all([
+          qc.invalidateQueries({ queryKey: trpc.channels.list.queryKey() }),
+          qc.invalidateQueries({ queryKey: trpc.channels.getPool.queryKey({ id: channelId }) }),
+          qc.resetQueries({ queryKey: trpc.channels.policyNodes.queryKey({ id: channelId }) }),
+        ]),
     }),
   );
 

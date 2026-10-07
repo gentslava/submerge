@@ -10,7 +10,7 @@ import {
 } from "@submerge/shared";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
-import { applyConfig } from "../nodes/service.js";
+import { applyConfig, getPolicyNodeNames } from "../nodes/service.js";
 import { registry } from "./instance.js";
 import { getPool, setPool } from "./pool.js";
 import {
@@ -62,6 +62,9 @@ export const channelsRouter = router({
     return { ok: true as const, applied };
   }),
   getPool: protectedProcedure.input(channelIdInput).query(({ input }) => getPool(db, input.id)),
+  policyNodes: protectedProcedure
+    .input(channelIdInput)
+    .query(({ input }) => getPolicyNodeNames(db, input.id)),
   setPool: protectedProcedure.input(setChannelPoolInput).mutation(async ({ input }) => {
     setPool(db, input.id, input.members);
     // The pool changes which proxies the channel's group may route through.

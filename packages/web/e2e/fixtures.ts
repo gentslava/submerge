@@ -82,6 +82,10 @@ const responses: Record<string, unknown> = {
   },
   "sources.list": [],
   "channels.get": defaultChannelFixture,
+  "channels.policyNodes": [
+    "Амстердам — основной маршрут",
+    "Длинное имя резервного узла для проверки обрезания",
+  ],
   "channels.list": [directChannelFixture, defaultChannelFixture],
   "channels.reorder": { ok: true, applied: true },
   "channels.updateDirect": { channel: directChannelFixture, applied: true },
