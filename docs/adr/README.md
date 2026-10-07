@@ -2,7 +2,7 @@
 
 Short records of accepted architectural decisions and their rationale. Format: Context → Decision → Consequences. Goal: prevent agents and developers from re-discovering what has already been decided.
 
-When a new significant decision is made, add a file `NNNN-short-name.md` with the next number and a line in the index below.
+When a new significant decision is made, add a file `NNNN-short-name.md` with the next number and a line in the index below. An accepted ADR is clarified in place: edit the text and add a `**Revised:** YYYY-MM-DD — what changed` line under the header, so readers see what changed and when. To reverse a decision, add a new ADR and mark the old one `Superseded by NNNN`.
 
 ## Index
 
@@ -10,3 +10,5 @@ When a new significant decision is made, add a file `NNNN-short-name.md` with th
 - [0002](0002-hwid-per-source.md) — X-Hwid as a per-source option (off by default)
 - [0003](0003-v2-stack.md) — v2 stack: React + tRPC + Drizzle/SQLite, SPA without SSR
 - [0004](0004-anti-overengineering.md) — Minimal sufficient complexity (SQLite, pnpm monorepo, no Postgres/Nx/hexagonal)
+- [0005](0005-mihomo-native-domain-intelligence.md) — Mihomo-native domain intelligence as an optional Submerge background module
+- [0006](0006-local-domain-rule-store.md) — Local domain-rule source of truth with optional host-side export

@@ -8,6 +8,7 @@ import {
   Settings,
   SquareTerminal,
   Stethoscope,
+  WandSparkles,
 } from "lucide-react";
 
 /** A nav entry that routes to a real screen (functional <Link>). */
@@ -21,6 +22,7 @@ export interface NavLink {
     | "/routing"
     | "/logs"
     | "/diagnostics"
+    | "/auto-rules"
     | "/settings";
   label: string;
   icon: LucideIcon;
@@ -42,7 +44,7 @@ export interface NavPlaceholder {
 export type NavEntry = NavLink | NavPlaceholder;
 
 /**
- * The 8 sidebar nav items, in mockup order.
+ * The sidebar nav items, in mockup order.
  */
 export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/", label: "Узлы", icon: Server },
@@ -52,6 +54,7 @@ export const NAV_ENTRIES: NavEntry[] = [
   { kind: "link", to: "/logs", label: "Логи", icon: SquareTerminal },
   { kind: "link", to: "/sources", label: "Источники", icon: Layers },
   { kind: "link", to: "/diagnostics", label: "Диагностика", icon: Stethoscope, secondary: true },
+  { kind: "link", to: "/auto-rules", label: "Автоправила", icon: WandSparkles, secondary: true },
   { kind: "link", to: "/settings", label: "Настройки", icon: Settings },
 ];
 

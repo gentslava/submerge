@@ -23,7 +23,9 @@ WORKDIR /app
 RUN groupadd --system --gid 999 app && useradd --system --uid 999 --gid app app
 COPY --from=builder /app/deploy ./
 COPY --from=builder /app/packages/web/dist ./web
-RUN mkdir -p /app/data && chown -R app:app /app/data
+RUN mkdir -p /app/data /domain-rules \
+  && chown -R app:app /app/data /domain-rules \
+  && chmod 0700 /app/data /domain-rules
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV WEB_DIST=/app/web

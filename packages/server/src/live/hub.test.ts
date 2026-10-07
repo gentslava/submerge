@@ -211,6 +211,21 @@ describe("LiveHub", () => {
     expect(onReconnect).not.toHaveBeenCalled();
   });
 
+  it("calls onFirstConnect once when mihomo first becomes available", async () => {
+    const onFirstConnect = vi.fn();
+    const hub = new LiveHub({
+      fetchView: vi.fn(async () => view),
+      streamTraffic: async function* () {},
+      getInterval: () => 1_000,
+      onFirstConnect,
+    });
+
+    await hub.pollOnce();
+    await vi.waitFor(() => expect(onFirstConnect).toHaveBeenCalledTimes(1));
+    await hub.pollOnce();
+    expect(onFirstConnect).toHaveBeenCalledTimes(1);
+  });
+
   it("calls onReconnect when mihomo recovers after being unreachable", async () => {
     const onReconnect = vi.fn();
     let down = false;

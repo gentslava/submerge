@@ -4,9 +4,15 @@ import { db } from "../db/client.js";
 import { operationalLog } from "../log.js";
 import { registry } from "../modules/channels/instance.js";
 import { policyProbe, readDefaultPolicy } from "../modules/channels/service.js";
+import {
+  domainIntelligenceRuntimeCoordinator,
+  reconcileDomainRuleDeployment,
+  recoverDomainRuleDeploymentIfNeeded,
+  startDomainRuleApplyWorker,
+  wakeDomainRuleApplyWorker,
+} from "../modules/logs/singleton.js";
 import { recordPassiveBandwidth } from "../modules/nodes/passiveBandwidth.js";
 import {
-  applyConfig,
   collectProxies,
   getExcludedSet,
   mergeDbInventory,
@@ -58,12 +64,19 @@ export const liveHub = new LiveHub({
   },
   // The hub reports once per outage streak, so this can't flood the log.
   onError: (scope, err) => operationalLog("mihomo-live-failed", { scope }, err),
+  // If the boot-time forced apply ran before mihomo was available, retry it
+  // exactly once on first availability. No-op when boot already succeeded.
+  onFirstConnect: async () => {
+    await recoverDomainRuleDeploymentIfNeeded();
+    await startDomainRuleApplyWorker();
+    wakeDomainRuleApplyWorker();
+    await domainIntelligenceRuntimeCoordinator.recoverIfNeeded();
+  },
   // mihomo restarting under submerge (image update, crash) loses its config —
   // the boot-time apply only covers a submerge restart, so a genuine engine
   // reconnect also needs one. Best-effort: the hub already guards this call.
   onReconnect: async () => {
-    // A reconnected/restarted mihomo may have lost our config even though the DB
-    // didn't change, so force the reload past the "skip when unchanged" guard.
-    await applyConfig(db, undefined, undefined, { force: true });
+    await reconcileDomainRuleDeployment();
+    wakeDomainRuleApplyWorker();
   },
 });
