@@ -31,6 +31,38 @@ for (const width of [320, 390, 425, 768, 1024, 1440]) {
   });
 }
 
+for (const width of [390, 1440]) {
+  test(`skip link moves keyboard focus past navigation at ${width}px`, async ({ page }) => {
+    await installTrpcFixture(page);
+    await page.setViewportSize({ width, height: width === 1440 ? 1024 : 844 });
+    await page.goto("/");
+
+    const skipLink = page.getByRole("link", { name: "Перейти к содержимому" });
+    const main = page.getByRole("main");
+    await expect(skipLink).not.toBeInViewport();
+
+    await page.keyboard.press("Tab");
+    await expect(skipLink).toBeFocused();
+    await expect(skipLink).toBeInViewport();
+    if (width === 1440) {
+      await page.screenshot({ path: "/tmp/submerge-skip-link-1440.png", fullPage: true });
+    }
+
+    if (width === 1440) {
+      const brand = page.getByRole("link", { name: "submerge — на главную" });
+      const skipBox = await skipLink.boundingBox();
+      const brandBox = await brand.boundingBox();
+      if (!skipBox || !brandBox) throw new Error("Skip-link geometry is unavailable");
+      expect(skipBox.x).toBeLessThan(brandBox.x + brandBox.width);
+      expect(skipBox.y).toBeLessThan(brandBox.y + brandBox.height);
+    }
+
+    await page.keyboard.press("Enter");
+    await expect(main).toBeFocused();
+    await expect(skipLink).not.toBeInViewport();
+  });
+}
+
 test("overflow contract catches an overflowing app-main even when the document still fits", async ({
   page,
 }) => {

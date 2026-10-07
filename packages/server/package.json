@@ -10,6 +10,7 @@
     "dev": "tsx --conditions=development --watch src/index.ts",
     "build": "tsc -b",
     "test": "vitest run",
+    "domain-intelligence": "tsx --conditions=development src/domain-intelligence-cli.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },
@@ -21,6 +22,7 @@
     "drizzle-orm": "^0.45.2",
     "js-yaml": "^5.2.1",
     "pino": "^10.3.1",
+    "tldts": "^7.4.5",
     "undici": "^8.7.0",
     "zod": "^4.4.3"
   },

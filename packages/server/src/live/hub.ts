@@ -24,6 +24,11 @@ export interface HubDeps {
   // genuine reconnect, not the first connect — so callers can re-apply config
   // a restarted engine may have lost.
   onReconnect?: () => void | Promise<void>;
+  // Called exactly once on the first successful poll. Boot-time config apply
+  // can fail while mihomo is still starting; this hook lets callers retry that
+  // failed reconciliation without treating the initial availability as a
+  // genuine reconnect.
+  onFirstConnect?: () => void | Promise<void>;
 }
 
 export class LiveHub {
@@ -98,23 +103,31 @@ export class LiveHub {
     const wasHealthy = this.lastHealth;
     this.lastHealth = ok;
     this.emit({ type: "health", mihomo: ok });
-    // A genuine reconnect: unreachable → reachable, AFTER we've been healthy at
-    // least once before. The very first connect (everHealthy still false) is
-    // excluded — the boot-time apply already handles that case.
-    if (ok && !wasHealthy && this.everHealthy) {
+    // First availability and a genuine reconnect are separate lifecycle events:
+    // boot recovery may need the former, while engine drift recovery needs the
+    // latter after at least one prior healthy poll.
+    if (ok && !this.everHealthy) {
+      this.runHealthHandler(this.deps.onFirstConnect);
+    } else if (ok && !wasHealthy) {
       // Best-effort: a throwing/rejecting handler must not break the poll loop.
       // The call itself is deferred inside .then() (not passed directly to
       // Promise.resolve) so a SYNCHRONOUS throw from onReconnect is also
       // caught here instead of escaping into this setHealth call — a sync
       // throw escaping would corrupt lastHealth via pollOnce's outer catch
       // and re-fire onReconnect on every subsequent successful poll.
-      void Promise.resolve()
-        .then(() => this.deps.onReconnect?.())
-        .catch((err) => {
-          this.deps.onError?.("poll", err);
-        });
+      this.runHealthHandler(this.deps.onReconnect);
     }
     if (ok) this.everHealthy = true;
+  }
+
+  private runHealthHandler(handler: (() => void | Promise<void>) | undefined): void {
+    // Defer the call so both synchronous throws and rejected promises are
+    // contained and cannot corrupt the poll's health transition.
+    void Promise.resolve()
+      .then(() => handler?.())
+      .catch((err) => {
+        this.deps.onError?.("poll", err);
+      });
   }
 
   private scheduleNext(): void {

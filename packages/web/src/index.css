@@ -17,12 +17,12 @@
   --text-secondary: #585e6a;
   --text-tertiary: #6f7682;
   --text-disabled: #a9aeb9;
-  --accent: #6366f1;
-  --accent-hover: #5457e0;
+  --accent: #5558e6;
+  --accent-hover: #4f52d8;
   --accent-fg: #ffffff;
   --accent-text: #4f46e5;
-  --accent-bg: #6366f114;
-  --accent-border: #6366f133;
+  --accent-bg: #5558e614;
+  --accent-border: #5558e633;
   --online: #2e7d32;
   --online-bg: #2e7d321f;
   --slow: #a16207;
@@ -53,12 +53,12 @@
   --text-secondary: #9ba1ad;
   --text-tertiary: #6a707d;
   --text-disabled: #4a4f5a;
-  --accent: #6366f1;
-  --accent-hover: #7b7df4;
+  --accent: #5558e6;
+  --accent-hover: #5b5eea;
   --accent-fg: #ffffff;
   --accent-text: #adb0f8;
-  --accent-bg: #6366f126;
-  --accent-border: #6366f14d;
+  --accent-bg: #5558e626;
+  --accent-border: #5558e64d;
   --online: #3fb950;
   --online-bg: #3fb9501f;
   --slow: #d9a33a;
@@ -143,6 +143,13 @@
   --text-fine: 11px;
   --text-micro: 10px;
   --text-axis: 9px;
+}
+
+/* `text-accent-fg` looks like a typography utility to tailwind-merge and gets
+   discarded beside roles such as `text-sub`. Keep the on-accent foreground a
+   distinct semantic utility so primary controls retain their tokenized color. */
+@utility on-accent-fg {
+  color: var(--accent-fg);
 }
 
 /* Uses role vars directly: @layer base runs before @theme inline utilities exist. */

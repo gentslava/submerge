@@ -11,12 +11,21 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   real,
   sqliteTable,
   text,
   unique,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type {
+  CandidateDecisionEvidenceSummary,
+  CandidateDecisionReason,
+} from "../modules/domain-intelligence/decision.js";
+import {
+  PROBE_CATEGORIES,
+  type ProbeCategory,
+} from "../modules/domain-intelligence/probe-category.js";
 
 // Source entries: subscription URLs, vless://, happ:// links, or client deep-links.
 export const sources = sqliteTable("sources", {
@@ -139,3 +148,563 @@ export const nodeBandwidth = sqliteTable("node_bandwidth", {
   mbps: real("mbps").notNull(),
   testedAt: integer("tested_at").notNull(),
 });
+
+// Privacy-bounded destination observations. The canonical fingerprint excludes
+// source type so one connection seen by both the log stream and /connections can
+// reconcile without storing a client/connection identifier.
+export const domainObservations = sqliteTable(
+  "domain_observations",
+  {
+    fingerprint: text("fingerprint").primaryKey(),
+    fqdn: text("fqdn").notNull(),
+    observedAt: integer("observed_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+    transport: text("transport", { enum: ["tcp", "udp"] }).notNull(),
+    source: text("source", { enum: ["mihomo-log", "connection-snapshot"] }).notNull(),
+    count: integer("count").notNull().default(1),
+  },
+  (t) => [
+    check("domain_observations_timestamp_check", sql`${t.observedAt} >= 0`),
+    check("domain_observations_last_seen_check", sql`${t.lastSeenAt} >= ${t.observedAt}`),
+    check("domain_observations_transport_check", sql`${t.transport} in ('tcp', 'udp')`),
+    check(
+      "domain_observations_source_check",
+      sql`${t.source} in ('mihomo-log', 'connection-snapshot')`,
+    ),
+    check("domain_observations_count_check", sql`${t.count} >= 1`),
+    index("domain_observations_reconcile_idx").on(t.fqdn, t.transport, t.observedAt, t.source),
+    index("domain_observations_retention_idx").on(t.lastSeenAt),
+  ],
+);
+
+// One aggregate row per normalized FQDN and UTC day. It contains no client
+// dimensions, request payload, URL, or connection metadata.
+export const domainDailyStats = sqliteTable(
+  "domain_daily_stats",
+  {
+    day: text("day").notNull(),
+    fqdn: text("fqdn").notNull(),
+    connectionCount: integer("connection_count").notNull(),
+    firstSeenAt: integer("first_seen_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.day, t.fqdn] }),
+    check("domain_daily_stats_count_check", sql`${t.connectionCount} >= 1`),
+    check("domain_daily_stats_first_seen_check", sql`${t.firstSeenAt} >= 0`),
+    check("domain_daily_stats_last_seen_check", sql`${t.lastSeenAt} >= ${t.firstSeenAt}`),
+  ],
+);
+
+const MAX_DATE_MS = 8_640_000_000_000_000;
+const MAX_DATE_SQL = sql.raw(String(MAX_DATE_MS));
+const PROBE_CATEGORIES_SQL = sql.raw(PROBE_CATEGORIES.map((value) => `'${value}'`).join(", "));
+
+// Persistent validation queue plus the admin's reversible review state. Only a
+// candidate rederived from the current Never-add and scope policy is admitted;
+// raw observations remain in their own tables.
+export const domainCandidates = sqliteTable(
+  "domain_candidates",
+  {
+    fqdn: text("fqdn").primaryKey(),
+    registrableSite: text("registrable_site"),
+    selectedScope: text("selected_scope", { enum: ["exact", "site"] }),
+    proposedRule: text("proposed_rule"),
+    exclusionReason: text("exclusion_reason", {
+      enum: [
+        "excluded-tld",
+        "never-add-domain",
+        "never-add-suffix",
+        "telemetry-pattern",
+        "invalid-policy",
+      ],
+    }),
+    status: text("status", { enum: ["queued", "pending", "confirmed", "blocked", "excluded"] })
+      .notNull()
+      .default("queued"),
+    reviewState: text("review_state", { enum: ["active", "rejected"] })
+      .notNull()
+      .default("active"),
+    firstSeenAt: integer("first_seen_at").notNull(),
+    lastSeenAt: integer("last_seen_at").notNull(),
+    nextValidationAt: integer("next_validation_at").notNull(),
+    lastValidationAt: integer("last_validation_at"),
+    failureStreak: integer("failure_streak").notNull().default(0),
+    leaseId: text("lease_id"),
+    leaseUntil: integer("lease_until"),
+    leaseGeneration: integer("lease_generation").notNull().default(0),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    check(
+      "domain_candidates_status_check",
+      sql`${t.status} in ('queued', 'pending', 'confirmed', 'blocked', 'excluded')`,
+    ),
+    check("domain_candidates_review_state_check", sql`${t.reviewState} in ('active', 'rejected')`),
+    check("domain_candidates_fqdn_length_check", sql`length(${t.fqdn}) between 3 and 253`),
+    check(
+      "domain_candidates_site_length_check",
+      sql`${t.registrableSite} is null or length(${t.registrableSite}) between 3 and 253`,
+    ),
+    check(
+      "domain_candidates_rule_length_check",
+      sql`${t.proposedRule} is null or length(${t.proposedRule}) between 3 and 255`,
+    ),
+    check(
+      "domain_candidates_first_seen_check",
+      sql`${t.firstSeenAt} between 0 and ${MAX_DATE_SQL}`,
+    ),
+    check(
+      "domain_candidates_last_seen_check",
+      sql`${t.lastSeenAt} between ${t.firstSeenAt} and ${MAX_DATE_SQL}`,
+    ),
+    check(
+      "domain_candidates_next_validation_check",
+      sql`${t.nextValidationAt} between 0 and ${MAX_DATE_SQL}`,
+    ),
+    check(
+      "domain_candidates_last_validation_check",
+      sql`${t.lastValidationAt} is null or ${t.lastValidationAt} between 0 and ${MAX_DATE_SQL}`,
+    ),
+    check("domain_candidates_failure_streak_check", sql`${t.failureStreak} between 0 and 1000000`),
+    check(
+      "domain_candidates_scope_check",
+      sql`${t.selectedScope} is null or ${t.selectedScope} in ('exact', 'site')`,
+    ),
+    check(
+      "domain_candidates_eligibility_check",
+      sql`(${t.status} = 'excluded' and ${t.exclusionReason} in ('excluded-tld', 'never-add-domain', 'never-add-suffix', 'telemetry-pattern', 'invalid-policy') and ${t.selectedScope} is null and ${t.proposedRule} is null and ${t.leaseId} is null and ${t.leaseUntil} is null) or (${t.status} != 'excluded' and ${t.exclusionReason} is null and ${t.selectedScope} is not null and ${t.proposedRule} is not null)`,
+    ),
+    check(
+      "domain_candidates_lease_pair_check",
+      sql`(${t.leaseId} is null and ${t.leaseUntil} is null) or (${t.leaseId} is not null and length(${t.leaseId}) between 1 and 128 and ${t.leaseUntil} between 0 and ${MAX_DATE_SQL} and ${t.leaseGeneration} between 1 and 1000000000)`,
+    ),
+    check(
+      "domain_candidates_lease_generation_check",
+      sql`${t.leaseGeneration} between 0 and 1000000000`,
+    ),
+    check("domain_candidates_updated_check", sql`${t.updatedAt} between 0 and ${MAX_DATE_SQL}`),
+    index("domain_candidates_due_idx").on(t.nextValidationAt, t.leaseUntil),
+    index("domain_candidates_retention_idx").on(t.updatedAt),
+  ],
+);
+
+export const DOMAIN_VALIDATION_RUN_ERROR_CATEGORIES = [
+  "shutdown",
+  "lease-lost",
+  "coverage-failure",
+  "direct-probe-failure",
+  "proxy-probe-failure",
+  "decision-failure",
+  "policy-changed",
+  "infrastructure-failure",
+] as const;
+export type DomainValidationRunErrorCategory =
+  (typeof DOMAIN_VALIDATION_RUN_ERROR_CATEGORIES)[number];
+
+export const domainValidationRuns = sqliteTable(
+  "domain_validation_runs",
+  {
+    id: text("id").primaryKey(),
+    leaseId: text("lease_id").notNull(),
+    leaseGeneration: integer("lease_generation").notNull(),
+    fqdn: text("fqdn")
+      .notNull()
+      .references(() => domainCandidates.fqdn, { onDelete: "cascade" }),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at"),
+    status: text("status", { enum: ["running", "completed", "failed", "cancelled"] }).notNull(),
+    errorCategory: text("error_category").$type<DomainValidationRunErrorCategory>(),
+  },
+  (t) => [
+    check(
+      "domain_validation_runs_status_check",
+      sql`${t.status} in ('running', 'completed', 'failed', 'cancelled')`,
+    ),
+    check("domain_validation_runs_id_length_check", sql`length(${t.id}) between 1 and 128`),
+    check(
+      "domain_validation_runs_lease_id_length_check",
+      sql`length(${t.leaseId}) between 1 and 128`,
+    ),
+    check(
+      "domain_validation_runs_lease_generation_check",
+      sql`${t.leaseGeneration} between 1 and 1000000000`,
+    ),
+    check("domain_validation_runs_fqdn_length_check", sql`length(${t.fqdn}) between 3 and 253`),
+    check(
+      "domain_validation_runs_started_check",
+      sql`${t.startedAt} between 0 and ${MAX_DATE_SQL}`,
+    ),
+    check(
+      "domain_validation_runs_finished_check",
+      sql`(${t.status} = 'running' and ${t.finishedAt} is null) or (${t.status} != 'running' and ${t.finishedAt} is not null and ${t.finishedAt} between ${t.startedAt} and ${MAX_DATE_SQL})`,
+    ),
+    check(
+      "domain_validation_runs_error_check",
+      sql`(${t.status} in ('running', 'completed') and ${t.errorCategory} is null) or (${t.status} in ('failed', 'cancelled') and ${t.errorCategory} in ('shutdown', 'lease-lost', 'coverage-failure', 'direct-probe-failure', 'proxy-probe-failure', 'decision-failure', 'policy-changed', 'infrastructure-failure'))`,
+    ),
+    index("domain_validation_runs_fqdn_started_idx").on(t.fqdn, t.startedAt),
+    index("domain_validation_runs_retention_idx").on(t.finishedAt, t.startedAt),
+  ],
+);
+
+export const domainValidationAttempts = sqliteTable(
+  "domain_validation_attempts",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => domainValidationRuns.id, { onDelete: "cascade" }),
+    direction: text("direction", { enum: ["direct", "proxy"] }).notNull(),
+    attemptedAt: integer("attempted_at").notNull(),
+    category: text("category").$type<ProbeCategory>().notNull(),
+    transportSuccess: integer("transport_success", { mode: "boolean" }).notNull(),
+    httpStatus: integer("http_status"),
+    resolvedAddress: text("resolved_address"),
+    availableAddressCount: integer("available_address_count").notNull(),
+    connectDurationMs: integer("connect_duration_ms"),
+    tlsDurationMs: integer("tls_duration_ms"),
+    totalDurationMs: integer("total_duration_ms").notNull(),
+    redirectCount: integer("redirect_count").notNull(),
+    finalOrigin: text("final_origin"),
+  },
+  (t) => [
+    unique().on(t.runId, t.direction),
+    check("domain_validation_attempts_id_length_check", sql`length(${t.id}) between 1 and 128`),
+    check(
+      "domain_validation_attempts_run_id_length_check",
+      sql`length(${t.runId}) between 1 and 128`,
+    ),
+    check("domain_validation_attempts_direction_check", sql`${t.direction} in ('direct', 'proxy')`),
+    check(
+      "domain_validation_attempts_category_check",
+      sql`${t.category} in (${PROBE_CATEGORIES_SQL})`,
+    ),
+    check(
+      "domain_validation_attempts_timestamp_check",
+      sql`${t.attemptedAt} between 0 and ${MAX_DATE_SQL}`,
+    ),
+    check(
+      "domain_validation_attempts_transport_success_check",
+      sql`${t.transportSuccess} in (0, 1)`,
+    ),
+    check(
+      "domain_validation_attempts_http_status_check",
+      sql`${t.httpStatus} is null or (${t.httpStatus} >= 100 and ${t.httpStatus} <= 599)`,
+    ),
+    check(
+      "domain_validation_attempts_address_count_check",
+      sql`${t.availableAddressCount} between 0 and 1024 and (${t.resolvedAddress} is not null or ${t.availableAddressCount} = 0)`,
+    ),
+    check(
+      "domain_validation_attempts_address_length_check",
+      sql`${t.resolvedAddress} is null or length(${t.resolvedAddress}) between 2 and 45`,
+    ),
+    check(
+      "domain_validation_attempts_connect_duration_check",
+      sql`${t.connectDurationMs} is null or ${t.connectDurationMs} between 0 and 60000`,
+    ),
+    check(
+      "domain_validation_attempts_tls_duration_check",
+      sql`${t.tlsDurationMs} is null or ${t.tlsDurationMs} between 0 and 60000`,
+    ),
+    check(
+      "domain_validation_attempts_total_duration_check",
+      sql`${t.totalDurationMs} between 0 and 60000`,
+    ),
+    check(
+      "domain_validation_attempts_redirect_count_check",
+      sql`${t.redirectCount} between 0 and 5`,
+    ),
+    check(
+      "domain_validation_attempts_final_origin_length_check",
+      sql`${t.finalOrigin} is null or length(${t.finalOrigin}) between 9 and 2048`,
+    ),
+    check(
+      "domain_validation_attempts_result_shape_check",
+      sql`(${t.category} = 'http_response' and ${t.transportSuccess} = 1 and ${t.httpStatus} is not null) or (${t.category} != 'http_response' and ${t.transportSuccess} = 0)`,
+    ),
+    index("domain_validation_attempts_run_idx").on(t.runId),
+    index("domain_validation_attempts_retention_idx").on(t.attemptedAt),
+  ],
+);
+
+export type DomainDecisionEvidenceJson = CandidateDecisionEvidenceSummary;
+
+export const domainDecisions = sqliteTable(
+  "domain_decisions",
+  {
+    id: text("id").primaryKey(),
+    fqdn: text("fqdn")
+      .notNull()
+      .references(() => domainCandidates.fqdn, { onDelete: "cascade" }),
+    evaluatedAt: integer("evaluated_at").notNull(),
+    status: text("status", { enum: ["confirmed", "pending", "blocked"] }).notNull(),
+    confidence: text("confidence", { enum: ["none", "low", "high"] }).notNull(),
+    reasons: text("reasons", { mode: "json" }).$type<CandidateDecisionReason[]>().notNull(),
+    windowStart: integer("window_start"),
+    evidence: text("evidence", { mode: "json" }).$type<DomainDecisionEvidenceJson>().notNull(),
+    selectedScope: text("selected_scope", { enum: ["exact", "site"] }),
+    proposedRule: text("proposed_rule"),
+  },
+  (t) => [
+    check("domain_decisions_status_check", sql`${t.status} in ('confirmed', 'pending', 'blocked')`),
+    check("domain_decisions_id_length_check", sql`length(${t.id}) between 1 and 128`),
+    check("domain_decisions_fqdn_length_check", sql`length(${t.fqdn}) between 3 and 253`),
+    check("domain_decisions_evaluated_check", sql`${t.evaluatedAt} between 0 and ${MAX_DATE_SQL}`),
+    check(
+      "domain_decisions_confidence_check",
+      sql`(${t.status} = 'confirmed' and ${t.confidence} = 'high') or (${t.status} = 'pending' and ${t.confidence} = 'low') or (${t.status} = 'blocked' and ${t.confidence} = 'none')`,
+    ),
+    check(
+      "domain_decisions_window_check",
+      sql`${t.windowStart} is null or ${t.windowStart} between 0 and ${t.evaluatedAt}`,
+    ),
+    check(
+      "domain_decisions_scope_pair_check",
+      sql`(${t.selectedScope} is null and ${t.proposedRule} is null) or (${t.selectedScope} is not null and ${t.proposedRule} is not null)`,
+    ),
+    check(
+      "domain_decisions_scope_check",
+      sql`${t.selectedScope} is null or ${t.selectedScope} in ('exact', 'site')`,
+    ),
+    check(
+      "domain_decisions_rule_length_check",
+      sql`${t.proposedRule} is null or length(${t.proposedRule}) between 3 and 255`,
+    ),
+    check("domain_decisions_reasons_length_check", sql`length(${t.reasons}) between 2 and 1024`),
+    check("domain_decisions_evidence_length_check", sql`length(${t.evidence}) between 2 and 2048`),
+    index("domain_decisions_fqdn_evaluated_idx").on(t.fqdn, t.evaluatedAt),
+    index("domain_decisions_retention_idx").on(t.evaluatedAt),
+  ],
+);
+
+export const DOMAIN_RULE_OPERATION_ACTIONS = [
+  "automatic-add",
+  "manual-add",
+  "manual-edit",
+  "manual-delete",
+  "rollback",
+] as const;
+export type DomainRuleOperationAction = (typeof DOMAIN_RULE_OPERATION_ACTIONS)[number];
+
+export const DOMAIN_RULE_OPERATION_PHASES = [
+  "prepared",
+  "committed",
+  "activating",
+  "completed",
+  "partial",
+  "aborted",
+  "reconciliation-required",
+] as const;
+export type DomainRuleOperationPhase = (typeof DOMAIN_RULE_OPERATION_PHASES)[number];
+export const UNFINISHED_DOMAIN_RULE_OPERATION_PHASES = [
+  "prepared",
+  "committed",
+  "activating",
+  "partial",
+  "reconciliation-required",
+] as const satisfies readonly DomainRuleOperationPhase[];
+
+export const DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES = [
+  "shutdown",
+  "materialization-failure",
+  "config-reload-failure",
+  "provider-proof-failure",
+  "coverage-proof-failure",
+  "route-proof-failure",
+  "infrastructure-failure",
+] as const;
+export type DomainRuleActivationErrorCategory =
+  (typeof DOMAIN_RULE_ACTIVATION_ERROR_CATEGORIES)[number];
+
+export type DomainRuleOwnershipKind = "automatic" | "manual";
+export interface DomainRuleOwnershipDeltaJson {
+  upserts: Array<{ rule: string; ownership: DomainRuleOwnershipKind }>;
+  deletes: string[];
+}
+
+// Durable bridge between SQLite intent and the attested local file write. Audit
+// rows are retained independently from the 14-day observation/evidence window.
+export const domainRuleOperations = sqliteTable(
+  "domain_rule_operations",
+  {
+    id: text("id").primaryKey(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    action: text("action").$type<DomainRuleOperationAction>().notNull(),
+    phase: text("phase").$type<DomainRuleOperationPhase>().notNull().default("prepared"),
+    rollbackTargetRevision: text("rollback_target_commit"),
+    candidateFqdn: text("candidate_fqdn"),
+    expectedSourceRevision: text("expected_parent_commit").notNull(),
+    intendedContentSha256: text("intended_content_sha256").notNull(),
+    proposedRule: text("proposed_rule"),
+    ownershipDelta: text("ownership_delta", { mode: "json" })
+      .$type<DomainRuleOwnershipDeltaJson>()
+      .notNull(),
+    automaticConsentId: text("automatic_consent_id").references(() => domainAutomaticConsents.id),
+    automaticConsentRevision: text("automatic_consent_revision"),
+    automaticBudgetDay: text("automatic_budget_day"),
+    automaticBudgetSlots: integer("automatic_budget_slots").notNull().default(0),
+    resultingRevision: text("commit_sha"),
+    resultingContentSha256: text("committed_content_sha256"),
+    activationStatus: text("activation_status", {
+      enum: ["not-started", "in-progress", "succeeded", "failed"],
+    })
+      .notNull()
+      .default("not-started"),
+    activationAttemptCount: integer("activation_attempt_count").notNull().default(0),
+    lastActivationAttemptAt: integer("last_activation_attempt_at"),
+    activationErrorCategory: text(
+      "activation_error_category",
+    ).$type<DomainRuleActivationErrorCategory>(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    completedAt: integer("completed_at"),
+  },
+  (t) => [
+    check("domain_rule_operations_id_length_check", sql`length(${t.id}) between 1 and 128`),
+    check(
+      "domain_rule_operations_idempotency_length_check",
+      sql`length(${t.idempotencyKey}) between 1 and 128`,
+    ),
+    check(
+      "domain_rule_operations_action_check",
+      sql`${t.action} in ('automatic-add', 'manual-add', 'manual-edit', 'manual-delete', 'rollback')`,
+    ),
+    check(
+      "domain_rule_operations_phase_check",
+      sql`${t.phase} in ('prepared', 'committed', 'activating', 'completed', 'partial', 'aborted', 'reconciliation-required')`,
+    ),
+    check(
+      "domain_rule_operations_rollback_target_check",
+      sql`(${t.action} = 'rollback' and ${t.rollbackTargetRevision} is not null and length(${t.rollbackTargetRevision}) = 40) or (${t.action} != 'rollback' and ${t.rollbackTargetRevision} is null)`,
+    ),
+    check(
+      "domain_rule_operations_candidate_length_check",
+      sql`${t.candidateFqdn} is null or length(${t.candidateFqdn}) between 3 and 253`,
+    ),
+    check(
+      "domain_rule_operations_parent_length_check",
+      sql`length(${t.expectedSourceRevision}) = 40`,
+    ),
+    check(
+      "domain_rule_operations_intended_digest_length_check",
+      sql`length(${t.intendedContentSha256}) = 64`,
+    ),
+    check(
+      "domain_rule_operations_rule_length_check",
+      sql`${t.proposedRule} is null or length(${t.proposedRule}) between 3 and 255`,
+    ),
+    check(
+      "domain_rule_operations_ownership_delta_length_check",
+      sql`length(${t.ownershipDelta}) between 27 and 65536`,
+    ),
+    check(
+      "domain_rule_operations_budget_check",
+      sql`(${t.action} = 'automatic-add' and ${t.automaticBudgetDay} is not null and length(${t.automaticBudgetDay}) = 10 and ${t.automaticBudgetSlots} = 1) or (${t.action} != 'automatic-add' and ${t.automaticBudgetDay} is null and ${t.automaticBudgetSlots} = 0)`,
+    ),
+    check(
+      "domain_rule_operations_consent_check",
+      sql`(${t.action} = 'automatic-add' and ${t.automaticConsentId} is not null and length(${t.automaticConsentId}) between 1 and 128 and ${t.automaticConsentRevision} is not null and length(${t.automaticConsentRevision}) = 86) or (${t.action} != 'automatic-add' and ${t.automaticConsentId} is null and ${t.automaticConsentRevision} is null)`,
+    ),
+    check(
+      "domain_rule_operations_commit_pair_check",
+      sql`(${t.resultingRevision} is null and ${t.resultingContentSha256} is null) or (${t.resultingRevision} is not null and ${t.resultingContentSha256} is not null and length(${t.resultingRevision}) = 40 and length(${t.resultingContentSha256}) = 64)`,
+    ),
+    check(
+      "domain_rule_operations_phase_commit_check",
+      sql`(${t.phase} in ('prepared', 'aborted') and ${t.resultingRevision} is null) or (${t.phase} in ('committed', 'activating', 'completed', 'partial') and ${t.resultingRevision} is not null) or ${t.phase} = 'reconciliation-required'`,
+    ),
+    check(
+      "domain_rule_operations_activation_shape_check",
+      sql`(${t.activationStatus} = 'not-started' and ${t.activationAttemptCount} = 0 and ${t.lastActivationAttemptAt} is null and ${t.activationErrorCategory} is null) or (${t.activationStatus} = 'in-progress' and ${t.activationAttemptCount} between 1 and 1000000 and ${t.lastActivationAttemptAt} is not null and ${t.activationErrorCategory} is null) or (${t.activationStatus} = 'succeeded' and ${t.activationAttemptCount} between 1 and 1000000 and ${t.lastActivationAttemptAt} is not null and ${t.activationErrorCategory} is null) or (${t.activationStatus} = 'failed' and ${t.activationAttemptCount} between 1 and 1000000 and ${t.lastActivationAttemptAt} is not null and ${t.activationErrorCategory} is not null and ${t.activationErrorCategory} in ('shutdown', 'materialization-failure', 'config-reload-failure', 'provider-proof-failure', 'coverage-proof-failure', 'route-proof-failure', 'infrastructure-failure'))`,
+    ),
+    check(
+      "domain_rule_operations_phase_activation_check",
+      sql`(${t.phase} in ('prepared', 'committed', 'aborted') and ${t.activationStatus} = 'not-started') or (${t.phase} = 'activating' and ${t.activationStatus} = 'in-progress') or (${t.phase} = 'completed' and ${t.activationStatus} = 'succeeded') or (${t.phase} = 'partial' and ${t.activationStatus} = 'failed') or (${t.phase} = 'reconciliation-required' and ${t.activationStatus} in ('not-started', 'failed'))`,
+    ),
+    check(
+      "domain_rule_operations_timestamp_check",
+      sql`${t.createdAt} between 0 and ${MAX_DATE_SQL} and ${t.updatedAt} between ${t.createdAt} and ${MAX_DATE_SQL} and (${t.lastActivationAttemptAt} is null or ${t.lastActivationAttemptAt} between ${t.createdAt} and ${t.updatedAt}) and (${t.completedAt} is null or ${t.completedAt} between ${t.createdAt} and ${t.updatedAt})`,
+    ),
+    check(
+      "domain_rule_operations_completion_check",
+      sql`(${t.phase} in ('completed', 'aborted', 'reconciliation-required') and ${t.completedAt} is not null) or (${t.phase} not in ('completed', 'aborted', 'reconciliation-required') and ${t.completedAt} is null)`,
+    ),
+    index("domain_rule_operations_recovery_idx").on(t.phase, t.createdAt),
+    index("domain_rule_operations_revision_idx").on(t.resultingRevision),
+  ],
+);
+
+// Consent is an append-only audit stream. At most one consent can be active;
+// preference changes invalidate it by fingerprint without rewriting history.
+export const domainAutomaticConsents = sqliteTable(
+  "domain_automatic_consents",
+  {
+    id: text("id").primaryKey(),
+    revision: text("revision").notNull(),
+    enabledAt: integer("enabled_at").notNull(),
+    revokedAt: integer("revoked_at"),
+  },
+  (t) => [
+    check("domain_automatic_consents_id_length_check", sql`length(${t.id}) between 1 and 128`),
+    check(
+      "domain_automatic_consents_revision_check",
+      sql`length(${t.revision}) = 86 and substr(${t.revision}, 1, 22) = 'domain-auto-v1:sha256:' and substr(${t.revision}, 23) not glob '*[^0-9a-f]*'`,
+    ),
+    check(
+      "domain_automatic_consents_timestamp_check",
+      sql`${t.enabledAt} between 0 and ${MAX_DATE_SQL} and (${t.revokedAt} is null or ${t.revokedAt} between ${t.enabledAt} and ${MAX_DATE_SQL})`,
+    ),
+    uniqueIndex("domain_automatic_consents_active_unique_idx")
+      .on(sql`1`)
+      .where(sql`${t.revokedAt} is null`),
+  ],
+);
+
+// Reservations and consumption are separate so a pre-write abort can release
+// its slot while a written operation consumes it even if activation is partial.
+export const domainAutomaticBudgets = sqliteTable(
+  "domain_automatic_budgets",
+  {
+    day: text("day").primaryKey(),
+    reservedSlots: integer("reserved_slots").notNull().default(0),
+    consumedSlots: integer("consumed_slots").notNull().default(0),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    check("domain_automatic_budgets_day_check", sql`length(${t.day}) = 10`),
+    check("domain_automatic_budgets_reserved_check", sql`${t.reservedSlots} between 0 and 1000000`),
+    check("domain_automatic_budgets_consumed_check", sql`${t.consumedSlots} between 0 and 1000000`),
+    check(
+      "domain_automatic_budgets_updated_check",
+      sql`${t.updatedAt} between 0 and ${MAX_DATE_SQL}`,
+    ),
+  ],
+);
+
+// Current mutable ownership read model. The immutable operation row keeps the
+// ownership delta and content-revision audit after an edit or delete replaces this row.
+export const domainRuleOwnership = sqliteTable(
+  "domain_rule_ownership",
+  {
+    rule: text("rule").primaryKey(),
+    ownership: text("ownership", { enum: ["automatic", "manual"] }).notNull(),
+    operationId: text("operation_id")
+      .notNull()
+      .references(() => domainRuleOperations.id),
+    resultingRevision: text("commit_sha").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (t) => [
+    check("domain_rule_ownership_rule_length_check", sql`length(${t.rule}) between 3 and 255`),
+    check("domain_rule_ownership_kind_check", sql`${t.ownership} in ('automatic', 'manual')`),
+    check("domain_rule_ownership_commit_length_check", sql`length(${t.resultingRevision}) = 40`),
+    check(
+      "domain_rule_ownership_timestamp_check",
+      sql`${t.createdAt} between 0 and ${MAX_DATE_SQL} and ${t.updatedAt} between ${t.createdAt} and ${MAX_DATE_SQL}`,
+    ),
+    index("domain_rule_ownership_operation_idx").on(t.operationId),
+  ],
+);

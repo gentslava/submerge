@@ -11,9 +11,10 @@ Overview for agents and developers. Full design: [docs/specs/2026-06-29-submerge
 │                               ├─ Drizzle + SQLite (WAL)           │
 │                               ├─ SSE hub (poll mihomo → fan-out)  │
 │                               └─ clients/ (isolated, Zod)         │
-└───────────────────────────────┬──────────────────┬────────────────┘
-                           HTTP ↓ Clash API   HTTP ↓ /decode
-                            mihomo (Go)        happ-decoder (Python)
+└──────────────┬────────────────┬──────────────────┬────────────────┘
+  /domain-rules│ RW        HTTP ↓ Clash API   HTTP ↓ /decode
+               │            mihomo (Go)        happ-decoder (Python)
+               └── custom.txt ───────▲ RO
 ```
 
 ## Layers and boundaries
@@ -28,6 +29,14 @@ Overview for agents and developers. Full design: [docs/specs/2026-06-29-submerge
 - **Management** (add source, select node): web → tRPC mutation → server module → (parse / fetchSubscription / ingestHapp) → generate config.yaml → reload mihomo.
 - **Node selection** (channel routing): a `ChannelController` per channel applies its policy — `speed` (latency race with switch tolerance), `sticky` (hold the node while healthy), `manual` (priority node) — on each probe tick, switches the mihomo selector when the policy says so, and records a decision log shown in Settings. Spec: [specs/2026-07-01-channel-routing-design.md](specs/2026-07-01-channel-routing-design.md).
 - **Real-time** (nodes/pings/traffic): server SSE hub polls mihomo → fan-out via tRPC subscription (SSE) → web patches TanStack Query cache with targeted node updates.
+- **Domain intelligence**: normalized Mihomo connection observations → bounded SQLite
+  history → asynchronous DIRECT/VPN validation → review/automatic decision → atomic local
+  `custom.txt` write → serialized Mihomo reload and route proof. Git replication, when
+  desired, is a separate service that reads the rule volume and owns its repository;
+  remote updates remain staged until a coordinated import API exists. Submerge has no Git
+  executable, repository, remote, or credentials. See [ADR-0005](adr/0005-mihomo-native-domain-intelligence.md),
+  [ADR-0006](adr/0006-local-domain-rule-store.md), and the
+  [deployment runbook](runbooks/domain-rules.md).
 - **Persistence**: sources/settings/channels/HWID/sessions — in SQLite (Drizzle). Nodes are not stored (live status from mihomo); per-source node snapshot in `sources.proxies`.
 
 ## Key decisions

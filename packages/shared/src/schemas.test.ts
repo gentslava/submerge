@@ -15,6 +15,7 @@ import {
   directPresetSettingsSchema,
   isValidCidr,
   isValidDomain,
+  MAX_RULE_PROVIDERS_PER_CHANNEL,
   nodeItemSchema,
   nodeViewSchema,
   proxyChannelSchema,
@@ -26,12 +27,34 @@ import {
   selectNodeInput,
   setChannelPolicyInput,
   setChannelPoolInput,
+  setSettingInput,
   sourceKindSchema,
   updateChannelInput,
   updateDirectInput,
 } from "./schemas.js";
 
 describe("schemas", () => {
+  it("bounds setting keys and values before persistence", () => {
+    expect(setSettingInput.safeParse({ key: "theme", value: "dark" }).success).toBe(true);
+    expect(setSettingInput.safeParse({ key: "k".repeat(129), value: "dark" }).success).toBe(false);
+    expect(
+      setSettingInput.safeParse({ key: "domainIntelligence", value: "x".repeat(1_048_577) })
+        .success,
+    ).toBe(false);
+    expect(setSettingInput.safeParse({ key: "nul\0key", value: "dark" }).success).toBe(false);
+    expect(
+      setSettingInput.safeParse({ key: "domainIntelligence", value: "{}\0garbage" }).success,
+    ).toBe(false);
+    expect(setSettingInput.safeParse({ key: "high-surrogate", value: "\uD800" }).success).toBe(
+      false,
+    );
+    expect(setSettingInput.safeParse({ key: "low-surrogate", value: "\uDC00" }).success).toBe(
+      false,
+    );
+    expect(setSettingInput.safeParse({ key: "😀".repeat(32), value: "dark" }).success).toBe(true);
+    expect(setSettingInput.safeParse({ key: "😀".repeat(33), value: "dark" }).success).toBe(false);
+  });
+
   it("accepts a valid kind", () => {
     expect(sourceKindSchema.parse("sub")).toBe("sub");
   });
@@ -403,6 +426,22 @@ describe("channelMatcherInputSchema (Phase-4a: keywords + ruleProviders)", () =>
         ruleProviders: [{ url: "http://", behavior: "domain" }],
       }),
     ).toThrow();
+  });
+  it("bounds provider references at the write boundary", () => {
+    const ruleProviders = Array.from(
+      { length: MAX_RULE_PROVIDERS_PER_CHANNEL + 1 },
+      (_, index) => ({
+        url: `https://example.com/provider-${index}.txt`,
+        behavior: "domain" as const,
+      }),
+    );
+
+    expect(
+      channelMatcherInputSchema.safeParse({ presets: [], domains: [], ruleProviders }).success,
+    ).toBe(false);
+    expect(
+      channelMatcherSchema.safeParse({ presets: [], domains: [], ruleProviders }).success,
+    ).toBe(true);
   });
 });
 

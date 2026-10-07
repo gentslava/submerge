@@ -1,0 +1,1788 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "b284c04b-65b4-4589-a47d-1aa83d0a1cc4",
+  "prevId": "cf8b3f61-61ee-4e4c-b91a-c98c2b406950",
+  "tables": {
+    "channel_pool": {
+      "name": "channel_pool",
+      "columns": {
+        "channel_id": {
+          "name": "channel_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ref": {
+          "name": "ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "channel_pool_channel_id_idx": {
+          "name": "channel_pool_channel_id_idx",
+          "columns": [
+            "channel_id"
+          ],
+          "isUnique": false
+        },
+        "channel_pool_channel_id_kind_ref_unique": {
+          "name": "channel_pool_channel_id_kind_ref_unique",
+          "columns": [
+            "channel_id",
+            "kind",
+            "ref"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "channel_pool_channel_id_channels_id_fk": {
+          "name": "channel_pool_channel_id_channels_id_fk",
+          "tableFrom": "channel_pool",
+          "tableTo": "channels",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "channels": {
+      "name": "channels",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target": {
+          "name": "target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'proxy'"
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "policy": {
+          "name": "policy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "matcher": {
+          "name": "matcher",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "direct_presets": {
+          "name": "direct_presets",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_reason": {
+          "name": "last_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_reason_at": {
+          "name": "last_reason_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "channels_direct_target_unique": {
+          "name": "channels_direct_target_unique",
+          "columns": [
+            "target"
+          ],
+          "isUnique": true,
+          "where": "\"channels\".\"target\" = 'direct'"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "channels_target_check": {
+          "name": "channels_target_check",
+          "value": "\"channels\".\"target\" in ('proxy', 'direct')"
+        },
+        "channels_target_policy_check": {
+          "name": "channels_target_policy_check",
+          "value": "(\"channels\".\"target\" = 'proxy' and \"channels\".\"policy\" is not null) or (\"channels\".\"target\" = 'direct' and \"channels\".\"policy\" is null)"
+        },
+        "channels_target_default_check": {
+          "name": "channels_target_default_check",
+          "value": "\"channels\".\"target\" = 'proxy' or \"channels\".\"is_default\" = false"
+        },
+        "channels_target_presets_check": {
+          "name": "channels_target_presets_check",
+          "value": "(\"channels\".\"target\" = 'proxy' and \"channels\".\"direct_presets\" is null) or (\"channels\".\"target\" = 'direct' and \"channels\".\"direct_presets\" is not null)"
+        }
+      }
+    },
+    "domain_automatic_budgets": {
+      "name": "domain_automatic_budgets",
+      "columns": {
+        "day": {
+          "name": "day",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reserved_slots": {
+          "name": "reserved_slots",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "consumed_slots": {
+          "name": "consumed_slots",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_automatic_budgets_day_check": {
+          "name": "domain_automatic_budgets_day_check",
+          "value": "length(\"domain_automatic_budgets\".\"day\") = 10"
+        },
+        "domain_automatic_budgets_reserved_check": {
+          "name": "domain_automatic_budgets_reserved_check",
+          "value": "\"domain_automatic_budgets\".\"reserved_slots\" between 0 and 1000000"
+        },
+        "domain_automatic_budgets_consumed_check": {
+          "name": "domain_automatic_budgets_consumed_check",
+          "value": "\"domain_automatic_budgets\".\"consumed_slots\" between 0 and 1000000"
+        },
+        "domain_automatic_budgets_updated_check": {
+          "name": "domain_automatic_budgets_updated_check",
+          "value": "\"domain_automatic_budgets\".\"updated_at\" between 0 and 8640000000000000"
+        }
+      }
+    },
+    "domain_automatic_consents": {
+      "name": "domain_automatic_consents",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled_at": {
+          "name": "enabled_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_automatic_consents_active_unique_idx": {
+          "name": "domain_automatic_consents_active_unique_idx",
+          "columns": [
+            "1"
+          ],
+          "isUnique": true,
+          "where": "\"domain_automatic_consents\".\"revoked_at\" is null"
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_automatic_consents_id_length_check": {
+          "name": "domain_automatic_consents_id_length_check",
+          "value": "length(\"domain_automatic_consents\".\"id\") between 1 and 128"
+        },
+        "domain_automatic_consents_revision_check": {
+          "name": "domain_automatic_consents_revision_check",
+          "value": "length(\"domain_automatic_consents\".\"revision\") = 86 and substr(\"domain_automatic_consents\".\"revision\", 1, 22) = 'domain-auto-v1:sha256:' and substr(\"domain_automatic_consents\".\"revision\", 23) not glob '*[^0-9a-f]*'"
+        },
+        "domain_automatic_consents_timestamp_check": {
+          "name": "domain_automatic_consents_timestamp_check",
+          "value": "\"domain_automatic_consents\".\"enabled_at\" between 0 and 8640000000000000 and (\"domain_automatic_consents\".\"revoked_at\" is null or \"domain_automatic_consents\".\"revoked_at\" between \"domain_automatic_consents\".\"enabled_at\" and 8640000000000000)"
+        }
+      }
+    },
+    "domain_candidates": {
+      "name": "domain_candidates",
+      "columns": {
+        "fqdn": {
+          "name": "fqdn",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "registrable_site": {
+          "name": "registrable_site",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "selected_scope": {
+          "name": "selected_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "proposed_rule": {
+          "name": "proposed_rule",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "exclusion_reason": {
+          "name": "exclusion_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'queued'"
+        },
+        "review_state": {
+          "name": "review_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "next_validation_at": {
+          "name": "next_validation_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_validation_at": {
+          "name": "last_validation_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "failure_streak": {
+          "name": "failure_streak",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "lease_id": {
+          "name": "lease_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_until": {
+          "name": "lease_until",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_generation": {
+          "name": "lease_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_candidates_due_idx": {
+          "name": "domain_candidates_due_idx",
+          "columns": [
+            "next_validation_at",
+            "lease_until"
+          ],
+          "isUnique": false
+        },
+        "domain_candidates_retention_idx": {
+          "name": "domain_candidates_retention_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_candidates_status_check": {
+          "name": "domain_candidates_status_check",
+          "value": "\"domain_candidates\".\"status\" in ('queued', 'pending', 'confirmed', 'blocked', 'excluded')"
+        },
+        "domain_candidates_review_state_check": {
+          "name": "domain_candidates_review_state_check",
+          "value": "\"domain_candidates\".\"review_state\" in ('active', 'rejected')"
+        },
+        "domain_candidates_fqdn_length_check": {
+          "name": "domain_candidates_fqdn_length_check",
+          "value": "length(\"domain_candidates\".\"fqdn\") between 3 and 253"
+        },
+        "domain_candidates_site_length_check": {
+          "name": "domain_candidates_site_length_check",
+          "value": "\"domain_candidates\".\"registrable_site\" is null or length(\"domain_candidates\".\"registrable_site\") between 3 and 253"
+        },
+        "domain_candidates_rule_length_check": {
+          "name": "domain_candidates_rule_length_check",
+          "value": "\"domain_candidates\".\"proposed_rule\" is null or length(\"domain_candidates\".\"proposed_rule\") between 3 and 255"
+        },
+        "domain_candidates_first_seen_check": {
+          "name": "domain_candidates_first_seen_check",
+          "value": "\"domain_candidates\".\"first_seen_at\" between 0 and 8640000000000000"
+        },
+        "domain_candidates_last_seen_check": {
+          "name": "domain_candidates_last_seen_check",
+          "value": "\"domain_candidates\".\"last_seen_at\" between \"domain_candidates\".\"first_seen_at\" and 8640000000000000"
+        },
+        "domain_candidates_next_validation_check": {
+          "name": "domain_candidates_next_validation_check",
+          "value": "\"domain_candidates\".\"next_validation_at\" between 0 and 8640000000000000"
+        },
+        "domain_candidates_last_validation_check": {
+          "name": "domain_candidates_last_validation_check",
+          "value": "\"domain_candidates\".\"last_validation_at\" is null or \"domain_candidates\".\"last_validation_at\" between 0 and 8640000000000000"
+        },
+        "domain_candidates_failure_streak_check": {
+          "name": "domain_candidates_failure_streak_check",
+          "value": "\"domain_candidates\".\"failure_streak\" between 0 and 1000000"
+        },
+        "domain_candidates_scope_check": {
+          "name": "domain_candidates_scope_check",
+          "value": "\"domain_candidates\".\"selected_scope\" is null or \"domain_candidates\".\"selected_scope\" in ('exact', 'site')"
+        },
+        "domain_candidates_eligibility_check": {
+          "name": "domain_candidates_eligibility_check",
+          "value": "(\"domain_candidates\".\"status\" = 'excluded' and \"domain_candidates\".\"exclusion_reason\" in ('excluded-tld', 'never-add-domain', 'never-add-suffix', 'telemetry-pattern', 'invalid-policy') and \"domain_candidates\".\"selected_scope\" is null and \"domain_candidates\".\"proposed_rule\" is null and \"domain_candidates\".\"lease_id\" is null and \"domain_candidates\".\"lease_until\" is null) or (\"domain_candidates\".\"status\" != 'excluded' and \"domain_candidates\".\"exclusion_reason\" is null and \"domain_candidates\".\"selected_scope\" is not null and \"domain_candidates\".\"proposed_rule\" is not null)"
+        },
+        "domain_candidates_lease_pair_check": {
+          "name": "domain_candidates_lease_pair_check",
+          "value": "(\"domain_candidates\".\"lease_id\" is null and \"domain_candidates\".\"lease_until\" is null) or (\"domain_candidates\".\"lease_id\" is not null and length(\"domain_candidates\".\"lease_id\") between 1 and 128 and \"domain_candidates\".\"lease_until\" between 0 and 8640000000000000 and \"domain_candidates\".\"lease_generation\" between 1 and 1000000000)"
+        },
+        "domain_candidates_lease_generation_check": {
+          "name": "domain_candidates_lease_generation_check",
+          "value": "\"domain_candidates\".\"lease_generation\" between 0 and 1000000000"
+        },
+        "domain_candidates_updated_check": {
+          "name": "domain_candidates_updated_check",
+          "value": "\"domain_candidates\".\"updated_at\" between 0 and 8640000000000000"
+        }
+      }
+    },
+    "domain_daily_stats": {
+      "name": "domain_daily_stats",
+      "columns": {
+        "day": {
+          "name": "day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fqdn": {
+          "name": "fqdn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "connection_count": {
+          "name": "connection_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "domain_daily_stats_day_fqdn_pk": {
+          "columns": [
+            "day",
+            "fqdn"
+          ],
+          "name": "domain_daily_stats_day_fqdn_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_daily_stats_count_check": {
+          "name": "domain_daily_stats_count_check",
+          "value": "\"domain_daily_stats\".\"connection_count\" >= 1"
+        },
+        "domain_daily_stats_first_seen_check": {
+          "name": "domain_daily_stats_first_seen_check",
+          "value": "\"domain_daily_stats\".\"first_seen_at\" >= 0"
+        },
+        "domain_daily_stats_last_seen_check": {
+          "name": "domain_daily_stats_last_seen_check",
+          "value": "\"domain_daily_stats\".\"last_seen_at\" >= \"domain_daily_stats\".\"first_seen_at\""
+        }
+      }
+    },
+    "domain_decisions": {
+      "name": "domain_decisions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fqdn": {
+          "name": "fqdn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evaluated_at": {
+          "name": "evaluated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reasons": {
+          "name": "reasons",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "window_start": {
+          "name": "window_start",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "evidence": {
+          "name": "evidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "selected_scope": {
+          "name": "selected_scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "proposed_rule": {
+          "name": "proposed_rule",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_decisions_fqdn_evaluated_idx": {
+          "name": "domain_decisions_fqdn_evaluated_idx",
+          "columns": [
+            "fqdn",
+            "evaluated_at"
+          ],
+          "isUnique": false
+        },
+        "domain_decisions_retention_idx": {
+          "name": "domain_decisions_retention_idx",
+          "columns": [
+            "evaluated_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "domain_decisions_fqdn_domain_candidates_fqdn_fk": {
+          "name": "domain_decisions_fqdn_domain_candidates_fqdn_fk",
+          "tableFrom": "domain_decisions",
+          "tableTo": "domain_candidates",
+          "columnsFrom": [
+            "fqdn"
+          ],
+          "columnsTo": [
+            "fqdn"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_decisions_status_check": {
+          "name": "domain_decisions_status_check",
+          "value": "\"domain_decisions\".\"status\" in ('confirmed', 'pending', 'blocked')"
+        },
+        "domain_decisions_id_length_check": {
+          "name": "domain_decisions_id_length_check",
+          "value": "length(\"domain_decisions\".\"id\") between 1 and 128"
+        },
+        "domain_decisions_fqdn_length_check": {
+          "name": "domain_decisions_fqdn_length_check",
+          "value": "length(\"domain_decisions\".\"fqdn\") between 3 and 253"
+        },
+        "domain_decisions_evaluated_check": {
+          "name": "domain_decisions_evaluated_check",
+          "value": "\"domain_decisions\".\"evaluated_at\" between 0 and 8640000000000000"
+        },
+        "domain_decisions_confidence_check": {
+          "name": "domain_decisions_confidence_check",
+          "value": "(\"domain_decisions\".\"status\" = 'confirmed' and \"domain_decisions\".\"confidence\" = 'high') or (\"domain_decisions\".\"status\" = 'pending' and \"domain_decisions\".\"confidence\" = 'low') or (\"domain_decisions\".\"status\" = 'blocked' and \"domain_decisions\".\"confidence\" = 'none')"
+        },
+        "domain_decisions_window_check": {
+          "name": "domain_decisions_window_check",
+          "value": "\"domain_decisions\".\"window_start\" is null or \"domain_decisions\".\"window_start\" between 0 and \"domain_decisions\".\"evaluated_at\""
+        },
+        "domain_decisions_scope_pair_check": {
+          "name": "domain_decisions_scope_pair_check",
+          "value": "(\"domain_decisions\".\"selected_scope\" is null and \"domain_decisions\".\"proposed_rule\" is null) or (\"domain_decisions\".\"selected_scope\" is not null and \"domain_decisions\".\"proposed_rule\" is not null)"
+        },
+        "domain_decisions_scope_check": {
+          "name": "domain_decisions_scope_check",
+          "value": "\"domain_decisions\".\"selected_scope\" is null or \"domain_decisions\".\"selected_scope\" in ('exact', 'site')"
+        },
+        "domain_decisions_rule_length_check": {
+          "name": "domain_decisions_rule_length_check",
+          "value": "\"domain_decisions\".\"proposed_rule\" is null or length(\"domain_decisions\".\"proposed_rule\") between 3 and 255"
+        },
+        "domain_decisions_reasons_length_check": {
+          "name": "domain_decisions_reasons_length_check",
+          "value": "length(\"domain_decisions\".\"reasons\") between 2 and 1024"
+        },
+        "domain_decisions_evidence_length_check": {
+          "name": "domain_decisions_evidence_length_check",
+          "value": "length(\"domain_decisions\".\"evidence\") between 2 and 2048"
+        }
+      }
+    },
+    "domain_observations": {
+      "name": "domain_observations",
+      "columns": {
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fqdn": {
+          "name": "fqdn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transport": {
+          "name": "transport",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "count": {
+          "name": "count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        }
+      },
+      "indexes": {
+        "domain_observations_reconcile_idx": {
+          "name": "domain_observations_reconcile_idx",
+          "columns": [
+            "fqdn",
+            "transport",
+            "observed_at",
+            "source"
+          ],
+          "isUnique": false
+        },
+        "domain_observations_retention_idx": {
+          "name": "domain_observations_retention_idx",
+          "columns": [
+            "last_seen_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_observations_timestamp_check": {
+          "name": "domain_observations_timestamp_check",
+          "value": "\"domain_observations\".\"observed_at\" >= 0"
+        },
+        "domain_observations_last_seen_check": {
+          "name": "domain_observations_last_seen_check",
+          "value": "\"domain_observations\".\"last_seen_at\" >= \"domain_observations\".\"observed_at\""
+        },
+        "domain_observations_transport_check": {
+          "name": "domain_observations_transport_check",
+          "value": "\"domain_observations\".\"transport\" in ('tcp', 'udp')"
+        },
+        "domain_observations_source_check": {
+          "name": "domain_observations_source_check",
+          "value": "\"domain_observations\".\"source\" in ('mihomo-log', 'connection-snapshot')"
+        },
+        "domain_observations_count_check": {
+          "name": "domain_observations_count_check",
+          "value": "\"domain_observations\".\"count\" >= 1"
+        }
+      }
+    },
+    "domain_rule_operations": {
+      "name": "domain_rule_operations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "phase": {
+          "name": "phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'prepared'"
+        },
+        "rollback_target_commit": {
+          "name": "rollback_target_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "candidate_fqdn": {
+          "name": "candidate_fqdn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "expected_parent_commit": {
+          "name": "expected_parent_commit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "intended_content_sha256": {
+          "name": "intended_content_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "proposed_rule": {
+          "name": "proposed_rule",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ownership_delta": {
+          "name": "ownership_delta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "automatic_consent_id": {
+          "name": "automatic_consent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "automatic_consent_revision": {
+          "name": "automatic_consent_revision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "automatic_budget_day": {
+          "name": "automatic_budget_day",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "automatic_budget_slots": {
+          "name": "automatic_budget_slots",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "commit_sha": {
+          "name": "commit_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "committed_content_sha256": {
+          "name": "committed_content_sha256",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "activation_status": {
+          "name": "activation_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'not-started'"
+        },
+        "activation_attempt_count": {
+          "name": "activation_attempt_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_activation_attempt_at": {
+          "name": "last_activation_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "activation_error_category": {
+          "name": "activation_error_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_rule_operations_idempotency_key_unique": {
+          "name": "domain_rule_operations_idempotency_key_unique",
+          "columns": [
+            "idempotency_key"
+          ],
+          "isUnique": true
+        },
+        "domain_rule_operations_recovery_idx": {
+          "name": "domain_rule_operations_recovery_idx",
+          "columns": [
+            "phase",
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "domain_rule_operations_revision_idx": {
+          "name": "domain_rule_operations_revision_idx",
+          "columns": [
+            "commit_sha"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "domain_rule_operations_automatic_consent_id_domain_automatic_consents_id_fk": {
+          "name": "domain_rule_operations_automatic_consent_id_domain_automatic_consents_id_fk",
+          "tableFrom": "domain_rule_operations",
+          "tableTo": "domain_automatic_consents",
+          "columnsFrom": [
+            "automatic_consent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_rule_operations_id_length_check": {
+          "name": "domain_rule_operations_id_length_check",
+          "value": "length(\"domain_rule_operations\".\"id\") between 1 and 128"
+        },
+        "domain_rule_operations_idempotency_length_check": {
+          "name": "domain_rule_operations_idempotency_length_check",
+          "value": "length(\"domain_rule_operations\".\"idempotency_key\") between 1 and 128"
+        },
+        "domain_rule_operations_action_check": {
+          "name": "domain_rule_operations_action_check",
+          "value": "\"domain_rule_operations\".\"action\" in ('automatic-add', 'manual-add', 'manual-edit', 'manual-delete', 'rollback')"
+        },
+        "domain_rule_operations_phase_check": {
+          "name": "domain_rule_operations_phase_check",
+          "value": "\"domain_rule_operations\".\"phase\" in ('prepared', 'committed', 'activating', 'completed', 'partial', 'aborted', 'reconciliation-required')"
+        },
+        "domain_rule_operations_rollback_target_check": {
+          "name": "domain_rule_operations_rollback_target_check",
+          "value": "(\"domain_rule_operations\".\"action\" = 'rollback' and \"domain_rule_operations\".\"rollback_target_commit\" is not null and length(\"domain_rule_operations\".\"rollback_target_commit\") = 40) or (\"domain_rule_operations\".\"action\" != 'rollback' and \"domain_rule_operations\".\"rollback_target_commit\" is null)"
+        },
+        "domain_rule_operations_candidate_length_check": {
+          "name": "domain_rule_operations_candidate_length_check",
+          "value": "\"domain_rule_operations\".\"candidate_fqdn\" is null or length(\"domain_rule_operations\".\"candidate_fqdn\") between 3 and 253"
+        },
+        "domain_rule_operations_parent_length_check": {
+          "name": "domain_rule_operations_parent_length_check",
+          "value": "length(\"domain_rule_operations\".\"expected_parent_commit\") = 40"
+        },
+        "domain_rule_operations_intended_digest_length_check": {
+          "name": "domain_rule_operations_intended_digest_length_check",
+          "value": "length(\"domain_rule_operations\".\"intended_content_sha256\") = 64"
+        },
+        "domain_rule_operations_rule_length_check": {
+          "name": "domain_rule_operations_rule_length_check",
+          "value": "\"domain_rule_operations\".\"proposed_rule\" is null or length(\"domain_rule_operations\".\"proposed_rule\") between 3 and 255"
+        },
+        "domain_rule_operations_ownership_delta_length_check": {
+          "name": "domain_rule_operations_ownership_delta_length_check",
+          "value": "length(\"domain_rule_operations\".\"ownership_delta\") between 27 and 65536"
+        },
+        "domain_rule_operations_budget_check": {
+          "name": "domain_rule_operations_budget_check",
+          "value": "(\"domain_rule_operations\".\"action\" = 'automatic-add' and \"domain_rule_operations\".\"automatic_budget_day\" is not null and length(\"domain_rule_operations\".\"automatic_budget_day\") = 10 and \"domain_rule_operations\".\"automatic_budget_slots\" = 1) or (\"domain_rule_operations\".\"action\" != 'automatic-add' and \"domain_rule_operations\".\"automatic_budget_day\" is null and \"domain_rule_operations\".\"automatic_budget_slots\" = 0)"
+        },
+        "domain_rule_operations_consent_check": {
+          "name": "domain_rule_operations_consent_check",
+          "value": "(\"domain_rule_operations\".\"action\" = 'automatic-add' and \"domain_rule_operations\".\"automatic_consent_id\" is not null and length(\"domain_rule_operations\".\"automatic_consent_id\") between 1 and 128 and \"domain_rule_operations\".\"automatic_consent_revision\" is not null and length(\"domain_rule_operations\".\"automatic_consent_revision\") = 86) or (\"domain_rule_operations\".\"action\" != 'automatic-add' and \"domain_rule_operations\".\"automatic_consent_id\" is null and \"domain_rule_operations\".\"automatic_consent_revision\" is null)"
+        },
+        "domain_rule_operations_commit_pair_check": {
+          "name": "domain_rule_operations_commit_pair_check",
+          "value": "(\"domain_rule_operations\".\"commit_sha\" is null and \"domain_rule_operations\".\"committed_content_sha256\" is null) or (\"domain_rule_operations\".\"commit_sha\" is not null and \"domain_rule_operations\".\"committed_content_sha256\" is not null and length(\"domain_rule_operations\".\"commit_sha\") = 40 and length(\"domain_rule_operations\".\"committed_content_sha256\") = 64)"
+        },
+        "domain_rule_operations_phase_commit_check": {
+          "name": "domain_rule_operations_phase_commit_check",
+          "value": "(\"domain_rule_operations\".\"phase\" in ('prepared', 'aborted') and \"domain_rule_operations\".\"commit_sha\" is null) or (\"domain_rule_operations\".\"phase\" in ('committed', 'activating', 'completed', 'partial') and \"domain_rule_operations\".\"commit_sha\" is not null) or \"domain_rule_operations\".\"phase\" = 'reconciliation-required'"
+        },
+        "domain_rule_operations_activation_shape_check": {
+          "name": "domain_rule_operations_activation_shape_check",
+          "value": "(\"domain_rule_operations\".\"activation_status\" = 'not-started' and \"domain_rule_operations\".\"activation_attempt_count\" = 0 and \"domain_rule_operations\".\"last_activation_attempt_at\" is null and \"domain_rule_operations\".\"activation_error_category\" is null) or (\"domain_rule_operations\".\"activation_status\" = 'in-progress' and \"domain_rule_operations\".\"activation_attempt_count\" between 1 and 1000000 and \"domain_rule_operations\".\"last_activation_attempt_at\" is not null and \"domain_rule_operations\".\"activation_error_category\" is null) or (\"domain_rule_operations\".\"activation_status\" = 'succeeded' and \"domain_rule_operations\".\"activation_attempt_count\" between 1 and 1000000 and \"domain_rule_operations\".\"last_activation_attempt_at\" is not null and \"domain_rule_operations\".\"activation_error_category\" is null) or (\"domain_rule_operations\".\"activation_status\" = 'failed' and \"domain_rule_operations\".\"activation_attempt_count\" between 1 and 1000000 and \"domain_rule_operations\".\"last_activation_attempt_at\" is not null and \"domain_rule_operations\".\"activation_error_category\" is not null and \"domain_rule_operations\".\"activation_error_category\" in ('shutdown', 'materialization-failure', 'config-reload-failure', 'provider-proof-failure', 'coverage-proof-failure', 'route-proof-failure', 'infrastructure-failure'))"
+        },
+        "domain_rule_operations_phase_activation_check": {
+          "name": "domain_rule_operations_phase_activation_check",
+          "value": "(\"domain_rule_operations\".\"phase\" in ('prepared', 'committed', 'aborted') and \"domain_rule_operations\".\"activation_status\" = 'not-started') or (\"domain_rule_operations\".\"phase\" = 'activating' and \"domain_rule_operations\".\"activation_status\" = 'in-progress') or (\"domain_rule_operations\".\"phase\" = 'completed' and \"domain_rule_operations\".\"activation_status\" = 'succeeded') or (\"domain_rule_operations\".\"phase\" = 'partial' and \"domain_rule_operations\".\"activation_status\" = 'failed') or (\"domain_rule_operations\".\"phase\" = 'reconciliation-required' and \"domain_rule_operations\".\"activation_status\" in ('not-started', 'failed'))"
+        },
+        "domain_rule_operations_timestamp_check": {
+          "name": "domain_rule_operations_timestamp_check",
+          "value": "\"domain_rule_operations\".\"created_at\" between 0 and 8640000000000000 and \"domain_rule_operations\".\"updated_at\" between \"domain_rule_operations\".\"created_at\" and 8640000000000000 and (\"domain_rule_operations\".\"last_activation_attempt_at\" is null or \"domain_rule_operations\".\"last_activation_attempt_at\" between \"domain_rule_operations\".\"created_at\" and \"domain_rule_operations\".\"updated_at\") and (\"domain_rule_operations\".\"completed_at\" is null or \"domain_rule_operations\".\"completed_at\" between \"domain_rule_operations\".\"created_at\" and \"domain_rule_operations\".\"updated_at\")"
+        },
+        "domain_rule_operations_completion_check": {
+          "name": "domain_rule_operations_completion_check",
+          "value": "(\"domain_rule_operations\".\"phase\" in ('completed', 'aborted', 'reconciliation-required') and \"domain_rule_operations\".\"completed_at\" is not null) or (\"domain_rule_operations\".\"phase\" not in ('completed', 'aborted', 'reconciliation-required') and \"domain_rule_operations\".\"completed_at\" is null)"
+        }
+      }
+    },
+    "domain_rule_ownership": {
+      "name": "domain_rule_ownership",
+      "columns": {
+        "rule": {
+          "name": "rule",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ownership": {
+          "name": "ownership",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation_id": {
+          "name": "operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "commit_sha": {
+          "name": "commit_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_rule_ownership_operation_idx": {
+          "name": "domain_rule_ownership_operation_idx",
+          "columns": [
+            "operation_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "domain_rule_ownership_operation_id_domain_rule_operations_id_fk": {
+          "name": "domain_rule_ownership_operation_id_domain_rule_operations_id_fk",
+          "tableFrom": "domain_rule_ownership",
+          "tableTo": "domain_rule_operations",
+          "columnsFrom": [
+            "operation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_rule_ownership_rule_length_check": {
+          "name": "domain_rule_ownership_rule_length_check",
+          "value": "length(\"domain_rule_ownership\".\"rule\") between 3 and 255"
+        },
+        "domain_rule_ownership_kind_check": {
+          "name": "domain_rule_ownership_kind_check",
+          "value": "\"domain_rule_ownership\".\"ownership\" in ('automatic', 'manual')"
+        },
+        "domain_rule_ownership_commit_length_check": {
+          "name": "domain_rule_ownership_commit_length_check",
+          "value": "length(\"domain_rule_ownership\".\"commit_sha\") = 40"
+        },
+        "domain_rule_ownership_timestamp_check": {
+          "name": "domain_rule_ownership_timestamp_check",
+          "value": "\"domain_rule_ownership\".\"created_at\" between 0 and 8640000000000000 and \"domain_rule_ownership\".\"updated_at\" between \"domain_rule_ownership\".\"created_at\" and 8640000000000000"
+        }
+      }
+    },
+    "domain_validation_attempts": {
+      "name": "domain_validation_attempts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "direction": {
+          "name": "direction",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempted_at": {
+          "name": "attempted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "transport_success": {
+          "name": "transport_success",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "http_status": {
+          "name": "http_status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "resolved_address": {
+          "name": "resolved_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "available_address_count": {
+          "name": "available_address_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "connect_duration_ms": {
+          "name": "connect_duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tls_duration_ms": {
+          "name": "tls_duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_duration_ms": {
+          "name": "total_duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "redirect_count": {
+          "name": "redirect_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "final_origin": {
+          "name": "final_origin",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_validation_attempts_run_idx": {
+          "name": "domain_validation_attempts_run_idx",
+          "columns": [
+            "run_id"
+          ],
+          "isUnique": false
+        },
+        "domain_validation_attempts_retention_idx": {
+          "name": "domain_validation_attempts_retention_idx",
+          "columns": [
+            "attempted_at"
+          ],
+          "isUnique": false
+        },
+        "domain_validation_attempts_run_id_direction_unique": {
+          "name": "domain_validation_attempts_run_id_direction_unique",
+          "columns": [
+            "run_id",
+            "direction"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "domain_validation_attempts_run_id_domain_validation_runs_id_fk": {
+          "name": "domain_validation_attempts_run_id_domain_validation_runs_id_fk",
+          "tableFrom": "domain_validation_attempts",
+          "tableTo": "domain_validation_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_validation_attempts_id_length_check": {
+          "name": "domain_validation_attempts_id_length_check",
+          "value": "length(\"domain_validation_attempts\".\"id\") between 1 and 128"
+        },
+        "domain_validation_attempts_run_id_length_check": {
+          "name": "domain_validation_attempts_run_id_length_check",
+          "value": "length(\"domain_validation_attempts\".\"run_id\") between 1 and 128"
+        },
+        "domain_validation_attempts_direction_check": {
+          "name": "domain_validation_attempts_direction_check",
+          "value": "\"domain_validation_attempts\".\"direction\" in ('direct', 'proxy')"
+        },
+        "domain_validation_attempts_category_check": {
+          "name": "domain_validation_attempts_category_check",
+          "value": "\"domain_validation_attempts\".\"category\" in ('http_response', 'dns_failure', 'unsafe_address', 'ipv6_unavailable', 'unsafe_redirect', 'redirect_limit', 'connect_timeout', 'tls_timeout', 'tls_handshake_reset', 'connection_reset_before_http', 'tls_error', 'network_error', 'total_timeout', 'proxy_auth_failure', 'route_proof_failure', 'infrastructure_error')"
+        },
+        "domain_validation_attempts_timestamp_check": {
+          "name": "domain_validation_attempts_timestamp_check",
+          "value": "\"domain_validation_attempts\".\"attempted_at\" between 0 and 8640000000000000"
+        },
+        "domain_validation_attempts_transport_success_check": {
+          "name": "domain_validation_attempts_transport_success_check",
+          "value": "\"domain_validation_attempts\".\"transport_success\" in (0, 1)"
+        },
+        "domain_validation_attempts_http_status_check": {
+          "name": "domain_validation_attempts_http_status_check",
+          "value": "\"domain_validation_attempts\".\"http_status\" is null or (\"domain_validation_attempts\".\"http_status\" >= 100 and \"domain_validation_attempts\".\"http_status\" <= 599)"
+        },
+        "domain_validation_attempts_address_count_check": {
+          "name": "domain_validation_attempts_address_count_check",
+          "value": "\"domain_validation_attempts\".\"available_address_count\" between 0 and 1024 and (\"domain_validation_attempts\".\"resolved_address\" is not null or \"domain_validation_attempts\".\"available_address_count\" = 0)"
+        },
+        "domain_validation_attempts_address_length_check": {
+          "name": "domain_validation_attempts_address_length_check",
+          "value": "\"domain_validation_attempts\".\"resolved_address\" is null or length(\"domain_validation_attempts\".\"resolved_address\") between 2 and 45"
+        },
+        "domain_validation_attempts_connect_duration_check": {
+          "name": "domain_validation_attempts_connect_duration_check",
+          "value": "\"domain_validation_attempts\".\"connect_duration_ms\" is null or \"domain_validation_attempts\".\"connect_duration_ms\" between 0 and 60000"
+        },
+        "domain_validation_attempts_tls_duration_check": {
+          "name": "domain_validation_attempts_tls_duration_check",
+          "value": "\"domain_validation_attempts\".\"tls_duration_ms\" is null or \"domain_validation_attempts\".\"tls_duration_ms\" between 0 and 60000"
+        },
+        "domain_validation_attempts_total_duration_check": {
+          "name": "domain_validation_attempts_total_duration_check",
+          "value": "\"domain_validation_attempts\".\"total_duration_ms\" between 0 and 60000"
+        },
+        "domain_validation_attempts_redirect_count_check": {
+          "name": "domain_validation_attempts_redirect_count_check",
+          "value": "\"domain_validation_attempts\".\"redirect_count\" between 0 and 5"
+        },
+        "domain_validation_attempts_final_origin_length_check": {
+          "name": "domain_validation_attempts_final_origin_length_check",
+          "value": "\"domain_validation_attempts\".\"final_origin\" is null or length(\"domain_validation_attempts\".\"final_origin\") between 9 and 2048"
+        },
+        "domain_validation_attempts_result_shape_check": {
+          "name": "domain_validation_attempts_result_shape_check",
+          "value": "(\"domain_validation_attempts\".\"category\" = 'http_response' and \"domain_validation_attempts\".\"transport_success\" = 1 and \"domain_validation_attempts\".\"http_status\" is not null) or (\"domain_validation_attempts\".\"category\" != 'http_response' and \"domain_validation_attempts\".\"transport_success\" = 0)"
+        }
+      }
+    },
+    "domain_validation_runs": {
+      "name": "domain_validation_runs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_id": {
+          "name": "lease_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_generation": {
+          "name": "lease_generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "fqdn": {
+          "name": "fqdn",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error_category": {
+          "name": "error_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "domain_validation_runs_fqdn_started_idx": {
+          "name": "domain_validation_runs_fqdn_started_idx",
+          "columns": [
+            "fqdn",
+            "started_at"
+          ],
+          "isUnique": false
+        },
+        "domain_validation_runs_retention_idx": {
+          "name": "domain_validation_runs_retention_idx",
+          "columns": [
+            "finished_at",
+            "started_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "domain_validation_runs_fqdn_domain_candidates_fqdn_fk": {
+          "name": "domain_validation_runs_fqdn_domain_candidates_fqdn_fk",
+          "tableFrom": "domain_validation_runs",
+          "tableTo": "domain_candidates",
+          "columnsFrom": [
+            "fqdn"
+          ],
+          "columnsTo": [
+            "fqdn"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "domain_validation_runs_status_check": {
+          "name": "domain_validation_runs_status_check",
+          "value": "\"domain_validation_runs\".\"status\" in ('running', 'completed', 'failed', 'cancelled')"
+        },
+        "domain_validation_runs_id_length_check": {
+          "name": "domain_validation_runs_id_length_check",
+          "value": "length(\"domain_validation_runs\".\"id\") between 1 and 128"
+        },
+        "domain_validation_runs_lease_id_length_check": {
+          "name": "domain_validation_runs_lease_id_length_check",
+          "value": "length(\"domain_validation_runs\".\"lease_id\") between 1 and 128"
+        },
+        "domain_validation_runs_lease_generation_check": {
+          "name": "domain_validation_runs_lease_generation_check",
+          "value": "\"domain_validation_runs\".\"lease_generation\" between 1 and 1000000000"
+        },
+        "domain_validation_runs_fqdn_length_check": {
+          "name": "domain_validation_runs_fqdn_length_check",
+          "value": "length(\"domain_validation_runs\".\"fqdn\") between 3 and 253"
+        },
+        "domain_validation_runs_started_check": {
+          "name": "domain_validation_runs_started_check",
+          "value": "\"domain_validation_runs\".\"started_at\" between 0 and 8640000000000000"
+        },
+        "domain_validation_runs_finished_check": {
+          "name": "domain_validation_runs_finished_check",
+          "value": "(\"domain_validation_runs\".\"status\" = 'running' and \"domain_validation_runs\".\"finished_at\" is null) or (\"domain_validation_runs\".\"status\" != 'running' and \"domain_validation_runs\".\"finished_at\" is not null and \"domain_validation_runs\".\"finished_at\" between \"domain_validation_runs\".\"started_at\" and 8640000000000000)"
+        },
+        "domain_validation_runs_error_check": {
+          "name": "domain_validation_runs_error_check",
+          "value": "(\"domain_validation_runs\".\"status\" in ('running', 'completed') and \"domain_validation_runs\".\"error_category\" is null) or (\"domain_validation_runs\".\"status\" in ('failed', 'cancelled') and \"domain_validation_runs\".\"error_category\" in ('shutdown', 'lease-lost', 'coverage-failure', 'direct-probe-failure', 'proxy-probe-failure', 'decision-failure', 'policy-changed', 'infrastructure-failure'))"
+        }
+      }
+    },
+    "excluded_nodes": {
+      "name": "excluded_nodes",
+      "columns": {
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "node_bandwidth": {
+      "name": "node_bandwidth",
+      "columns": {
+        "node_name": {
+          "name": "node_name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mbps": {
+          "name": "mbps",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tested_at": {
+          "name": "tested_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sessions": {
+      "name": "sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "settings": {
+      "name": "settings",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "sources": {
+      "name": "sources",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sub_url": {
+          "name": "sub_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hwid": {
+          "name": "hwid",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "proxies": {
+          "name": "proxies",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_refresh_attempt_at": {
+          "name": "last_refresh_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_refresh_success_at": {
+          "name": "last_refresh_success_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "next_refresh_attempt_at": {
+          "name": "next_refresh_attempt_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "refresh_failures": {
+          "name": "refresh_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "last_refresh_error": {
+          "name": "last_refresh_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(current_timestamp)"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(current_timestamp)"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {
+      "domain_automatic_consents_active_unique_idx": {
+        "columns": {
+          "1": {
+            "isExpression": true
+          }
+        }
+      }
+    }
+  }
+}
