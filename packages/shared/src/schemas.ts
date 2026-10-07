@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const sourceKindSchema = z.enum([
   "sub",
+  "node",
   "happ",
   "vless",
   "hysteria2",

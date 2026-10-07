@@ -9,7 +9,7 @@ import { isExactIdPermutation } from "../../lib/ids.js";
 import { applyConfig } from "../nodes/service.js";
 import { getOrCreateHwid } from "../settings/service.js";
 import { ingestSource } from "./ingest.js";
-import { extractSubUrl } from "./parse.js";
+import { detectKind, extractSubUrl } from "./parse.js";
 import {
   isRefreshableSource,
   type SourceRefreshStage,
@@ -69,8 +69,9 @@ export async function addSource(
   // CONFLICT (not a generic error): the client clears the input on this code —
   // the source already exists, so there's nothing to fix and retry.
   if (existing) throw new TRPCError({ code: "CONFLICT", message: "Источник уже добавлен" });
-  const hwid = input.hwid ? getOrCreateHwid(db, hwidFile) : "";
-  const result = await ingestSource(value, input.hwid, hwid);
+  const useHwid = input.hwid && detectKind(value) !== "node";
+  const hwid = useHwid ? getOrCreateHwid(db, hwidFile) : "";
+  const result = await ingestSource(value, useHwid, hwid);
   // Second dedup gate, post-ingest: the raw value can differ for the SAME
   // subscription (happ crypt5 ciphertexts are non-deterministic; deep-links wrap
   // the same URL) — compare by the resolved sub URL.
@@ -94,7 +95,7 @@ export async function addSource(
       value,
       subUrl: result.subUrl,
       label: result.label,
-      hwid: input.hwid,
+      hwid: useHwid,
       sortOrder,
       proxies: result.proxies,
       meta: result.meta,

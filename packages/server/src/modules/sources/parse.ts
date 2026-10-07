@@ -3,6 +3,7 @@
 //  - subscriptions: clash/mihomo yaml | base64 list | v2ray/xray JSON | sing-box JSON
 //  - happ:// is handled separately via the happ-decoder client (see ingest.ts)
 import {
+  isNodeConfigText,
   type Proxy as ProxyConfig,
   proxySchema,
   type SourceKind,
@@ -38,6 +39,7 @@ export function extractSubUrl(value: string): string | null {
 export function detectKind(value: string): SourceKind {
   const v = (value || "").trim();
   if (!v) throw new Error("empty string");
+  if (isNodeConfigText(v)) return "node";
   const scheme = schemeOf(v);
   if (scheme && SINGLE_LINK[scheme]) return SINGLE_LINK[scheme].kind; // supported single link
   if (scheme === "vpn:") return "amneziawg"; // Amnezia vpn:// blob (decoded at ingest)
@@ -313,7 +315,7 @@ export function parseSingleLink(uri: string): ProxyConfig {
 
 // ── v2ray/xray JSON outbound → mihomo proxy (best-effort, Happ format) ──
 // biome-ignore lint/suspicious/noExplicitAny: external untyped JSON
-function v2rayOutboundToMihomo(ob: any, remark?: string): ProxyConfig | null {
+export function v2rayOutboundToMihomo(ob: any, remark?: string): ProxyConfig | null {
   if (ob?.protocol === "vless") {
     const vnext = ob.settings?.vnext?.[0];
     const user = vnext?.users?.[0];
@@ -399,7 +401,7 @@ function v2rayOutboundToMihomo(ob: any, remark?: string): ProxyConfig | null {
 
 // ── sing-box outbound → mihomo proxy (type/server/server_port) ──────
 // biome-ignore lint/suspicious/noExplicitAny: external untyped JSON
-function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
+export function singBoxOutboundToMihomo(ob: any): ProxyConfig | null {
   if (ob?.type === "hysteria2" && ob.server) {
     const p: Record<string, unknown> = {
       name: ob.tag || `${ob.server}:${ob.server_port}`,

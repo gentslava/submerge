@@ -1,11 +1,13 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "../../db/client.js";
 import { sources } from "../../db/schema.js";
+import { ensureDefaultChannel } from "../channels/service.js";
 import type { SourceRefreshStageError } from "./refresh.js";
+import { isRefreshableSource } from "./refresh.js";
 import {
   addSource,
   backfillSubUrls,
@@ -15,6 +17,7 @@ import {
   reorderSources,
   toggleSource,
 } from "./service.js";
+import { xrayConfig } from "./single-node.fixture.js";
 
 function freshDb() {
   const db = createDb(":memory:");
@@ -41,6 +44,45 @@ function stubNet(
 afterEach(() => vi.unstubAllGlobals());
 
 describe("sources service", () => {
+  it("stores and reparses a static JSON node without HWID or subscription fetches", async () => {
+    const db = freshDb();
+    ensureDefaultChannel(db);
+    const configPath = tmpConfig();
+    const hwidPath = hwidFile();
+    const fetch = vi.fn((url: string) => {
+      if (!String(url).includes("/configs")) throw new Error("Unexpected subscription fetch");
+      return new Response(null, { status: 204 });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const { source } = await addSource(
+      db,
+      { value: JSON.stringify(xrayConfig), hwid: true },
+      configPath,
+      hwidPath,
+    );
+    expect(source).toMatchObject({
+      kind: "node",
+      label: "My single node",
+      hwid: false,
+      meta: null,
+    });
+    expect(source.proxies).toHaveLength(1);
+    expect(existsSync(hwidPath)).toBe(false);
+    expect(readFileSync(configPath, "utf8")).toContain("public-key: AAAAA");
+    expect(readFileSync(configPath, "utf8")).not.toContain("10808");
+    const row = db.select().from(sources).get();
+    expect(row?.subUrl).toBeNull();
+    expect(isRefreshableSource(source.kind, row?.subUrl ?? null)).toBe(false);
+    expect((await refreshSource(db, source.id, configPath, hwidPath)).source.proxies).toEqual(
+      source.proxies,
+    );
+    await toggleSource(db, source.id, configPath);
+    const refreshBeforeEnable = vi.fn();
+    await toggleSource(db, source.id, configPath, refreshBeforeEnable);
+    expect(refreshBeforeEnable).not.toHaveBeenCalled();
+    await removeSource(db, source.id, configPath);
+    expect(await listSources(db)).toHaveLength(0);
+  });
   it("adds a vless source, snapshots its proxies, and lists it", async () => {
     const db = freshDb();
     stubNet();

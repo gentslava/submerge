@@ -5,6 +5,7 @@ quick map. Update both when a spec ships.
 
 | Spec | Status |
 |---|---|
+| [2026-10-07 single-node JSON/YAML import](2026-10-07-single-node-import-design.md) | implemented and verified locally; prepared for PR |
 | [2026-06-29 v2 stack design](2026-06-29-submerge-v2-stack-design.md) | implemented (v2 shipped, phases 1–6) |
 | [2026-07-01 node collapse](2026-07-01-node-collapse-design.md) | implemented |
 | [2026-07-01 channel routing](2026-07-01-channel-routing-design.md) | implemented (phases 1–2; multi-channel 3a/3b — routing UI + domain presets) |

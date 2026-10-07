@@ -32,6 +32,7 @@ interface SourceRowProps {
 // to their own name — the kind IS the protocol, so it reads correctly as-is.
 const KIND_SHORT: Partial<Record<SourceKind, string>> = {
   sub: "подписка",
+  node: "узел",
   happ: "happ",
   vless: "VLESS",
   hysteria2: "Hysteria2",
@@ -46,7 +47,7 @@ const KIND_SHORT: Partial<Record<SourceKind, string>> = {
 function KindIcon({ kind }: { kind: SourceKind }) {
   const cls = "h-[18px] w-[18px] shrink-0 text-text-secondary";
   if (kind === "happ") return <Lock aria-hidden className={cls} />;
-  if (kind === "vless") return <LinkIcon aria-hidden className={cls} />;
+  if (kind === "vless" || kind === "node") return <LinkIcon aria-hidden className={cls} />;
   return <Inbox aria-hidden className={cls} />;
 }
 
@@ -215,6 +216,8 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
         {/* Subscription metadata (traffic / expiry / auto), or a note for plain vless configs */}
         {source.meta ? (
           <SourceMeta meta={source.meta} />
+        ) : source.kind === "node" ? (
+          <span className="min-w-0 text-fine text-text-tertiary">статический конфиг</span>
         ) : source.kind === "vless" ? (
           <span className="shrink-0 font-mono text-fine text-text-tertiary">
             конфиг · без срока и лимита
@@ -232,7 +235,11 @@ export const SourceRowShell = forwardRef<HTMLDivElement, ShellProps>(function So
               aria-label="Включить источник"
             />
           </span>
-          <IconBtn onClick={onRefresh} disabled={isBusy} label="Обновить источник">
+          <IconBtn
+            onClick={onRefresh}
+            disabled={isBusy}
+            label={source.kind === "node" ? "Перечитать конфиг" : "Обновить источник"}
+          >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
           </IconBtn>
           <IconBtn onClick={handleRemove} disabled={isBusy} label="Удалить источник" danger>

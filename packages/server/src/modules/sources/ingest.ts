@@ -1,6 +1,7 @@
 import type { Proxy as ProxyConfig, SourceKind, SubscriptionMeta } from "@submerge/shared";
 import { decodeHapp } from "../../clients/happDecoder.js";
 import { detectKind, extractSubUrl, parseProxiesFromText, parseSingleLink } from "./parse.js";
+import { parseSingleNodeConfig } from "./single-node.js";
 import { parseAmneziaVpnLink, parseWireguardConf } from "./wireguard.js";
 
 export interface IngestResult {
@@ -190,6 +191,10 @@ export async function ingestSource(
   hwid = "",
 ): Promise<IngestResult> {
   const kind = detectKind(value);
+  if (kind === "node") {
+    const proxy = parseSingleNodeConfig(value);
+    return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [], subUrl: null };
+  }
   if (SINGLE_LINK_KINDS.has(kind)) {
     const proxy = parseSingleLink(value);
     return { kind, label: proxy.name, proxies: [proxy], meta: null, skipped: [], subUrl: null };
