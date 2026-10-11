@@ -1317,41 +1317,8 @@
   }
 }
 
-.network-settings-details > summary::-webkit-details-marker {
-  display: none;
-}
-
 .segmented-control--stretch > button {
   font-size: var(--text-sub);
-}
-
-.network-settings .labeled-control-row-control > .relative {
-  min-width: 0;
-  width: 100%;
-}
-
-.network-settings-list > .relative {
-  min-width: 0;
-  flex: 0 1 7.5rem;
-}
-
-.network-settings-list > span {
-  flex-basis: 100%;
-}
-
-.network-settings-list-add > .relative {
-  min-width: 0;
-  flex: 1;
-}
-
-@container app-page (min-width: 42rem) {
-  .network-settings .labeled-control-row-control > .relative {
-    width: 16.25rem;
-  }
-
-  .network-settings-list > span {
-    flex-basis: 0;
-  }
 }
 
 @container app-page (min-width: 48rem) {

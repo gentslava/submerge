@@ -10,7 +10,7 @@ import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
 import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
-import { seedNetworkProfile, validateGatewayStartup } from "./modules/gateway/settings.js";
+import { readNetworkSettings, validateGatewayStartup } from "./modules/gateway/settings.js";
 import {
   logHub,
   reconcileDomainRuleDeployment,
@@ -55,7 +55,7 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
 
 // Apply any pending DB migrations before accepting connections
 runMigrations();
-seedNetworkProfile(db);
+readNetworkSettings(db);
 validateGatewayStartup(db, readMihomoBootstrapSecret(db));
 
 // Seed the Default channel on first boot (idempotent — no-op if already present).

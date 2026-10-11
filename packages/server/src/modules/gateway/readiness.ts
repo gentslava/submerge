@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
-import { type GatewayProfile, isPublicResolverIp, PSEUDO_NODE_SET } from "@submerge/shared";
+import { isPublicResolverIp, PSEUDO_NODE_SET } from "@submerge/shared";
 import { probeDnsListener } from "../../clients/gateway-network.js";
 import {
   type ActiveRulesResponse,
@@ -15,6 +15,7 @@ import {
   queryRealDns,
   type RuleProvidersResponse,
 } from "../../clients/mihomo.js";
+import type { GatewayProfile } from "./engine-settings.js";
 import {
   assertIndependentLocalDns,
   assertPrivateProvidersLoaded,
@@ -204,7 +205,7 @@ export async function checkGatewayReadiness(
   ];
   const results = await Promise.all(
     tasks
-      .filter(([name]) => name !== "local-dns" || tunEnabled || profile.localResolvers.length > 0)
+      .filter(([name]) => name !== "local-dns" || profile.localResolvers.length > 0)
       .map(async ([name, check]) => {
         try {
           return { name, ok: await check() };

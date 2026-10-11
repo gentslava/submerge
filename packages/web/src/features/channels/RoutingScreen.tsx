@@ -23,7 +23,6 @@ import {
   DEFAULT_AUTO_TEST_URL,
   type DirectChannel,
   type ProxyChannel,
-  type UpdateDirectInput,
 } from "@submerge/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, ChevronUp, GripVertical, Info, Plus } from "lucide-react";
@@ -57,7 +56,7 @@ const NEW_CHANNEL_SEED_POLICY: ChannelPolicy = {
  * pool, policy, and delete controls, while Direct exposes only bypass rules.
  * «Новый канал» creates a real channel (seeded policy + empty matcher) and opens
  * it expanded. Reorder is drag (desktop, grip-handle) / ↑↓ arrows (mobile, below
- * `md`) over the non-default channels only — the Default channel is pinned last
+ * `md`) over proxy channels only — Direct and Default are pinned last
  * and rendered outside the sortable list entirely, so it can never be dragged
  * onto or reordered.
  */
@@ -66,8 +65,12 @@ export function RoutingScreen() {
   const qc = useQueryClient();
 
   const channelsQuery = useQuery(trpc.channels.list.queryOptions());
+  const publishedLists = useQuery(trpc.channels.publishedLists.queryOptions());
   const channels = channelsQuery.data ?? [];
-  const nonDefaultChannels = channels.filter((c) => !c.isDefault);
+  const nonDefaultChannels = channels.filter(
+    (c): c is ProxyChannel => !c.isDefault && c.target === "proxy",
+  );
+  const directChannel = channels.find((c): c is DirectChannel => c.target === "direct");
   const defaultChannel = channels.find(
     (channel): channel is ProxyChannel => channel.target === "proxy" && channel.isDefault,
   );
@@ -143,7 +146,7 @@ export function RoutingScreen() {
     });
   }
 
-  // Persist a reorder (drag or arrow-button): `next` is the new non-default order;
+  // Persist proxy order; Direct stays before the default catch-all.
   // the Default channel is appended back on top for the optimistic cache write since
   // the server always keeps it last regardless (see channels/service.ts reorderChannels).
   const reorderMutation = useMutation(
@@ -156,11 +159,12 @@ export function RoutingScreen() {
 
   function commitReorder(next: Channel[]) {
     if (next === nonDefaultChannels) return;
+    const ordered = directChannel ? [...next, directChannel] : next;
     qc.setQueryData(
       trpc.channels.list.queryKey(),
-      defaultChannel ? [...next, defaultChannel] : next,
+      defaultChannel ? [...ordered, defaultChannel] : ordered,
     );
-    reorderMutation.mutate({ ids: next.map((c) => c.id) });
+    reorderMutation.mutate({ ids: ordered.map((c) => c.id) });
   }
 
   function moveChannel(channel: Channel, direction: -1 | 1) {
@@ -245,76 +249,58 @@ export function RoutingScreen() {
               items={nonDefaultChannels.map((c) => c.id)}
               strategy={verticalListSortingStrategy}
             >
-              {nonDefaultChannels.map((channel, index) =>
-                channel.target === "direct" ? (
-                  <SortableChannelCard
-                    key={channel.id}
-                    channel={channel}
-                    canMoveUp={index > 0}
-                    canMoveDown={index < nonDefaultChannels.length - 1}
-                    busy={updateDirectMutation.isPending}
-                    initiallyExpanded={false}
-                    onUpdateDirect={(patch) => updateDirectMutation.mutate(patch)}
-                    onMoveUp={() => moveChannel(channel, -1)}
-                    onMoveDown={() => moveChannel(channel, 1)}
-                  />
-                ) : (
-                  <SortableChannelCard
-                    key={channel.id}
-                    channel={channel}
-                    canMoveUp={index > 0}
-                    canMoveDown={index < nonDefaultChannels.length - 1}
-                    busy={updateMutation.isPending && updateMutation.variables?.id === channel.id}
-                    initiallyExpanded={channel.id === justCreatedId}
-                    onToggleEnabled={(enabled) =>
-                      updateMutation.mutate({ id: channel.id, enabled })
-                    }
-                    onUpdateName={(name) => updateMutation.mutate({ id: channel.id, name })}
-                    onUpdateMatcher={(matcher) =>
-                      updateMutation.mutate({ id: channel.id, matcher })
-                    }
-                    onUpdatePolicy={(policy) =>
-                      setPolicyMutation.mutate({ id: channel.id, policy })
-                    }
-                    onRemove={() => removeMutation.mutate({ id: channel.id })}
-                    onMoveUp={() => moveChannel(channel, -1)}
-                    onMoveDown={() => moveChannel(channel, 1)}
-                  />
-                ),
-              )}
+              {nonDefaultChannels.map((channel, index) => (
+                <SortableChannelCard
+                  publishedFiles={publishedLists.data ?? []}
+                  key={channel.id}
+                  channel={channel}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < nonDefaultChannels.length - 1}
+                  busy={updateMutation.isPending && updateMutation.variables?.id === channel.id}
+                  initiallyExpanded={channel.id === justCreatedId}
+                  onToggleEnabled={(enabled) => updateMutation.mutate({ id: channel.id, enabled })}
+                  onUpdateName={(name) => updateMutation.mutate({ id: channel.id, name })}
+                  onUpdateMatcher={(matcher) => updateMutation.mutate({ id: channel.id, matcher })}
+                  onUpdatePolicy={(policy) => setPolicyMutation.mutate({ id: channel.id, policy })}
+                  onRemove={() => removeMutation.mutate({ id: channel.id })}
+                  onMoveUp={() => moveChannel(channel, -1)}
+                  onMoveDown={() => moveChannel(channel, 1)}
+                />
+              ))}
             </SortableContext>
             <DragOverlay modifiers={[restrictToVerticalAxis]}>
               {activeChannel ? (
-                activeChannel.target === "direct" ? (
-                  <ChannelCard
-                    channel={activeChannel}
-                    className="shadow-lg"
-                    reorderControl={<OverlayGrip />}
-                    onUpdateDirect={(patch) => updateDirectMutation.mutate(patch)}
-                  />
-                ) : (
-                  <ChannelCard
-                    channel={activeChannel}
-                    className="shadow-lg"
-                    reorderControl={<OverlayGrip />}
-                    onToggleEnabled={(enabled) =>
-                      updateMutation.mutate({ id: activeChannel.id, enabled })
-                    }
-                    onUpdateName={(name) => updateMutation.mutate({ id: activeChannel.id, name })}
-                    onUpdateMatcher={(matcher) =>
-                      updateMutation.mutate({ id: activeChannel.id, matcher })
-                    }
-                    onUpdatePolicy={(policy) =>
-                      setPolicyMutation.mutate({ id: activeChannel.id, policy })
-                    }
-                    onRemove={() => removeMutation.mutate({ id: activeChannel.id })}
-                  />
-                )
+                <ChannelCard
+                  publishedFiles={publishedLists.data ?? []}
+                  channel={activeChannel}
+                  className="shadow-lg"
+                  reorderControl={<OverlayGrip />}
+                  onToggleEnabled={(enabled) =>
+                    updateMutation.mutate({ id: activeChannel.id, enabled })
+                  }
+                  onUpdateName={(name) => updateMutation.mutate({ id: activeChannel.id, name })}
+                  onUpdateMatcher={(matcher) =>
+                    updateMutation.mutate({ id: activeChannel.id, matcher })
+                  }
+                  onUpdatePolicy={(policy) =>
+                    setPolicyMutation.mutate({ id: activeChannel.id, policy })
+                  }
+                  onRemove={() => removeMutation.mutate({ id: activeChannel.id })}
+                />
               ) : null}
             </DragOverlay>
           </DndContext>
+          {directChannel && (
+            <ChannelCard
+              publishedFiles={publishedLists.data ?? []}
+              channel={directChannel}
+              busy={updateDirectMutation.isPending}
+              onUpdateDirect={(patch) => updateDirectMutation.mutate(patch)}
+            />
+          )}
           {defaultChannel && (
             <ChannelCard
+              publishedFiles={publishedLists.data ?? []}
               channel={defaultChannel}
               busy={updateMutation.isPending && updateMutation.variables?.id === defaultChannel.id}
               onToggleEnabled={(enabled) =>
@@ -346,6 +332,7 @@ export function RoutingScreen() {
 }
 
 interface SortableChannelCardBaseProps {
+  publishedFiles: string[];
   canMoveUp: boolean;
   canMoveDown: boolean;
   busy: boolean;
@@ -363,18 +350,7 @@ interface SortableProxyChannelCardProps extends SortableChannelCardBaseProps {
   onRemove: () => void;
 }
 
-interface SortableDirectChannelCardProps extends SortableChannelCardBaseProps {
-  channel: DirectChannel;
-  onUpdateDirect: (patch: UpdateDirectInput) => void;
-}
-
-type SortableChannelCardProps = SortableProxyChannelCardProps | SortableDirectChannelCardProps;
-
-function isSortableDirectProps(
-  props: SortableChannelCardProps,
-): props is SortableDirectChannelCardProps {
-  return props.channel.target === "direct";
-}
+type SortableChannelCardProps = SortableProxyChannelCardProps;
 
 // Wires one non-default channel into the sortable list: `useSortable` supplies the
 // drag transform (applied to the whole card via ChannelCard's forwardRef) and the
@@ -429,6 +405,7 @@ function SortableChannelCard(props: SortableChannelCardProps) {
     </span>
   );
   const common = {
+    publishedFiles: props.publishedFiles,
     ref: setNodeRef,
     style,
     className: cn(isDragging && "opacity-0"),
@@ -437,11 +414,6 @@ function SortableChannelCard(props: SortableChannelCardProps) {
     initiallyExpanded: props.initiallyExpanded,
   };
 
-  if (isSortableDirectProps(props)) {
-    return (
-      <ChannelCard {...common} channel={props.channel} onUpdateDirect={props.onUpdateDirect} />
-    );
-  }
   return (
     <ChannelCard
       {...common}

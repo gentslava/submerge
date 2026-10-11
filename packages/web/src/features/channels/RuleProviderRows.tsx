@@ -1,4 +1,9 @@
-import { type RuleProviderRef, ruleProviderFormat, ruleProviderRefSchema } from "@submerge/shared";
+import {
+  publishedRuleFile,
+  type RuleProviderRef,
+  ruleProviderFormat,
+  ruleProviderRefSchema,
+} from "@submerge/shared";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -45,6 +50,7 @@ function coerce(row: DraftRow): DraftRow {
 interface RuleProviderRowsProps {
   value: RuleProviderRef[];
   onChange: (refs: RuleProviderRef[]) => void;
+  publishedFiles?: string[];
 }
 
 /**
@@ -59,7 +65,7 @@ interface RuleProviderRowsProps {
  * delete commit immediately. A non-empty URL that doesn't validate is flagged
  * (aria-invalid) and left out of the committed set rather than silently dropped.
  */
-export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
+export function RuleProviderRows({ value, onChange, publishedFiles = [] }: RuleProviderRowsProps) {
   const [rows, setRows] = useState<DraftRow[]>(() =>
     value.map((r) => ({ id: crypto.randomUUID(), url: r.url, behavior: r.behavior })),
   );
@@ -81,25 +87,48 @@ export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
         const invalid =
           trimmed.length > 0 &&
           !ruleProviderRefSchema.safeParse({ url: trimmed, behavior: row.behavior }).success;
+        const file = publishedRuleFile(row.url);
         const mrs = ruleProviderFormat(row.url) === "mrs";
         return (
           <div key={row.id} className="rule-provider-row flex flex-col gap-2">
-            <Input
-              value={row.url}
-              onChange={(e) =>
-                local(
-                  rows.map((r) => (r.id === row.id ? coerce({ ...r, url: e.target.value }) : r)),
-                )
-              }
-              onBlur={() => commit(rows)}
-              placeholder="https://…/list.yaml"
-              aria-label={`URL списка правил ${index + 1}`}
-              aria-invalid={invalid}
-              className={cn(
-                "rule-provider-input font-mono text-sub",
-                invalid && "border-timeout focus-visible:ring-timeout",
-              )}
-            />
+            {file ? (
+              <div className="rule-provider-input min-w-0 [&>div]:w-full">
+                <Select
+                  value={row.url}
+                  aria-label={`Файл списка правил ${index + 1}`}
+                  title={file}
+                  className="w-full"
+                  onChange={(event) =>
+                    commit(
+                      rows.map((r) => (r.id === row.id ? { ...r, url: event.target.value } : r)),
+                    )
+                  }
+                >
+                  {[...new Set([file, ...publishedFiles])].map((file) => (
+                    <option key={file} value={`file://published/${file}`}>
+                      {file}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : (
+              <Input
+                value={row.url}
+                onChange={(e) =>
+                  local(
+                    rows.map((r) => (r.id === row.id ? coerce({ ...r, url: e.target.value }) : r)),
+                  )
+                }
+                onBlur={() => commit(rows)}
+                placeholder="https://…/list.yaml"
+                aria-label={`URL списка правил ${index + 1}`}
+                aria-invalid={invalid}
+                className={cn(
+                  "rule-provider-input font-mono text-sub",
+                  invalid && "border-timeout focus-visible:ring-timeout",
+                )}
+              />
+            )}
             <div className="rule-provider-actions flex items-center gap-2">
               <Select
                 value={row.behavior}
@@ -117,11 +146,13 @@ export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
                 {/* Human labels — the raw mihomo behavior values (classical/domain/
                     ipcidr) mean nothing to a user. mrs supports only domain/ipcidr,
                     so «Набор правил» is disabled for an .mrs URL. */}
-                <option value="classical" disabled={mrs}>
+                <option value="classical" disabled={mrs || file === "notblocked.txt"}>
                   Набор правил
                 </option>
                 <option value="domain">Домены</option>
-                <option value="ipcidr">IP-подсети</option>
+                <option value="ipcidr" disabled={file === "notblocked.txt"}>
+                  IP-подсети
+                </option>
               </Select>
               <button
                 type="button"
@@ -148,12 +179,34 @@ export function RuleProviderRows({ value, onChange }: RuleProviderRowsProps) {
         <Plus className="h-4 w-4" aria-hidden="true" />
         Добавить список
       </button>
-      {rows.length > 0 && (
-        <p className="text-xs text-text-tertiary">
-          Тип — что внутри файла по ссылке: «Набор правил» подходит для большинства списков;
-          «Домены» или «IP-подсети» — если список состоит только из них (и обязателен для
-          .mrs-файлов). Формат файла определяется по ссылке автоматически.
-        </p>
+      {publishedFiles.length > 0 && (
+        <div className="settings-field-260 w-full [&>div]:w-full">
+          <Select
+            aria-label="Добавить опубликованный список"
+            className="w-full"
+            value=""
+            onChange={(event) => {
+              if (event.target.value)
+                commit([
+                  ...rows,
+                  {
+                    id: crypto.randomUUID(),
+                    url: `file://published/${event.target.value}`,
+                    behavior: "domain",
+                  },
+                ]);
+            }}
+          >
+            <option value="">Добавить файл…</option>
+            {publishedFiles
+              .filter((file) => !rows.some((row) => publishedRuleFile(row.url) === file))
+              .map((file) => (
+                <option key={file} value={file}>
+                  {file}
+                </option>
+              ))}
+          </Select>
+        </div>
       )}
     </div>
   );

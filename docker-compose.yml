@@ -11,7 +11,6 @@ x-submerge: &submerge
     MIHOMO_SECRET: ${MIHOMO_SECRET:-}
     ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     COOKIE_SECURE: ${COOKIE_SECURE:-false}
-    GATEWAY_DEPLOYMENT: "true"
     DOMAIN_VALIDATION_TOPOLOGY: compose
     DOMAIN_VALIDATION_PROXY_ENDPOINT: http://mihomo:7891
     DOMAIN_RULES_MODE: ${DOMAIN_RULES_MODE:-report}
@@ -56,7 +55,7 @@ services:
 
   submerge-init:
     <<: *submerge
-    command: [node, dist/gateway-cli.js, bootstrap]
+    command: [node, dist/network-bootstrap.js]
     restart: "no"
     network_mode: none
     depends_on:

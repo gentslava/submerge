@@ -38,10 +38,6 @@ const envSchema = z
     DOMAIN_VALIDATION_LISTEN: z.union([z.ipv4(), z.ipv6()]).default("0.0.0.0"),
     DOMAIN_VALIDATION_PORT: z.coerce.number().int().min(1).max(65_535).default(7891),
     DOMAIN_RULES_MODE: z.enum(["report", "apply"]).default("report"),
-    GATEWAY_PROFILE_FILE: z.string().min(1).optional(),
-    GATEWAY_DEPLOYMENT: z.stringbool().default(false),
-    GATEWAY_LISTS_PATH: z.string().min(1).default("/mihomo/private-lists"),
-    GATEWAY_LAN_ACCESS: z.enum(["bridge", "lan"]).default("bridge"),
   })
   .superRefine((value, context) => {
     const endpoint = new URL(value.DOMAIN_VALIDATION_PROXY_ENDPOINT);

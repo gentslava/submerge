@@ -126,7 +126,7 @@ export function getOrCreateInternalSecret(db: Db, key: string): string {
 export function getOrCreateHwid(db: Db, file: string = env.HWID_FILE): string {
   const existing = getSetting(db, "hwid");
   if (existing) {
-    mirrorHwid(file, existing);
+    mirrorHwid(file, existing, getSetting(db, "internal.networkSettings") !== undefined);
     return existing;
   }
   let hwid = "";
@@ -139,17 +139,17 @@ export function getOrCreateHwid(db: Db, file: string = env.HWID_FILE): string {
   }
   if (!hwid) hwid = randomBytes(16).toString("hex");
   setSetting(db, "hwid", hwid);
-  mirrorHwid(file, hwid);
+  mirrorHwid(file, hwid, getSetting(db, "internal.networkSettings") !== undefined);
   return hwid;
 }
 
-function mirrorHwid(file: string, hwid: string): void {
+function mirrorHwid(file: string, hwid: string, prepared: boolean): void {
   try {
     // The prepared stack grants the decoder group read access to this mirror.
     // Host-run development retains its existing cross-container uid behavior.
-    const mode = env.GATEWAY_DEPLOYMENT ? 0o640 : 0o644;
+    const mode = prepared ? 0o640 : 0o644;
     writeFileSync(file, hwid, { mode });
-    if (env.GATEWAY_DEPLOYMENT) chmodSync(file, mode);
+    if (prepared) chmodSync(file, mode);
   } catch {
     /* file path not writable (e.g. local dev without /mihomo) — DB is source of truth */
   }

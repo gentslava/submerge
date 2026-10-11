@@ -1,6 +1,5 @@
 import { expect, type Page } from "@playwright/test";
 import {
-  createGatewayDraft,
   DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
   type DiagnosticsResult,
   type DirectChannel,
@@ -91,19 +90,8 @@ const responses: Record<string, unknown> = {
   "channels.reorder": { ok: true, applied: true },
   "channels.updateDirect": { channel: directChannelFixture, applied: true },
   "settings.get": { hwid: "fixture-hwid", mihomoSecret: "", proxyEndpoint: "127.0.0.1:7890" },
-  "gateway.configuration": {
-    profile: { profile: "proxy" },
-    tun: createGatewayDraft(),
-    availableLists: [],
-    prerequisites: [
-      { name: "admin-password", ok: false },
-      { name: "engine-secret", ok: false },
-      { name: "network", ok: false },
-      { name: "private-lists", ok: true },
-      { name: "tun-access", ok: null },
-    ],
-    connection: { lanAddress: null, dnsAddress: null, dnsPort: 1053, access: "bridge" },
-  },
+  "gateway.configuration": { mode: "proxy", localResolvers: [] },
+  "channels.publishedLists": [],
   "gateway.readiness": { profile: "proxy", ready: true, checks: [{ name: "runtime", ok: true }] },
   "nodes.bandwidth": [],
   "nodes.health": { connected: true },

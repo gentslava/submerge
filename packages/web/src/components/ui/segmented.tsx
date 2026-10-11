@@ -12,8 +12,6 @@ interface SegmentedProps {
   "aria-label"?: string;
   disabled?: boolean;
   stretch?: boolean;
-  onPointerDown?: (value: string) => void;
-  onPointerCancel?: () => void;
 }
 
 export function Segmented({
@@ -23,8 +21,6 @@ export function Segmented({
   "aria-label": ariaLabel,
   disabled,
   stretch,
-  onPointerDown,
-  onPointerCancel,
 }: SegmentedProps) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: a div with role="group" is the correct ARIA pattern for a segmented switcher; <fieldset> carries unwanted form-control semantics and styling.
@@ -43,8 +39,6 @@ export function Segmented({
             key={opt.value}
             type="button"
             disabled={disabled}
-            onPointerDown={() => onPointerDown?.(opt.value)}
-            onPointerCancel={onPointerCancel}
             onClick={() => onChange(opt.value)}
             aria-current={active ? "true" : undefined}
             className={cn(

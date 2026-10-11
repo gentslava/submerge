@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { networkProfileSchema } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { expect, it } from "vitest";
 import {
@@ -14,7 +13,12 @@ import {
   setMihomoSecret,
 } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
-import { buildMultiConfig, type ChannelConfigInput } from "../nodes/multiConfig.js";
+import {
+  buildMultiConfig,
+  type ChannelConfigInput,
+  ruleProviderName,
+} from "../nodes/multiConfig.js";
+import { networkProfileSchema } from "./engine-settings.js";
 import { assertPrivateProvidersLoaded } from "./settings.js";
 
 const execFile = promisify(execFileCallback);
@@ -159,8 +163,16 @@ it.skipIf(!enabled)(
         ruGeoip: [],
         ruZones: ["ru"],
         privateLists: [
-          { name: "notblocked", file: "notblocked.txt", target: "notblocked" },
-          { name: "proxy", file: "proxy.txt", target: "proxy" },
+          {
+            name: ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" }),
+            file: "notblocked.txt",
+            target: "notblocked",
+          },
+          {
+            name: ruleProviderName({ url: "file://published/proxy.txt", behavior: "domain" }),
+            file: "proxy.txt",
+            target: "proxy",
+          },
         ],
       });
       if (profile.profile !== "gateway") throw new Error("gateway fixture");
@@ -172,8 +184,18 @@ it.skipIf(!enabled)(
           groupName: "AUTO",
           domains: [],
           cidrs: [],
+          ruleProviders: [{ url: "file://published/proxy.txt", behavior: "domain" }],
           policy: { kind: "manual", pinnedNode: "vpn", onFailure: "hold" },
           proxies: [{ name: "vpn", type: "http", server: proxyIp, port: 8081 }],
+        },
+        {
+          id: "direct",
+          isDefault: false,
+          target: "direct",
+          domains: ["ru"],
+          cidrs: [],
+          directPresets: { localDomains: true, privateNetworks: true },
+          ruleProviders: [{ url: "file://published/notblocked.txt", behavior: "domain" }],
         },
       ];
       const secret = "gateway-native-test-secret";
@@ -240,11 +262,22 @@ it.skipIf(!enabled)(
       await eventually(getRuntimeConfig, (state) => state.tun === true);
       expect((await getRules()).rules.at(-1)?.proxy).toBe("AUTO");
       const loaded = await getRuleProviders();
-      expect(loaded.providers["gateway-notblocked"]?.ruleCount).toBe(1);
-      expect(loaded.providers["gateway-notblocked"]?.vehicleType).toBe("File");
+      expect(
+        loaded.providers[
+          ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" })
+        ]?.ruleCount,
+      ).toBe(1);
+      expect(
+        loaded.providers[
+          ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" })
+        ]?.vehicleType,
+      ).toBe("File");
       assertPrivateProvidersLoaded(
         profile,
-        { "gateway-notblocked": 1, "gateway-proxy": 1 },
+        {
+          [ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" })]: 1,
+          [ruleProviderName({ url: "file://published/proxy.txt", behavior: "domain" })]: 1,
+        },
         loaded,
       );
       const interfaces = await docker(
@@ -383,7 +416,7 @@ it.skipIf(!enabled)(
             "node",
             "--input-type=module",
             "-e",
-            `import {checkGatewayReadiness,gatewayReadinessDeps} from './dist/modules/gateway/readiness.js'; import {queryRealDns} from './dist/clients/mihomo.js'; const result=await checkGatewayReadiness(${JSON.stringify(profile)},'applied','AUTO',{...gatewayReadinessDeps,files:()=>({'gateway-notblocked':1,'gateway-proxy':1}),vpnProbe:async()=>42}); console.log(JSON.stringify({checks:result.checks.filter(c=>['local-dns','dns-upstream'].includes(c.name)),cached:await queryRealDns('example.com')}));`,
+            `import {checkGatewayReadiness,gatewayReadinessDeps} from './dist/modules/gateway/readiness.js'; import {queryRealDns} from './dist/clients/mihomo.js'; const result=await checkGatewayReadiness(${JSON.stringify(profile)},'applied','AUTO',{...gatewayReadinessDeps,files:()=>({${JSON.stringify(ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" }))}:1,${JSON.stringify(ruleProviderName({ url: "file://published/proxy.txt", behavior: "domain" }))}:1}),vpnProbe:async()=>42}); console.log(JSON.stringify({checks:result.checks.filter(c=>['local-dns','dns-upstream'].includes(c.name)),cached:await queryRealDns('example.com')}));`,
           ),
         ) as { checks: Array<{ name: string; ok: boolean }>; cached: string[] };
       expect((await dnsReadiness()).checks.every((check) => check.ok)).toBe(true);
@@ -492,14 +525,7 @@ it.skipIf(!enabled)(
     mkdirSync(listsPath);
     writeFileSync(join(listsPath, "notblocked.txt"), "+.docs.google.test\n");
     writeFileSync(join(listsPath, "custom.txt"), "+.forced.ru\n");
-    const profile = networkProfileSchema.parse({
-      profile: "gateway",
-      localResolvers: ["192.168.1.1"],
-      privateLists: [
-        { name: "notblocked", file: "notblocked.txt", target: "notblocked" },
-        { name: "custom", file: "custom.txt", target: "proxy" },
-      ],
-    });
+    const profile = { mode: "tun" as const, localResolvers: [] };
     writeFileSync(
       envPath,
       [
@@ -665,15 +691,8 @@ it.skipIf(!enabled)(
       const localhostConfiguration = await (
         await fetch(`${origin}/trpc/gateway.configuration`)
       ).json();
-      expect(localhostConfiguration.result.data.profile.profile).toBe("proxy");
+      expect(localhostConfiguration.result.data.mode).toBe("proxy");
       expect(localhostSettings.proxyEndpoint).toBe("127.0.0.1:45678");
-      await eventually(
-        async () => (await fetch(`${origin}/trpc/gateway.configuration`)).json(),
-        (value) =>
-          value.result?.data?.prerequisites?.some(
-            (check: { name: string; ok: boolean }) => check.name === "engine-secret" && check.ok,
-          ),
-      );
       expect(
         (
           await fetch(`${origin}/trpc/gateway.set`, {
@@ -682,7 +701,7 @@ it.skipIf(!enabled)(
             body: JSON.stringify(profile),
           })
         ).status,
-      ).toBe(500);
+      ).toBe(400);
       writeFileSync(
         envPath,
         `${readFileSync(envPath, "utf8")}\nADMIN_PASSWORD=compose-native-test-password\n`,
@@ -703,11 +722,11 @@ it.skipIf(!enabled)(
       if (!cookie) throw new Error("login session");
       const getProfile = async () =>
         (await fetch(`${origin}/trpc/gateway.get`, { headers: { cookie } })).json();
-      expect(await getProfile()).toMatchObject({ result: { data: { profile: "proxy" } } });
+      expect(await getProfile()).toMatchObject({ result: { data: { mode: "proxy" } } });
       const firstConfiguration = await (
         await fetch(`${origin}/trpc/gateway.configuration`, { headers: { cookie } })
       ).json();
-      expect(firstConfiguration.result.data.tun.localResolvers).toEqual([]);
+      expect(firstConfiguration.result.data.localResolvers).toEqual([]);
       const setupReadiness = await eventually(
         async () =>
           (await fetch(`${origin}/trpc/gateway.readiness`, { headers: { cookie } })).json(),
@@ -774,28 +793,14 @@ it.skipIf(!enabled)(
         expect(response.status).toBe(200);
         expect(await response.json()).toMatchObject({ result: { data: { applied: true } } });
       };
-      const failedPreferences = { ...originalProfile, lanInterface: "missing-lan" };
-      const failedEdit = await fetch(`${origin}/trpc/gateway.set`, {
+      const invalidEdit = await fetch(`${origin}/trpc/gateway.set`, {
         method: "POST",
         headers: { cookie, "content-type": "application/json" },
-        body: JSON.stringify(failedPreferences),
+        body: JSON.stringify({ ...originalProfile, lanInterface: "missing-lan" }),
       });
-      expect(failedEdit.status).toBe(500);
-      expect((await getProfile()).result.data).toEqual(failedPreferences);
-      const failedState = await (
-        await fetch(`${origin}/trpc/gateway.readiness`, { headers: { cookie } })
-      ).json();
-      expect(
-        failedState.result.data.checks.find(
-          (check: { name: string }) => check.name === "config-applied",
-        )?.ok,
-      ).toBe(false);
-      expect(
-        failedState.result.data.checks.find(
-          (check: { name: string }) => check.name === "tun-interface",
-        )?.ok,
-      ).toBe(true);
-      await selectMode({ profile: "proxy" });
+      expect(invalidEdit.status).toBe(400);
+      expect((await getProfile()).result.data).toEqual(originalProfile);
+      await selectMode({ mode: "proxy", localResolvers: [] });
       const proxyState = await (
         await fetch(`${origin}/trpc/gateway.readiness`, { headers: { cookie } })
       ).json();
@@ -813,16 +818,15 @@ it.skipIf(!enabled)(
       const savedConfiguration = await (
         await fetch(`${origin}/trpc/gateway.configuration`, { headers: { cookie } })
       ).json();
-      expect(savedConfiguration.result.data.profile.profile).toBe("proxy");
-      expect(savedConfiguration.result.data.tun).toEqual(failedPreferences);
+      expect(savedConfiguration.result.data.mode).toBe("proxy");
+      expect(savedConfiguration.result.data).toEqual({ mode: "proxy", localResolvers: [] });
       await compose(
         "run",
         "--rm",
         "--no-deps",
         "submerge-init",
         "node",
-        "dist/gateway-cli.js",
-        "bootstrap",
+        "dist/network-bootstrap.js",
       );
       await selectMode(originalProfile);
       const resetSecret = await fetch(`${origin}/trpc/settings.set`, {
@@ -838,7 +842,7 @@ it.skipIf(!enabled)(
       );
       await compose("up", "-d", "--no-deps", "--force-recreate", "submerge");
       app = await compose("ps", "-q", "submerge");
-      await eventually(getProfile, (value) => value.result?.data?.profile === "gateway");
+      await eventually(getProfile, (value) => value.result?.data?.mode === "tun");
       await eventually(
         async () =>
           (await fetch(`${origin}/trpc/gateway.readiness`, { headers: { cookie } })).json(),
@@ -853,7 +857,7 @@ it.skipIf(!enabled)(
       const restartedUiPort = (await docker("port", namespace, "3000/tcp")).match(/:(\d+)$/u)?.[1];
       if (!restartedUiPort) throw new Error("restarted UI mapping");
       origin = `http://127.0.0.1:${restartedUiPort}`;
-      await eventually(getProfile, (value) => value.result?.data?.profile === "gateway");
+      await eventually(getProfile, (value) => value.result?.data?.mode === "tun");
       await eventually(
         async () =>
           (await fetch(`${origin}/trpc/gateway.readiness`, { headers: { cookie } })).json(),
@@ -863,7 +867,7 @@ it.skipIf(!enabled)(
           ),
       );
       await docker("restart", app);
-      await eventually(getProfile, (value) => value.result?.data?.profile === "gateway");
+      await eventually(getProfile, (value) => value.result?.data?.mode === "tun");
       // Audit SYNs independently of successful HTTP replies: a missing return
       // route must never conceal raw LAN packets escaping into WAN.
       writeFileSync(join(directory, "fixture.py"), fixtureScript);

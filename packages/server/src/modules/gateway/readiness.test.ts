@@ -1,5 +1,5 @@
-import { networkProfileSchema } from "@submerge/shared";
 import { describe, expect, it } from "vitest";
+import { networkProfileSchema } from "./engine-settings.js";
 import {
   assertGatewayNetworkActivated,
   checkGatewayReadiness,
@@ -21,8 +21,8 @@ const deps: GatewayReadinessDeps = {
   }),
   providers: async () => ({
     providers: {
-      "gateway-n": {
-        name: "gateway-n",
+      n: {
+        name: "n",
         type: "Rule",
         behavior: "Domain",
         format: "Text",
@@ -56,7 +56,7 @@ const deps: GatewayReadinessDeps = {
       },
     ],
   }),
-  files: () => ({ "gateway-n": 1 }),
+  files: () => ({ n: 1 }),
 };
 describe("gateway readiness", () => {
   it("does not require first TUN local-DNS setup for otherwise healthy Proxy", async () => {
@@ -69,7 +69,7 @@ describe("gateway readiness", () => {
     const result = await checkGatewayReadiness(unconfigured, "applied", "AUTO", proxyDeps, false);
     expect(result.ready).toBe(true);
     expect(result.checks.find((check) => check.name === "local-dns")).toBeUndefined();
-    expect((await checkGatewayReadiness(unconfigured, "applied", "AUTO", deps)).ready).toBe(false);
+    expect((await checkGatewayReadiness(unconfigured, "applied", "AUTO", deps)).ready).toBe(true);
     expect(
       (
         await checkGatewayReadiness(
@@ -130,7 +130,7 @@ describe("gateway readiness", () => {
     { listener: async () => [] },
     { listener: async () => ["93.184.215.14"] },
     { providers: async () => ({ providers: {} }) },
-    { files: () => ({ "gateway-n": 2 }) },
+    { files: () => ({ n: 2 }) },
     {
       proxies: async () => ({
         proxies: {

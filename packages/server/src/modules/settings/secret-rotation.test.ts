@@ -40,17 +40,19 @@ describe("mihomo secret rotation journal", () => {
   it("keeps the automatic confirmed credential when resetting a deployment with no explicit seed", () => {
     const db = freshDb();
     const previousSecret = env.MIHOMO_SECRET;
-    const previousDeployment = env.GATEWAY_DEPLOYMENT;
     try {
       env.MIHOMO_SECRET = "";
-      env.GATEWAY_DEPLOYMENT = true;
+      setSetting(
+        db,
+        "internal.networkSettings",
+        JSON.stringify({ mode: "proxy", localResolvers: [] }),
+      );
       setSetting(db, "mihomoSecret", "automatically-confirmed-secret");
       expect(beginMihomoSecretRotation(db, "").rotation.nextEffective).toBe(
         "automatically-confirmed-secret",
       );
     } finally {
       env.MIHOMO_SECRET = previousSecret;
-      env.GATEWAY_DEPLOYMENT = previousDeployment;
     }
   });
   it("automatically upgrades weak bootstrap auth with one durable candidate and retains the old recovery credential", async () => {
@@ -77,7 +79,6 @@ describe("mihomo secret rotation journal", () => {
     async (mode) => {
       const db = freshDb();
       const previous = env.MIHOMO_SECRET;
-      const previousDeployment = env.GATEWAY_DEPLOYMENT;
       try {
         setSetting(
           db,
@@ -94,7 +95,11 @@ describe("mihomo secret rotation journal", () => {
           setSetting(db, "networkProfile", JSON.stringify({ profile: "proxy" }));
         }
         if (mode === "prepared-proxy") {
-          env.GATEWAY_DEPLOYMENT = true;
+          setSetting(
+            db,
+            "internal.networkSettings",
+            JSON.stringify({ mode: "proxy", localResolvers: [] }),
+          );
           setSetting(db, "networkProfile", JSON.stringify({ profile: "proxy" }));
           expect(getSetting(db, "internal.gatewayPreferences")).toBeUndefined();
         }
@@ -109,7 +114,6 @@ describe("mihomo secret rotation journal", () => {
         expect(mihomoClient.set).toHaveBeenLastCalledWith("gateway-env-reset-secret");
       } finally {
         env.MIHOMO_SECRET = previous;
-        env.GATEWAY_DEPLOYMENT = previousDeployment;
       }
     },
   );

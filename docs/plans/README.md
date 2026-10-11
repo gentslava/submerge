@@ -6,7 +6,8 @@ for their status. Mark a plan **done** here when its feature is merged to master
 
 | Plan | Status |
 |---|---|
-| [Gateway network profile](2026-10-11-gateway.md) | implemented and verified locally; not deployed |
+| [TUN engine and deployment](2026-10-11-gateway.md) | implemented and verified locally; not deployed |
+| [Native connection mode cleanup](2026-10-11-network-cleanup.md) | implemented and verified locally; not deployed |
 | [Native Proxy / TUN settings](2026-10-11-tun-settings.md) | implemented and verified locally; not deployed |
 | [Priority node selection follows the channel pool](2026-10-07-priority-node-pool.md) | complete and verified; feature branch for PR, not deployed |
 | [Single-node JSON/YAML import](2026-10-07-single-node-import.md) | complete and verified locally; prepared for PR, not deployed |

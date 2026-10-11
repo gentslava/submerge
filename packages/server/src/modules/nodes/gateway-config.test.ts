@@ -1,7 +1,7 @@
-import { networkProfileSchema } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { describe, expect, it } from "vitest";
-import { buildMultiConfig, type ChannelConfigInput } from "./multiConfig.js";
+import { networkProfileSchema } from "../gateway/engine-settings.js";
+import { buildMultiConfig, type ChannelConfigInput, ruleProviderName } from "./multiConfig.js";
 
 const gateway = networkProfileSchema.parse({
   profile: "gateway",
@@ -20,6 +20,7 @@ const channels: ChannelConfigInput[] = [
     groupName: "AUTO",
     domains: [],
     cidrs: [],
+    ruleProviders: [{ url: "file://published/custom.txt", behavior: "domain" }],
     policy: {
       kind: "sticky",
       testUrl: "https://example.com",
@@ -43,7 +44,12 @@ const channels: ChannelConfigInput[] = [
     id: "direct",
     target: "direct",
     isDefault: false,
-    domains: ["direct.example"],
+    domains: ["direct.example", "ru", "su", "xn--p1ai"],
+    geosite: ["category-ru"],
+    ruleProviders: [
+      { url: "file://published/notblocked.txt", behavior: "domain" },
+      { url: "file://published/ru.txt", behavior: "domain" },
+    ],
     cidrs: [],
     directPresets: { localDomains: true, privateNetworks: true },
     geoip: ["RU"],
@@ -105,7 +111,9 @@ describe("gateway config", () => {
     });
     expect(JSON.stringify(cfg.dns)).not.toContain('"system"');
     expect(cfg.rules.indexOf("DOMAIN,fastly.jsdelivr.net,DIRECT")).toBeLessThan(
-      cfg.rules.indexOf("RULE-SET,gateway-notblocked,DIRECT"),
+      cfg.rules.indexOf(
+        `RULE-SET,${ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" })},DIRECT`,
+      ),
     );
     expect(cfg.rules).toContain("DOMAIN,fastly.jsdelivr.net,DIRECT");
     expect(cfg.tun).toMatchObject({
@@ -126,13 +134,16 @@ describe("gateway config", () => {
   });
 
   it("resolves explicit service CIDRs before forced domain rules", () => {
-    const profile = networkProfileSchema.parse({
-      profile: "gateway",
-      localResolvers: ["192.168.1.1"],
-      serviceCidrs: ["203.0.113.0/24"],
-    });
     const cfg = yaml.load(
-      buildMultiConfig(channels, "secure-test-secret", undefined, undefined, profile),
+      buildMultiConfig(
+        channels.map((channel) =>
+          channel.target === "direct" ? { ...channel, cidrs: ["203.0.113.0/24"] } : channel,
+        ),
+        "secure-test-secret",
+        undefined,
+        undefined,
+        gateway,
+      ),
     ) as { rules: string[] };
     expect(cfg.rules).toContain("IP-CIDR,203.0.113.0/24,DIRECT");
     expect(cfg.rules.indexOf("IP-CIDR,203.0.113.0/24,DIRECT")).toBeLessThan(
@@ -144,17 +155,19 @@ describe("gateway config", () => {
     const { rules, "rule-providers": providers } = config();
     const positions = [
       "DOMAIN-SUFFIX,lan,DIRECT",
-      "RULE-SET,gateway-notblocked,DIRECT",
-      "RULE-SET,gateway-custom,AUTO",
+      `RULE-SET,${ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" })},DIRECT`,
+      `RULE-SET,${ruleProviderName({ url: "file://published/custom.txt", behavior: "domain" })},AUTO`,
       "DOMAIN-SUFFIX,forced.ru,ch-forced",
-      "RULE-SET,gateway-ru,DIRECT",
+      `RULE-SET,${ruleProviderName({ url: "file://published/ru.txt", behavior: "domain" })},DIRECT`,
       "GEOIP,RU,DIRECT",
       "MATCH,AUTO",
     ].map((rule) => rules.indexOf(rule));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(rules).not.toContain("GEOIP,RU,DIRECT,no-resolve");
-    expect(providers["gateway-notblocked"]).toEqual({
+    expect(
+      providers[ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" })],
+    ).toEqual({
       type: "file",
       behavior: "domain",
       format: "text",
@@ -168,7 +181,9 @@ describe("gateway config", () => {
     expect(cfg.rules.at(-1)).toBe("MATCH,AUTO");
     for (const group of cfg["proxy-groups"]) expect(group.proxies).not.toContain("DIRECT");
     expect(cfg["proxy-groups"].find((g) => g.name === "AUTO")?.proxies).toEqual(["REJECT"]);
-    expect(cfg["rule-providers"]).toHaveProperty("gateway-notblocked");
+    expect(cfg["rule-providers"]).toHaveProperty(
+      ruleProviderName({ url: "file://published/notblocked.txt", behavior: "domain" }),
+    );
   });
 
   it("blocks an empty default pool even when another channel has VPN nodes", () => {

@@ -2,61 +2,35 @@
 
 Status: implemented and verified locally; not deployed.
 
-Submerge remains one application. Settings provides a two-option segmented
-connection mode: Proxy (existing default) and TUN. TUN retains the HTTP/SOCKS
-proxy listener. Both inputs use the same channels and routing policy. This is a
-server-side TUN; it does not silently change clients' routes or host networking.
+Settings has one Proxy / TUN segmented choice. Proxy is the default. Selecting
+another mode applies immediately, displays progress, and disables duplicate
+requests. The confirmed selection changes only after successful activation.
+Failure keeps the previous setting and shows one actionable error. No Apply or
+Check button, readiness checklist, device guide or advanced engine form.
+TUN retains HTTP/SOCKS; both inputs use exactly the same routing channels.
 
-The prepared Docker deployment also starts in Proxy. It uses independent public
-DNS and fail-closed routing before first TUN setup; no local DNS is guessed and
-TUN remains disabled. A profile JSON is an optional first-install seed; ordinary
-setup happens in Settings. Missing local DNS is explicitly not ready for TUN.
+DNS has its own optional home-network resolver field, with nas.lan as the example.
+An empty field is valid in either mode. Public upstream and bootstrap DNS,
+fake-IP, device, route table and engine credentials are generated automatically.
+DNS edits save on blur or Enter and validate IP addresses before submission.
 
-Deployment correction agreed on 2026-10-11: the regular `docker-compose.yml`
-must prepare both capture modes by default. No separate gateway profile,
-environment file, profile JSON, or manually chosen engine credential is required
-to select TUN. Internal bootstrap services prepare volume ownership, an isolated
-stable namespace, the forwarding guard, and engine-only TUN permissions. The API
-credential is generated automatically and persisted through the existing rotation
-journal; an existing strong credential is retained. Proxy remains usable with the
-existing optional-admin localhost setup; activating TUN still requires protected
-administration. Existing installations receive the deployment change once,
-without mode-specific Compose edits. Test isolation remains an optional override.
+Routing owns Direct domains, local-network presets, CIDRs, GeoSite, GeoIP and
+rule lists. Published read-only files are selected in the existing list editor.
+Default has an explicit list section for forced VPN exceptions before Direct.
+No route setting is duplicated in the connection-mode form or network record.
+Legacy route settings migrate once into channels; changing capture mode never
+resets subsequent route edits. One protected SQLite record stores mode and DNS.
+The full legacy parser is server-private upgrade data, not a public input.
 
-The existing Indigo Console Settings frame (`w6qeY`, mobile `r1RQ0O`) owns the
-visual contract. Replace its obsolete three-option gateway exploration with
-Proxy / TUN, using the existing segmented control, labelled rows, field widths,
-tokens and responsive container rules. The native section appears first in
-Settings so connection mode is discoverable.
+The standard Compose prepares both modes during installation. Internal bootstrap
+has no user commands, profile files or gateway environment flags. Existing
+installations need the complete deployment update once to gain Docker devices
+and ports; ordinary mode changes then happen entirely inside the application.
+The engine API stays private and authenticated. Empty VPN pools remain REJECT.
 
-Selecting TUN opens an inline configuration form. The only required first-time
-input is a separate local DNS resolver. Public upstream/bootstrap DNS and TUN
-parameters have safe defaults. Existing deployment-seeded settings are reused.
-Advanced parameters stay collapsed, are validated, and preserve private-list
-definitions without requiring JSON editing. Match the existing Settings autosave
-behavior: mode changes apply immediately when valid; text fields apply on blur,
-and selects/list edits apply immediately. First TUN selection with no local DNS
-opens setup; supplying valid DNS and leaving the field activates TUN automatically.
-There is no separate Apply button. Errors remain visible, with an explicit Retry
-only after a failed activation. Invalid field drafts never replace accepted config.
-
-TUN preferences are retained separately when switching back to Proxy. Once
-configured, switching capture modes does not change DNS policy, private lists,
-RU precedence or fail-closed routing. Accepted engine state and desired saved
-mode are distinguished when activation fails. Returning to Proxy must verify
-that the engine actually disabled TUN before reporting success.
-
-Protected configuration/status procedures expose required deployment/security
-checks, actual readiness, and copyable connection details. The UI shows a short
-connection guide: use the shown server LAN address as the selected client's
-gateway and use its reachable DNS address. It must not present loopback or
-container-only addresses as generally reachable from a physical LAN. The standard
-installation prepares Docker permissions automatically. Choosing a physical LAN
-attachment is a one-time deployment task; the app reports missing prerequisites
-without pretending to grant them itself.
-
-Validation covers Proxy, first-time TUN, accepted TUN, retained preferences,
-failed apply, unavailable deployment, empty VPN, DNS/list/TUN faults, load errors,
-collapsed/expanded advanced settings, keyboard focus, light/dark and
-320/390/425/768/1024/1440 plus the existing Settings container boundary. Static,
-focused browser and independent incremental/final reviews are mandatory.
+Indigo Console tokens, rows and segmented controls remain the visual contract.
+References: w6qeY/oXxu8 at1440×1024 dark, r1RQ0O/Q3sToj at390px; adapt the
+approved structure without preserving the rejected explanatory blocks.
+Browser evidence covers all required widths, both themes, keyboard, loading,
+errors, mode switching and published-list editing with zero retries.
+The user explicitly requires direct authorship and three author review passes.

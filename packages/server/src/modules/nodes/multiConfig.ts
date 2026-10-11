@@ -6,11 +6,10 @@ import {
   type ChannelPolicy,
   cidrVersion,
   type DirectPresetSettings,
-  type GatewayProfile,
-  type NetworkProfile,
   PROBE_GROUP,
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
+  publishedRuleFile,
   type RuleProviderFormat,
   type RuleProviderRef,
   ruleProviderFormat,
@@ -19,6 +18,7 @@ import {
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
 import { sameProxy } from "../../lib/proxy-identity.js";
+import type { GatewayProfile, NetworkProfile } from "../gateway/engine-settings.js";
 import { dedupeNames, groupProxies, type UrlTestTuning, urlTestTuning } from "./config.js";
 
 interface MatcherConfigInput {
@@ -165,6 +165,8 @@ export function ruleProviderName(ref: RuleProviderRef): string {
 }
 
 export function ruleProviderRelativePath(ref: RuleProviderRef): string {
+  const published = publishedRuleFile(ref.url);
+  if (published) return `private-lists/${published}`;
   const format = ruleProviderFormat(ref.url);
   return `providers/${ruleProviderName(ref)}.${PROVIDER_EXT[format]}`;
 }
@@ -187,6 +189,15 @@ function buildRuleProviders(
       const name = ruleProviderName(ref);
       if (out[name]) continue; // identical (url,behavior) → one def
       const format = ruleProviderFormat(ref.url);
+      if (publishedRuleFile(ref.url)) {
+        out[name] = {
+          type: "file",
+          behavior: ref.behavior,
+          format: "text",
+          path: `./${ruleProviderRelativePath(ref)}`,
+        };
+        continue;
+      }
       out[name] = {
         type: "http",
         url: ref.url,
@@ -207,14 +218,6 @@ function buildRuleProviders(
       path: MANAGED_DOMAIN_RULE_PROVIDER_PATH,
     };
   }
-  for (const list of gateway?.privateLists ?? []) {
-    out[`gateway-${list.name}`] = {
-      type: "file",
-      behavior: list.behavior,
-      format: "text",
-      path: `./private-lists/${list.file}`,
-    };
-  }
   if (gateway) {
     out["gateway-capture"] = { type: "inline", behavior: "ipcidr", payload: ["0.0.0.0/0"] };
   }
@@ -226,14 +229,8 @@ function buildRuleProviders(
 // download. mihomo (the container) fetches geoip.dat/geosite.dat from these URLs
 // on first geo use; needs egress + a writable Home Dir (see deploy notes).
 const GEODATA_HOST = "fastly.jsdelivr.net";
-function geoTopLevel(
-  nonDefault: ChannelConfigInput[],
-  gateway?: GatewayProfile,
-): Record<string, unknown> | null {
-  const used =
-    nonDefault.some((c) => (c.geosite?.length ?? 0) > 0 || (c.geoip?.length ?? 0) > 0) ||
-    (gateway?.ruGeosite.length ?? 0) > 0 ||
-    (gateway?.ruGeoip.length ?? 0) > 0;
+function geoTopLevel(nonDefault: ChannelConfigInput[]): Record<string, unknown> | null {
+  const used = nonDefault.some((c) => (c.geosite?.length ?? 0) > 0 || (c.geoip?.length ?? 0) > 0);
   if (!used) return null;
   const base = `https://${GEODATA_HOST}/gh/MetaCubeX/meta-rules-dat@release`;
   // geodata-mode makes mihomo use the .dat GEOIP data, so no mmdb URL is needed.
@@ -282,20 +279,12 @@ function buildRules(
   defaultGroupName: string,
   nonDefaultProxyCount: number,
   managedDomainRules?: ManagedDomainRulesProviderInput,
+  defaultProviders: RuleProviderRef[] = [],
 ): string[] {
   // With no exit nodes anywhere there is nothing to route — everything is DIRECT.
   if (noProxies) return ["MATCH,DIRECT"];
   const rules: string[] = [];
-  if (managedDomainRules) {
-    rules.push(
-      `RULE-SET,${MANAGED_DOMAIN_RULE_PROVIDER_NAME},${managedDomainRules.targetGroupName}`,
-    );
-  }
-  // Per channel, in priority order: keyword, domain-suffix, then rule-set — all
-  // point at the channel's own group, so intra-channel order is irrelevant;
-  // cross-channel precedence is the channel order (= priority).
   for (const channel of nonDefault) {
-    const target = channel.target === "direct" ? "DIRECT" : channel.groupName;
     if (channel.target === "direct") {
       if (channel.directPresets.localDomains) {
         for (const domain of DIRECT_LOCAL_DOMAINS) {
@@ -306,6 +295,23 @@ function buildRules(
         for (const cidr of DIRECT_PRIVATE_CIDRS) appendCidrRule(rules, cidr, "DIRECT");
       }
     }
+  }
+  rules.push(
+    ...defaultProviders.map((ref) => `RULE-SET,${ruleProviderName(ref)},${defaultGroupName}`),
+  );
+  if (managedDomainRules) {
+    rules.push(
+      `RULE-SET,${MANAGED_DOMAIN_RULE_PROVIDER_NAME},${managedDomainRules.targetGroupName}`,
+    );
+  }
+  // Per channel, in priority order: keyword, domain-suffix, then rule-set — all
+  // point at the channel's own group, so intra-channel order is irrelevant;
+  // cross-channel precedence is the channel order (= priority).
+  for (const channel of [
+    ...nonDefault.filter((c) => c.target === "proxy"),
+    ...nonDefault.filter((c) => c.target === "direct"),
+  ]) {
+    const target = channel.target === "direct" ? "DIRECT" : channel.groupName;
     for (const keyword of channel.keywords ?? []) {
       rules.push(`DOMAIN-KEYWORD,${keyword},${target}`);
     }
@@ -337,17 +343,26 @@ function buildGatewayRules(
   nonDefault: ChannelConfigInput[],
   proxies: ProxyConfig[],
   defaultGroupName: string,
+  defaultProviders: RuleProviderRef[],
   managedDomainRules?: ManagedDomainRulesProviderInput,
 ): string[] {
-  const rules = gateway.localDomains.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`);
+  const direct = nonDefault.filter((channel) => channel.target === "direct");
+  const rules: string[] = [];
+  if (direct.some((channel) => channel.target === "direct" && channel.directPresets.localDomains)) {
+    rules.push(...gateway.localDomains.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`));
+  }
   // The core downloads/updates geodata through its rule matcher, including when
   // the default VPN pool is REJECT. This exact service host must bootstrap first.
-  if (geoTopLevel(nonDefault, gateway)) rules.push(`DOMAIN,${GEODATA_HOST},DIRECT`);
+  if (geoTopLevel(nonDefault)) rules.push(`DOMAIN,${GEODATA_HOST},DIRECT`);
   // Avoid resolving every public domain before the higher-priority domain rules.
-  for (const cidr of DIRECT_PRIVATE_CIDRS) {
-    rules.push(`${cidrVersion(cidr) === 6 ? "IP-CIDR6" : "IP-CIDR"},${cidr},DIRECT,no-resolve`);
+  if (
+    direct.some((channel) => channel.target === "direct" && channel.directPresets.privateNetworks)
+  ) {
+    for (const cidr of DIRECT_PRIVATE_CIDRS)
+      rules.push(`${cidrVersion(cidr) === 6 ? "IP-CIDR6" : "IP-CIDR"},${cidr},DIRECT,no-resolve`);
   }
-  for (const cidr of gateway.serviceCidrs) appendCidrRule(rules, cidr, "DIRECT");
+  for (const cidr of direct.flatMap((channel) => channel.cidrs))
+    appendCidrRule(rules, cidr, "DIRECT");
   for (const endpoint of new Set(proxies.map((proxy) => proxy.server))) {
     rules.push(
       isIP(endpoint)
@@ -355,11 +370,13 @@ function buildGatewayRules(
         : `DOMAIN,${endpoint},DIRECT`,
     );
   }
-  const listsFor = (target: "notblocked" | "proxy" | "ru", policy: string) =>
-    gateway.privateLists
-      .filter((list) => list.target === target)
-      .map((list) => `RULE-SET,gateway-${list.name},${policy}`);
-  rules.push(...listsFor("notblocked", "DIRECT"), ...listsFor("proxy", defaultGroupName));
+  const notblocked = direct
+    .flatMap((channel) => channel.ruleProviders ?? [])
+    .filter((ref) => publishedRuleFile(ref.url) === "notblocked.txt");
+  rules.push(...notblocked.map((ref) => `RULE-SET,${ruleProviderName(ref)},DIRECT`));
+  rules.push(
+    ...defaultProviders.map((ref) => `RULE-SET,${ruleProviderName(ref)},${defaultGroupName}`),
+  );
   const matcherRules = (
     channels: ChannelConfigInput[],
     managed?: ManagedDomainRulesProviderInput,
@@ -373,11 +390,18 @@ function buildGatewayRules(
       managedDomainRules,
     ),
   );
-  rules.push(...listsFor("ru", "DIRECT"));
-  for (const zone of gateway.ruZones) rules.push(`DOMAIN-SUFFIX,${zone},DIRECT`);
-  for (const category of gateway.ruGeosite) rules.push(`GEOSITE,${category},DIRECT`);
-  for (const code of gateway.ruGeoip) rules.push(`GEOIP,${code},DIRECT`);
-  rules.push(...matcherRules(nonDefault.filter((channel) => channel.target === "direct")));
+  rules.push(
+    ...matcherRules(
+      direct.map((channel) => ({
+        ...channel,
+        cidrs: [],
+        directPresets: { localDomains: false, privateNetworks: false },
+        ruleProviders: (channel.ruleProviders ?? []).filter(
+          (ref) => publishedRuleFile(ref.url) !== "notblocked.txt",
+        ),
+      })),
+    ),
+  );
   rules.push(`MATCH,${defaultGroupName}`);
   return [...new Set(rules)];
 }
@@ -618,9 +642,9 @@ export function buildMultiConfigDocument(
     }
   }
   const ruleProviders =
-    noProxies && !gateway ? {} : buildRuleProviders(nonDefault, managedDomainRules, gateway);
+    noProxies && !gateway ? {} : buildRuleProviders(channels, managedDomainRules, gateway);
   const hasProviders = Object.keys(ruleProviders).length > 0;
-  const geo = noProxies && !gateway ? null : geoTopLevel(nonDefault, gateway);
+  const geo = noProxies && !gateway ? null : geoTopLevel(nonDefault);
 
   let validationListeners: Record<string, unknown>[] = [];
   if (domainValidation) {
@@ -693,13 +717,21 @@ export function buildMultiConfigDocument(
     ],
     rules: probeRules(noProxies).concat(
       gateway
-        ? buildGatewayRules(gateway, nonDefault, unique, defaultGroupName, managedDomainRules)
+        ? buildGatewayRules(
+            gateway,
+            nonDefault,
+            unique,
+            defaultGroupName,
+            defaultChannel?.ruleProviders ?? [],
+            managedDomainRules,
+          )
         : buildRules(
             nonDefault,
             noProxies,
             defaultGroupName,
             nonDefaultProxy.length,
             managedDomainRules,
+            defaultChannel?.ruleProviders ?? [],
           ),
     ),
   };

@@ -9,7 +9,9 @@ vi.mock("./service.js", () => ({
   gatewayReadiness: vi.fn(),
   getGatewayConfiguration: vi.fn(),
 }));
-vi.mock("./settings.js", () => ({ readNetworkProfile: vi.fn(() => ({ profile: "proxy" })) }));
+vi.mock("./settings.js", () => ({
+  readNetworkSettings: vi.fn(() => ({ mode: "proxy", localResolvers: [] })),
+}));
 const makeCaller = (authed: boolean) =>
   createCallerFactory(router({ gateway: gatewayRouter }))({
     authed,
@@ -23,15 +25,15 @@ describe("gateway protected router", () => {
     await expect(caller.gateway.get()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(caller.gateway.configuration()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(caller.gateway.readiness()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    await expect(caller.gateway.set({ profile: "proxy" })).rejects.toMatchObject({
+    await expect(caller.gateway.set({ mode: "proxy", localResolvers: [] })).rejects.toMatchObject({
       code: "UNAUTHORIZED",
     });
   });
   it("validates gateway input before activating configuration", async () => {
     await expect(
-      makeCaller(true).gateway.set({ profile: "gateway", nameservers: ["system"] } as never),
+      makeCaller(true).gateway.set({ mode: "tun", nameservers: ["system"] } as never),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(configureGateway).not.toHaveBeenCalled();
-    expect(await makeCaller(true).gateway.get()).toEqual({ profile: "proxy" });
+    expect(await makeCaller(true).gateway.get()).toEqual({ mode: "proxy", localResolvers: [] });
   });
 });

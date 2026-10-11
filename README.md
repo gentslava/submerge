@@ -149,8 +149,8 @@ coordinated import API.
 See the [domain-rules deployment and synchronization contract](docs/runbooks/domain-rules.md).
 
 Settings → **Режим подключения** provides **Прокси / TUN**. Selecting a mode
-validates and activates it immediately. On first TUN setup, enter Local DNS;
-text fields save on blur, as in the existing Settings. TUN keeps HTTP/SOCKS available,
+validates and activates it immediately. Home-network DNS is optional and saves
+on blur, as in the existing Settings. TUN keeps HTTP/SOCKS available,
 uses independent DNS, and retains its settings when switching back to Proxy.
 No additional mode profile, JSON or engine secret is required. Existing custom
 installations need the complete Compose deployment update once; mode changes

@@ -5,7 +5,7 @@ quick map. Update both when a spec ships.
 
 | Spec | Status |
 |---|---|
-| [2026-10-11 gateway network profile](2026-10-11-gateway-design.md) | implemented and verified locally; not deployed |
+| [2026-10-11 TUN engine and deployment](2026-10-11-gateway-design.md) | implemented and verified locally; not deployed |
 | [2026-10-11 native Proxy / TUN settings](2026-10-11-tun-settings-design.md) | implemented and verified locally; not deployed |
 | [2026-10-07 single-node JSON/YAML import](2026-10-07-single-node-import-design.md) | implemented and verified locally; prepared for PR |
 | [2026-06-29 v2 stack design](2026-06-29-submerge-v2-stack-design.md) | implemented (v2 shipped, phases 1–6) |

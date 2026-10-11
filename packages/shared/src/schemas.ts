@@ -271,17 +271,29 @@ export function ruleProviderFormat(url: string): RuleProviderFormat {
 // (url, behavior). `mrs` is a binary format mihomo supports only for
 // domain/ipcidr behaviors — never `classical` — so an `.mrs` URL with classical
 // behavior is rejected here at parse time.
+export function publishedRuleFile(url: string): string | null {
+  return /^file:\/\/published\/([a-zA-Z0-9_-][a-zA-Z0-9_.-]*\.txt)$/u.exec(url)?.[1] ?? null;
+}
+
+function isRuleProviderUrl(value: string): boolean {
+  return /^https?:\/\//iu.test(value) || publishedRuleFile(value) !== null;
+}
+
 export const ruleProviderRefSchema = z
   .object({
     url: z
       .string()
       .trim()
       .min(1)
-      .refine((value) => /^https?:\/\//i.test(value), "must be an http(s) URL"),
+      .refine(isRuleProviderUrl, "Choose a published file or an http(s) URL"),
     behavior: z.enum(["domain", "ipcidr", "classical"]),
   })
   .refine((r) => !(ruleProviderFormat(r.url) === "mrs" && r.behavior === "classical"), {
     message: "an .mrs list supports only domain/ipcidr behavior",
+    path: ["behavior"],
+  })
+  .refine((ref) => publishedRuleFile(ref.url) !== "notblocked.txt" || ref.behavior === "domain", {
+    message: "notblocked contains exact domain entries",
     path: ["behavior"],
   });
 export type RuleProviderRef = z.infer<typeof ruleProviderRefSchema>;
@@ -293,7 +305,7 @@ const ruleProviderRefInputSchema = ruleProviderRefSchema.and(
       .trim()
       .min(1)
       .pipe(z.url())
-      .refine((value) => /^https?:\/\//i.test(value), "must be a valid http(s) URL"),
+      .refine(isRuleProviderUrl, "Choose a published file or a valid http(s) URL"),
   }),
 );
 

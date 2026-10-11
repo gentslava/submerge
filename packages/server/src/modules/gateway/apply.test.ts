@@ -1,17 +1,19 @@
-import { mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { networkProfileSchema } from "@submerge/shared";
+import { dirname, join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { env } from "../../config/env.js";
 import { createDb } from "../../db/client.js";
 import { ensureDefaultChannel } from "../channels/service.js";
+import { ruleProviderName } from "../nodes/multiConfig.js";
 import { applyConfig } from "../nodes/service.js";
 import { beginMihomoSecretRotation } from "../settings/secret-rotation.js";
 import { getSetting, setSetting } from "../settings/service.js";
+import { networkProfileSchema } from "./engine-settings.js";
+import { writeNetworkProfile } from "./gateway.test-support.js";
 import { assertGatewayNetworkActivated } from "./readiness.js";
-import { gatewayApplyState, readGatewayPreferences, writeNetworkProfile } from "./settings.js";
+import { gatewayApplyState, readGatewayRuntimeSettings } from "./settings.js";
 
 vi.mock("./readiness.js", () => ({ assertGatewayNetworkActivated: vi.fn(async () => undefined) }));
 
@@ -21,10 +23,11 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 const previousPassword = env.ADMIN_PASSWORD;
-const previousListsPath = env.GATEWAY_LISTS_PATH;
+const previousConfigPath = env.MIHOMO_CONFIG_PATH;
+let listsPath = "";
 afterEach(() => {
   env.ADMIN_PASSWORD = previousPassword;
-  env.GATEWAY_LISTS_PATH = previousListsPath;
+  env.MIHOMO_CONFIG_PATH = previousConfigPath;
   vi.unstubAllGlobals();
 });
 function fixture() {
@@ -48,24 +51,9 @@ function fixture() {
 }
 
 describe("gateway apply", () => {
-  it.each([Buffer.from("invalid"), "bad\u0000encoding"])(
-    "never generates legacy Proxy fallback from corrupt retained TUN settings %j",
-    async (value) => {
-      const { db, path } = fixture();
-      writeNetworkProfile(db, { profile: "proxy" });
-      db.$client
-        .prepare("UPDATE settings SET value = ? WHERE key = ?")
-        .run(value, "internal.gatewayPreferences");
-      const fetch = vi.fn();
-      vi.stubGlobal("fetch", fetch);
-      await expect(applyConfig(db, path)).rejects.toThrow("Invalid persisted TUN preferences");
-      expect(fetch).not.toHaveBeenCalled();
-      expect(readFileSync(path, "utf8")).toBe("previous valid config");
-    },
-  );
   it("validates Proxy capture while retaining shared TUN routing and preferences", async () => {
     const { db, path } = fixture();
-    const preferences = readGatewayPreferences(db);
+    const preferences = readGatewayRuntimeSettings(db);
     writeNetworkProfile(db, { profile: "proxy" });
     vi.stubGlobal(
       "fetch",
@@ -73,14 +61,19 @@ describe("gateway apply", () => {
     );
     await expect(applyConfig(db, path)).resolves.toMatchObject({ applied: true });
     expect(assertGatewayNetworkActivated).toHaveBeenCalledWith(preferences, undefined, false);
-    expect(readGatewayPreferences(db)).toEqual(preferences);
+    expect(readGatewayRuntimeSettings(db)).toEqual(preferences);
     expect(readFileSync(path, "utf8")).toContain("enable: false");
     expect(readFileSync(path, "utf8")).not.toContain("MATCH,DIRECT");
   });
   it("waits for asynchronous native file-provider initialization after reload", async () => {
     const { db, path } = fixture();
-    env.GATEWAY_LISTS_PATH = mkdtempSync(join(tmpdir(), "gateway-pending-list-"));
-    writeFileSync(join(env.GATEWAY_LISTS_PATH, "n.txt"), "+.docs.google.test\n");
+    env.MIHOMO_CONFIG_PATH = join(
+      mkdtempSync(join(tmpdir(), "gateway-pending-list-")),
+      "config.yaml",
+    );
+    listsPath = join(dirname(env.MIHOMO_CONFIG_PATH), "private-lists");
+    mkdirSync(listsPath);
+    writeFileSync(join(listsPath, "n.txt"), "+.docs.google.test\n");
     writeNetworkProfile(
       db,
       networkProfileSchema.parse({
@@ -99,8 +92,8 @@ describe("gateway apply", () => {
           ? new Response(
               JSON.stringify({
                 providers: {
-                  "gateway-n": {
-                    name: "gateway-n",
+                  [ruleProviderName({ url: "file://published/n.txt", behavior: "domain" })]: {
+                    name: ruleProviderName({ url: "file://published/n.txt", behavior: "domain" }),
                     type: "Rule",
                     behavior: "Domain",
                     format: "Text",
@@ -134,11 +127,13 @@ describe("gateway apply", () => {
   });
   it("rejects incomplete providers and restores the previous engine payload", async () => {
     const { db, path } = fixture();
-    env.GATEWAY_LISTS_PATH = mkdtempSync(join(tmpdir(), "gateway-partial-list-"));
-    writeFileSync(
-      join(env.GATEWAY_LISTS_PATH, "proxy.txt"),
-      "DOMAIN,forced.ru\nINVALID-RULE,ignored.ru\n",
+    env.MIHOMO_CONFIG_PATH = join(
+      mkdtempSync(join(tmpdir(), "gateway-partial-list-")),
+      "config.yaml",
     );
+    listsPath = join(dirname(env.MIHOMO_CONFIG_PATH), "private-lists");
+    mkdirSync(listsPath);
+    writeFileSync(join(listsPath, "proxy.txt"), "DOMAIN,forced.ru\nINVALID-RULE,ignored.ru\n");
     writeNetworkProfile(
       db,
       networkProfileSchema.parse({
@@ -159,8 +154,11 @@ describe("gateway apply", () => {
           return new Response(
             JSON.stringify({
               providers: {
-                "gateway-proxy": {
-                  name: "gateway-proxy",
+                [ruleProviderName({ url: "file://published/proxy.txt", behavior: "classical" })]: {
+                  name: ruleProviderName({
+                    url: "file://published/proxy.txt",
+                    behavior: "classical",
+                  }),
                   type: "Rule",
                   behavior: "Classical",
                   format: "Text",

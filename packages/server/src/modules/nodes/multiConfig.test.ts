@@ -787,7 +787,7 @@ describe("buildMultiConfig — native Direct channel", () => {
     expect(cfg["geodata-mode"]).toBe(true);
   });
 
-  it("keeps Direct rules at cross-channel priority and bases terminal MATCH on proxy channels only", () => {
+  it("keeps proxy exceptions ahead of broad Direct rules and bases MATCH on proxy channels only", () => {
     const cfg = parse(
       buildMultiConfig([
         channel({ proxies: [px("A")] }),
@@ -808,8 +808,8 @@ describe("buildMultiConfig — native Direct channel", () => {
     );
     expect(cfg.rules).toEqual([
       PROBE_RULE,
-      "DOMAIN-SUFFIX,first.example,DIRECT",
       "DOMAIN-SUFFIX,later.example,ch-later",
+      "DOMAIN-SUFFIX,first.example,DIRECT",
       "MATCH,AUTO",
     ]);
 

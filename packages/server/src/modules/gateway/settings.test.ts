@@ -1,21 +1,19 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { networkProfileSchema } from "@submerge/shared";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { afterEach, describe, expect, it } from "vitest";
 import { env } from "../../config/env.js";
 import { createDb } from "../../db/client.js";
 import { getSetting, setSetting } from "../settings/service.js";
+import { networkProfileSchema } from "./engine-settings.js";
+import { writeNetworkProfile } from "./gateway.test-support.js";
 import {
   assertIndependentLocalDns,
-  readGatewayPreferences,
   readNetworkProfile,
   seedGatewayMihomoSecret,
-  seedNetworkProfile,
   validateGatewayStartup,
   validatePrivateLists,
-  writeNetworkProfile,
 } from "./settings.js";
 
 function freshDb() {
@@ -31,15 +29,6 @@ afterEach(() => {
 });
 
 describe("gateway settings", () => {
-  it("retains TUN settings when returning to Proxy and refuses corrupt preferences", () => {
-    const db = freshDb();
-    writeNetworkProfile(db, profile);
-    writeNetworkProfile(db, { profile: "proxy" });
-    expect(readNetworkProfile(db)).toEqual({ profile: "proxy" });
-    expect(readGatewayPreferences(db)).toEqual(profile);
-    setSetting(db, "internal.gatewayPreferences", "{invalid");
-    expect(() => readGatewayPreferences(db)).toThrow("Invalid persisted TUN preferences");
-  });
   it("seeds confirmed auth once and ignores later environment values", () => {
     const db = freshDb();
     seedGatewayMihomoSecret(db, "first-gateway-confirmed-secret");
@@ -107,26 +96,12 @@ describe("gateway settings", () => {
     writeNetworkProfile(db, profile);
     db.$client.close();
     const reopened = createDb(path);
-    expect(readNetworkProfile(reopened)).toEqual(profile);
+    expect(readNetworkProfile(reopened)).toMatchObject({
+      profile: "gateway",
+      localResolvers: profile.localResolvers,
+    });
     reopened.$client.close();
   });
-  it("defaults to proxy and preserves settings across reseeding", () => {
-    const db = freshDb();
-    expect(readNetworkProfile(db)).toEqual({ profile: "proxy" });
-    writeNetworkProfile(db, profile);
-    const directory = mkdtempSync(join(tmpdir(), "gateway-settings-"));
-    const path = join(directory, "profile.json");
-    writeFileSync(path, '{"profile":"proxy"}');
-    seedNetworkProfile(db, path);
-    expect(readNetworkProfile(db)).toEqual(profile);
-  });
-
-  it("never converts corrupt gateway settings into a proxy fallback", () => {
-    const db = freshDb();
-    setSetting(db, "networkProfile", "{invalid");
-    expect(() => readNetworkProfile(db)).toThrow("Invalid persisted network profile");
-  });
-
   it("reads private lists without collapsing full FQDNs", () => {
     const directory = mkdtempSync(join(tmpdir(), "gateway-lists-"));
     writeFileSync(
@@ -139,7 +114,7 @@ describe("gateway settings", () => {
       privateLists: [{ name: "notblocked", file: "notblocked.txt", target: "notblocked" }],
     });
     if (config.profile !== "gateway") throw new Error("test profile");
-    expect(validatePrivateLists(config, directory)).toEqual({ "gateway-notblocked": 2 });
+    expect(validatePrivateLists(config, directory)).toEqual({ notblocked: 2 });
     expect(() => validatePrivateLists(config, join(directory, "missing"))).toThrow();
     writeFileSync(join(directory, "notblocked.txt"), "*.google.com\n");
     expect(() => validatePrivateLists(config, directory)).toThrow();

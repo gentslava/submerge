@@ -11,7 +11,6 @@
     "build": "tsc -b",
     "test": "vitest run",
     "domain-intelligence": "tsx --conditions=development src/domain-intelligence-cli.ts",
-    "gateway": "tsx --conditions=development src/gateway-cli.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts"
   },

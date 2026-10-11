@@ -20419,16 +20419,6 @@
                       "fontFamily": "$font-sans",
                       "fontSize": 15,
                       "fontWeight": "600"
-                    },
-                    {
-                      "type": "text",
-                      "id": "lP5Mx",
-                      "name": "d",
-                      "fill": "$text-secondary",
-                      "content": "Прокси и TUN используют одни каналы и правила.",
-                      "fontFamily": "$font-sans",
-                      "fontSize": 13,
-                      "fontWeight": "normal"
                     }
                   ]
                 },
@@ -20449,10 +20439,6 @@
                       "id": "mqL0N",
                       "name": "Connection mode row",
                       "width": "fill_container",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
                       "gap": 24,
                       "padding": [
                         16,
@@ -20473,7 +20459,7 @@
                               "id": "TqDOk",
                               "name": "Mode label",
                               "fill": "$text-primary",
-                              "content": "Режим подключения",
+                              "content": "Режим",
                               "fontFamily": "$font-sans",
                               "fontSize": 14,
                               "fontWeight": "500"
@@ -20485,7 +20471,7 @@
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "content": "Как трафик попадает в Submerge",
+                              "content": "Для приложений с настройкой HTTP/SOCKS-прокси.",
                               "fontFamily": "$font-sans",
                               "fontSize": 12,
                               "fontWeight": "normal"
@@ -20557,30 +20543,119 @@
                           ]
                         }
                       ]
-                    },
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "dns-ea2Oxsection",
+              "type": "frame",
+              "name": "DNS",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "id": "dns-ea2Oxtitle",
+                  "type": "text",
+                  "name": "DNS title",
+                  "content": "DNS",
+                  "fill": "$text-primary",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 15,
+                  "fontWeight": "600",
+                  "lineHeight": 1.5
+                },
+                {
+                  "id": "dns-ea2Oxcard",
+                  "type": "frame",
+                  "name": "Home DNS card",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "children": [
                     {
                       "type": "frame",
-                      "id": "DLrhP",
-                      "name": "Proxy explanation",
+                      "id": "dns-ea2Ox0",
+                      "name": "Локальный DNS row",
                       "width": "fill_container",
-                      "layout": "vertical",
-                      "gap": 8,
+                      "gap": 24,
                       "padding": [
                         16,
                         18
                       ],
+                      "alignItems": "center",
                       "children": [
                         {
-                          "type": "text",
-                          "id": "y1xWC",
-                          "name": "Proxy detail",
-                          "fill": "$text-secondary",
-                          "textGrowth": "fixed-width",
+                          "type": "frame",
+                          "id": "dns-ea2Ox1",
+                          "name": "Локальный DNS description",
                           "width": "fill_container",
-                          "content": "Приложения подключаются к HTTP/SOCKS-прокси.",
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "n7j0wU",
+                              "name": "Локальный DNS label",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "DNS домашней сети",
+                              "lineHeight": 1.4285714285714286,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "iJNva",
+                              "name": "Локальный DNS help",
+                              "fill": "$text-tertiary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Если открываете устройства по имени, например nas.lan, укажите IP-адрес DNS-сервера вашей сети. Иначе оставьте пустым.",
+                              "lineHeight": 1.3333333333333333,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dns-ea2Ox2",
+                          "name": "Локальный DNS control",
+                          "width": 260,
+                          "height": 36,
+                          "fill": "$bg-input",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-default",
+                          "strokeWidth": 1,
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "qFDdJ",
+                              "name": "Локальный DNS value",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Не используется",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
                         }
                       ]
                     }
@@ -94897,17 +94972,6 @@
                       "fontFamily": "$font-sans",
                       "fontSize": 15,
                       "fontWeight": "600"
-                    },
-                    {
-                      "type": "text",
-                      "id": "TGSnO",
-                      "name": "d",
-                      "fill": "$text-secondary",
-                      "content": "Прокси и TUN используют одни каналы и правила.",
-                      "lineHeight": 1.5,
-                      "fontFamily": "$font-sans",
-                      "fontSize": 13,
-                      "fontWeight": "normal"
                     }
                   ]
                 },
@@ -94928,10 +94992,6 @@
                       "id": "HBD1k",
                       "name": "Connection mode row",
                       "width": "fill_container",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
                       "gap": 24,
                       "padding": [
                         16,
@@ -94952,7 +95012,7 @@
                               "id": "Irf7E",
                               "name": "Mode label",
                               "fill": "$text-primary",
-                              "content": "Режим подключения",
+                              "content": "Режим",
                               "lineHeight": 1.4285714285714286,
                               "fontFamily": "$font-sans",
                               "fontSize": 14,
@@ -94965,7 +95025,7 @@
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "content": "Как трафик попадает в Submerge",
+                              "content": "Трафик устройств проходит через Submerge.",
                               "lineHeight": 1.3333333333333333,
                               "fontFamily": "$font-sans",
                               "fontSize": 12,
@@ -95040,43 +95100,46 @@
                           ]
                         }
                       ]
-                    },
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "dns-sQhMJsection",
+              "type": "frame",
+              "name": "DNS",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "id": "dns-sQhMJtitle",
+                  "type": "text",
+                  "name": "DNS title",
+                  "content": "DNS",
+                  "fill": "$text-primary",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 15,
+                  "fontWeight": "600",
+                  "lineHeight": 1.5
+                },
+                {
+                  "id": "dns-sQhMJcard",
+                  "type": "frame",
+                  "name": "Home DNS card",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "children": [
                     {
                       "type": "frame",
-                      "id": "B1B9iJ",
-                      "name": "Proxy explanation",
-                      "width": "fill_container",
-                      "layout": "vertical",
-                      "gap": 8,
-                      "padding": [
-                        16,
-                        18
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "DuckD",
-                          "name": "Proxy detail",
-                          "fill": "$text-secondary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "TUN принимает трафик устройств. HTTP/SOCKS-прокси также доступен.",
-                          "lineHeight": 1.5,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "AoN1i",
+                      "id": "dns-sQhMJ0",
                       "name": "Локальный DNS row",
                       "width": "fill_container",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
                       "gap": 24,
                       "padding": [
                         16,
@@ -95086,7 +95149,7 @@
                       "children": [
                         {
                           "type": "frame",
-                          "id": "LB4jQ",
+                          "id": "dns-sQhMJ1",
                           "name": "Локальный DNS description",
                           "width": "fill_container",
                           "layout": "vertical",
@@ -95094,12 +95157,12 @@
                           "children": [
                             {
                               "type": "text",
-                              "id": "n7j0wU",
+                              "id": "network-cleanup-1",
                               "name": "Локальный DNS label",
                               "fill": "$text-primary",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "content": "Локальный DNS",
+                              "content": "DNS домашней сети",
                               "lineHeight": 1.4285714285714286,
                               "fontFamily": "$font-sans",
                               "fontSize": 14,
@@ -95107,12 +95170,12 @@
                             },
                             {
                               "type": "text",
-                              "id": "iJNva",
+                              "id": "network-cleanup-2",
                               "name": "Локальный DNS help",
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "content": "Отдельный DNS для имён вашей сети",
+                              "content": "Если открываете устройства по имени, например nas.lan, укажите IP-адрес DNS-сервера вашей сети. Иначе оставьте пустым.",
                               "lineHeight": 1.3333333333333333,
                               "fontFamily": "$font-sans",
                               "fontSize": 12,
@@ -95122,7 +95185,7 @@
                         },
                         {
                           "type": "frame",
-                          "id": "Fes2J",
+                          "id": "dns-sQhMJ2",
                           "name": "Локальный DNS control",
                           "width": 260,
                           "height": 36,
@@ -95138,209 +95201,16 @@
                           "children": [
                             {
                               "type": "text",
-                              "id": "qFDdJ",
+                              "id": "network-cleanup-3",
                               "name": "Локальный DNS value",
                               "fill": "$text-primary",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "content": "192.168.1.1",
+                              "content": "Не используется",
                               "lineHeight": 1.5,
                               "fontFamily": "$font-mono",
                               "fontSize": 13,
                               "fontWeight": "normal"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "lfhJe",
-                      "name": "TUN checks",
-                      "width": "fill_container",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
-                      "layout": "vertical",
-                      "gap": 8,
-                      "padding": [
-                        16,
-                        18
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "lIVkO",
-                          "name": "TUN status",
-                          "fill": "$status-online",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "TUN работает",
-                          "lineHeight": 1.4285714285714286,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 14,
-                          "fontWeight": "500"
-                        },
-                        {
-                          "type": "text",
-                          "id": "GmQrq",
-                          "name": "TUN checks summary",
-                          "fill": "$text-secondary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "DNS · TUN · списки · VPN — проверки пройдены",
-                          "lineHeight": 1.5,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "u5MDoJ",
-                          "name": "Status actions",
-                          "width": "fill_container",
-                          "gap": 8,
-                          "alignItems": "center",
-                          "children": [
-                            {
-                              "type": "frame",
-                              "id": "nLNzR",
-                              "name": "Check readiness button",
-                              "height": 32,
-                              "fill": "$bg-elevated",
-                              "cornerRadius": "$radius-md",
-                              "stroke": "$border-default",
-                              "strokeWidth": 1,
-                              "gap": 8,
-                              "padding": [
-                                0,
-                                14
-                              ],
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "text",
-                                  "id": "IvwL5",
-                                  "name": "Check readiness label",
-                                  "fill": "$text-primary",
-                                  "content": "Проверить",
-                                  "lineHeight": 1.5,
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 13,
-                                  "fontWeight": "500"
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "eFOGC",
-                      "name": "Advanced parameters",
-                      "width": "fill_container",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
-                      "gap": 8,
-                      "padding": [
-                        16,
-                        18
-                      ],
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "icon",
-                          "id": "Z1PaVb",
-                          "name": "Expand advanced",
-                          "width": 16,
-                          "height": 16,
-                          "icon": "chevron-right",
-                          "library": "lucide",
-                          "fill": "$text-secondary"
-                        },
-                        {
-                          "type": "text",
-                          "id": "cI9SR",
-                          "name": "Advanced label",
-                          "fill": "$text-primary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "Дополнительные настройки",
-                          "lineHeight": 1.5,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "ygdht",
-                      "name": "Client connection guide",
-                      "width": "fill_container",
-                      "layout": "vertical",
-                      "gap": 8,
-                      "padding": [
-                        16,
-                        18
-                      ],
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "ktnIQ",
-                          "name": "Connection guide title",
-                          "fill": "$text-primary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "Подключение устройств",
-                          "lineHeight": 1.4285714285714286,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 14,
-                          "fontWeight": "500"
-                        },
-                        {
-                          "type": "text",
-                          "id": "DLGsJ",
-                          "name": "Connection guide body",
-                          "fill": "$text-secondary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "Шлюз: 192.168.1.2\nDNS для AdGuard: 192.168.1.2:1053\nНаправьте через этот шлюз выбранные устройства.",
-                          "lineHeight": 1.5,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "h9wRT",
-                          "name": "Copy addresses button",
-                          "height": 32,
-                          "fill": "$bg-elevated",
-                          "cornerRadius": "$radius-md",
-                          "stroke": "$border-default",
-                          "strokeWidth": 1,
-                          "gap": 8,
-                          "padding": [
-                            0,
-                            14
-                          ],
-                          "alignItems": "center",
-                          "children": [
-                            {
-                              "type": "text",
-                              "id": "hHOiy",
-                              "name": "Check readiness label",
-                              "fill": "$text-primary",
-                              "content": "Скопировать адреса",
-                              "lineHeight": 1.5,
-                              "fontFamily": "$font-sans",
-                              "fontSize": 13,
-                              "fontWeight": "500"
                             }
                           ]
                         }
@@ -95737,10 +95607,6 @@
                   "id": "ifG5q",
                   "name": "Connection mode row",
                   "width": "fill_container",
-                  "stroke": "$border-subtle",
-                  "strokeWidth": {
-                    "bottom": 1
-                  },
                   "layout": "vertical",
                   "gap": 8,
                   "padding": [
@@ -95761,7 +95627,7 @@
                           "id": "r5wJJP",
                           "name": "Mode label",
                           "fill": "$text-primary",
-                          "content": "Режим подключения",
+                          "content": "Режим",
                           "lineHeight": 1.4285714285714286,
                           "fontFamily": "$font-sans",
                           "fontSize": 14,
@@ -95774,7 +95640,7 @@
                           "fill": "$text-tertiary",
                           "textGrowth": "fixed-width",
                           "width": "fill_container",
-                          "content": "Как трафик попадает в Submerge",
+                          "content": "Трафик устройств проходит через Submerge.",
                           "lineHeight": 1.3333333333333333,
                           "fontFamily": "$font-sans",
                           "fontSize": 12,
@@ -95849,307 +95715,117 @@
                       ]
                     }
                   ]
+                }
+              ]
+            },
+            {
+              "id": "dns-mobilesection",
+              "type": "frame",
+              "name": "DNS",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "id": "dns-mobiletitle",
+                  "type": "text",
+                  "name": "DNS title",
+                  "content": "DNS",
+                  "fill": "$text-primary",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 15,
+                  "fontWeight": "600",
+                  "lineHeight": 1.5
                 },
                 {
+                  "id": "dns-mobilecard",
                   "type": "frame",
-                  "id": "ZwOno",
-                  "name": "Proxy explanation",
+                  "name": "Home DNS card",
                   "width": "fill_container",
                   "layout": "vertical",
-                  "gap": 8,
-                  "padding": [
-                    16,
-                    18
-                  ],
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "bt9vR",
-                      "name": "Proxy detail",
-                      "fill": "$text-secondary",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container",
-                      "content": "TUN принимает трафик устройств. HTTP/SOCKS-прокси также доступен.",
-                      "lineHeight": 1.5,
-                      "fontFamily": "$font-sans",
-                      "fontSize": 13,
-                      "fontWeight": "normal"
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "Nei1Q",
-                  "name": "Локальный DNS row",
-                  "width": "fill_container",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
                   "stroke": "$border-subtle",
-                  "strokeWidth": {
-                    "bottom": 1
-                  },
-                  "layout": "vertical",
-                  "gap": 8,
-                  "padding": [
-                    16,
-                    18
-                  ],
+                  "strokeWidth": 1,
                   "children": [
                     {
                       "type": "frame",
-                      "id": "V7DuM",
-                      "name": "Локальный DNS description",
+                      "id": "dns-mobile0",
+                      "name": "Локальный DNS row",
                       "width": "fill_container",
                       "layout": "vertical",
-                      "gap": 4,
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "eSRmX",
-                          "name": "Локальный DNS label",
-                          "fill": "$text-primary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "Локальный DNS",
-                          "lineHeight": 1.4285714285714286,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 14,
-                          "fontWeight": "500"
-                        },
-                        {
-                          "type": "text",
-                          "id": "ZBqhR",
-                          "name": "Локальный DNS help",
-                          "fill": "$text-tertiary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "Отдельный DNS для имён вашей сети",
-                          "lineHeight": 1.3333333333333333,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 12,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "a0pgV",
-                      "name": "Локальный DNS control",
-                      "width": "fill_container",
-                      "height": 36,
-                      "fill": "$bg-input",
-                      "cornerRadius": "$radius-md",
-                      "stroke": "$border-default",
-                      "strokeWidth": 1,
-                      "padding": [
-                        0,
-                        12
-                      ],
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "VrCA5",
-                          "name": "Локальный DNS value",
-                          "fill": "$text-primary",
-                          "textGrowth": "fixed-width",
-                          "width": "fill_container",
-                          "content": "192.168.1.1",
-                          "lineHeight": 1.5,
-                          "fontFamily": "$font-mono",
-                          "fontSize": 13,
-                          "fontWeight": "normal"
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "V1gbB1",
-                  "name": "TUN checks",
-                  "width": "fill_container",
-                  "stroke": "$border-subtle",
-                  "strokeWidth": {
-                    "bottom": 1
-                  },
-                  "layout": "vertical",
-                  "gap": 8,
-                  "padding": [
-                    16,
-                    18
-                  ],
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "R5otx",
-                      "name": "TUN status",
-                      "fill": "$status-online",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container",
-                      "content": "TUN работает",
-                      "lineHeight": 1.4285714285714286,
-                      "fontFamily": "$font-sans",
-                      "fontSize": 14,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "text",
-                      "id": "en4hn",
-                      "name": "TUN checks summary",
-                      "fill": "$text-secondary",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container",
-                      "content": "DNS · TUN · списки · VPN — проверки пройдены",
-                      "lineHeight": 1.5,
-                      "fontFamily": "$font-sans",
-                      "fontSize": 13,
-                      "fontWeight": "normal"
-                    },
-                    {
-                      "type": "frame",
-                      "id": "SrpK2",
-                      "name": "Status actions",
-                      "width": "fill_container",
                       "gap": 8,
-                      "alignItems": "center",
+                      "padding": [
+                        16,
+                        18
+                      ],
                       "children": [
                         {
                           "type": "frame",
-                          "id": "C2ij4",
-                          "name": "Check readiness button",
-                          "height": 32,
-                          "fill": "$bg-elevated",
+                          "id": "dns-mobile1",
+                          "name": "Локальный DNS description",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "eSRmX",
+                              "name": "Локальный DNS label",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "DNS домашней сети",
+                              "lineHeight": 1.4285714285714286,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZBqhR",
+                              "name": "Локальный DNS help",
+                              "fill": "$text-tertiary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Если открываете устройства по имени, например nas.lan, укажите IP-адрес DNS-сервера вашей сети. Иначе оставьте пустым.",
+                              "lineHeight": 1.3333333333333333,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dns-mobile2",
+                          "name": "Локальный DNS control",
+                          "width": "fill_container",
+                          "height": 36,
+                          "fill": "$bg-input",
                           "cornerRadius": "$radius-md",
                           "stroke": "$border-default",
                           "strokeWidth": 1,
-                          "gap": 8,
                           "padding": [
                             0,
-                            14
+                            12
                           ],
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "text",
-                              "id": "AjNZY",
-                              "name": "Check readiness label",
+                              "id": "VrCA5",
+                              "name": "Локальный DNS value",
                               "fill": "$text-primary",
-                              "content": "Проверить",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Не используется",
                               "lineHeight": 1.5,
-                              "fontFamily": "$font-sans",
+                              "fontFamily": "$font-mono",
                               "fontSize": 13,
-                              "fontWeight": "500"
+                              "fontWeight": "normal"
                             }
                           ]
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "iovzA",
-                  "name": "Advanced parameters",
-                  "width": "fill_container",
-                  "stroke": "$border-subtle",
-                  "strokeWidth": {
-                    "bottom": 1
-                  },
-                  "gap": 8,
-                  "padding": [
-                    16,
-                    18
-                  ],
-                  "alignItems": "center",
-                  "children": [
-                    {
-                      "type": "icon",
-                      "id": "i7NQ9",
-                      "name": "Expand advanced",
-                      "width": 16,
-                      "height": 16,
-                      "icon": "chevron-right",
-                      "library": "lucide",
-                      "fill": "$text-secondary"
-                    },
-                    {
-                      "type": "text",
-                      "id": "mU7zT",
-                      "name": "Advanced label",
-                      "fill": "$text-primary",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container",
-                      "content": "Дополнительные настройки",
-                      "lineHeight": 1.5,
-                      "fontFamily": "$font-sans",
-                      "fontSize": 13,
-                      "fontWeight": "normal"
-                    }
-                  ]
-                },
-                {
-                  "type": "frame",
-                  "id": "vqyzE",
-                  "name": "Client connection guide",
-                  "width": "fill_container",
-                  "layout": "vertical",
-                  "gap": 8,
-                  "padding": [
-                    16,
-                    18
-                  ],
-                  "children": [
-                    {
-                      "type": "text",
-                      "id": "D2J7xr",
-                      "name": "Connection guide title",
-                      "fill": "$text-primary",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container",
-                      "content": "Подключение устройств",
-                      "lineHeight": 1.4285714285714286,
-                      "fontFamily": "$font-sans",
-                      "fontSize": 14,
-                      "fontWeight": "500"
-                    },
-                    {
-                      "type": "text",
-                      "id": "zgQ3G",
-                      "name": "Connection guide body",
-                      "fill": "$text-secondary",
-                      "textGrowth": "fixed-width",
-                      "width": "fill_container",
-                      "content": "Шлюз: 192.168.1.2\nDNS для AdGuard: 192.168.1.2:1053\nНаправьте через этот шлюз выбранные устройства.",
-                      "lineHeight": 1.5,
-                      "fontFamily": "$font-sans",
-                      "fontSize": 13,
-                      "fontWeight": "normal"
-                    },
-                    {
-                      "type": "frame",
-                      "id": "pp9pQ",
-                      "name": "Copy addresses button",
-                      "height": 32,
-                      "fill": "$bg-elevated",
-                      "cornerRadius": "$radius-md",
-                      "stroke": "$border-default",
-                      "strokeWidth": 1,
-                      "gap": 8,
-                      "padding": [
-                        0,
-                        14
-                      ],
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "text",
-                          "id": "isTRj",
-                          "name": "Check readiness label",
-                          "fill": "$text-primary",
-                          "content": "Скопировать адреса",
-                          "lineHeight": 1.5,
-                          "fontFamily": "$font-sans",
-                          "fontSize": 13,
-                          "fontWeight": "500"
                         }
                       ]
                     }

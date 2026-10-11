@@ -1,93 +1,185 @@
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
-import { resolve, sep } from "node:path";
+import { dirname, resolve, sep } from "node:path";
+import {
+  channelMatcherSchema,
+  type NetworkSettings,
+  networkSettingsSchema,
+  publishedRuleFile,
+} from "@submerge/shared";
+import { eq, inArray } from "drizzle-orm";
+import * as yaml from "js-yaml";
+import { z } from "zod";
+import { getRuleProviders, type RuleProvidersResponse } from "../../clients/mihomo.js";
+import { env } from "../../config/env.js";
+import type { Db } from "../../db/client.js";
+import { channels, settings } from "../../db/schema.js";
+import { ensureDefaultChannel, ensureDirectChannel, listChannels } from "../channels/service.js";
+import { ruleProviderName } from "../nodes/multiConfig.js";
+import { getSetting, setSetting } from "../settings/service.js";
 import {
   createGatewayDraft,
   type GatewayProfile,
   gatewayProfileSchema,
   type NetworkProfile,
   networkProfileSchema,
-} from "@submerge/shared";
-import { eq } from "drizzle-orm";
-import * as yaml from "js-yaml";
-import { z } from "zod";
-import { getRuleProviders, type RuleProvidersResponse } from "../../clients/mihomo.js";
-import { env } from "../../config/env.js";
-import type { Db } from "../../db/client.js";
-import { settings } from "../../db/schema.js";
-import { getSetting, setSetting } from "../settings/service.js";
+} from "./engine-settings.js";
 
-export const NETWORK_PROFILE_KEY = "networkProfile";
+export const NETWORK_SETTINGS_KEY = "internal.networkSettings";
 const APPLY_STATE_KEY = "internal.gatewayApplyState";
-const PREFERENCES_KEY = "internal.gatewayPreferences";
+const LEGACY_PROFILE_KEY = "networkProfile";
+const LEGACY_PREFERENCES_KEY = "internal.gatewayPreferences";
 
-export function readNetworkProfile(db: Db): NetworkProfile {
-  const row = db
-    .select({ value: settings.value })
-    .from(settings)
-    .where(eq(settings.key, NETWORK_PROFILE_KEY))
-    .get();
-  if (!row) return { profile: "proxy" };
+export function publishedListsDirectory(): string {
+  return resolve(dirname(env.MIHOMO_CONFIG_PATH), "private-lists");
+}
+
+export function availablePublishedLists(): string[] {
   try {
-    const value = getSetting(db, NETWORK_PROFILE_KEY);
-    if (value === undefined) throw new Error("invalid encoding");
-    return networkProfileSchema.parse(JSON.parse(value));
+    return readdirSync(publishedListsDirectory())
+      .filter((file) => publishedRuleFile(`file://published/${file}`) !== null)
+      .sort()
+      .slice(0, 128);
   } catch {
-    throw new Error("Invalid persisted network profile; repair networkProfile explicitly");
+    return [];
   }
 }
 
-export function writeNetworkProfile(db: Db, profile: NetworkProfile): void {
-  const validated = networkProfileSchema.parse(profile);
+function savedJson(db: Db, key: string): string | undefined {
+  const row = db.select({ key: settings.key }).from(settings).where(eq(settings.key, key)).get();
+  if (!row) return undefined;
+  const value = getSetting(db, key);
+  if (value === undefined) throw new Error("Invalid persisted connection settings");
+  return value;
+}
+
+export function readNetworkSettings(db: Db): NetworkSettings {
+  const value = savedJson(db, NETWORK_SETTINGS_KEY);
+  if (value !== undefined) return networkSettingsSchema.parse(JSON.parse(value));
+  // Upgrade is transactional and never converts malformed settings to Proxy.
+  if (
+    savedJson(db, LEGACY_PROFILE_KEY) !== undefined ||
+    savedJson(db, LEGACY_PREFERENCES_KEY) !== undefined
+  ) {
+    initializeNetworkSettings(db);
+    return readNetworkSettings(db);
+  }
+  return networkSettingsSchema.parse({});
+}
+
+export function writeNetworkSettings(db: Db, value: NetworkSettings): void {
+  setSetting(db, NETWORK_SETTINGS_KEY, JSON.stringify(networkSettingsSchema.parse(value)));
+}
+
+// Run once for a prepared installation or a legacy upgrade. All subsequent
+// routing edits belong to channels and survive every connection-mode change.
+export function initializeNetworkSettings(db: Db): void {
+  if (savedJson(db, NETWORK_SETTINGS_KEY) !== undefined) {
+    readNetworkSettings(db);
+    return;
+  }
+  const activeRaw = savedJson(db, LEGACY_PROFILE_KEY);
+  const savedRaw = savedJson(db, LEGACY_PREFERENCES_KEY);
+  const active =
+    activeRaw === undefined
+      ? { profile: "proxy" as const }
+      : networkProfileSchema.parse(JSON.parse(activeRaw));
+  const saved =
+    active.profile === "gateway"
+      ? active
+      : savedRaw === undefined
+        ? undefined
+        : gatewayProfileSchema.parse(JSON.parse(savedRaw));
+  const initial = saved ?? createGatewayDraft();
+  if (!saved) {
+    for (const [file, target] of [
+      ["notblocked.txt", "notblocked"],
+      ["custom.txt", "proxy"],
+    ] as const) {
+      if (availablePublishedLists().includes(file))
+        initial.privateLists.push({ name: file.slice(0, -4), file, target, behavior: "domain" });
+    }
+  }
   db.transaction(() => {
-    setSetting(db, NETWORK_PROFILE_KEY, JSON.stringify(validated));
-    if (validated.profile === "gateway") setSetting(db, PREFERENCES_KEY, JSON.stringify(validated));
+    ensureDefaultChannel(db);
+    ensureDirectChannel(db);
+    for (const id of ["direct", "default"]) {
+      const row = db.select().from(channels).where(eq(channels.id, id)).get();
+      if (!row) throw new Error("Missing routing channel during network upgrade");
+      const matcher = channelMatcherSchema.parse(row.matcher);
+      const refs = initial.privateLists
+        .filter((list) => (list.target === "proxy") === (id === "default"))
+        .map((list) => ({ url: `file://published/${list.file}`, behavior: list.behavior }));
+      if (id === "direct") {
+        matcher.domains = [
+          ...new Set([
+            ...matcher.domains,
+            ...initial.localDomains.filter(
+              (domain) => !createGatewayDraft().localDomains.includes(domain),
+            ),
+            ...initial.ruZones,
+          ]),
+        ];
+        matcher.geosite = [...new Set([...matcher.geosite, ...initial.ruGeosite])];
+        matcher.geoip = [...new Set([...matcher.geoip, ...initial.ruGeoip])];
+        matcher.cidrs = [...new Set([...matcher.cidrs, ...initial.serviceCidrs])];
+      }
+      matcher.ruleProviders = [
+        ...new Map(
+          [...matcher.ruleProviders, ...refs].map((ref) => [`${ref.url}|${ref.behavior}`, ref]),
+        ).values(),
+      ];
+      db.update(channels).set({ matcher }).where(eq(channels.id, id)).run();
+    }
+    writeNetworkSettings(db, {
+      mode: active.profile === "gateway" ? "tun" : "proxy",
+      localResolvers: initial.localResolvers,
+    });
+    db.delete(settings)
+      .where(inArray(settings.key, [LEGACY_PROFILE_KEY, LEGACY_PREFERENCES_KEY]))
+      .run();
   });
 }
 
-export function readGatewayPreferences(db: Db): GatewayProfile | undefined {
-  const active = readNetworkProfile(db);
-  if (active.profile === "gateway") return active;
-  const row = db
-    .select({ key: settings.key })
-    .from(settings)
-    .where(eq(settings.key, PREFERENCES_KEY))
-    .get();
-  if (!row) return undefined;
-  try {
-    const value = getSetting(db, PREFERENCES_KEY);
-    if (value === undefined) throw new Error("invalid encoding");
-    return gatewayProfileSchema.parse(JSON.parse(value));
-  } catch {
-    throw new Error("Invalid persisted TUN preferences; repair explicitly");
-  }
-}
-
-export function seedNetworkProfile(
-  db: Db,
-  path: string | undefined = env.GATEWAY_PROFILE_FILE,
-): void {
-  if (
-    db
-      .select({ key: settings.key })
-      .from(settings)
-      .where(eq(settings.key, NETWORK_PROFILE_KEY))
-      .get()
-  ) {
-    readNetworkProfile(db);
-    return;
-  }
-  if (path)
-    writeNetworkProfile(db, networkProfileSchema.parse(JSON.parse(readFileSync(path, "utf8"))));
+export function readNetworkProfile(db: Db): NetworkProfile {
+  if (readNetworkSettings(db).mode === "proxy") return { profile: "proxy" };
+  const runtime = readGatewayRuntimeSettings(db);
+  if (!runtime) throw new Error("Missing saved connection settings");
+  return runtime;
 }
 
 export function readGatewayRuntimeSettings(db: Db): GatewayProfile | undefined {
-  return readGatewayPreferences(db) ?? (env.GATEWAY_DEPLOYMENT ? createGatewayDraft() : undefined);
+  const value = readNetworkSettings(db);
+  if (savedJson(db, NETWORK_SETTINGS_KEY) === undefined) return undefined;
+  const profile = createGatewayDraft();
+  profile.localResolvers = value.localResolvers;
+  // RU/domain/CIDR routing is generated solely from the existing channel editor.
+  profile.ruZones = [];
+  profile.ruGeosite = [];
+  profile.ruGeoip = [];
+  for (const channel of listChannels(db).filter(
+    (channel) => channel.enabled || channel.isDefault,
+  )) {
+    for (const ref of channel.matcher.ruleProviders) {
+      const file = publishedRuleFile(ref.url);
+      if (!file) continue;
+      const name = ruleProviderName(ref);
+      if (profile.privateLists.some((list) => list.name === name)) continue;
+      profile.privateLists.push({
+        name,
+        file,
+        behavior: ref.behavior,
+        target:
+          channel.target === "proxy" ? "proxy" : file === "notblocked.txt" ? "notblocked" : "ru",
+      });
+    }
+  }
+  return profile;
 }
 
 export function assertGatewaySecurity(secret: string): void {
-  if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 16 || secret.length < 16) {
-    throw new Error("Gateway requires ADMIN_PASSWORD and MIHOMO_SECRET of at least 16 characters");
+  if (!env.ADMIN_PASSWORD || secret.length < 16) {
+    throw new Error("TUN requires ADMIN_PASSWORD and an automatically protected engine secret");
   }
 }
 
@@ -148,7 +240,7 @@ export function assertPrivateProvidersLoaded(
   response: RuleProvidersResponse,
 ): void {
   for (const list of profile.privateLists) {
-    const name = `gateway-${list.name}`;
+    const name = list.name;
     const provider = response.providers[name];
     if (
       !provider ||
@@ -182,7 +274,7 @@ export async function waitForPrivateProvidersLoaded(
       // Mihomo acknowledges reload before its provider goroutines finish. A
       // populated but incomplete provider is a validation failure, not startup.
       const initializing = profile.privateLists.some(
-        (list) => !response.providers[`gateway-${list.name}`]?.ruleCount,
+        (list) => !response.providers[list.name]?.ruleCount,
       );
       if (!initializing || Date.now() >= deadline) throw error;
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -193,7 +285,7 @@ export async function waitForPrivateProvidersLoaded(
 // Inspect published files; never rewrite or normalize their domain entries.
 export function validatePrivateLists(
   gateway: GatewayProfile,
-  directory = env.GATEWAY_LISTS_PATH,
+  directory = publishedListsDirectory(),
 ): Record<string, number> {
   const counts: Record<string, number> = {};
   if (gateway.privateLists.length === 0) return counts;
@@ -223,7 +315,7 @@ export function validatePrivateLists(
       })
     )
       throw new Error(`notblocked must preserve complete FQDN entries: ${list.name}`);
-    counts[`gateway-${list.name}`] = entries.length;
+    counts[list.name] = entries.length;
   }
   return counts;
 }

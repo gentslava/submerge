@@ -22,7 +22,6 @@ it("ships a prepared standard installation with private API, engine-only TUN and
   expect(compose.services["happ-decoder"]?.group_add).toEqual(["999"]);
   expect(init?.network_mode).toBe("none");
   expect(init?.environment).toMatchObject({
-    GATEWAY_DEPLOYMENT: "true",
     // biome-ignore lint/suspicious/noTemplateCurlyInString: Compose interpolation is literal YAML.
     MIHOMO_SECRET: "${MIHOMO_SECRET:-}",
   });

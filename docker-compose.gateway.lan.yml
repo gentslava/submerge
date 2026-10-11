@@ -6,8 +6,6 @@ services:
       gateway-lan:
         ipv4_address: ${SUBMERGE_LAN_IP:?Set an unused LAN IP}
   submerge:
-    environment:
-      GATEWAY_LAN_ACCESS: lan
 networks:
   gateway-lan:
     driver: macvlan
