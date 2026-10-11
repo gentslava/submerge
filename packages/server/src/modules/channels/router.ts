@@ -10,6 +10,7 @@ import {
 } from "@submerge/shared";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
+import { availablePublishedLists } from "../gateway/settings.js";
 import { applyConfig, getPolicyNodeNames } from "../nodes/service.js";
 import { registry } from "./instance.js";
 import { getPool, setPool } from "./pool.js";
@@ -28,6 +29,7 @@ export const channelsRouter = router({
   // Phase 1 exposes only the Default channel; multi-channel CRUD lands in Phase 3.
   get: protectedProcedure.query(() => readDefaultChannel(db)),
   list: protectedProcedure.query(() => listChannels(db)),
+  publishedLists: protectedProcedure.query(() => availablePublishedLists()),
   create: protectedProcedure.input(createChannelInput).mutation(async ({ input }) => {
     const ch = createChannel(db, input);
     // A new channel adds a routing group — regenerate + reload the mihomo config.

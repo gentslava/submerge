@@ -1,5 +1,5 @@
 {
-  "version": "2.15",
+  "version": "2.21",
   "children": [
     {
       "type": "frame",
@@ -20415,27 +20415,17 @@
                       "id": "UXykn",
                       "name": "t",
                       "fill": "$text-primary",
-                      "content": "Режим работы",
+                      "content": "Режим подключения",
                       "fontFamily": "$font-sans",
                       "fontSize": 15,
                       "fontWeight": "600"
-                    },
-                    {
-                      "type": "text",
-                      "id": "lP5Mx",
-                      "name": "d",
-                      "fill": "$text-secondary",
-                      "content": "Как submerge публикует трафик. Сервис — комбайн в Docker: держит лучший узел и отдаёт его наружу.",
-                      "fontFamily": "$font-sans",
-                      "fontSize": 13,
-                      "fontWeight": "normal"
                     }
                   ]
                 },
                 {
                   "type": "frame",
-                  "id": "A6E51",
-                  "name": "Card",
+                  "id": "Egf02",
+                  "name": "Connection mode card",
                   "clip": true,
                   "width": "fill_container",
                   "fill": "$bg-surface",
@@ -20446,127 +20436,190 @@
                   "children": [
                     {
                       "type": "frame",
-                      "id": "K4kNU",
-                      "name": "Proxy endpoint",
+                      "id": "mqL0N",
+                      "name": "Connection mode row",
                       "width": "fill_container",
-                      "fill": "$accent-bg",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
-                      "strokeLinejoin": "round",
-                      "gap": 14,
+                      "gap": 24,
                       "padding": [
-                        14,
-                        16
+                        16,
+                        18
                       ],
                       "alignItems": "center",
                       "children": [
                         {
                           "type": "frame",
-                          "id": "ethL8",
-                          "name": "radio",
-                          "width": 18,
-                          "height": 18,
-                          "cornerRadius": "$radius-full",
-                          "stroke": "$accent",
-                          "strokeWidth": 1.5,
-                          "justifyContent": "center",
-                          "alignItems": "center",
+                          "id": "g4IUAo",
+                          "name": "Connection mode label",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
                           "children": [
                             {
-                              "type": "ellipse",
-                              "id": "hRCPg",
-                              "name": "dot",
+                              "type": "text",
+                              "id": "TqDOk",
+                              "name": "Mode label",
+                              "fill": "$text-primary",
+                              "content": "Режим",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "NzgdX",
+                              "name": "Mode help",
+                              "fill": "$text-tertiary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Для приложений с настройкой HTTP/SOCKS-прокси.",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "b0aFLl",
+                          "name": "Proxy TUN segmented",
+                          "width": 260,
+                          "fill": "$bg-base",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": 1,
+                          "gap": 3,
+                          "padding": 3,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "wSHty",
+                              "name": "Прокси",
+                              "width": "fill_container",
                               "fill": "$accent",
-                              "width": 9,
-                              "height": 9
-                            }
-                          ]
-                        },
-                        {
-                          "type": "frame",
-                          "id": "MrfsD",
-                          "name": "Ico",
-                          "width": 40,
-                          "height": 40,
-                          "fill": "$accent",
-                          "cornerRadius": "$radius-md",
-                          "justifyContent": "center",
-                          "alignItems": "center",
-                          "children": [
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                7,
+                                13
+                              ],
+                              "justifyContent": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "uYvlD",
+                                  "name": "Прокси label",
+                                  "fill": "$accent-fg",
+                                  "content": "Прокси",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 13,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
                             {
-                              "type": "icon",
-                              "id": "dsGXb",
-                              "name": "i",
-                              "width": 18,
-                              "height": 18,
-                              "icon": "plug-zap",
-                              "library": "lucide",
-                              "fill": "$accent-fg"
+                              "type": "frame",
+                              "id": "Vb9d6",
+                              "name": "TUN",
+                              "width": "fill_container",
+                              "fill": "#00000000",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                7,
+                                13
+                              ],
+                              "justifyContent": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "lGJ6m",
+                                  "name": "TUN label",
+                                  "fill": "$text-secondary",
+                                  "content": "TUN",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 13,
+                                  "fontWeight": "500"
+                                }
+                              ]
                             }
                           ]
-                        },
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "dns-ea2Oxsection",
+              "type": "frame",
+              "name": "DNS",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "id": "dns-ea2Oxtitle",
+                  "type": "text",
+                  "name": "DNS title",
+                  "content": "DNS",
+                  "fill": "$text-primary",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 15,
+                  "fontWeight": "600",
+                  "lineHeight": 1.5
+                },
+                {
+                  "id": "dns-ea2Oxcard",
+                  "type": "frame",
+                  "name": "Home DNS card",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "dns-ea2Ox0",
+                      "name": "Локальный DNS row",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "padding": [
+                        16,
+                        18
+                      ],
+                      "alignItems": "center",
+                      "children": [
                         {
                           "type": "frame",
-                          "id": "kshdo",
-                          "name": "Info",
+                          "id": "dns-ea2Ox1",
+                          "name": "Локальный DNS description",
                           "width": "fill_container",
                           "layout": "vertical",
                           "gap": 4,
                           "children": [
                             {
-                              "type": "frame",
-                              "id": "EeHI2",
-                              "name": "TR",
-                              "gap": 8,
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "text",
-                                  "id": "JDRwF",
-                                  "name": "t",
-                                  "fill": "$text-primary",
-                                  "content": "Proxy endpoint (SOCKS/HTTP)",
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 14,
-                                  "fontWeight": "600"
-                                },
-                                {
-                                  "type": "frame",
-                                  "id": "faGyQ",
-                                  "name": "rec",
-                                  "fill": "$accent-bg",
-                                  "cornerRadius": "$radius-full",
-                                  "stroke": "$accent-border",
-                                  "strokeWidth": 1,
-                                  "padding": [
-                                    2,
-                                    8
-                                  ],
-                                  "children": [
-                                    {
-                                      "type": "text",
-                                      "id": "PEMPy",
-                                      "name": "t",
-                                      "fill": "$accent-text",
-                                      "content": "рекомендуется",
-                                      "fontFamily": "$font-sans",
-                                      "fontSize": 11,
-                                      "fontWeight": "600"
-                                    }
-                                  ]
-                                }
-                              ]
+                              "type": "text",
+                              "id": "n7j0wU",
+                              "name": "Локальный DNS label",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "DNS домашней сети",
+                              "lineHeight": 1.4285714285714286,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
                             },
                             {
                               "type": "text",
-                              "id": "iTrRn",
-                              "name": "d",
+                              "id": "iJNva",
+                              "name": "Локальный DNS help",
                               "fill": "$text-tertiary",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "content": "Локальный mixed-порт :7890. Клиенты и контейнеры указывают прокси сами.",
+                              "content": "Если открываете устройства по имени, например nas.lan, укажите IP-адрес DNS-сервера вашей сети. Иначе оставьте пустым.",
+                              "lineHeight": 1.3333333333333333,
                               "fontFamily": "$font-sans",
                               "fontSize": 12,
                               "fontWeight": "normal"
@@ -20575,302 +20628,34 @@
                         },
                         {
                           "type": "frame",
-                          "id": "PtHwK",
-                          "name": "req",
-                          "fill": "$status-online-bg",
-                          "cornerRadius": "$radius-full",
+                          "id": "dns-ea2Ox2",
+                          "name": "Локальный DNS control",
+                          "width": 260,
+                          "height": 36,
+                          "fill": "$bg-input",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-default",
+                          "strokeWidth": 1,
                           "padding": [
-                            3,
-                            9
+                            0,
+                            12
                           ],
                           "alignItems": "center",
                           "children": [
                             {
                               "type": "text",
-                              "id": "oWq7S",
-                              "name": "t",
-                              "fill": "$status-online",
-                              "content": "без привилегий",
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "500"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "AAWEH",
-                      "name": "TPROXY",
-                      "width": "fill_container",
-                      "fill": "#00000000",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
-                      "strokeLinejoin": "round",
-                      "gap": 14,
-                      "padding": [
-                        14,
-                        16
-                      ],
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "frame",
-                          "id": "G76w5s",
-                          "name": "radio",
-                          "width": 18,
-                          "height": 18,
-                          "cornerRadius": "$radius-full",
-                          "stroke": "$border-strong",
-                          "strokeWidth": 1.5,
-                          "justifyContent": "center",
-                          "alignItems": "center"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "j3WbZs",
-                          "name": "Ico",
-                          "width": 40,
-                          "height": 40,
-                          "fill": "$bg-elevated",
-                          "cornerRadius": "$radius-md",
-                          "justifyContent": "center",
-                          "alignItems": "center",
-                          "children": [
-                            {
-                              "type": "icon",
-                              "id": "v3WjWt",
-                              "name": "i",
-                              "width": 18,
-                              "height": 18,
-                              "icon": "router",
-                              "library": "lucide",
-                              "fill": "$text-secondary"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "frame",
-                          "id": "roB4B",
-                          "name": "Info",
-                          "width": "fill_container",
-                          "layout": "vertical",
-                          "gap": 4,
-                          "children": [
-                            {
-                              "type": "frame",
-                              "id": "h80xp2",
-                              "name": "TR",
-                              "gap": 8,
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "text",
-                                  "id": "iBGPd",
-                                  "name": "t",
-                                  "fill": "$text-primary",
-                                  "content": "Прозрачный шлюз (TPROXY)",
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 14,
-                                  "fontWeight": "600"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "text",
-                              "id": "c932z",
-                              "name": "d",
-                              "fill": "$text-tertiary",
+                              "id": "qFDdJ",
+                              "name": "Локальный DNS value",
+                              "fill": "$text-primary",
                               "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "content": "Прозрачно заворачивает трафик LAN-устройств. Нужны ip_forward и nftables.",
-                              "fontFamily": "$font-sans",
-                              "fontSize": 12,
+                              "content": "Не используется",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 13,
                               "fontWeight": "normal"
                             }
                           ]
-                        },
-                        {
-                          "type": "frame",
-                          "id": "QE78z",
-                          "name": "req",
-                          "fill": "$status-slow-bg",
-                          "cornerRadius": "$radius-full",
-                          "padding": [
-                            3,
-                            9
-                          ],
-                          "alignItems": "center",
-                          "children": [
-                            {
-                              "type": "text",
-                              "id": "e5m9dg",
-                              "name": "t",
-                              "fill": "$status-slow",
-                              "content": "NET_ADMIN",
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "500"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "KRJPA",
-                      "name": "TUN",
-                      "width": "fill_container",
-                      "fill": "#00000000",
-                      "stroke": "$border-subtle",
-                      "strokeWidth": {
-                        "bottom": 1
-                      },
-                      "strokeLinejoin": "round",
-                      "gap": 14,
-                      "padding": [
-                        14,
-                        16
-                      ],
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "frame",
-                          "id": "JQXZt",
-                          "name": "radio",
-                          "width": 18,
-                          "height": 18,
-                          "cornerRadius": "$radius-full",
-                          "stroke": "$border-strong",
-                          "strokeWidth": 1.5,
-                          "justifyContent": "center",
-                          "alignItems": "center"
-                        },
-                        {
-                          "type": "frame",
-                          "id": "hdcaU",
-                          "name": "Ico",
-                          "width": 40,
-                          "height": 40,
-                          "fill": "$bg-elevated",
-                          "cornerRadius": "$radius-md",
-                          "justifyContent": "center",
-                          "alignItems": "center",
-                          "children": [
-                            {
-                              "type": "icon",
-                              "id": "wuFOn",
-                              "name": "i",
-                              "width": 18,
-                              "height": 18,
-                              "icon": "shield",
-                              "library": "lucide",
-                              "fill": "$text-secondary"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "frame",
-                          "id": "nnrUQ",
-                          "name": "Info",
-                          "width": "fill_container",
-                          "layout": "vertical",
-                          "gap": 4,
-                          "children": [
-                            {
-                              "type": "frame",
-                              "id": "EpuPL",
-                              "name": "TR",
-                              "gap": 8,
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "text",
-                                  "id": "GL7hS",
-                                  "name": "t",
-                                  "fill": "$text-primary",
-                                  "content": "TUN (хост-шлюз)",
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 14,
-                                  "fontWeight": "600"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "text",
-                              "id": "trcnl",
-                              "name": "d",
-                              "fill": "$text-tertiary",
-                              "textGrowth": "fixed-width",
-                              "width": "fill_container",
-                              "content": "Виртуальный L3-интерфейс на хосте. Только при network_mode: host.",
-                              "fontFamily": "$font-sans",
-                              "fontSize": 12,
-                              "fontWeight": "normal"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "frame",
-                          "id": "QWJoU",
-                          "name": "req",
-                          "fill": "$status-slow-bg",
-                          "cornerRadius": "$radius-full",
-                          "padding": [
-                            3,
-                            9
-                          ],
-                          "alignItems": "center",
-                          "children": [
-                            {
-                              "type": "text",
-                              "id": "PX2Eh",
-                              "name": "t",
-                              "fill": "$status-slow",
-                              "content": "NET_ADMIN · /dev/net/tun",
-                              "fontFamily": "$font-mono",
-                              "fontSize": 11,
-                              "fontWeight": "500"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "frame",
-                      "id": "ScG3N",
-                      "name": "docker",
-                      "width": "fill_container",
-                      "fill": "$bg-elevated",
-                      "gap": 9,
-                      "padding": [
-                        11,
-                        16
-                      ],
-                      "alignItems": "center",
-                      "children": [
-                        {
-                          "type": "icon",
-                          "id": "IW3OE",
-                          "name": "i",
-                          "width": 14,
-                          "height": 14,
-                          "icon": "container",
-                          "library": "lucide",
-                          "fill": "$text-tertiary"
-                        },
-                        {
-                          "type": "text",
-                          "id": "OxEFl",
-                          "name": "t",
-                          "fill": "$text-tertiary",
-                          "content": "docker run -p 7890:7890 · дополнительные привилегии не требуются",
-                          "fontFamily": "$font-mono",
-                          "fontSize": 12,
-                          "fontWeight": "normal"
                         }
                       ]
                     }
@@ -30377,8 +30162,7 @@
                           "x": 0,
                           "y": 24
                         },
-                        "blur": 60,
-                        "spread": -10
+                        "blur": 60
                       },
                       "layout": "vertical",
                       "children": [
@@ -33348,8 +33132,7 @@
                               "x": 0,
                               "y": 12
                             },
-                            "blur": 32,
-                            "spread": -14
+                            "blur": 32
                           },
                           "layout": "vertical",
                           "gap": 7,
@@ -33404,8 +33187,7 @@
                               "x": 0,
                               "y": 12
                             },
-                            "blur": 32,
-                            "spread": -14
+                            "blur": 32
                           },
                           "layout": "vertical",
                           "gap": 7,
@@ -33460,8 +33242,7 @@
                               "x": 0,
                               "y": 12
                             },
-                            "blur": 32,
-                            "spread": -14
+                            "blur": 32
                           },
                           "layout": "vertical",
                           "gap": 7,
@@ -33516,8 +33297,7 @@
                               "x": 0,
                               "y": 12
                             },
-                            "blur": 32,
-                            "spread": -14
+                            "blur": 32
                           },
                           "layout": "vertical",
                           "gap": 7,
@@ -33575,8 +33355,7 @@
                           "x": 0,
                           "y": 14
                         },
-                        "blur": 36,
-                        "spread": -18
+                        "blur": 36
                       },
                       "layout": "vertical",
                       "children": [
@@ -51383,15 +51162,15 @@
                       "id": "UikED",
                       "name": "Режим работы",
                       "fill": "$text-primary",
-                      "content": "Режим работы",
+                      "content": "Режим подключения",
                       "fontFamily": "$font-sans",
                       "fontSize": 15,
                       "fontWeight": "600"
                     },
                     {
                       "type": "frame",
-                      "id": "DwBUs",
-                      "name": "card",
+                      "id": "CLia7",
+                      "name": "Connection mode card",
                       "clip": true,
                       "width": "fill_container",
                       "fill": "$bg-surface",
@@ -51402,131 +51181,113 @@
                       "children": [
                         {
                           "type": "frame",
-                          "id": "z0DzG",
-                          "name": "Proxy endpoint",
+                          "id": "V7eB6",
+                          "name": "Connection mode row",
                           "width": "fill_container",
-                          "fill": "$accent-bg",
                           "stroke": "$border-subtle",
                           "strokeWidth": {
                             "bottom": 1
                           },
-                          "strokeLinejoin": "round",
-                          "gap": 12,
+                          "layout": "vertical",
+                          "gap": 8,
                           "padding": [
-                            12,
-                            14
+                            16,
+                            18
                           ],
-                          "alignItems": "center",
                           "children": [
                             {
                               "type": "frame",
-                              "id": "G2OP9g",
-                              "name": "radio",
-                              "width": 18,
-                              "height": 18,
-                              "cornerRadius": "$radius-full",
-                              "stroke": "$accent",
-                              "strokeWidth": 1.5,
-                              "justifyContent": "center",
-                              "alignItems": "center",
+                              "id": "f8ApV",
+                              "name": "Connection mode label",
+                              "width": "fill_container",
+                              "layout": "vertical",
+                              "gap": 4,
                               "children": [
                                 {
-                                  "type": "ellipse",
-                                  "id": "kvrWJ",
-                                  "name": "dot",
+                                  "type": "text",
+                                  "id": "vAAli",
+                                  "name": "Mode label",
+                                  "fill": "$text-primary",
+                                  "content": "Режим подключения",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 14,
+                                  "fontWeight": "500"
+                                },
+                                {
+                                  "type": "text",
+                                  "id": "O3i8W",
+                                  "name": "Mode help",
+                                  "fill": "$text-tertiary",
+                                  "textGrowth": "fixed-width",
+                                  "width": "fill_container",
+                                  "content": "Как трафик попадает в Submerge",
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 12,
+                                  "fontWeight": "normal"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "XQ2qf",
+                              "name": "Proxy TUN segmented",
+                              "width": "fill_container",
+                              "fill": "$bg-base",
+                              "cornerRadius": "$radius-md",
+                              "stroke": "$border-subtle",
+                              "strokeWidth": 1,
+                              "gap": 3,
+                              "padding": 3,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "Jbno7",
+                                  "name": "Прокси",
+                                  "width": "fill_container",
                                   "fill": "$accent",
-                                  "width": 9,
-                                  "height": 9
-                                }
-                              ]
-                            },
-                            {
-                              "type": "frame",
-                              "id": "yKLwL",
-                              "name": "ic",
-                              "width": 36,
-                              "height": 36,
-                              "fill": "$accent",
-                              "cornerRadius": "$radius-md",
-                              "justifyContent": "center",
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "icon",
-                                  "id": "BIo6e",
-                                  "name": "i",
-                                  "width": 17,
-                                  "height": 17,
-                                  "icon": "plug-zap",
-                                  "library": "lucide",
-                                  "fill": "$accent-fg"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "frame",
-                              "id": "bD1nN",
-                              "name": "info",
-                              "width": "fill_container",
-                              "layout": "vertical",
-                              "gap": 4,
-                              "children": [
-                                {
-                                  "type": "frame",
-                                  "id": "W3P4U",
-                                  "name": "tr",
-                                  "width": "fill_container",
-                                  "gap": 8,
-                                  "alignItems": "center",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    7,
+                                    13
+                                  ],
+                                  "justifyContent": "center",
                                   "children": [
                                     {
                                       "type": "text",
-                                      "id": "G16uTv",
-                                      "name": "t",
-                                      "fill": "$text-primary",
-                                      "textGrowth": "fixed-width",
-                                      "width": "fill_container",
-                                      "content": "Proxy endpoint",
+                                      "id": "fqjC3",
+                                      "name": "Прокси label",
+                                      "fill": "$accent-fg",
+                                      "content": "Прокси",
                                       "fontFamily": "$font-sans",
-                                      "fontSize": 14,
-                                      "fontWeight": "600"
-                                    },
-                                    {
-                                      "type": "frame",
-                                      "id": "jbtDL",
-                                      "name": "req",
-                                      "fill": "$status-online-bg",
-                                      "cornerRadius": "$radius-full",
-                                      "padding": [
-                                        2,
-                                        8
-                                      ],
-                                      "children": [
-                                        {
-                                          "type": "text",
-                                          "id": "hK4Uf",
-                                          "name": "t",
-                                          "fill": "$status-online",
-                                          "content": "без привилегий",
-                                          "fontFamily": "$font-mono",
-                                          "fontSize": 10,
-                                          "fontWeight": "500"
-                                        }
-                                      ]
+                                      "fontSize": 13,
+                                      "fontWeight": "500"
                                     }
                                   ]
                                 },
                                 {
-                                  "type": "text",
-                                  "id": "XRBeR",
-                                  "name": "d",
-                                  "fill": "$text-tertiary",
-                                  "textGrowth": "fixed-width",
+                                  "type": "frame",
+                                  "id": "p2jf6G",
+                                  "name": "TUN",
                                   "width": "fill_container",
-                                  "content": "Локальный mixed-порт :7890",
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 12,
-                                  "fontWeight": "normal"
+                                  "fill": "#00000000",
+                                  "cornerRadius": "$radius-sm",
+                                  "padding": [
+                                    7,
+                                    13
+                                  ],
+                                  "justifyContent": "center",
+                                  "children": [
+                                    {
+                                      "type": "text",
+                                      "id": "l4Zc6",
+                                      "name": "TUN label",
+                                      "fill": "$text-secondary",
+                                      "content": "TUN",
+                                      "fontFamily": "$font-sans",
+                                      "fontSize": 13,
+                                      "fontWeight": "500"
+                                    }
+                                  ]
                                 }
                               ]
                             }
@@ -51534,241 +51295,27 @@
                         },
                         {
                           "type": "frame",
-                          "id": "o4b0n",
-                          "name": "Прозрачный шлюз (TPROXY)",
+                          "id": "cwV4q",
+                          "name": "Proxy explanation",
                           "width": "fill_container",
-                          "fill": "#00000000",
-                          "stroke": "$border-subtle",
-                          "strokeWidth": {
-                            "bottom": 1
-                          },
-                          "strokeLinejoin": "round",
-                          "gap": 12,
+                          "layout": "vertical",
+                          "gap": 8,
                           "padding": [
-                            12,
-                            14
+                            16,
+                            18
                           ],
-                          "alignItems": "center",
                           "children": [
                             {
-                              "type": "frame",
-                              "id": "ewk4Z",
-                              "name": "radio",
-                              "width": 18,
-                              "height": 18,
-                              "cornerRadius": "$radius-full",
-                              "stroke": "$border-strong",
-                              "strokeWidth": 1.5,
-                              "justifyContent": "center",
-                              "alignItems": "center"
-                            },
-                            {
-                              "type": "frame",
-                              "id": "OCXZd",
-                              "name": "ic",
-                              "width": 36,
-                              "height": 36,
-                              "fill": "$bg-elevated",
-                              "cornerRadius": "$radius-md",
-                              "justifyContent": "center",
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "icon",
-                                  "id": "jTken",
-                                  "name": "i",
-                                  "width": 17,
-                                  "height": 17,
-                                  "icon": "router",
-                                  "library": "lucide",
-                                  "fill": "$text-secondary"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "frame",
-                              "id": "X36cfU",
-                              "name": "info",
+                              "type": "text",
+                              "id": "khMzP",
+                              "name": "Proxy detail",
+                              "fill": "$text-secondary",
+                              "textGrowth": "fixed-width",
                               "width": "fill_container",
-                              "layout": "vertical",
-                              "gap": 4,
-                              "children": [
-                                {
-                                  "type": "frame",
-                                  "id": "HkqwO",
-                                  "name": "tr",
-                                  "width": "fill_container",
-                                  "gap": 8,
-                                  "alignItems": "center",
-                                  "children": [
-                                    {
-                                      "type": "text",
-                                      "id": "uaURH",
-                                      "name": "t",
-                                      "fill": "$text-primary",
-                                      "textGrowth": "fixed-width",
-                                      "width": "fill_container",
-                                      "content": "Прозрачный шлюз (TPROXY)",
-                                      "fontFamily": "$font-sans",
-                                      "fontSize": 14,
-                                      "fontWeight": "600"
-                                    },
-                                    {
-                                      "type": "frame",
-                                      "id": "gxTEE",
-                                      "name": "req",
-                                      "fill": "$status-slow-bg",
-                                      "cornerRadius": "$radius-full",
-                                      "padding": [
-                                        2,
-                                        8
-                                      ],
-                                      "children": [
-                                        {
-                                          "type": "text",
-                                          "id": "hFWg9",
-                                          "name": "t",
-                                          "fill": "$status-slow",
-                                          "content": "NET_ADMIN",
-                                          "fontFamily": "$font-mono",
-                                          "fontSize": 10,
-                                          "fontWeight": "500"
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                },
-                                {
-                                  "type": "text",
-                                  "id": "CnUiP",
-                                  "name": "d",
-                                  "fill": "$text-tertiary",
-                                  "textGrowth": "fixed-width",
-                                  "width": "fill_container",
-                                  "content": "Трафик LAN прозрачно",
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 12,
-                                  "fontWeight": "normal"
-                                }
-                              ]
-                            }
-                          ]
-                        },
-                        {
-                          "type": "frame",
-                          "id": "hUcFB",
-                          "name": "TUN (хост-шлюз)",
-                          "width": "fill_container",
-                          "fill": "#00000000",
-                          "stroke": "$border-subtle",
-                          "gap": 12,
-                          "padding": [
-                            12,
-                            14
-                          ],
-                          "alignItems": "center",
-                          "children": [
-                            {
-                              "type": "frame",
-                              "id": "tsiDg",
-                              "name": "radio",
-                              "width": 18,
-                              "height": 18,
-                              "cornerRadius": "$radius-full",
-                              "stroke": "$border-strong",
-                              "strokeWidth": 1.5,
-                              "justifyContent": "center",
-                              "alignItems": "center"
-                            },
-                            {
-                              "type": "frame",
-                              "id": "Q08wZy",
-                              "name": "ic",
-                              "width": 36,
-                              "height": 36,
-                              "fill": "$bg-elevated",
-                              "cornerRadius": "$radius-md",
-                              "justifyContent": "center",
-                              "alignItems": "center",
-                              "children": [
-                                {
-                                  "type": "icon",
-                                  "id": "rwoU8",
-                                  "name": "i",
-                                  "width": 17,
-                                  "height": 17,
-                                  "icon": "shield",
-                                  "library": "lucide",
-                                  "fill": "$text-secondary"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "frame",
-                              "id": "es5ax",
-                              "name": "info",
-                              "width": "fill_container",
-                              "layout": "vertical",
-                              "gap": 4,
-                              "children": [
-                                {
-                                  "type": "frame",
-                                  "id": "M1eUap",
-                                  "name": "tr",
-                                  "width": "fill_container",
-                                  "gap": 8,
-                                  "alignItems": "center",
-                                  "children": [
-                                    {
-                                      "type": "text",
-                                      "id": "Ju67u",
-                                      "name": "t",
-                                      "fill": "$text-primary",
-                                      "textGrowth": "fixed-width",
-                                      "width": "fill_container",
-                                      "content": "TUN (хост-шлюз)",
-                                      "fontFamily": "$font-sans",
-                                      "fontSize": 14,
-                                      "fontWeight": "600"
-                                    },
-                                    {
-                                      "type": "frame",
-                                      "id": "uC29R",
-                                      "name": "req",
-                                      "fill": "$status-slow-bg",
-                                      "cornerRadius": "$radius-full",
-                                      "padding": [
-                                        2,
-                                        8
-                                      ],
-                                      "children": [
-                                        {
-                                          "type": "text",
-                                          "id": "nwyhf",
-                                          "name": "t",
-                                          "fill": "$status-slow",
-                                          "content": "NET_ADMIN",
-                                          "fontFamily": "$font-mono",
-                                          "fontSize": 10,
-                                          "fontWeight": "500"
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                },
-                                {
-                                  "type": "text",
-                                  "id": "ceQRR",
-                                  "name": "d",
-                                  "fill": "$text-tertiary",
-                                  "textGrowth": "fixed-width",
-                                  "width": "fill_container",
-                                  "content": "network_mode: host",
-                                  "fontFamily": "$font-sans",
-                                  "fontSize": 12,
-                                  "fontWeight": "normal"
-                                }
-                              ]
+                              "content": "Приложения подключаются к HTTP/SOCKS-прокси.",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
                             }
                           ]
                         }
@@ -95309,6 +94856,1171 @@
       "width": 1440,
       "height": 120,
       "content": "ОТКРЫТЫЙ ВОПРОС · ЗАВОДСКОЕ УМОЛЧАНИЕ\n\n«Область правила» здесь показана в положении «Сайт целиком» как пример настроенной системы. Значение по умолчанию при первой установке не утверждено — см. парную заметку у экрана «Автоправила»."
+    },
+    {
+      "type": "frame",
+      "id": "oXxu8",
+      "x": 11220,
+      "y": 2484,
+      "name": "Настройки — TUN",
+      "theme": {
+        "mode": "dark"
+      },
+      "clip": true,
+      "width": 1440,
+      "height": 1024,
+      "fill": "$bg-base",
+      "children": [
+        {
+          "id": "Qh8iS",
+          "type": "ref",
+          "ref": "t0Wg2",
+          "name": "Sidebar",
+          "width": 248,
+          "height": "fill_container",
+          "descendants": {
+            "LCbIM": {
+              "fill": "$accent-bg"
+            },
+            "xtS08": {
+              "fill": "$accent-text"
+            },
+            "oGrbS": {
+              "fill": "$accent-text",
+              "fontWeight": "600"
+            }
+          }
+        },
+        {
+          "type": "frame",
+          "id": "f9mTiE",
+          "name": "Main",
+          "clip": true,
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "$bg-base",
+          "layout": "vertical",
+          "gap": 26,
+          "padding": [
+            26,
+            32,
+            40,
+            32
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "goJhW",
+              "name": "Header",
+              "width": "fill_container",
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "YgHUg",
+                  "name": "Title",
+                  "layout": "vertical",
+                  "gap": 5,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Xgukw",
+                      "name": "H1",
+                      "fill": "$text-primary",
+                      "content": "Настройки",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 24,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "Ws3GO",
+                      "name": "Sub",
+                      "fill": "$text-secondary",
+                      "content": "Локальная конфигурация панели и движка mihomo",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "sQhMJ",
+              "name": "Режим работы",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "pMCNI",
+                  "name": "Label",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "mp6EV",
+                      "name": "t",
+                      "fill": "$text-primary",
+                      "content": "Режим подключения",
+                      "lineHeight": 1.5,
+                      "fontFamily": "$font-sans",
+                      "fontSize": 15,
+                      "fontWeight": "600"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "U7KvLs",
+                  "name": "Connection mode card",
+                  "clip": true,
+                  "width": "fill_container",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "HBD1k",
+                      "name": "Connection mode row",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "padding": [
+                        16,
+                        18
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "N6nRk",
+                          "name": "Connection mode label",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "Irf7E",
+                              "name": "Mode label",
+                              "fill": "$text-primary",
+                              "content": "Режим",
+                              "lineHeight": 1.4285714285714286,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "vl5HT",
+                              "name": "Mode help",
+                              "fill": "$text-tertiary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Трафик устройств проходит через Submerge.",
+                              "lineHeight": 1.3333333333333333,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "KvheA",
+                          "name": "Proxy TUN segmented",
+                          "width": 260,
+                          "fill": "$bg-base",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-subtle",
+                          "strokeWidth": 1,
+                          "gap": 3,
+                          "padding": 3,
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "Hk5sb",
+                              "name": "Прокси",
+                              "width": "fill_container",
+                              "fill": "#00000000",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                7,
+                                13
+                              ],
+                              "justifyContent": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "wQsNf",
+                                  "name": "Прокси label",
+                                  "fill": "$text-secondary",
+                                  "content": "Прокси",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 13,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "frame",
+                              "id": "z8jjY",
+                              "name": "TUN",
+                              "width": "fill_container",
+                              "fill": "$accent",
+                              "cornerRadius": "$radius-sm",
+                              "padding": [
+                                7,
+                                13
+                              ],
+                              "justifyContent": "center",
+                              "children": [
+                                {
+                                  "type": "text",
+                                  "id": "wgZAh",
+                                  "name": "TUN label",
+                                  "fill": "$accent-fg",
+                                  "content": "TUN",
+                                  "lineHeight": 1.5,
+                                  "fontFamily": "$font-sans",
+                                  "fontSize": 13,
+                                  "fontWeight": "500"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "dns-sQhMJsection",
+              "type": "frame",
+              "name": "DNS",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "id": "dns-sQhMJtitle",
+                  "type": "text",
+                  "name": "DNS title",
+                  "content": "DNS",
+                  "fill": "$text-primary",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 15,
+                  "fontWeight": "600",
+                  "lineHeight": 1.5
+                },
+                {
+                  "id": "dns-sQhMJcard",
+                  "type": "frame",
+                  "name": "Home DNS card",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "dns-sQhMJ0",
+                      "name": "Локальный DNS row",
+                      "width": "fill_container",
+                      "gap": 24,
+                      "padding": [
+                        16,
+                        18
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "dns-sQhMJ1",
+                          "name": "Локальный DNS description",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "network-cleanup-1",
+                              "name": "Локальный DNS label",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "DNS домашней сети",
+                              "lineHeight": 1.4285714285714286,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "network-cleanup-2",
+                              "name": "Локальный DNS help",
+                              "fill": "$text-tertiary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Если открываете устройства по имени, например nas.lan, укажите IP-адрес DNS-сервера вашей сети. Иначе оставьте пустым.",
+                              "lineHeight": 1.3333333333333333,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dns-sQhMJ2",
+                          "name": "Локальный DNS control",
+                          "width": 260,
+                          "height": 36,
+                          "fill": "$bg-input",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-default",
+                          "strokeWidth": 1,
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "network-cleanup-3",
+                              "name": "Локальный DNS value",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Не используется",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "z6Eao",
+              "name": "Внешний вид",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "CLCcD",
+                  "name": "Label",
+                  "layout": "vertical",
+                  "gap": 4,
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "w0cah",
+                      "name": "t",
+                      "fill": "$text-primary",
+                      "content": "Внешний вид",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 15,
+                      "fontWeight": "600"
+                    },
+                    {
+                      "type": "text",
+                      "id": "g7wyQU",
+                      "name": "d",
+                      "fill": "$text-secondary",
+                      "content": "Оформление панели. В этой итерации отполирована тёмная тема.",
+                      "fontFamily": "$font-sans",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "e8qW7",
+                  "name": "Card",
+                  "clip": true,
+                  "width": "fill_container",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "Cvjal",
+                      "name": "Тема",
+                      "width": "fill_container",
+                      "stroke": "$border-subtle",
+                      "gap": 24,
+                      "padding": [
+                        16,
+                        18
+                      ],
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "qCrNr",
+                          "name": "L",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "xTAwr",
+                              "name": "t",
+                              "fill": "$text-primary",
+                              "content": "Тема",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "l2eAyu",
+                              "name": "s",
+                              "fill": "$text-tertiary",
+                              "content": "Тёмная · светлая · системная",
+                              "fontFamily": "$font-sans",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "xP8wa",
+                          "name": "R",
+                          "gap": 10,
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "frame",
+                              "id": "YuHC4",
+                              "name": "Segmented",
+                              "fill": "$bg-base",
+                              "cornerRadius": "$radius-md",
+                              "stroke": "$border-subtle",
+                              "strokeWidth": 1,
+                              "gap": 3,
+                              "padding": 3,
+                              "children": [
+                                {
+                                  "type": "frame",
+                                  "id": "vF8PZ",
+                                  "name": "Тёмная",
+                                  "fill": "$accent",
+                                  "cornerRadius": "$radius-sm",
+                                  "gap": 7,
+                                  "padding": [
+                                    7,
+                                    13
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "JFxLW",
+                                      "name": "i",
+                                      "width": 15,
+                                      "height": 15,
+                                      "icon": "moon",
+                                      "library": "lucide",
+                                      "fill": "$accent-fg"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "oQbZR",
+                                      "name": "t",
+                                      "fill": "$accent-fg",
+                                      "content": "Тёмная",
+                                      "fontFamily": "$font-sans",
+                                      "fontSize": 13,
+                                      "fontWeight": "600"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "Ik5jh",
+                                  "name": "Светлая",
+                                  "fill": "#00000000",
+                                  "cornerRadius": "$radius-sm",
+                                  "gap": 7,
+                                  "padding": [
+                                    7,
+                                    13
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "yeyvs",
+                                      "name": "i",
+                                      "width": 15,
+                                      "height": 15,
+                                      "icon": "sun",
+                                      "library": "lucide",
+                                      "fill": "$text-secondary"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "bd7gq",
+                                      "name": "t",
+                                      "fill": "$text-secondary",
+                                      "content": "Светлая",
+                                      "fontFamily": "$font-sans",
+                                      "fontSize": 13,
+                                      "fontWeight": "500"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "frame",
+                                  "id": "R0Fcrs",
+                                  "name": "Системная",
+                                  "fill": "#00000000",
+                                  "cornerRadius": "$radius-sm",
+                                  "gap": 7,
+                                  "padding": [
+                                    7,
+                                    13
+                                  ],
+                                  "alignItems": "center",
+                                  "children": [
+                                    {
+                                      "type": "icon",
+                                      "id": "B8gk8t",
+                                      "name": "i",
+                                      "width": 15,
+                                      "height": 15,
+                                      "icon": "monitor",
+                                      "library": "lucide",
+                                      "fill": "$text-secondary"
+                                    },
+                                    {
+                                      "type": "text",
+                                      "id": "GFzTh",
+                                      "name": "t",
+                                      "fill": "$text-secondary",
+                                      "content": "Системная",
+                                      "fontFamily": "$font-sans",
+                                      "fontSize": 13,
+                                      "fontWeight": "500"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "Q3sToj",
+      "x": 12740,
+      "y": 2484,
+      "name": "Настройки — TUN · 390",
+      "clip": true,
+      "width": 390,
+      "height": 1024,
+      "fill": "$bg-base",
+      "cornerRadius": 28,
+      "stroke": "$border-default",
+      "strokeWidth": 1,
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "Q05KO",
+          "name": "Status",
+          "width": "fill_container",
+          "height": 44,
+          "padding": [
+            0,
+            22
+          ],
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "Go29I",
+              "name": "time",
+              "fill": "$text-primary",
+              "content": "9:41",
+              "fontFamily": "$font-sans",
+              "fontSize": 14,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "DizmB",
+              "name": "ic",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "BRqiM",
+                  "name": "signal-high",
+                  "width": 16,
+                  "height": 16,
+                  "icon": "signal-high",
+                  "library": "lucide",
+                  "fill": "$text-secondary"
+                },
+                {
+                  "type": "icon",
+                  "id": "p3aX5z",
+                  "name": "wifi",
+                  "width": 16,
+                  "height": 16,
+                  "icon": "wifi",
+                  "library": "lucide",
+                  "fill": "$text-secondary"
+                },
+                {
+                  "type": "icon",
+                  "id": "xQvus",
+                  "name": "battery-full",
+                  "width": 16,
+                  "height": 16,
+                  "icon": "battery-full",
+                  "library": "lucide",
+                  "fill": "$text-secondary"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "aGF0n",
+          "name": "AppBar",
+          "width": "fill_container",
+          "layout": "vertical",
+          "gap": 2,
+          "padding": [
+            4,
+            16,
+            12,
+            16
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "N0Fapz",
+              "name": "h",
+              "fill": "$text-primary",
+              "content": "Настройки",
+              "fontFamily": "$font-sans",
+              "fontSize": 22,
+              "fontWeight": "600"
+            },
+            {
+              "type": "text",
+              "id": "Hs3gI",
+              "name": "s",
+              "fill": "$text-tertiary",
+              "content": "Локальная конфигурация панели и mihomo",
+              "fontFamily": "$font-sans",
+              "fontSize": 12,
+              "fontWeight": "normal"
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "IzOyk",
+          "name": "Content",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            4,
+            16,
+            16,
+            16
+          ],
+          "children": [
+            {
+              "type": "text",
+              "id": "TwT1r",
+              "name": "Mode section title",
+              "fill": "$text-primary",
+              "content": "Режим подключения",
+              "lineHeight": 1.5,
+              "fontFamily": "$font-sans",
+              "fontSize": 15,
+              "fontWeight": "600"
+            },
+            {
+              "type": "frame",
+              "id": "tOUxj",
+              "name": "TUN connection card",
+              "clip": true,
+              "width": "fill_container",
+              "fill": "$bg-surface",
+              "cornerRadius": "$radius-lg",
+              "stroke": "$border-subtle",
+              "strokeWidth": 1,
+              "layout": "vertical",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "ifG5q",
+                  "name": "Connection mode row",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 8,
+                  "padding": [
+                    16,
+                    18
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "tb9NS",
+                      "name": "Connection mode label",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "r5wJJP",
+                          "name": "Mode label",
+                          "fill": "$text-primary",
+                          "content": "Режим",
+                          "lineHeight": 1.4285714285714286,
+                          "fontFamily": "$font-sans",
+                          "fontSize": 14,
+                          "fontWeight": "500"
+                        },
+                        {
+                          "type": "text",
+                          "id": "PRMsD",
+                          "name": "Mode help",
+                          "fill": "$text-tertiary",
+                          "textGrowth": "fixed-width",
+                          "width": "fill_container",
+                          "content": "Трафик устройств проходит через Submerge.",
+                          "lineHeight": 1.3333333333333333,
+                          "fontFamily": "$font-sans",
+                          "fontSize": 12,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "sDF20",
+                      "name": "Proxy TUN segmented",
+                      "width": "fill_container",
+                      "fill": "$bg-base",
+                      "cornerRadius": "$radius-md",
+                      "stroke": "$border-subtle",
+                      "strokeWidth": 1,
+                      "gap": 3,
+                      "padding": 3,
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "LL8QO",
+                          "name": "Прокси",
+                          "width": "fill_container",
+                          "fill": "#00000000",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            13
+                          ],
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "mRIP3",
+                              "name": "Прокси label",
+                              "fill": "$text-secondary",
+                              "content": "Прокси",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "Wjbqr",
+                          "name": "TUN",
+                          "width": "fill_container",
+                          "fill": "$accent",
+                          "cornerRadius": "$radius-sm",
+                          "padding": [
+                            7,
+                            13
+                          ],
+                          "justifyContent": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "qqYex",
+                              "name": "TUN label",
+                              "fill": "$accent-fg",
+                              "content": "TUN",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 13,
+                              "fontWeight": "500"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "id": "dns-mobilesection",
+              "type": "frame",
+              "name": "DNS",
+              "width": "fill_container",
+              "layout": "vertical",
+              "gap": 14,
+              "children": [
+                {
+                  "id": "dns-mobiletitle",
+                  "type": "text",
+                  "name": "DNS title",
+                  "content": "DNS",
+                  "fill": "$text-primary",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 15,
+                  "fontWeight": "600",
+                  "lineHeight": 1.5
+                },
+                {
+                  "id": "dns-mobilecard",
+                  "type": "frame",
+                  "name": "Home DNS card",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "fill": "$bg-surface",
+                  "cornerRadius": "$radius-lg",
+                  "stroke": "$border-subtle",
+                  "strokeWidth": 1,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "dns-mobile0",
+                      "name": "Локальный DNS row",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 8,
+                      "padding": [
+                        16,
+                        18
+                      ],
+                      "children": [
+                        {
+                          "type": "frame",
+                          "id": "dns-mobile1",
+                          "name": "Локальный DNS description",
+                          "width": "fill_container",
+                          "layout": "vertical",
+                          "gap": 4,
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "eSRmX",
+                              "name": "Локальный DNS label",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "DNS домашней сети",
+                              "lineHeight": 1.4285714285714286,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 14,
+                              "fontWeight": "500"
+                            },
+                            {
+                              "type": "text",
+                              "id": "ZBqhR",
+                              "name": "Локальный DNS help",
+                              "fill": "$text-tertiary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Если открываете устройства по имени, например nas.lan, укажите IP-адрес DNS-сервера вашей сети. Иначе оставьте пустым.",
+                              "lineHeight": 1.3333333333333333,
+                              "fontFamily": "$font-sans",
+                              "fontSize": 12,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "frame",
+                          "id": "dns-mobile2",
+                          "name": "Локальный DNS control",
+                          "width": "fill_container",
+                          "height": 36,
+                          "fill": "$bg-input",
+                          "cornerRadius": "$radius-md",
+                          "stroke": "$border-default",
+                          "strokeWidth": 1,
+                          "padding": [
+                            0,
+                            12
+                          ],
+                          "alignItems": "center",
+                          "children": [
+                            {
+                              "type": "text",
+                              "id": "VrCA5",
+                              "name": "Локальный DNS value",
+                              "fill": "$text-primary",
+                              "textGrowth": "fixed-width",
+                              "width": "fill_container",
+                              "content": "Не используется",
+                              "lineHeight": 1.5,
+                              "fontFamily": "$font-mono",
+                              "fontSize": 13,
+                              "fontWeight": "normal"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "qbnwc",
+          "name": "TabBar",
+          "width": "fill_container",
+          "fill": "$bg-surface",
+          "stroke": "$border-subtle",
+          "strokeWidth": {
+            "top": 1
+          },
+          "strokeLinejoin": "round",
+          "padding": [
+            8,
+            4,
+            12,
+            4
+          ],
+          "children": [
+            {
+              "type": "frame",
+              "id": "G8MNSB",
+              "name": "Узлы",
+              "width": "fill_container",
+              "height": 48,
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "G1uLw2",
+                  "name": "i",
+                  "width": 21,
+                  "height": 21,
+                  "icon": "server",
+                  "library": "lucide",
+                  "fill": "$text-tertiary"
+                },
+                {
+                  "type": "text",
+                  "id": "pMyWd",
+                  "name": "t",
+                  "fill": "$text-tertiary",
+                  "content": "Узлы",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 11,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "HCbgW",
+              "name": "Трафик",
+              "width": "fill_container",
+              "height": 48,
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "m1gRG",
+                  "name": "i",
+                  "width": 21,
+                  "height": 21,
+                  "icon": "activity",
+                  "library": "lucide",
+                  "fill": "$text-tertiary"
+                },
+                {
+                  "type": "text",
+                  "id": "j57ak",
+                  "name": "t",
+                  "fill": "$text-tertiary",
+                  "content": "Трафик",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 11,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "rt99y",
+              "name": "Логи",
+              "width": "fill_container",
+              "height": 48,
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "SnZjn",
+                  "name": "i",
+                  "width": 21,
+                  "height": 21,
+                  "icon": "square-terminal",
+                  "library": "lucide",
+                  "fill": "$text-tertiary"
+                },
+                {
+                  "type": "text",
+                  "id": "yKVks",
+                  "name": "t",
+                  "fill": "$text-tertiary",
+                  "content": "Логи",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 11,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "nFQaL",
+              "name": "Источники",
+              "width": "fill_container",
+              "height": 48,
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "GjiMv",
+                  "name": "i",
+                  "width": 21,
+                  "height": 21,
+                  "icon": "layers",
+                  "library": "lucide",
+                  "fill": "$text-tertiary"
+                },
+                {
+                  "type": "text",
+                  "id": "n0IExF",
+                  "name": "t",
+                  "fill": "$text-tertiary",
+                  "content": "Источники",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 11,
+                  "fontWeight": "500"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "t6jkVs",
+              "name": "Ещё",
+              "width": "fill_container",
+              "height": 48,
+              "layout": "vertical",
+              "gap": 4,
+              "justifyContent": "center",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "icon",
+                  "id": "QTNkz",
+                  "name": "i",
+                  "width": 21,
+                  "height": 21,
+                  "icon": "ellipsis",
+                  "library": "lucide",
+                  "fill": "$accent-text"
+                },
+                {
+                  "type": "text",
+                  "id": "ldbwh",
+                  "name": "t",
+                  "fill": "$accent-text",
+                  "content": "Ещё",
+                  "fontFamily": "$font-sans",
+                  "fontSize": 11,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ],
   "themes": {

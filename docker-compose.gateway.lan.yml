@@ -1,0 +1,18 @@
+# Optional real LAN attachment. Only opt selected clients into this gateway.
+# Optional override of the standard docker-compose.yml on a Linux Docker host.
+services:
+  submerge-network:
+    networks:
+      gateway-lan:
+        ipv4_address: ${SUBMERGE_LAN_IP:?Set an unused LAN IP}
+  submerge:
+networks:
+  gateway-lan:
+    driver: macvlan
+    internal: false
+    driver_opts: !override
+      parent: ${GATEWAY_LAN_PARENT:?Set the actual Linux LAN parent interface}
+    ipam:
+      config:
+        - subnet: ${SUBMERGE_LAN_SUBNET:?Set the actual LAN subnet}
+          gateway: ${GATEWAY_LAN_ROUTER:?Set the LAN router}

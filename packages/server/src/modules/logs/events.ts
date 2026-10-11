@@ -7,6 +7,7 @@ export type OperationalEventKey =
   | "boot-config-apply-failed"
   | "boot-domain-rules-failed"
   | "config-reload-failed"
+  | "gateway-config-reload-failed"
   | "secret-rotation-write-failed"
   | "domain-validation-config-write-failed"
   | "domain-validation-scheduler-failed"
@@ -60,6 +61,12 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     level: "warning",
     uiMessage: "Конфигурация записана, но mihomo не перезагрузил её",
     stdoutMessage: "config written but mihomo reload failed — applies on next reload",
+    fields: noFields,
+  },
+  "gateway-config-reload-failed": {
+    level: "warning",
+    uiMessage: "Не удалось применить конфигурацию шлюза; предыдущий файл сохранён",
+    stdoutMessage: "gateway activation failed; previous config file preserved",
     fields: noFields,
   },
   "secret-rotation-write-failed": {

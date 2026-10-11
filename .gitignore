@@ -16,6 +16,8 @@ packages/web/test-results/
 .env
 .env.*
 !.env.example
+!.env.gateway.example
+config/gateway.json
 
 # mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
 mihomo/config.yaml

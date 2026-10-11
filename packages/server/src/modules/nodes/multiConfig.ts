@@ -9,6 +9,7 @@ import {
   PROBE_GROUP,
   type Proxy as ProxyConfig,
   PSEUDO_NODE_SET,
+  publishedRuleFile,
   type RuleProviderFormat,
   type RuleProviderRef,
   ruleProviderFormat,
@@ -17,6 +18,7 @@ import {
 import * as yaml from "js-yaml";
 import { env } from "../../config/env.js";
 import { sameProxy } from "../../lib/proxy-identity.js";
+import type { GatewayProfile, NetworkProfile } from "../gateway/engine-settings.js";
 import { dedupeNames, groupProxies, type UrlTestTuning, urlTestTuning } from "./config.js";
 
 interface MatcherConfigInput {
@@ -163,6 +165,8 @@ export function ruleProviderName(ref: RuleProviderRef): string {
 }
 
 export function ruleProviderRelativePath(ref: RuleProviderRef): string {
+  const published = publishedRuleFile(ref.url);
+  if (published) return `private-lists/${published}`;
   const format = ruleProviderFormat(ref.url);
   return `providers/${ruleProviderName(ref)}.${PROVIDER_EXT[format]}`;
 }
@@ -177,6 +181,7 @@ export const RULE_PROVIDER_REFRESH_INTERVAL_SECONDS = 86_400;
 function buildRuleProviders(
   nonDefault: ChannelConfigInput[],
   managedDomainRules?: ManagedDomainRulesProviderInput,
+  gateway?: GatewayProfile,
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const channel of nonDefault) {
@@ -184,6 +189,15 @@ function buildRuleProviders(
       const name = ruleProviderName(ref);
       if (out[name]) continue; // identical (url,behavior) → one def
       const format = ruleProviderFormat(ref.url);
+      if (publishedRuleFile(ref.url)) {
+        out[name] = {
+          type: "file",
+          behavior: ref.behavior,
+          format: "text",
+          path: `./${ruleProviderRelativePath(ref)}`,
+        };
+        continue;
+      }
       out[name] = {
         type: "http",
         url: ref.url,
@@ -204,6 +218,9 @@ function buildRuleProviders(
       path: MANAGED_DOMAIN_RULE_PROVIDER_PATH,
     };
   }
+  if (gateway) {
+    out["gateway-capture"] = { type: "inline", behavior: "ipcidr", payload: ["0.0.0.0/0"] };
+  }
   return out;
 }
 
@@ -211,10 +228,11 @@ function buildRuleProviders(
 // GEOSITE/GEOIP rule — a geo-free config stays free of the (multi-MB) geo DB
 // download. mihomo (the container) fetches geoip.dat/geosite.dat from these URLs
 // on first geo use; needs egress + a writable Home Dir (see deploy notes).
+const GEODATA_HOST = "fastly.jsdelivr.net";
 function geoTopLevel(nonDefault: ChannelConfigInput[]): Record<string, unknown> | null {
   const used = nonDefault.some((c) => (c.geosite?.length ?? 0) > 0 || (c.geoip?.length ?? 0) > 0);
   if (!used) return null;
-  const base = "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release";
+  const base = `https://${GEODATA_HOST}/gh/MetaCubeX/meta-rules-dat@release`;
   // geodata-mode makes mihomo use the .dat GEOIP data, so no mmdb URL is needed.
   return {
     "geodata-mode": true,
@@ -261,20 +279,12 @@ function buildRules(
   defaultGroupName: string,
   nonDefaultProxyCount: number,
   managedDomainRules?: ManagedDomainRulesProviderInput,
+  defaultProviders: RuleProviderRef[] = [],
 ): string[] {
   // With no exit nodes anywhere there is nothing to route — everything is DIRECT.
   if (noProxies) return ["MATCH,DIRECT"];
   const rules: string[] = [];
-  if (managedDomainRules) {
-    rules.push(
-      `RULE-SET,${MANAGED_DOMAIN_RULE_PROVIDER_NAME},${managedDomainRules.targetGroupName}`,
-    );
-  }
-  // Per channel, in priority order: keyword, domain-suffix, then rule-set — all
-  // point at the channel's own group, so intra-channel order is irrelevant;
-  // cross-channel precedence is the channel order (= priority).
   for (const channel of nonDefault) {
-    const target = channel.target === "direct" ? "DIRECT" : channel.groupName;
     if (channel.target === "direct") {
       if (channel.directPresets.localDomains) {
         for (const domain of DIRECT_LOCAL_DOMAINS) {
@@ -285,6 +295,23 @@ function buildRules(
         for (const cidr of DIRECT_PRIVATE_CIDRS) appendCidrRule(rules, cidr, "DIRECT");
       }
     }
+  }
+  rules.push(
+    ...defaultProviders.map((ref) => `RULE-SET,${ruleProviderName(ref)},${defaultGroupName}`),
+  );
+  if (managedDomainRules) {
+    rules.push(
+      `RULE-SET,${MANAGED_DOMAIN_RULE_PROVIDER_NAME},${managedDomainRules.targetGroupName}`,
+    );
+  }
+  // Per channel, in priority order: keyword, domain-suffix, then rule-set — all
+  // point at the channel's own group, so intra-channel order is irrelevant;
+  // cross-channel precedence is the channel order (= priority).
+  for (const channel of [
+    ...nonDefault.filter((c) => c.target === "proxy"),
+    ...nonDefault.filter((c) => c.target === "direct"),
+  ]) {
+    const target = channel.target === "direct" ? "DIRECT" : channel.groupName;
     for (const keyword of channel.keywords ?? []) {
       rules.push(`DOMAIN-KEYWORD,${keyword},${target}`);
     }
@@ -311,13 +338,141 @@ function buildRules(
   return rules;
 }
 
+function buildGatewayRules(
+  gateway: GatewayProfile,
+  nonDefault: ChannelConfigInput[],
+  proxies: ProxyConfig[],
+  defaultGroupName: string,
+  defaultProviders: RuleProviderRef[],
+  managedDomainRules?: ManagedDomainRulesProviderInput,
+): string[] {
+  const direct = nonDefault.filter((channel) => channel.target === "direct");
+  const rules: string[] = [];
+  if (direct.some((channel) => channel.target === "direct" && channel.directPresets.localDomains)) {
+    rules.push(...gateway.localDomains.map((domain) => `DOMAIN-SUFFIX,${domain},DIRECT`));
+  }
+  // The core downloads/updates geodata through its rule matcher, including when
+  // the default VPN pool is REJECT. This exact service host must bootstrap first.
+  if (geoTopLevel(nonDefault)) rules.push(`DOMAIN,${GEODATA_HOST},DIRECT`);
+  // Avoid resolving every public domain before the higher-priority domain rules.
+  if (
+    direct.some((channel) => channel.target === "direct" && channel.directPresets.privateNetworks)
+  ) {
+    for (const cidr of DIRECT_PRIVATE_CIDRS)
+      rules.push(`${cidrVersion(cidr) === 6 ? "IP-CIDR6" : "IP-CIDR"},${cidr},DIRECT,no-resolve`);
+  }
+  for (const cidr of direct.flatMap((channel) => channel.cidrs))
+    appendCidrRule(rules, cidr, "DIRECT");
+  for (const endpoint of new Set(proxies.map((proxy) => proxy.server))) {
+    rules.push(
+      isIP(endpoint)
+        ? `${isIP(endpoint) === 6 ? "IP-CIDR6" : "IP-CIDR"},${endpoint}/${isIP(endpoint) === 6 ? 128 : 32},DIRECT,no-resolve`
+        : `DOMAIN,${endpoint},DIRECT`,
+    );
+  }
+  const notblocked = direct
+    .flatMap((channel) => channel.ruleProviders ?? [])
+    .filter((ref) => publishedRuleFile(ref.url) === "notblocked.txt");
+  rules.push(...notblocked.map((ref) => `RULE-SET,${ruleProviderName(ref)},DIRECT`));
+  rules.push(
+    ...defaultProviders.map((ref) => `RULE-SET,${ruleProviderName(ref)},${defaultGroupName}`),
+  );
+  const matcherRules = (
+    channels: ChannelConfigInput[],
+    managed?: ManagedDomainRulesProviderInput,
+  ) =>
+    buildRules(channels, false, defaultGroupName, 1, managed)
+      .slice(0, -1)
+      .map((rule) => (rule.startsWith("GEOIP,") ? rule.replace(/,no-resolve$/u, "") : rule));
+  rules.push(
+    ...matcherRules(
+      nonDefault.filter((channel) => channel.target === "proxy"),
+      managedDomainRules,
+    ),
+  );
+  rules.push(
+    ...matcherRules(
+      direct.map((channel) => ({
+        ...channel,
+        cidrs: [],
+        directPresets: { localDomains: false, privateNetworks: false },
+        ruleProviders: (channel.ruleProviders ?? []).filter(
+          (ref) => publishedRuleFile(ref.url) !== "notblocked.txt",
+        ),
+      })),
+    ),
+  );
+  rules.push(`MATCH,${defaultGroupName}`);
+  return [...new Set(rules)];
+}
+
+function gatewayNetworkConfig(
+  gateway: GatewayProfile,
+  tunEnabled: boolean,
+): Record<string, unknown> {
+  return {
+    profile: { "store-selected": true, "store-fake-ip": true },
+    dns: {
+      enable: true,
+      ipv6: false,
+      listen: `${gateway.dnsListen}:${gateway.dnsPort}`,
+      "enhanced-mode": "fake-ip",
+      "fake-ip-range": gateway.fakeIpRange,
+      "fake-ip-filter-mode": "blacklist",
+      "fake-ip-filter": gateway.localDomains.map((domain) => `+.${domain}`),
+      "use-system-hosts": false,
+      "respect-rules": false,
+      nameserver: gateway.nameservers,
+      "default-nameserver": gateway.bootstrapResolvers,
+      "proxy-server-nameserver": gateway.nameservers,
+      "direct-nameserver": gateway.nameservers,
+      "direct-nameserver-follow-policy": true,
+      "nameserver-policy": Object.fromEntries(
+        gateway.localResolvers.length > 0
+          ? gateway.localDomains.map((domain) => [`+.${domain}`, gateway.localResolvers])
+          : [],
+      ),
+    },
+    tun: {
+      enable: tunEnabled,
+      device: gateway.tunDevice,
+      stack: gateway.tunStack,
+      "auto-route": true,
+      "auto-redirect": true,
+      "strict-route": true,
+      "auto-detect-interface": true,
+      "include-interface": [gateway.lanInterface],
+      // The Dockerfile pins Submerge's service user to 999. Subscription/decoder
+      // control traffic must remain reachable while every VPN pool is empty.
+      "exclude-uid": [999],
+      "route-address": ["0.0.0.0/0"],
+      // A route-address-set activates Mihomo's marked auto-redirect mode:
+      // forwarded LAN packets enter TUN; the core's own output is exempt.
+      "route-address-set": ["gateway-capture"],
+      "dns-hijack": ["any:53", "tcp://any:53"],
+      "iproute2-table-index": gateway.routeTable,
+      "iproute2-rule-index": gateway.routeRule,
+      mtu: gateway.mtu,
+    },
+  };
+}
+
 export function buildMultiConfig(
   channels: ChannelConfigInput[],
   secret: string = env.MIHOMO_SECRET,
   domainValidation?: DomainValidationListenerInput,
   managedDomainRules?: ManagedDomainRulesProviderInput,
+  networkProfile: NetworkProfile = { profile: "proxy" },
+  savedGateway?: GatewayProfile,
 ): string {
-  return buildMultiConfigDocument(channels, secret, domainValidation, managedDomainRules).yaml;
+  return buildMultiConfigDocument(
+    channels,
+    secret,
+    domainValidation,
+    managedDomainRules,
+    networkProfile,
+    savedGateway,
+  ).yaml;
 }
 
 // Expose the same post-allocation pool names used in the emitted channel groups.
@@ -327,7 +482,12 @@ export function buildMultiConfigDocument(
   secret: string = env.MIHOMO_SECRET,
   domainValidation?: DomainValidationListenerInput,
   managedDomainRules?: ManagedDomainRulesProviderInput,
+  networkProfile: NetworkProfile = { profile: "proxy" },
+  savedGateway?: GatewayProfile,
 ): { yaml: string; nodeNamesByChannel: Map<string, string[]> } {
+  const gateway = networkProfile.profile === "gateway" ? networkProfile : savedGateway;
+  if (gateway && secret.length < 16)
+    throw new Error("gateway requires a Mihomo secret of at least 16 characters");
   const proxyChannels = channels.filter(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
   );
@@ -387,7 +547,11 @@ export function buildMultiConfigDocument(
   for (const c of proxyChannels) reservedGroupNames.add(c.groupName);
   for (const spec of allSubGroups) reservedGroupNames.add(spec.name);
 
-  const unique = dedupeNames(flat, reservedGroupNames);
+  // Bind only VPN sockets to WAN. DIRECT and LAN DNS must select their connected
+  // interface through TUN's destination-aware interface finder.
+  const unique = dedupeNames(flat, reservedGroupNames).map((proxy) =>
+    gateway ? { ...proxy, "interface-name": gateway.outboundInterface } : proxy,
+  );
   const nameAt = (index: number): string => (unique[index] as ProxyConfig).name;
   // All of a channel's top-level names — used for PROXY (the manual selector lists
   // every node the default channel DEFINES, i.e. the whole inventory).
@@ -410,7 +574,7 @@ export function buildMultiConfigDocument(
 
   const groupFor = (build: ChannelBuild): Record<string, unknown> => {
     const names = raceNames(build);
-    const members = names.length ? names : ["DIRECT"];
+    const members = names.length ? names : [gateway ? "REJECT" : "DIRECT"];
     if (build.channel.policy.kind === "speed") {
       const t = urlTestTuning(build.channel.policy);
       return {
@@ -438,7 +602,7 @@ export function buildMultiConfigDocument(
   const proxyMembers = [
     ...(defaultChannel ? [defaultChannel.groupName] : []),
     ...defaultTopLevelNames,
-    "DIRECT",
+    gateway ? "REJECT" : "DIRECT",
   ];
 
   const channelGroups: Record<string, unknown>[] = [];
@@ -477,9 +641,10 @@ export function buildMultiConfigDocument(
       throw new Error("managed domain rules target group is unavailable");
     }
   }
-  const ruleProviders = noProxies ? {} : buildRuleProviders(nonDefault, managedDomainRules);
+  const ruleProviders =
+    noProxies && !gateway ? {} : buildRuleProviders(channels, managedDomainRules, gateway);
   const hasProviders = Object.keys(ruleProviders).length > 0;
-  const geo = noProxies ? null : geoTopLevel(nonDefault);
+  const geo = noProxies && !gateway ? null : geoTopLevel(nonDefault);
 
   let validationListeners: Record<string, unknown>[] = [];
   if (domainValidation) {
@@ -537,6 +702,7 @@ export function buildMultiConfigDocument(
         ipcidr: ["198.18.0.0/15"],
       },
     },
+    ...(gateway ? gatewayNetworkConfig(gateway, networkProfile.profile === "gateway") : {}),
     // Geodata keys (only present when a channel uses a GEOSITE/GEOIP rule).
     ...(geo ?? {}),
     proxies: unique,
@@ -550,13 +716,23 @@ export function buildMultiConfigDocument(
       ...probeGroup,
     ],
     rules: probeRules(noProxies).concat(
-      buildRules(
-        nonDefault,
-        noProxies,
-        defaultGroupName,
-        nonDefaultProxy.length,
-        managedDomainRules,
-      ),
+      gateway
+        ? buildGatewayRules(
+            gateway,
+            nonDefault,
+            unique,
+            defaultGroupName,
+            defaultChannel?.ruleProviders ?? [],
+            managedDomainRules,
+          )
+        : buildRules(
+            nonDefault,
+            noProxies,
+            defaultGroupName,
+            nonDefaultProxy.length,
+            managedDomainRules,
+            defaultChannel?.ruleProviders ?? [],
+          ),
     ),
   };
   return {

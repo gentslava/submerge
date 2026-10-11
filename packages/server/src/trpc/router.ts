@@ -6,6 +6,7 @@ import { channelsRouter } from "../modules/channels/router.js";
 import { connectionsRouter } from "../modules/connections/router.js";
 import { diagnosticsRouter } from "../modules/diagnostics/router.js";
 import { domainIntelligenceRouter } from "../modules/domain-intelligence/router.js";
+import { gatewayRouter } from "../modules/gateway/router.js";
 import { makeLogsRouter } from "../modules/logs/router.js";
 import { logHub } from "../modules/logs/singleton.js";
 import { nodesRouter } from "../modules/nodes/router.js";
@@ -26,6 +27,7 @@ export const appRouter = router({
   connections: connectionsRouter,
   diagnostics: diagnosticsRouter,
   domainIntelligence: domainIntelligenceRouter,
+  gateway: gatewayRouter,
   logs: makeLogsRouter(logHub),
   settings: settingsRouter,
   live: makeLiveRouter(liveHub),
