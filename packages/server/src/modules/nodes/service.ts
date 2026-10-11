@@ -337,14 +337,16 @@ async function applyConfigNow(
     const preferences = readGatewayRuntimeSettings(db);
     let privateListCounts: Record<string, number> = {};
     gateway = preferences !== undefined;
-    if (preferences) {
-      assertGatewaySecurity(readMihomoSecret(db));
-      assertIndependentLocalDns(preferences);
-      privateListCounts = validatePrivateLists(preferences);
-      seedGatewayMihomoSecret(db, readMihomoSecret(db));
-    }
     const secretPreparation = await prepareMihomoSecretForConfig(db);
     rollbackSafe = secretPreparation.rollbackSafe;
+    if (preferences) {
+      if (networkProfile.profile === "gateway") assertGatewaySecurity(secretPreparation.secret);
+      else if (secretPreparation.secret.length < 16)
+        throw new Error("Prepared deployment requires a strong engine secret");
+      assertIndependentLocalDns(preferences);
+      privateListCounts = validatePrivateLists(preferences);
+      if (!secretPreparation.pending) seedGatewayMihomoSecret(db, secretPreparation.secret);
+    }
     const content = buildMultiConfig(
       inputs,
       secretPreparation.secret,

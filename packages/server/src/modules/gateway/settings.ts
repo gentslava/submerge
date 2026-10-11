@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
 import { resolve, sep } from "node:path";
 import {
@@ -9,6 +9,8 @@ import {
   networkProfileSchema,
 } from "@submerge/shared";
 import { eq } from "drizzle-orm";
+import * as yaml from "js-yaml";
+import { z } from "zod";
 import { getRuleProviders, type RuleProvidersResponse } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
@@ -102,11 +104,19 @@ export function seedGatewayMihomoSecret(db: Db, effectiveSecret: string): void {
   setSetting(db, "mihomoSecret", effectiveSecret);
 }
 
-export function validateGatewayStartup(db: Db): void {
+export function validateGatewayStartup(db: Db, candidateSecret?: string): void {
   if (readGatewayRuntimeSettings(db)) {
-    const secret = getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET;
-    assertGatewaySecurity(secret);
-    seedGatewayMihomoSecret(db, secret);
+    const confirmed = getSetting(db, "mihomoSecret") || env.MIHOMO_SECRET;
+    const secret = candidateSecret ?? confirmed;
+    const acceptedTun = existsSync(env.MIHOMO_CONFIG_PATH)
+      ? z
+          .object({ tun: z.object({ enable: z.boolean().optional() }).optional() })
+          .parse(yaml.load(readFileSync(env.MIHOMO_CONFIG_PATH, "utf8"))).tun?.enable === true
+      : false;
+    if (readNetworkProfile(db).profile === "gateway" || acceptedTun) assertGatewaySecurity(secret);
+    else if (secret.length < 16)
+      throw new Error("Prepared deployment requires a strong engine secret");
+    if (secret === confirmed) seedGatewayMihomoSecret(db, secret);
   }
 }
 

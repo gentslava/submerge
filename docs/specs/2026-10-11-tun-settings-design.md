@@ -12,6 +12,17 @@ DNS and fail-closed routing before first TUN setup; no local DNS is guessed and
 TUN remains disabled. A profile JSON is an optional first-install seed; ordinary
 setup happens in Settings. Missing local DNS is explicitly not ready for TUN.
 
+Deployment correction agreed on 2026-10-11: the regular `docker-compose.yml`
+must prepare both capture modes by default. No separate gateway profile,
+environment file, profile JSON, or manually chosen engine credential is required
+to select TUN. Internal bootstrap services prepare volume ownership, an isolated
+stable namespace, the forwarding guard, and engine-only TUN permissions. The API
+credential is generated automatically and persisted through the existing rotation
+journal; an existing strong credential is retained. Proxy remains usable with the
+existing optional-admin localhost setup; activating TUN still requires protected
+administration. Existing installations receive the deployment change once,
+without mode-specific Compose edits. Test isolation remains an optional override.
+
 The existing Indigo Console Settings frame (`w6qeY`, mobile `r1RQ0O`) owns the
 visual contract. Replace its obsolete three-option gateway exploration with
 Proxy / TUN, using the existing segmented control, labelled rows, field widths,
@@ -39,9 +50,10 @@ Protected configuration/status procedures expose required deployment/security
 checks, actual readiness, and copyable connection details. The UI shows a short
 connection guide: use the shown server LAN address as the selected client's
 gateway and use its reachable DNS address. It must not present loopback or
-container-only addresses as generally reachable from a physical LAN. Preparing
-Docker permissions and choosing a LAN attachment is a one-time deployment task;
-the app reports missing prerequisites without pretending to grant them itself.
+container-only addresses as generally reachable from a physical LAN. The standard
+installation prepares Docker permissions automatically. Choosing a physical LAN
+attachment is a one-time deployment task; the app reports missing prerequisites
+without pretending to grant them itself.
 
 Validation covers Proxy, first-time TUN, accepted TUN, retained preferences,
 failed apply, unavailable deployment, empty VPN, DNS/list/TUN faults, load errors,

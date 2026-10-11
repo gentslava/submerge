@@ -203,13 +203,15 @@ export async function checkGatewayReadiness(
     ["vpn-egress", async () => (await deps.vpnProbe(defaultGroup)) > 0],
   ];
   const results = await Promise.all(
-    tasks.map(async ([name, check]) => {
-      try {
-        return { name, ok: await check() };
-      } catch {
-        return { name, ok: false, error: "Проверка не пройдена" };
-      }
-    }),
+    tasks
+      .filter(([name]) => name !== "local-dns" || tunEnabled || profile.localResolvers.length > 0)
+      .map(async ([name, check]) => {
+        try {
+          return { name, ok: await check() };
+        } catch {
+          return { name, ok: false, error: "Проверка не пройдена" };
+        }
+      }),
   );
   checks.push(...results);
   return {

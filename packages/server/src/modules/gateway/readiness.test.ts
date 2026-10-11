@@ -59,6 +59,29 @@ const deps: GatewayReadinessDeps = {
   files: () => ({ "gateway-n": 1 }),
 };
 describe("gateway readiness", () => {
+  it("does not require first TUN local-DNS setup for otherwise healthy Proxy", async () => {
+    const proxyDeps = {
+      ...deps,
+      runtime: async () => ({ mode: "rule", tun: false, dns: null, ipv6: false }),
+      interfaces: () => ({ eth0: deps.interfaces().eth0 }),
+    };
+    const unconfigured = { ...profile, localResolvers: [] };
+    const result = await checkGatewayReadiness(unconfigured, "applied", "AUTO", proxyDeps, false);
+    expect(result.ready).toBe(true);
+    expect(result.checks.find((check) => check.name === "local-dns")).toBeUndefined();
+    expect((await checkGatewayReadiness(unconfigured, "applied", "AUTO", deps)).ready).toBe(false);
+    expect(
+      (
+        await checkGatewayReadiness(
+          profile,
+          "applied",
+          "AUTO",
+          { ...proxyDeps, localDns: async () => false },
+          false,
+        )
+      ).ready,
+    ).toBe(false);
+  });
   it("verifies live TUN and both DNS sockets before publishing", async () => {
     await expect(assertGatewayNetworkActivated(profile, deps)).resolves.toBeUndefined();
     await expect(

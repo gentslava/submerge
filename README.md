@@ -133,15 +133,13 @@ cp .env.example .env
 | `ADMIN_PASSWORD` | *(empty — auth off)* | Admin password. **Required** before exposing the panel: while empty, anyone can use it. |
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS, otherwise the browser drops the session cookie. Don't leave blank. |
 | `SUBMERGE_BIND` | `127.0.0.1` | Host address for port 3000. Keep loopback and front it with TLS; `0.0.0.0` only for deliberate direct exposure. |
-| `MIHOMO_SECRET` | `poc` | Secret for the internal mihomo REST API — change it from the default. |
+| `MIHOMO_SECRET` | *(generated automatically)* | Optional first-install seed for the private engine API. The confirmed credential persists; no manual setup is needed. |
 | `DOMAIN_RULES_MODE` | `report` | Local `custom.txt` capability: `report` or `apply`. Keep `report` until the dedicated rule volume is prepared; the switch alone never makes apply ready. |
 
-The `submerge` container runs as uid 999. On **Linux hosts**, prepare its writable mounts
-once before the first start:
-`mkdir -p mihomo domain-rules && chown -R 999:999 mihomo domain-rules && chmod 0700 domain-rules`.
-If Docker Desktop cannot preserve the exact owner/mode on a host bind, use one shared
-named `domain-rules` volume and initialize it once; do not add a permanent init service.
-The exact Compose override and one-time command are in the runbook below.
+The standard Compose prepares volume ownership and both Proxy / TUN modes
+automatically. The application runs as uid 999; only the engine receives TUN
+access. Internal setup services prepare its isolated namespace and forwarding
+guard before it starts. Use Linux TUN support and Docker Compose >=2.36.
 
 Submerge does not contain Git or accept repository credentials. If the local rule file
 must be replicated to a remote repository, run a separate service and give it read access
@@ -154,8 +152,10 @@ Settings → **Режим подключения** provides **Прокси / TUN
 validates and activates it immediately. On first TUN setup, enter Local DNS;
 text fields save on blur, as in the existing Settings. TUN keeps HTTP/SOCKS available,
 uses independent DNS, and retains its settings when switching back to Proxy.
-For the one-time Docker/LAN preparation and an isolated test deployment, use the
-[gateway deployment and acceptance runbook](docs/runbooks/gateway.md).
+No additional mode profile, JSON or engine secret is required. Existing custom
+installations need the complete Compose deployment update once; mode changes
+then happen entirely in Settings. The [operation runbook](docs/runbooks/gateway.md)
+also covers optional parallel tests and physical-LAN attachment.
 
 The runtime `mihomo/config.yaml` contains your nodes and is git-ignored — never commit it.
 

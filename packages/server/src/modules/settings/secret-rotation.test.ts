@@ -6,6 +6,7 @@ import {
   beginMihomoSecretRotation,
   confirmPendingMihomoSecretRotation,
   getMihomoSecretRotationPersistenceState,
+  prepareMihomoSecretForBootstrap,
   prepareMihomoSecretForConfig,
   restorePendingMihomoSecretRotation,
   rollbackMihomoSecretRotation,
@@ -36,6 +37,41 @@ beforeEach(() => {
 });
 
 describe("mihomo secret rotation journal", () => {
+  it("keeps the automatic confirmed credential when resetting a deployment with no explicit seed", () => {
+    const db = freshDb();
+    const previousSecret = env.MIHOMO_SECRET;
+    const previousDeployment = env.GATEWAY_DEPLOYMENT;
+    try {
+      env.MIHOMO_SECRET = "";
+      env.GATEWAY_DEPLOYMENT = true;
+      setSetting(db, "mihomoSecret", "automatically-confirmed-secret");
+      expect(beginMihomoSecretRotation(db, "").rotation.nextEffective).toBe(
+        "automatically-confirmed-secret",
+      );
+    } finally {
+      env.MIHOMO_SECRET = previousSecret;
+      env.GATEWAY_DEPLOYMENT = previousDeployment;
+    }
+  });
+  it("automatically upgrades weak bootstrap auth with one durable candidate and retains the old recovery credential", async () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "poc");
+    const secret = prepareMihomoSecretForBootstrap(db);
+    expect(secret).toMatch(/^[a-f0-9]{64}$/u);
+    expect(getSetting(db, "mihomoSecret")).toBe("poc");
+    expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "poc");
+    expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+    mihomoClient.probe.mockResolvedValue(true);
+    expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+    expect(getSetting(db, "mihomoSecret")).toBe(secret);
+    expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+  });
+  it("preserves an existing strong confirmed credential during deployment bootstrap", () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "existing-confirmed-strong-secret");
+    expect(prepareMihomoSecretForBootstrap(db)).toBe("existing-confirmed-strong-secret");
+    expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+  });
   it.each(["gateway", "proxy", "prepared-proxy"])(
     "captures a TUN deployment blank reset in %s before later environment changes",
     async (mode) => {

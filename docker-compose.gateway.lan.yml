@@ -1,6 +1,10 @@
 # Optional real LAN attachment. Only opt selected clients into this gateway.
-# Use together with docker-compose.gateway.yml on a Linux Docker host.
+# Optional override of the standard docker-compose.yml on a Linux Docker host.
 services:
+  submerge-network:
+    networks:
+      gateway-lan:
+        ipv4_address: ${SUBMERGE_LAN_IP:?Set an unused LAN IP}
   submerge:
     environment:
       GATEWAY_LAN_ACCESS: lan
@@ -12,5 +16,5 @@ networks:
       parent: ${GATEWAY_LAN_PARENT:?Set the actual Linux LAN parent interface}
     ipam:
       config:
-        - subnet: ${GATEWAY_LAN_SUBNET:?Set the actual LAN subnet}
+        - subnet: ${SUBMERGE_LAN_SUBNET:?Set the actual LAN subnet}
           gateway: ${GATEWAY_LAN_ROUTER:?Set the LAN router}

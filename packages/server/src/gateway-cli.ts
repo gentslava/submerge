@@ -10,6 +10,7 @@ import { gatewayReadiness } from "./modules/gateway/service.js";
 import {
   assertGatewaySecurity,
   assertIndependentLocalDns,
+  readGatewayPreferences,
   readGatewayRuntimeSettings,
   readNetworkProfile,
   seedGatewayMihomoSecret,
@@ -19,7 +20,10 @@ import {
 } from "./modules/gateway/settings.js";
 import { buildMultiConfig } from "./modules/nodes/multiConfig.js";
 import { collectActiveRoutingInputs, readMihomoSecret } from "./modules/nodes/service.js";
-import { restorePendingMihomoSecretRotation } from "./modules/settings/secret-rotation.js";
+import {
+  prepareMihomoSecretForBootstrap,
+  restorePendingMihomoSecretRotation,
+} from "./modules/settings/secret-rotation.js";
 
 export function parseGatewayCliArgs(args: readonly string[]): {
   action: "bootstrap" | "show" | "readiness" | "configure";
@@ -82,22 +86,51 @@ export async function runGatewayCli(args: readonly string[]): Promise<void> {
       const profile = readNetworkProfile(db);
       const preferences = readGatewayRuntimeSettings(db);
       if (!preferences) throw new Error("TUN deployment requires configured TUN preferences");
-      assertGatewaySecurity(readMihomoSecret(db));
+      const secret = prepareMihomoSecretForBootstrap(db);
+      if (profile.profile === "gateway") assertGatewaySecurity(secret);
       validatePrivateLists(preferences);
-      seedGatewayMihomoSecret(db, readMihomoSecret(db));
+      if (secret === readMihomoSecret(db)) seedGatewayMihomoSecret(db, secret);
       // Preserve the last accepted file on restart, including after a rejected apply.
+      let content: string | undefined;
       if (existsSync(env.MIHOMO_CONFIG_PATH)) {
-        assertSafeGatewayBootstrap(readFileSync(env.MIHOMO_CONFIG_PATH, "utf8"));
-      } else {
-        mkdirSync(dirname(env.MIHOMO_CONFIG_PATH), { recursive: true });
-        const content = buildMultiConfig(
+        const previous = readFileSync(env.MIHOMO_CONFIG_PATH, "utf8");
+        const document = z.record(z.string(), z.unknown()).parse(yaml.load(previous));
+        if ((document.tun as { enable?: unknown } | undefined)?.enable === true) {
+          assertGatewaySecurity(secret);
+        }
+        try {
+          assertSafeGatewayBootstrap(previous);
+          if (document.secret !== secret) content = yaml.dump({ ...document, secret });
+        } catch (error) {
+          // Only the pre-TUN managed Proxy installation is migrated. Corrupt or
+          // previously accepted TUN data still fails explicitly and is retained.
+          if (
+            profile.profile !== "proxy" ||
+            readGatewayPreferences(db) ||
+            (document.tun as { enable?: unknown } | undefined)?.enable === true
+          )
+            throw error;
+          content = buildMultiConfig(
+            collectActiveRoutingInputs(db).inputs,
+            secret,
+            undefined,
+            undefined,
+            profile,
+            preferences,
+          );
+        }
+      } else
+        content = buildMultiConfig(
           collectActiveRoutingInputs(db).inputs,
-          readMihomoSecret(db),
+          secret,
           undefined,
           undefined,
           profile,
           preferences,
         );
+      if (content !== undefined) {
+        mkdirSync(dirname(env.MIHOMO_CONFIG_PATH), { recursive: true });
+        assertSafeGatewayBootstrap(content);
         writeFileSync(`${env.MIHOMO_CONFIG_PATH}.tmp`, content, { mode: 0o600 });
         renameSync(`${env.MIHOMO_CONFIG_PATH}.tmp`, env.MIHOMO_CONFIG_PATH);
       }

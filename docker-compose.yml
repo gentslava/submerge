@@ -1,69 +1,163 @@
-# Deploy compose — pulls prebuilt images from GHCR (built by .github/workflows/docker.yml
-# on push to master). To build locally instead: `docker build -t ghcr.io/gentslava/submerge .`
-# and `docker build -t ghcr.io/gentslava/submerge-happ-decoder ./happ-decoder`.
-#
-# Config comes from a `.env` file next to this compose (Compose auto-loads it).
-# For localhost the built-in defaults below are fine — no `.env` needed. For an
-# internet-facing deploy, copy `.env.example` → `.env` and fill it in (at minimum
-# ADMIN_PASSWORD + COOKIE_SECURE=true). `.env` is git-ignored; `.env.example` is tracked.
+# One installation, two capture modes: select Proxy / TUN in Submerge Settings.
+# Requires Linux TUN support and Docker Compose >=2.36 (Docker Desktop runs the
+# isolated container network). Existing authentication/TLS settings still apply.
+x-submerge: &submerge
+  image: ${SUBMERGE_IMAGE:-ghcr.io/gentslava/submerge:latest}
+  environment:
+    MIHOMO_API: http://127.0.0.1:9090
+    MIHOMO_PROXY: http://127.0.0.1:7890
+    PROXY_ENDPOINT: 127.0.0.1:${PROXY_PORT:-7890}
+    # Optional first-install seed. Bootstrap generates and persists a strong secret.
+    MIHOMO_SECRET: ${MIHOMO_SECRET:-}
+    ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    GATEWAY_DEPLOYMENT: "true"
+    DOMAIN_VALIDATION_TOPOLOGY: compose
+    DOMAIN_VALIDATION_PROXY_ENDPOINT: http://mihomo:7891
+    DOMAIN_RULES_MODE: ${DOMAIN_RULES_MODE:-report}
+    HAPP_DECODER_URL: http://happ-decoder:8080
+  volumes: &submerge-volumes
+    - ./mihomo:/mihomo
+    - ./domain-rules:/domain-rules
+    - submerge-data:/app/data
+    - ${PRIVATE_LISTS_DIR:-./mihomo/private-lists}:/mihomo/private-lists:ro
+
 services:
+  # Internal setup runs automatically; no host chown or profile file is needed.
+  submerge-volumes:
+    image: ${SUBMERGE_IMAGE:-ghcr.io/gentslava/submerge:latest}
+    user: "0:0"
+    restart: "no"
+    network_mode: none
+    command:
+      - sh
+      - -ec
+      - |
+        chown 999:999 /app/data /mihomo /domain-rules
+        chmod 0700 /app/data /domain-rules
+        # Host fetchers may own a nested publish directory; allow traversal only.
+        chmod 0711 /mihomo
+        # Migrate only app-owned runtime files from earlier root deployments.
+        for file in /app/data/submerge.db /app/data/submerge.db-wal /app/data/submerge.db-shm /mihomo/config.yaml /mihomo/config.yaml.tmp /domain-rules/custom.txt; do
+          if [ -f "$$file" ] && [ ! -L "$$file" ]; then
+            chown 999:999 "$$file"
+            chmod 0600 "$$file"
+          fi
+        done
+        # The trusted decoder uid998 reads only this identity via group999.
+        if [ -f /mihomo/hwid.txt ] && [ ! -L /mihomo/hwid.txt ]; then
+          chown 999:999 /mihomo/hwid.txt
+          chmod 0640 /mihomo/hwid.txt
+        fi
+    volumes:
+      - ./mihomo:/mihomo
+      - ./domain-rules:/domain-rules
+      - submerge-data:/app/data
+
+  submerge-init:
+    <<: *submerge
+    command: [node, dist/gateway-cli.js, bootstrap]
+    restart: "no"
+    network_mode: none
+    depends_on:
+      submerge-volumes:
+        condition: service_completed_successfully
+
+  # Stable private namespace: restarting either process keeps its peer reachable.
+  # The bootstrap installs the forwarding guard and then drops uid/capabilities.
+  submerge-network:
+    image: ${SUBMERGE_IMAGE:-ghcr.io/gentslava/submerge:latest}
+    command: [node, dist/gateway-network.js]
+    user: "0:0"
+    cap_add: [NET_ADMIN]
+    restart: unless-stopped
+    sysctls:
+      net.ipv4.ip_forward: "0"
+      net.ipv6.conf.all.disable_ipv6: "1"
+    dns: [1.1.1.1, 8.8.8.8]
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const {readFileSync}=require('node:fs');
+          const {execFileSync}=require('node:child_process');
+          const s=readFileSync('/proc/1/status','utf8');
+          if(!/^Uid:\s+999\s/m.test(s)||!/^CapEff:\s+0+$/m.test(s))process.exit(1);
+          execFileSync('nft',['list','table','inet','submerge_gateway'],{stdio:'ignore'});
+      interval: 5s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    depends_on:
+      submerge-init:
+        condition: service_completed_successfully
+    # Only UI, HTTP/SOCKS and a separate TCP/UDP DNS port are published.
+    ports:
+      - "${SUBMERGE_BIND:-127.0.0.1}:${SUBMERGE_PORT:-3000}:3000"
+      - "127.0.0.1:${PROXY_PORT:-7890}:7890"
+      - "${DNS_BIND:-127.0.0.1}:${DNS_PORT:-1053}:1053/udp"
+      - "${DNS_BIND:-127.0.0.1}:${DNS_PORT:-1053}:1053/tcp"
+    networks:
+      egress:
+        interface_name: eth0
+        gw_priority: 1
+        aliases: [mihomo, submerge]
+      gateway-lan:
+        interface_name: lan0
+        ipv4_address: ${SUBMERGE_LAN_IP:-172.30.220.2}
+
   mihomo:
     image: metacubex/mihomo:latest
-    container_name: submerge-mihomo
-    # Force the RESTful API on :9090 even on a fresh config volume — mihomo's auto-generated
-    # default config has no external-controller, so submerge (MIHOMO_API) couldn't reach it.
-    # submerge's generated config keeps external-controller:9090 + secret once sources exist.
-    command: -d /root/.config/mihomo -ext-ctl 0.0.0.0:9090
+    command: [-d, /root/.config/mihomo, -ext-ctl, "0.0.0.0:9090"]
     restart: unless-stopped
+    network_mode: service:submerge-network
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    cap_add: [NET_ADMIN]
+    devices: [/dev/net/tun:/dev/net/tun]
     volumes:
       - ./mihomo:/root/.config/mihomo
       - ./domain-rules:/root/.config/mihomo/domain-rules:ro
-    ports:
-      - "127.0.0.1:7890:7890"   # SOCKS5 + HTTP (для клиентов / роутера / matter)
-      - "127.0.0.1:9090:9090"   # mihomo API (отладка; submerge ходит внутри сети по http://mihomo:9090)
-    expose:
-      - "7891"                    # authenticated validation listener; private Compose network only
+      - ${PRIVATE_LISTS_DIR:-./mihomo/private-lists}:/root/.config/mihomo/private-lists:ro
+    depends_on:
+      submerge-network:
+        condition: service_healthy
+        restart: true
 
   submerge:
-    image: ghcr.io/gentslava/submerge:latest
-    container_name: submerge
+    <<: *submerge
     restart: unless-stopped
-    environment:
-      MIHOMO_API: "http://mihomo:9090"
-      MIHOMO_SECRET: "${MIHOMO_SECRET:-poc}"
-      DOMAIN_VALIDATION_TOPOLOGY: "compose"
-      DOMAIN_VALIDATION_PROXY_ENDPOINT: "http://mihomo:7891"
-      # Deployment capability only. Report mode cannot provision or mutate local rules.
-      DOMAIN_RULES_MODE: "${DOMAIN_RULES_MODE:-report}"
-      HAPP_DECODER_URL: "http://happ-decoder:8080"
-      # Auth is OFF unless ADMIN_PASSWORD is set — leave empty for open localhost use,
-      # set a strong value in `.env` before exposing the panel to the internet.
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
-      # Must be "true" behind TLS (Secure cookie); keep "false" for plain-HTTP localhost.
-      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
-    volumes:
-      - ./mihomo:/mihomo            # shared config + hwid.txt (server writes config.yaml)
-      - ./domain-rules:/domain-rules # canonical custom.txt; prepare owner/mode before first start
-      - submerge-data:/app/data     # persistent SQLite DB
-    ports:
-      # Bind to loopback by default. Front it with a TLS reverse-proxy; only set
-      # SUBMERGE_BIND=0.0.0.0 if you deliberately expose the port directly.
-      - "${SUBMERGE_BIND:-127.0.0.1}:3000:3000"
+    network_mode: service:submerge-network
     depends_on:
+      submerge-network:
+        condition: service_healthy
+        restart: true
       mihomo:
         condition: service_started
+        restart: true
       happ-decoder:
         condition: service_started
+    # Liveness stays separate from operational DNS/TUN/VPN readiness in Settings.
 
   happ-decoder:
     image: ghcr.io/gentslava/submerge-happ-decoder:latest
-    container_name: submerge-happ-decoder
+    group_add: ["999"]
     restart: unless-stopped
-    init: true                      # tini пожинает зомби-процессы happd
+    init: true
     volumes:
-      - ./mihomo:/mihomo:ro         # общий HWID (hwid.txt) для инжекта X-Hwid
-    expose:
-      - "8080"                      # внутренний сервис, наружу не публикуется
+      - ./mihomo:/mihomo:ro
+    networks: [egress]
+
+networks:
+  egress: {}
+  gateway-lan:
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+    ipam:
+      config:
+        - subnet: ${SUBMERGE_LAN_SUBNET:-172.30.220.0/24}
 
 volumes:
   submerge-data:

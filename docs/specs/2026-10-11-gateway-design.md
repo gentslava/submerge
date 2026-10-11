@@ -44,13 +44,15 @@ No registrable-domain normalization or wildcard widening is allowed.
 
 ## Deployment and failure behavior
 
-A standalone Compose file provides project-scoped DB/config/cache volumes,
+The standard Compose prepares both modes with persistent DB/config/cache mounts,
 NET_ADMIN, /dev/net/tun, forwarding, a separate DNS port, private authenticated
-Mihomo API, and a dedicated test LAN/network namespace. A stable namespace holder
+Mihomo API, and a dedicated LAN/network namespace. A stable namespace holder
 is shared by Submerge and Mihomo so engine restarts preserve API reachability and
 the app inspects the actual TUN interface. Optional macvlan attaches
 an explicitly configured LAN IP; it does not seize the host default route.
-Bootstrap configuration rejects internet traffic and authenticates the API from
+An optional test override provides project-scoped isolated mounts and ports.
+Bootstrap generates its credential automatically through the existing durable
+rotation journal, rejects internet traffic without a VPN pool, and authenticates the API from
 the first engine start. No production routing or AdGuard change is in scope.
 The namespace bootstrap installs a persistent LAN↔WAN forwarding guard before
 starting the engine, then drops privileges. Engine stop or death cannot silently

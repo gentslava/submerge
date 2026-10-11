@@ -55,6 +55,24 @@ describe("gateway settings", () => {
     env.ADMIN_PASSWORD = "gateway-secure-password";
     expect(() => validateGatewayStartup(db)).not.toThrow();
   });
+  it("keeps optional-admin Proxy after accepted TUN deactivation, and protects retained active TUN", () => {
+    const db = freshDb();
+    writeNetworkProfile(db, profile);
+    writeNetworkProfile(db, { profile: "proxy" });
+    setSetting(db, "mihomoSecret", "gateway-secure-secret");
+    env.ADMIN_PASSWORD = "";
+    const directory = mkdtempSync(join(tmpdir(), "gateway-accepted-mode-"));
+    const previousPath = env.MIHOMO_CONFIG_PATH;
+    try {
+      env.MIHOMO_CONFIG_PATH = join(directory, "config.yaml");
+      writeFileSync(env.MIHOMO_CONFIG_PATH, "tun: {enable: false}\n");
+      expect(() => validateGatewayStartup(db)).not.toThrow();
+      writeFileSync(env.MIHOMO_CONFIG_PATH, "tun: {enable: true}\n");
+      expect(() => validateGatewayStartup(db)).toThrow("ADMIN_PASSWORD");
+    } finally {
+      env.MIHOMO_CONFIG_PATH = previousPath;
+    }
+  });
   it("rejects local DNS pointing to either explicit or wildcard own listener", () => {
     const config = networkProfileSchema.parse({
       profile: "gateway",

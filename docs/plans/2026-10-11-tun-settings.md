@@ -3,6 +3,16 @@
 Status: implemented and verified locally; not deployed.
 Scope: [native settings spec](../specs/2026-10-11-tun-settings-design.md).
 
+Deployment correction (2026-10-11): make the standard Compose
+installation ready for Proxy / TUN, remove mandatory profile/secrets/list-file
+setup, retain the stable namespace and fail-closed guard. Generate internal
+credentials through the existing durable rotation journal, migrate an existing
+Proxy configuration without losing accepted TUN settings, and retain protected
+TUN activation. Verify fresh localhost startup, legacy upgrade, mode changes,
+credential persistence, engine/app restarts, the actual standard Compose and
+optional isolated test override. Run static, native, browser and independent
+incremental/final review before updating PR #49.
+
 - [x] Slice 1: preserve TUN preferences and shared routing when selecting Proxy;
       protected setup/status API, explicit activation verification; TDD/static/review.
 - [x] Slice 2: native segmented mode and inline setup/status in Settings; Pencil
@@ -10,7 +20,8 @@ Scope: [native settings spec](../specs/2026-10-11-tun-settings-design.md).
 - [x] Final whole-change independent review and resolved findings.
 
 Agreed product behavior: Proxy / TUN, one app and one routing policy. TUN keeps
-HTTP/SOCKS available. No production or client-network changes, commit or push.
+HTTP/SOCKS available. The user subsequently authorized publication in PR #49;
+production and client-network changes remain outside this task.
 Browser plugin not available; use the repository's Playwright workflow with
 zero retries and an isolated Vite server. Screenshots and temporary outputs are
 stored outside the repository. UI reference: `w6qeY` / `r1RQ0O`, Indigo Console.
@@ -99,3 +110,53 @@ Both integration findings above were resolved, and the reviewer independently
 reproduced the repaired MTU refresh/submission behavior. No unresolved blocking
 findings remain. Physical LAN/macvlan, a real VPN subscription/upstream, and
 production acceptance remain separate from the verified local test contour.
+
+Standard deployment correction evidence: `pnpm verify:static` passed (158 shared /
+1341 server / 299 web), including lint, token checks, typecheck and production
+builds. The application image rebuilt successfully. Chromium Settings passed
+17/17 with zero retries; UI source and the previously verified Pencil/layout
+contract are unchanged by this correction. Standard and parallel-test Compose
+variants parse successfully.
+
+The rebuilt-image Linux suite passed 2/2 (51.35s). It uses the actual standard
+Compose with no required profile file or manual engine secret; it covers
+optional-admin localhost Proxy, protected TUN activation, durable automatic
+credentials, blank-secret reset, mode changes, invalid edits, process recreation,
+engine restart, DNS/TUN/list checks and blocked raw forwarding after engine death.
+Its root-owned legacy fixture retains the saved endpoint and verifies canonical
+custom.txt content, uid999 ownership, mode0600 and actual uid999 readability.
+Private published lists remain read-only and are not migrated. Temporary resources
+are removed by the tests.
+
+The final wide review also identified a non-root host fetcher losing traversal
+through the migrated config directory. A native regression failed with EACCES
+before repair (13.47s). The initializer now grants only traversal (0711) on that
+parent; SQLite/canonical-rule directories stay at 0700 and engine credential files
+stay at 0600.
+The final native pass proves atomic publication as uid1000, unchanged publisher
+directory/file ownership, updated content readable by uid999, and denied access
+to the engine credential file as uid1000.
+
+Crash recovery also migrates the known config.yaml.tmp file as uid999/mode0600.
+The native regression failed before repair (2.40s), proving that a legacy0644
+temporary credential file was readable to the publisher. The repaired initializer
+protects it before bootstrap; bootstrap can replace it and leaves no stale temp.
+Prepared HWID mirrors use uid999/group999/mode0640 and explicit tightening after
+adoption. Only the trusted decoder receives supplementary group999; uid998 reads
+HWID while the publisher cannot. A unit regression failed before this repair;
+fresh/adopted permissions and the decoder group are verified by eight focused
+tests. Non-prepared host development keeps its prior cross-container sharing.
+
+Independent incremental deployment review: APPROVE by gateway_slice1_review.
+Resolved findings: protect the actually accepted TUN configuration after a failed
+Proxy selection; migrate the managed root-owned custom.txt; retain the confirmed
+automatic secret on blank reset; omit only absent initial Proxy local DNS from
+readiness; restore client IPv6 isolation guidance.
+
+Distinct final whole-PR independent review: APPROVE by gateway_slice1_review,
+against origin/master (5a4a79c) through HEAD ffeeb7a plus all tracked/untracked
+deployment corrections. Publisher traversal, stale-config recovery and authorized
+HWID sharing findings are resolved; no critical/important findings remain. Final
+static (158/1341/299), native (2/2,51.35s), focused permission tests (8/8), Docker
+build, Compose validation and diff-check are green. The reviewed feature is ready
+to update PR #49; production and physical LAN were not changed.

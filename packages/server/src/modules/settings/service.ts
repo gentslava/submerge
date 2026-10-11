@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { TextDecoder } from "node:util";
 import {
   MAX_SETTING_KEY_BYTES,
@@ -145,7 +145,11 @@ export function getOrCreateHwid(db: Db, file: string = env.HWID_FILE): string {
 
 function mirrorHwid(file: string, hwid: string): void {
   try {
-    writeFileSync(file, hwid);
+    // The prepared stack grants the decoder group read access to this mirror.
+    // Host-run development retains its existing cross-container uid behavior.
+    const mode = env.GATEWAY_DEPLOYMENT ? 0o640 : 0o644;
+    writeFileSync(file, hwid, { mode });
+    if (env.GATEWAY_DEPLOYMENT) chmodSync(file, mode);
   } catch {
     /* file path not writable (e.g. local dev without /mihomo) — DB is source of truth */
   }

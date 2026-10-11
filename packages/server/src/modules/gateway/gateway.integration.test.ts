@@ -192,7 +192,7 @@ it.skipIf(!enabled)(
       writeFileSync(join(configDir, "config.yaml"), config);
       const composePath = join(directory, "compose.yml");
       const production = yaml.load(
-        readFileSync(new URL("../../../../../docker-compose.gateway.yml", import.meta.url), "utf8"),
+        readFileSync(new URL("../../../../../docker-compose.yml", import.meta.url), "utf8"),
       ) as { services: Record<string, { healthcheck: unknown }> };
       writeFileSync(
         composePath,
@@ -204,7 +204,7 @@ it.skipIf(!enabled)(
               user: "0:0",
               command: ["node", "dist/gateway-network.js"],
               cap_add: ["NET_ADMIN"],
-              healthcheck: production.services["gateway-network"]?.healthcheck,
+              healthcheck: production.services["submerge-network"]?.healthcheck,
               sysctls: { "net.ipv4.ip_forward": "0", "net.ipv6.conf.all.disable_ipv6": "1" },
               ports: ["127.0.0.1::9090"],
               networks: {
@@ -480,16 +480,14 @@ it.skipIf(!enabled)(
 );
 
 it.skipIf(!enabled)(
-  "boots the standalone authenticated gateway with fresh persistent volumes",
+  "boots standard Compose without mode files or secrets and switches capture modes through Settings",
   async () => {
     const directory = mkdtempSync(join(tmpdir(), "submerge-gateway-compose-"));
     const project = `sm-gw-compose-${process.pid}-${Date.now()}`;
-    const composePath = new URL("../../../../../docker-compose.gateway.yml", import.meta.url)
-      .pathname;
+    const composePath = new URL("../../../../../docker-compose.yml", import.meta.url).pathname;
     const overridePath = join(directory, "override.yml");
     const envPath = join(directory, "gateway.env");
     const listsPath = join(directory, "lists");
-    const profilePath = join(directory, "profile.json");
     const extraContainers: string[] = [];
     mkdirSync(listsPath);
     writeFileSync(join(listsPath, "notblocked.txt"), "+.docs.google.test\n");
@@ -502,20 +500,16 @@ it.skipIf(!enabled)(
         { name: "custom", file: "custom.txt", target: "proxy" },
       ],
     });
-    writeFileSync(profilePath, JSON.stringify({ profile: "proxy" }));
     writeFileSync(
       envPath,
       [
-        `GATEWAY_SUBMERGE_IMAGE=${appImage}`,
-        `GATEWAY_PROFILE_PATH=${profilePath}`,
-        `GATEWAY_LISTS_DIR=${listsPath}`,
-        "GATEWAY_ADMIN_PASSWORD=compose-native-test-password",
-        "GATEWAY_MIHOMO_SECRET=compose-native-test-secret",
-        "GATEWAY_UI_PORT=0",
-        "GATEWAY_DNS_PORT=0",
-        "GATEWAY_PROXY_PORT=0",
-        "GATEWAY_LAN_SUBNET=172.30.221.0/24",
-        "GATEWAY_LAN_IP=172.30.221.2",
+        `SUBMERGE_IMAGE=${appImage}`,
+        `PRIVATE_LISTS_DIR=${listsPath}`,
+        "SUBMERGE_PORT=0",
+        "DNS_PORT=0",
+        "PROXY_PORT=0",
+        "SUBMERGE_LAN_SUBNET=172.30.221.0/24",
+        "SUBMERGE_LAN_IP=172.30.221.2",
       ].join("\n"),
     );
     // Decoder behavior is outside gateway scope; the app still uses its Compose name.
@@ -523,7 +517,11 @@ it.skipIf(!enabled)(
       overridePath,
       yaml.dump({
         services: {
-          "happ-decoder": { image: "alpine:latest", command: ["sleep", "300"] },
+          "happ-decoder": {
+            image: "alpine:latest",
+            user: "998:998",
+            command: ["sleep", "300"],
+          },
         },
       }),
     );
@@ -534,8 +532,8 @@ it.skipIf(!enabled)(
         envPath,
         "-p",
         project,
-        "--profile",
-        "gateway",
+        "--project-directory",
+        directory,
         "-f",
         composePath,
         "-f",
@@ -553,9 +551,44 @@ it.skipIf(!enabled)(
         "import {existsSync} from 'node:fs'; if(existsSync('/app/data/submerge.db')) throw new Error('Runtime DB must not ship in the image');",
       );
       await compose("config", "--quiet");
+      // Simulate the user's earlier root deployment; the ordinary startup must
+      // migrate private DB/config ownership without a host-side chown command.
+      await compose(
+        "run",
+        "--rm",
+        "--no-deps",
+        "submerge-volumes",
+        "node",
+        "--input-type=module",
+        "-e",
+        "import {writeFileSync,chmodSync,chownSync,mkdirSync} from 'node:fs'; import {db} from './dist/db/client.js'; import {runMigrations} from './dist/db/migrate.js'; import {setSetting} from './dist/modules/settings/service.js'; runMigrations(); setSetting(db,'proxyEndpoint','127.0.0.1:45678'); db.$client.close(); writeFileSync('/mihomo/config.yaml','mode: rule\\nsecret: poc\\nrules: [MATCH,DIRECT]\\n',{mode:0o600}); writeFileSync('/domain-rules/custom.txt','DOMAIN,existing.test,DIRECT\\n',{mode:0o600}); chmodSync('/app/data/submerge.db',0o600); mkdirSync('/mihomo/fetch-published',{mode:0o755}); chownSync('/mihomo/fetch-published',1000,1000); writeFileSync('/mihomo/fetch-published/custom.txt','+.original.test\\n',{mode:0o644}); chownSync('/mihomo/fetch-published/custom.txt',1000,1000);",
+      );
+      await compose(
+        "run",
+        "--rm",
+        "--no-deps",
+        "submerge-volumes",
+        "node",
+        "--input-type=module",
+        "-e",
+        "import {writeFileSync} from 'node:fs'; writeFileSync('/mihomo/config.yaml.tmp','secret: stale-test-credential\\n',{mode:0o644});",
+      );
+      await compose("run", "--rm", "--no-deps", "submerge-volumes");
+      await compose(
+        "run",
+        "--rm",
+        "--no-deps",
+        "--user",
+        "1000:1000",
+        "submerge-volumes",
+        "node",
+        "--input-type=module",
+        "-e",
+        "import {readFileSync} from 'node:fs'; import assert from 'node:assert/strict'; assert.throws(()=>readFileSync('/mihomo/config.yaml.tmp'),{code:'EACCES'});",
+      );
       await compose("up", "-d", "--no-build", "--pull", "never");
       const core = await compose("ps", "-q", "mihomo");
-      const namespace = await compose("ps", "-q", "gateway-network");
+      const namespace = await compose("ps", "-q", "submerge-network");
       let app = await compose("ps", "-q", "submerge");
       const uiPort = (await docker("port", namespace, "3000/tcp")).match(/:(\d+)$/u)?.[1];
       if (!uiPort) throw new Error("UI mapping");
@@ -564,6 +597,100 @@ it.skipIf(!enabled)(
         async () => (await fetch(`${origin}/healthz`)).status,
         (status) => status === 200,
         60000,
+      );
+      // Check preservation and readability as the actual non-root app process.
+      expect(
+        JSON.parse(
+          await docker(
+            "exec",
+            app,
+            "node",
+            "--input-type=module",
+            "-e",
+            "import {readFileSync,statSync} from 'node:fs'; const file='/domain-rules/custom.txt'; const stat=statSync(file); process.stdout.write(JSON.stringify({content:readFileSync(file,'utf8'),owner:stat.uid,mode:stat.mode&0o777,reader:process.getuid()}));",
+          ),
+        ),
+      ).toEqual({
+        content: "DOMAIN,existing.test,DIRECT\n",
+        owner: 999,
+        mode: 0o600,
+        reader: 999,
+      });
+      const localhostSettings = (await (await fetch(`${origin}/trpc/settings.get`)).json()).result
+        .data;
+      const decoder = await compose("ps", "-q", "happ-decoder");
+      expect(await docker("exec", decoder, "cat", "/mihomo/hwid.txt")).toBe(localhostSettings.hwid);
+      expect(
+        JSON.parse(
+          await docker(
+            "exec",
+            app,
+            "node",
+            "--input-type=module",
+            "-e",
+            "import {statSync} from 'node:fs'; const stat=statSync('/mihomo/hwid.txt'); process.stdout.write(JSON.stringify({owner:stat.uid,group:stat.gid,mode:stat.mode&0o777}));",
+          ),
+        ),
+      ).toEqual({ owner: 999, group: 999, mode: 0o640 });
+      // A host fetcher can still atomically publish below the config bind parent,
+      // while the generated engine credentials stay private to the app owner.
+      await docker(
+        "exec",
+        "--user",
+        "1000:1000",
+        app,
+        "node",
+        "--input-type=module",
+        "-e",
+        "import {writeFileSync,renameSync,readFileSync,existsSync} from 'node:fs'; import assert from 'node:assert/strict'; assert.throws(()=>readFileSync('/mihomo/config.yaml'),{code:'EACCES'}); assert.throws(()=>readFileSync('/mihomo/hwid.txt'),{code:'EACCES'}); assert.equal(existsSync('/mihomo/config.yaml.tmp'),false); writeFileSync('/mihomo/fetch-published/custom.txt.tmp','+.updated.test\\n',{mode:0o644}); renameSync('/mihomo/fetch-published/custom.txt.tmp','/mihomo/fetch-published/custom.txt');",
+      );
+      expect(
+        JSON.parse(
+          await docker(
+            "exec",
+            app,
+            "node",
+            "--input-type=module",
+            "-e",
+            "import {readFileSync,statSync} from 'node:fs'; const dir='/mihomo/fetch-published'; const file=dir+'/custom.txt'; process.stdout.write(JSON.stringify({content:readFileSync(file,'utf8'),owner:statSync(file).uid,directoryOwner:statSync(dir).uid,reader:process.getuid()}));",
+          ),
+        ),
+      ).toEqual({
+        content: "+.updated.test\n",
+        owner: 1000,
+        directoryOwner: 1000,
+        reader: 999,
+      });
+      // The default localhost install remains usable without admin/env setup.
+      const localhostConfiguration = await (
+        await fetch(`${origin}/trpc/gateway.configuration`)
+      ).json();
+      expect(localhostConfiguration.result.data.profile.profile).toBe("proxy");
+      expect(localhostSettings.proxyEndpoint).toBe("127.0.0.1:45678");
+      await eventually(
+        async () => (await fetch(`${origin}/trpc/gateway.configuration`)).json(),
+        (value) =>
+          value.result?.data?.prerequisites?.some(
+            (check: { name: string; ok: boolean }) => check.name === "engine-secret" && check.ok,
+          ),
+      );
+      expect(
+        (
+          await fetch(`${origin}/trpc/gateway.set`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(profile),
+          })
+        ).status,
+      ).toBe(500);
+      writeFileSync(
+        envPath,
+        `${readFileSync(envPath, "utf8")}\nADMIN_PASSWORD=compose-native-test-password\n`,
+      );
+      await compose("up", "-d", "--no-deps", "--force-recreate", "submerge");
+      await eventually(
+        async () => (await fetch(`${origin}/trpc/gateway.get`)).status,
+        (status) => status === 401,
       );
       expect((await fetch(`${origin}/trpc/gateway.get`)).status).toBe(401);
       const login = await fetch(`${origin}/trpc/auth.login`, {
@@ -599,8 +726,8 @@ it.skipIf(!enabled)(
       expect(
         setupReadiness.result.data.checks.find(
           (check: { name: string }) => check.name === "local-dns",
-        )?.ok,
-      ).toBe(false);
+        ),
+      ).toBeUndefined();
       const firstActivation = await fetch(`${origin}/trpc/gateway.set`, {
         method: "POST",
         headers: { cookie, "content-type": "application/json" },
@@ -692,7 +819,7 @@ it.skipIf(!enabled)(
         "run",
         "--rm",
         "--no-deps",
-        "gateway-init",
+        "submerge-init",
         "node",
         "dist/gateway-cli.js",
         "bootstrap",
@@ -707,10 +834,7 @@ it.skipIf(!enabled)(
       expect(await resetSecret.json()).toMatchObject({ result: { data: { applied: true } } });
       writeFileSync(
         envPath,
-        readFileSync(envPath, "utf8").replace(
-          "compose-native-test-secret",
-          "changed-env-native-secret",
-        ),
+        `${readFileSync(envPath, "utf8")}\nMIHOMO_SECRET=changed-env-native-secret\n`,
       );
       await compose("up", "-d", "--no-deps", "--force-recreate", "submerge");
       app = await compose("ps", "-q", "submerge");

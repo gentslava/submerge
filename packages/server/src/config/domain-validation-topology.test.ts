@@ -7,6 +7,7 @@ interface ComposeService {
   environment?: Record<string, string>;
   expose?: string[];
   ports?: string[];
+  network_mode?: string;
 }
 
 interface ComposeDocument {
@@ -15,7 +16,9 @@ interface ComposeDocument {
 
 function compose(relativePath: string): ComposeDocument {
   const path = fileURLToPath(new URL(`../../../../${relativePath}`, import.meta.url));
-  return yaml.load(readFileSync(path, "utf8")) as ComposeDocument;
+  return yaml.load(readFileSync(path, "utf8"), {
+    schema: yaml.CORE_SCHEMA.withTags(yaml.mergeTag),
+  }) as ComposeDocument;
 }
 
 describe("domain validation topology", () => {
@@ -24,8 +27,10 @@ describe("domain validation topology", () => {
     const mihomo = config.services.mihomo;
     const submerge = config.services.submerge;
 
-    expect(mihomo?.expose).toContain("7891");
-    expect(mihomo?.ports?.some((mapping) => mapping.includes(":7891"))).toBe(false);
+    expect(mihomo?.network_mode).toBe("service:submerge-network");
+    expect(
+      config.services["submerge-network"]?.ports?.some((mapping) => mapping.includes(":7891")),
+    ).toBe(false);
     expect(submerge?.environment).toMatchObject({
       DOMAIN_VALIDATION_TOPOLOGY: "compose",
       DOMAIN_VALIDATION_PROXY_ENDPOINT: "http://mihomo:7891",
