@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   type NodeItem,
@@ -25,6 +25,18 @@ import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
 import { getDomainIntelligenceSettingsView } from "../domain-intelligence/service.js";
+import { assertGatewayNetworkActivated } from "../gateway/readiness.js";
+import {
+  assertGatewaySecurity,
+  assertIndependentLocalDns,
+  gatewayApplyState,
+  readGatewayRuntimeSettings,
+  readNetworkProfile,
+  recordGatewayApply,
+  seedGatewayMihomoSecret,
+  validatePrivateLists,
+  waitForPrivateProvidersLoaded,
+} from "../gateway/settings.js";
 import {
   confirmPendingMihomoSecretRotation,
   prepareMihomoSecretForConfig,
@@ -317,8 +329,20 @@ async function applyConfigNow(
   let rollbackConfigMutation: (() => void) | undefined;
   let activationAttempted = false;
   let rollbackSafe = true;
+  let gateway = false;
+  const tmpPath = `${configPath}.tmp`;
   try {
     rollbackConfigMutation = opts.stageConfigMutation?.();
+    const networkProfile = readNetworkProfile(db);
+    const preferences = readGatewayRuntimeSettings(db);
+    let privateListCounts: Record<string, number> = {};
+    gateway = preferences !== undefined;
+    if (preferences) {
+      assertGatewaySecurity(readMihomoSecret(db));
+      assertIndependentLocalDns(preferences);
+      privateListCounts = validatePrivateLists(preferences);
+      seedGatewayMihomoSecret(db, readMihomoSecret(db));
+    }
     const secretPreparation = await prepareMihomoSecretForConfig(db);
     rollbackSafe = secretPreparation.rollbackSafe;
     const content = buildMultiConfig(
@@ -326,12 +350,18 @@ async function applyConfigNow(
       secretPreparation.secret,
       domainValidationListener(db, inputs),
       opts.managedDomainRules,
+      networkProfile,
+      preferences,
     );
     // Unchanged config → skip the write + the destructive reload so mihomo keeps its
     // delay history (the charts don't blank on every no-op apply — rename, re-saved
     // setting, redundant re-apply). Genuine changes (policy, pool, sources) differ and
     // still reload. `force` (reconnect recovery) always pushes.
-    if (!opts.force && readExistingConfig(configPath) === content) {
+    if (
+      !opts.force &&
+      (!gateway || gatewayApplyState(db) === "applied") &&
+      readExistingConfig(configPath) === content
+    ) {
       activationAttempted = true;
       const pendingSecretConfirmed =
         !secretPreparation.pending || (await confirmPendingMihomoSecretRotation(db));
@@ -343,9 +373,8 @@ async function applyConfigNow(
       // have written the new file but failed before Mihomo accepted it. Continue
       // through the reload path until the new credential authenticates.
     }
-    const tmpPath = `${configPath}.tmp`;
-    writeFileSync(tmpPath, content, "utf8");
-    renameSync(tmpPath, configPath);
+    writeFileSync(tmpPath, content, { encoding: "utf8", mode: 0o600 });
+    if (!gateway) renameSync(tmpPath, configPath);
     // The reload is the only network step — its failure must not read as "not saved":
     // the DB row and the config file are already updated. fs errors above still throw.
     try {
@@ -353,23 +382,64 @@ async function applyConfigNow(
       // accepted the new secret. Keep the durable rotation journal in that
       // ambiguous state; recovery probes both credentials on the next apply.
       activationAttempted = true;
-      await reloadConfig(targetPath);
+      await reloadConfig(targetPath, gateway ? content : undefined);
     } catch (err) {
-      operationalLog("config-reload-failed", {}, err);
-      await confirmPendingMihomoSecretRotation(db);
+      operationalLog(gateway ? "gateway-config-reload-failed" : "config-reload-failed", {}, err);
+      if (!gateway) await confirmPendingMihomoSecretRotation(db);
       opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+      if (gateway)
+        throw new Error("gateway configuration activation failed; previous config file preserved", {
+          cause: err,
+        });
       return { nodes: inventory.length, applied: false, activationVerified: false };
     }
+    if (preferences) {
+      let phase = "provider";
+      try {
+        if (preferences.privateLists.length > 0)
+          await waitForPrivateProvidersLoaded(preferences, privateListCounts);
+        phase = "network";
+        await assertGatewayNetworkActivated(
+          preferences,
+          undefined,
+          networkProfile.profile === "gateway",
+        );
+      } catch (error) {
+        const previous = readExistingConfig(configPath);
+        if (previous) {
+          try {
+            await reloadConfig(targetPath, previous);
+          } catch {
+            /* readiness remains failed */
+          }
+        }
+        opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+        throw new Error(`gateway ${phase} activation failed; previous config file preserved`, {
+          cause: error,
+        });
+      }
+    }
+    // Keep both credentials until the accepted payload is also durable. Mihomo
+    // may retain the old controller credential until process restart.
+    if (gateway) renameSync(tmpPath, configPath);
     const pendingSecretConfirmed = await confirmPendingMihomoSecretRotation(db);
     if (secretPreparation.pending && !pendingSecretConfirmed) {
       opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+      if (gateway)
+        throw new Error("gateway secret activation is pending; restart Mihomo to confirm it");
       return { nodes: inventory.length, applied: false, activationVerified: false };
+    }
+    if (gateway) {
+      recordGatewayApply(db, "applied");
     }
     opts.afterConfigActivationAttempt?.({ applied: true, activationVerified: true });
     return { nodes: inventory.length, applied: true, activationVerified: true };
   } catch (error) {
+    if (gateway) recordGatewayApply(db, "failed");
     if (!activationAttempted && rollbackSafe) rollbackConfigMutation?.();
     throw error;
+  } finally {
+    rmSync(tmpPath, { force: true });
   }
 }
 

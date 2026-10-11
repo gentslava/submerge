@@ -48,6 +48,7 @@ vi.mock("@tanstack/react-query", () => ({
 }));
 
 vi.mock("sonner", () => ({ toast: mocks.toast }));
+vi.mock("./NetworkSettingsSection", () => ({ NetworkSettingsSection: () => null }));
 vi.mock("@/features/auth/useAuth", () => ({
   useAuthStatus: () => ({ data: { required: false } }),
   useLogout: () => ({ isPending: false, mutate: vi.fn() }),

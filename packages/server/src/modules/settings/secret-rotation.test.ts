@@ -36,6 +36,47 @@ beforeEach(() => {
 });
 
 describe("mihomo secret rotation journal", () => {
+  it.each(["gateway", "proxy", "prepared-proxy"])(
+    "captures a TUN deployment blank reset in %s before later environment changes",
+    async (mode) => {
+      const db = freshDb();
+      const previous = env.MIHOMO_SECRET;
+      const previousDeployment = env.GATEWAY_DEPLOYMENT;
+      try {
+        setSetting(
+          db,
+          "networkProfile",
+          JSON.stringify({ profile: "gateway", localResolvers: ["192.168.1.1"] }),
+        );
+        setSetting(db, "mihomoSecret", "old-gateway-confirmed-secret");
+        if (mode === "proxy") {
+          setSetting(
+            db,
+            "internal.gatewayPreferences",
+            JSON.stringify({ profile: "gateway", localResolvers: ["192.168.1.1"] }),
+          );
+          setSetting(db, "networkProfile", JSON.stringify({ profile: "proxy" }));
+        }
+        if (mode === "prepared-proxy") {
+          env.GATEWAY_DEPLOYMENT = true;
+          setSetting(db, "networkProfile", JSON.stringify({ profile: "proxy" }));
+          expect(getSetting(db, "internal.gatewayPreferences")).toBeUndefined();
+        }
+        env.MIHOMO_SECRET = "gateway-env-reset-secret";
+        const attempt = beginMihomoSecretRotation(db, "");
+        mihomoClient.probe.mockResolvedValue(true);
+        expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+        expect(getSetting(db, "mihomoSecret")).toBe("gateway-env-reset-secret");
+        expect(getMihomoSecretRotationPersistenceState(db, attempt)).toBe("committed");
+        env.MIHOMO_SECRET = "changed-after-reset-secret";
+        restorePendingMihomoSecretRotation(db);
+        expect(mihomoClient.set).toHaveBeenLastCalledWith("gateway-env-reset-secret");
+      } finally {
+        env.MIHOMO_SECRET = previous;
+        env.GATEWAY_DEPLOYMENT = previousDeployment;
+      }
+    },
+  );
   it("keeps the confirmed secret until the new credential is proved", async () => {
     const db = freshDb();
     setSetting(db, "mihomoSecret", "old-secret");

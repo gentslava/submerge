@@ -12,6 +12,14 @@ happ-decoder
 mihomo
 domain-rules
 data
+**/data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/hwid.txt
+**/sources.json
+**/.env
+**/.env.*
 docs
 pencil
 *.md

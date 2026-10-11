@@ -10,6 +10,7 @@ import {
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { settings } from "../../db/schema.js";
+import { readGatewayRuntimeSettings } from "../gateway/settings.js";
 import { getSetting, setSetting } from "./service.js";
 
 const ROTATION_KEY = "internal.mihomoSecretRotation";
@@ -90,10 +91,16 @@ export function beginMihomoSecretRotation(
   db: Db,
   nextStoredValue: string,
 ): MihomoSecretRotationAttempt {
-  setSettingInput.parse({ key: "mihomoSecret", value: nextStoredValue });
+  // Gateway must retain the confirmed effective secret through env changes.
+  // Capture a blank reset now, so journal promotion is still a single transaction.
+  const nextStored =
+    nextStoredValue === "" && readGatewayRuntimeSettings(db) !== undefined
+      ? env.MIHOMO_SECRET
+      : nextStoredValue;
+  setSettingInput.parse({ key: "mihomoSecret", value: nextStored });
   const existing = readPending(db);
   if (existing) {
-    if (existing.nextStored !== nextStoredValue) {
+    if (existing.nextStored !== nextStored) {
       throw new Error("mihomo secret rotation is already in progress");
     }
     installRecoveryCredential(existing);
@@ -101,8 +108,8 @@ export function beginMihomoSecretRotation(
   }
   const rotation = pendingMihomoSecretRotationSchema.parse({
     id: randomUUID(),
-    nextEffective: nextStoredValue || env.MIHOMO_SECRET,
-    nextStored: nextStoredValue,
+    nextEffective: nextStored || env.MIHOMO_SECRET,
+    nextStored,
     previousEffective: confirmedSecret(db),
     version: 2,
   });

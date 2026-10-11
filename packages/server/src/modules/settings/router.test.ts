@@ -61,6 +61,12 @@ beforeEach(() => {
 });
 
 describe("settings router operational events", () => {
+  it("does not allow unvalidated network profiles through generic settings", async () => {
+    await expect(
+      caller.settings.set({ key: "networkProfile", value: '{"profile":"gateway"}' }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(setSetting).not.toHaveBeenCalled();
+  });
   it("does not allow API callers to overwrite internal secrets", async () => {
     await expect(
       caller.settings.set({

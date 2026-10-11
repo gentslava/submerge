@@ -150,6 +150,13 @@ be fetched and staged there, but cannot replace the canonical file until Submerg
 coordinated import API.
 See the [domain-rules deployment and synchronization contract](docs/runbooks/domain-rules.md).
 
+Settings → **Режим подключения** provides **Прокси / TUN**. Selecting a mode
+validates and activates it immediately. On first TUN setup, enter Local DNS;
+text fields save on blur, as in the existing Settings. TUN keeps HTTP/SOCKS available,
+uses independent DNS, and retains its settings when switching back to Proxy.
+For the one-time Docker/LAN preparation and an isolated test deployment, use the
+[gateway deployment and acceptance runbook](docs/runbooks/gateway.md).
+
 The runtime `mihomo/config.yaml` contains your nodes and is git-ignored — never commit it.
 
 ## Development

@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import {
+  createGatewayDraft,
   DEFAULT_DOMAIN_INTELLIGENCE_REPORT_SETTINGS,
   type DiagnosticsResult,
   type DirectChannel,
@@ -90,6 +91,20 @@ const responses: Record<string, unknown> = {
   "channels.reorder": { ok: true, applied: true },
   "channels.updateDirect": { channel: directChannelFixture, applied: true },
   "settings.get": { hwid: "fixture-hwid", mihomoSecret: "", proxyEndpoint: "127.0.0.1:7890" },
+  "gateway.configuration": {
+    profile: { profile: "proxy" },
+    tun: createGatewayDraft(),
+    availableLists: [],
+    prerequisites: [
+      { name: "admin-password", ok: false },
+      { name: "engine-secret", ok: false },
+      { name: "network", ok: false },
+      { name: "private-lists", ok: true },
+      { name: "tun-access", ok: null },
+    ],
+    connection: { lanAddress: null, dnsAddress: null, dnsPort: 1053, access: "bridge" },
+  },
+  "gateway.readiness": { profile: "proxy", ready: true, checks: [{ name: "runtime", ok: true }] },
   "nodes.bandwidth": [],
   "nodes.health": { connected: true },
   "channels.recentDecisions": [],
@@ -246,8 +261,8 @@ function responseFor(procedure: string, overrides: FixtureOverrides, input: unkn
   throw new Error(`Unknown tRPC fixture procedure: ${procedure}`);
 }
 
-function requestInputAt(url: URL, index: number): unknown {
-  const rawInput = url.searchParams.get("input");
+function requestInputAt(url: URL, index: number, body: string | null): unknown {
+  const rawInput = url.searchParams.get("input") ?? body;
   if (rawInput === null) return undefined;
 
   let parsed: unknown;
@@ -301,15 +316,17 @@ export async function installTrpcFixture(
     }
 
     const body = path.split(",").map((procedure, index) => {
-      const response = responseFor(procedure, overrides, requestInputAt(url, index));
+      const response = responseFor(
+        procedure,
+        overrides,
+        requestInputAt(url, index, route.request().postData()),
+      );
       if (isTrpcFixtureError(response)) {
         return {
           error: {
-            json: {
-              message: response.message,
-              code: -32603,
-              data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 500, path: procedure },
-            },
+            message: response.message,
+            code: -32603,
+            data: { code: "INTERNAL_SERVER_ERROR", httpStatus: 500, path: procedure },
           },
         };
       }

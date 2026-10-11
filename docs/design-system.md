@@ -63,6 +63,8 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 | Источники — mobile 390 | `ce3MH` | compact source cards |
 | Настройки | `w6qeY` | `L5XjCf` |
 | Настройки — mobile 390 | `r1RQ0O` | one-column settings cards |
+| Настройки — TUN, 1440×1024 dark | `oXxu8` | native connection mode, local DNS, readiness and client guide |
+| Настройки — TUN, 390×1024 | `Q3sToj` | stacked mode, local DNS and readiness controls |
 | Соединения | `g5hb4` | `DxayN` |
 | Соединения — светлая тема | `t9XUT` | production-style populated table |
 | Соединения — mobile 390 | `H3itWn` | compact connection cards + «Ещё» navigation |
