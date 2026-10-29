@@ -15,23 +15,23 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
-    "@node-rs/argon2": "^2.2.1",
+    "@node-rs/argon2": "^2.2.2",
     "@submerge/shared": "workspace:*",
     "@trpc/server": "^11.19.0",
     "better-sqlite3": "^13.0.3",
-    "drizzle-orm": "^0.45.3",
-    "js-yaml": "^5.4.2",
+    "drizzle-orm": "^0.45.4",
+    "js-yaml": "^5.5.0",
     "pino": "^10.4.0",
-    "tldts": "^7.4.16",
-    "undici": "^8.11.2",
-    "zod": "^4.6.5"
+    "tldts": "^7.4.19",
+    "undici": "^8.12.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   }
 }
