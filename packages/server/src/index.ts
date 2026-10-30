@@ -18,7 +18,7 @@ import {
   startDomainRuleApplyWorker,
 } from "./modules/logs/singleton.js";
 import {
-  readMihomoBootstrapSecret,
+  prepareMihomoSecretForBootstrap,
   restorePendingMihomoSecretRotation,
 } from "./modules/settings/secret-rotation.js";
 import { sourceRefreshScheduler } from "./modules/sources/instance.js";
@@ -56,7 +56,7 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
 // Apply any pending DB migrations before accepting connections
 runMigrations();
 readNetworkSettings(db);
-validateGatewayStartup(db, readMihomoBootstrapSecret(db));
+validateGatewayStartup(db, prepareMihomoSecretForBootstrap(db));
 
 // Seed the Default channel on first boot (idempotent — no-op if already present).
 ensureDefaultChannel(db);

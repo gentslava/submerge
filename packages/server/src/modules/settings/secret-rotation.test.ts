@@ -55,18 +55,132 @@ describe("mihomo secret rotation journal", () => {
       env.MIHOMO_SECRET = previousSecret;
     }
   });
-  it("automatically upgrades weak bootstrap auth with one durable candidate and retains the old recovery credential", async () => {
+  it("generates missing bootstrap auth with one durable candidate and retains recovery", async () => {
     const db = freshDb();
-    setSetting(db, "mihomoSecret", "poc");
-    const secret = prepareMihomoSecretForBootstrap(db);
-    expect(secret).toMatch(/^[a-f0-9]{64}$/u);
-    expect(getSetting(db, "mihomoSecret")).toBe("poc");
-    expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "poc");
-    expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+    const previous = env.MIHOMO_SECRET;
+    env.MIHOMO_SECRET = "";
+    try {
+      const secret = prepareMihomoSecretForBootstrap(db);
+      expect(secret).toMatch(/^[a-f0-9]{64}$/u);
+      expect(getSetting(db, "mihomoSecret")).toBeUndefined();
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "");
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      mihomoClient.probe.mockResolvedValue(true);
+      expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+      expect(getSetting(db, "mihomoSecret")).toBe(secret);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
+  it.each(["a", "abc", "fifteen-letters!"])(
+    "preserves the short confirmed credential %s",
+    (secret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", secret);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+    },
+  );
+  it("retains a short pending rotation through bootstrap and successful activation", async () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "previous-key");
+    beginMihomoSecretRotation(db, "abc");
+    expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+    expect(getSetting(db, "mihomoSecret")).toBe("previous-key");
     mihomoClient.probe.mockResolvedValue(true);
     expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
-    expect(getSetting(db, "mihomoSecret")).toBe(secret);
-    expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+    expect(getSetting(db, "mihomoSecret")).toBe("abc");
+    expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+  });
+  it.each(["abc", ""])(
+    "recovers a legacy blank reset when the engine accepts %j",
+    async (engineSecret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", "abc");
+      setSetting(
+        db,
+        "internal.mihomoSecretRotation",
+        JSON.stringify({
+          id: "00000000-0000-4000-8000-000000000001",
+          version: 2,
+          nextEffective: "",
+          nextStored: "",
+          previousEffective: "abc",
+        }),
+      );
+      const secret = prepareMihomoSecretForBootstrap(db);
+      expect(secret).toMatch(/^[a-f0-9]{64}$/u);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "abc");
+      mihomoClient.probe.mockImplementation(
+        async (candidate) => !engineSecret || candidate === engineSecret,
+      );
+      await expect(prepareMihomoSecretForConfig(db)).resolves.toMatchObject({
+        pending: true,
+        secret,
+        rollbackSafe: Boolean(engineSecret),
+      });
+      mihomoClient.probe.mockResolvedValue(true);
+      expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+      expect(getSetting(db, "mihomoSecret")).toBe(secret);
+    },
+  );
+  it("persists the captured seed of a legacy blank reset before later environment edits", async () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "changed-before-restart";
+      setSetting(db, "mihomoSecret", "previous-key");
+      setSetting(
+        db,
+        "internal.mihomoSecretRotation",
+        JSON.stringify({
+          id: "00000000-0000-4000-8000-000000000001",
+          version: 2,
+          nextEffective: "abc",
+          nextStored: "",
+          previousEffective: "previous-key",
+        }),
+      );
+      expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith("abc", "previous-key");
+      mihomoClient.probe.mockResolvedValue(true);
+      expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+      expect(getSetting(db, "mihomoSecret")).toBe("abc");
+      env.MIHOMO_SECRET = "changed-after-confirmation";
+      expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
+  it("uses a short explicit environment seed for a blank reset", () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "abc";
+      setSetting(db, "mihomoSecret", "previous-confirmed-key");
+      expect(beginMihomoSecretRotation(db, "").rotation).toMatchObject({
+        nextEffective: "abc",
+        nextStored: "abc",
+        previousEffective: "previous-confirmed-key",
+      });
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
+  it("generates a credential for a blank reset without any seed or confirmed key", () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "";
+      const attempt = beginMihomoSecretRotation(db, "");
+      expect(attempt.rotation.nextEffective).toMatch(/^[a-f0-9]{64}$/u);
+      expect(attempt.rotation.nextStored).toBe(attempt.rotation.nextEffective);
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
   });
   it("preserves an existing strong confirmed credential during deployment bootstrap", () => {
     const db = freshDb();
@@ -219,7 +333,7 @@ describe("mihomo secret rotation journal", () => {
       const attempt = beginMihomoSecretRotation(db, "");
       expect(attempt.rotation).toMatchObject({
         nextEffective: "env-secret-at-start",
-        nextStored: "",
+        nextStored: "env-secret-at-start",
         previousEffective: "old-secret",
       });
 

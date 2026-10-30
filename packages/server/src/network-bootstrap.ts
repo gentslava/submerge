@@ -26,7 +26,7 @@ export function assertSafeGatewayBootstrap(content: string): void {
   const config = z
     .object({
       mode: z.literal("rule"),
-      secret: z.string().min(16),
+      secret: z.string().min(1),
       dns: z.object({ enable: z.literal(true), "enhanced-mode": z.literal("fake-ip") }),
       tun: z.object({ enable: z.boolean() }),
       "proxy-groups": z.array(z.object({ proxies: z.array(z.string()) })),

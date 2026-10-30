@@ -29,6 +29,17 @@ afterEach(() => {
 });
 
 describe("gateway settings", () => {
+  it.each(["proxy", "gateway"] as const)(
+    "accepts short manual credentials on %s startup",
+    (mode) => {
+      const db = freshDb();
+      writeNetworkProfile(db, mode === "proxy" ? { profile: "proxy" } : profile);
+      setSetting(db, "mihomoSecret", "abc");
+      env.ADMIN_PASSWORD = "test-admin-password";
+      expect(() => validateGatewayStartup(db)).not.toThrow();
+      expect(getSetting(db, "mihomoSecret")).toBe("abc");
+    },
+  );
   it("seeds confirmed auth once and ignores later environment values", () => {
     const db = freshDb();
     seedGatewayMihomoSecret(db, "first-gateway-confirmed-secret");

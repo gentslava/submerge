@@ -51,6 +51,26 @@ function fixture() {
 }
 
 describe("gateway apply", () => {
+  it.each(["proxy", "gateway"] as const)(
+    "activates a short manual credential in %s mode",
+    async (mode) => {
+      const { db, path } = fixture();
+      if (mode === "proxy") writeNetworkProfile(db, { profile: "proxy" });
+      beginMihomoSecretRotation(db, "abc");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) =>
+          url.includes("/version")
+            ? new Response(JSON.stringify({ version: "v-test" }))
+            : new Response(null, { status: 204 }),
+        ),
+      );
+      await expect(applyConfig(db, path)).resolves.toMatchObject({ applied: true });
+      expect(readFileSync(path, "utf8")).toContain("secret: abc");
+      expect(getSetting(db, "mihomoSecret")).toBe("abc");
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+    },
+  );
   it("validates Proxy capture while retaining shared TUN routing and preferences", async () => {
     const { db, path } = fixture();
     const preferences = readGatewayRuntimeSettings(db);

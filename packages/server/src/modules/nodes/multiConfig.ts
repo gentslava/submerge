@@ -486,8 +486,7 @@ export function buildMultiConfigDocument(
   savedGateway?: GatewayProfile,
 ): { yaml: string; nodeNamesByChannel: Map<string, string[]> } {
   const gateway = networkProfile.profile === "gateway" ? networkProfile : savedGateway;
-  if (gateway && secret.length < 16)
-    throw new Error("gateway requires a Mihomo secret of at least 16 characters");
+  if (gateway && !secret) throw new Error("gateway requires a Mihomo secret");
   const proxyChannels = channels.filter(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
   );
