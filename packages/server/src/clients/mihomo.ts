@@ -1,5 +1,6 @@
 // Isolated mihomo (Clash) REST API client. Every response is Zod-parsed.
 
+import { validateHeaderValue } from "node:http";
 import { isIP } from "node:net";
 import {
   SPEED_TEST_MAX_BYTES,
@@ -20,7 +21,7 @@ const DIAGNOSTIC_BODY_MAX_BYTES = 8192;
 // The mihomo API secret can be set/rotated from Settings. A durable pending
 // rotation may leave either the old or new credential active after a process
 // crash, so recovery temporarily carries both without weakening the API: only an
-// explicit 401/403 is retried with the previous secret.
+// explicit 401/403 or a locally invalid primary header uses the previous secret.
 interface MihomoCredentialState {
   fallback?: string;
   notified: boolean;
@@ -237,9 +238,19 @@ function boundedSignal(
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
+export function buildMihomoAuthorization(secret: string): string {
+  if (/[ \t]$/u.test(secret)) {
+    throw new Error("mihomo secret must not end with a space or tab");
+  }
+  // Headers takes a byte string; Mihomo compares the raw token with UTF-8 config bytes.
+  const authorization = `Bearer ${Buffer.from(secret, "utf8").toString("latin1")}`;
+  validateHeaderValue("Authorization", authorization);
+  return authorization;
+}
+
 function authenticatedHeaders(init: RequestInit, secret: string): Headers {
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${secret}`);
+  headers.set("Authorization", buildMihomoAuthorization(secret));
   return headers;
 }
 
@@ -264,19 +275,26 @@ async function callWithCredentials(
   signal: AbortSignal,
 ): Promise<Response> {
   const credentials = mihomoCredentials;
-  const requestWith = (secret: string) =>
+  const requestWith = (headers: Headers) =>
     fetch(`${env.MIHOMO_API}${path}`, {
       ...init,
       signal,
-      headers: authenticatedHeaders(init, secret),
+      headers,
     });
-  const primary = await requestWith(credentials.primary);
+  let primaryHeaders: Headers;
+  try {
+    primaryHeaders = authenticatedHeaders(init, credentials.primary);
+  } catch (error) {
+    if (credentials.fallback === undefined) throw error;
+    return requestWith(authenticatedHeaders(init, credentials.fallback));
+  }
+  const primary = await requestWith(primaryHeaders);
   if (!isAuthenticationFailure(primary)) {
     reportPrimaryAuthentication(credentials);
     return primary;
   }
   if (credentials.fallback === undefined) return primary;
-  return requestWith(credentials.fallback);
+  return requestWith(authenticatedHeaders(init, credentials.fallback));
 }
 
 function call(

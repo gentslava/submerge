@@ -301,3 +301,225 @@ Final correction totals: Standards 0; Spec 1 P1, resolved and independently
 rechecked, with 0 unresolved. Raw static and Docker bootstrap gates are green;
 prior UI evidence remains valid. Engine/device, production and physical LAN
 acceptance remain unperformed. The correction is ready for authorized publication.
+
+## PR review 5708615219 and master merge
+
+Master `fe3a5c290e127e7253cc8d9f587d7e5f2094cc54` includes merged PR #54.
+Only the spec/plan indexes conflict; retain both feature entries. Preserve the
+merged credential admission, Unicode transport and durable rotation behavior.
+
+The remaining Major finding is a crash between route staging and accepted-file
+replacement. The user requested architectural recovery for config application,
+rather than a Default-only repair. Extend the common serialized apply lifecycle:
+durable pending candidate, last accepted file, and bounded journal staged atomically
+with DB mutations. Preserve desired settings across a crash, validate the accepted
+file using journal proof, and resume through the existing coordinated apply owner.
+Do not blindly replay stale managed-rule payloads or relax bootstrap safety.
+Cover ordinary config changes as well as both Default directions, failed reload,
+interrupted staging, accepted-file replacement, corrupt proof and credentials.
+Use red/green tests, raw static, isolated Docker crash/restart evidence, incremental
+and whole-feature reviews. UI code is unchanged; retain prior 41-case browser proof.
+
+### Common apply recovery evidence
+
+The original TUN bootstrap rejected Direct-to-VPN staging before file publication
+(`/tmp/submerge-pr53-recovery-red.log`). A separate corrected outer assertion proved
+that legacy Proxy replaced its accepted path before a failed reload
+(`/tmp/submerge-pr53-recovery-apply-red.log`). The common pipeline now journals
+every apply, stages mutations transactionally, stores a separate pending payload,
+and sends it inline in all modes. Only verified reload/readiness publishes it;
+pending proof bypasses byte-identical no-op optimization. Existing explicit
+rollback restores file, settings and preceding journal in that order.
+
+Journal tests cover atomic failed staging, accepted/candidate identity, repeated
+recovery, prior-journal rollback, absent first file, unknown/missing files, path
+mismatch, malformed proof and invalid UTF-8. Nine actual SIGKILL subprocess cases
+cover legacy Proxy, prepared Proxy and TUN at committed staging, pending reload
+and accepted-file replacement. Each retains desired settings, coordinates the
+credential journal, preserves accepted files through offline preparation, then
+performs a real apply attempt before clearing intent. Engine and interfaces are
+deterministic fakes in these tests; they are not device acceptance.
+
+Raw `pnpm verify:static` passed: 142 shared / 1449 server / 297 web tests, four
+opt-in skipped, plus Biome, token drift, typecheck and production builds
+(`/tmp/submerge-pr53-recovery-static.log`). One existing source test originally
+used a different config path for every call on the same DB; it now reuses one
+installation path so pending intent correctly remains bound to that installation.
+Focused source/recovery suites passed 28 tests.
+
+Six isolated Docker cases ran Node 24.22.2, uid 999, the compiled server/shared
+artifacts over a pinned published runtime, and real Mihomo. Legacy and prepared
+Proxy each receive SIGKILL after staging, after Mihomo accepts reload, and after
+accepted-file replacement. The ordinary application entry point, existing boot
+coordinator and real engine finish every pending operation. Prepared bootstrap
+runs twice without promoting pending proof. Saved route, accepted file and active
+engine agree after recovery. Artifacts: chat scratch
+`config-recovery/{compose.yaml,runtime.mjs,smoke.py,results.json,smoke.log}`.
+The network was isolated; temporary containers, networks and volumes were removed.
+Real TUN/device, production and physical LAN acceptance remain unperformed.
+
+### Incremental Standards
+
+Reviewer `/root/final_standards`: one P2 documented-standard finding.
+CONTRIBUTING requires an ADR for a significant architectural decision. Added
+[ADR-0007](../adr/0007-recoverable-config-apply.md), its index entry and an
+architecture overview link, describing ownership, boundaries and tradeoffs.
+No actionable heuristic smells. Independent resolution check follows.
+
+### Incremental Spec
+
+Reviewer `/root/pr54_final_spec`: no findings. The common desired/pending/accepted
+lifecycle matches the user's architectural request. Both proven file generations
+remain pending until online confirmation; unknown proof fails explicitly. Existing
+coordinated startup/first-connect/reconnect recovery is reused, and no separate
+retry worker or stale managed-rule replay was added. The reviewer independently
+ran all 20 journal/SIGKILL tests successfully.
+
+Incremental totals: Standards 1 P2, addressed; Spec 0. Full-feature final review
+and independent ADR resolution confirmation remain pending.
+
+### Whole-feature review and migration correction
+
+Standards reviewer `/root/final_standards` confirmed ADR-0007 resolves the P2,
+then found no whole-feature Standards violations or actionable smells in tree
+`bbd4b2923699f6f68ff5039334bc1e18d115bc02` against master `fe3a5c2`.
+Spec reviewer `/root/round2_final_spec` found one P2: a proven interrupted legacy
+Proxy apply prevents the supported prepared-install migration because the pending
+guard rejects the old DNS/config shape. The reviewer reproduced it with the real
+bootstrap CLI; the remainder of the whole feature had no Spec findings.
+
+Three added legacy-to-prepared SIGKILL cases failed before correction
+(`/tmp/submerge-pr53-recovery-migration-red.log`). Bootstrap now permits only the
+proven pre-native Proxy migration. It atomically rebases the current primary hash
+(which may already be the previous candidate) and records the replacement before
+offline publication. It retains desired settings, credential recovery and pending
+activation. A fault between proof rebasing and file publication leaves the old
+primary recognizable; the test injects a blocked temp path, checks proof and
+retries successfully. A separate CLI regression rejects unsafe native Proxy bytes
+even when their hash is journal-proven; TUN restrictions remain intact.
+
+Final raw static passed: 142 shared / 1453 server / 297 web tests, four opt-in
+skipped, plus all static checks and production builds
+(`/tmp/submerge-pr53-recovery-static-final.log`). There are now 12 actual SIGKILL
+cases and the journal/native safety regressions. Additional real-engine migration
+Docker qualification and independent incremental/final rechecks follow.
+
+The three additional real-Mihomo Docker legacy-to-prepared migration cases passed
+at the same interruption boundaries. Valid legacy preference fixtures avoid public
+geodata downloads on the isolated network. Offline preparation migrates the file
+twice while retaining pending activation, then ordinary application startup applies
+and confirms the desired route. Node 24.22.2, uid 999; compiled artifact overlay as
+above. Artifacts `config-recovery/{results-migration.json,smoke-migration.log}`.
+All temporary containers, networks and volumes were removed. Total real-engine
+recovery cases: nine. No source changed after the final static run.
+
+Migration incremental Standards `/root/final_standards`: no findings; boundary
+validation and transactional proof rebasing meet documented standards. Incremental
+Spec `/root/pr54_final_spec`: no findings; only proven pre-native Proxy migrates,
+pending intent and credential recovery survive, and failed publication retains
+recognizable proof. The Spec reviewer independently ran all three migration
+SIGKILL cases, including the blocked publication regression. Migration incremental
+totals: Standards 0; Spec 0. Whole-feature final rechecks follow.
+
+### Managed-provider integration correction
+
+Final Spec `/root/round2_final_spec` confirmed the migration P2 resolved and found
+no remaining whole-feature Spec gaps; independently ran all 13 bootstrap tests.
+Final Standards `/root/final_standards` found one P1 against ADR-0006: rebuilding
+an accepted legacy managed config without its provider drops the forced VPN rule
+while retaining a Direct default. The reviewer reproduced that exact CLI output.
+
+Four new CLI regressions failed before correction
+(`/tmp/submerge-pr53-recovery-managed-red.log`). Offline preparation now validates
+the accepted canonical managed provider and retains it at REJECT in the normal
+generator rule position, before custom Direct matchers. Only prepared generation
+permits this reserved rejection target without an available VPN pool. Missing or
+unsafe provider definitions fail explicitly. The online coordinated owner remains
+responsible for attesting the store and restoring its current VPN target; offline
+preparation cannot claim activation. Tests include an empty desired VPN pool,
+overlapping custom Direct matcher, repeated bootstrap and invalid definitions.
+All four pass (`/tmp/submerge-pr53-recovery-managed-green.log`).
+
+Raw static passed again: 142 shared / 1457 server / 297 web tests, four opt-in
+skipped, all static checks and production builds
+(`/tmp/submerge-pr53-recovery-static-managed.log`). Focused real-Mihomo guard
+qualification and independent incremental/final rechecks follow.
+
+Incremental Standards `/root/final_standards` independently passed all 17 bootstrap
+tests and confirmed provider retention/priority resolves the original P1. Spec
+`/root/pr54_final_spec` found one further P1: a provider declaration alone does not
+prove its backing file is usable; Mihomo can log initialization failure and keep
+running with no matching rules. The reviewer cited the engine initialization path.
+
+Bootstrap now uses the existing local-store file safety checks and SQLite history
+authority before loading any accepted managed provider. It accepts only the
+confirmed digest or a known unfinished operation's intended digest. Missing,
+invalid, unattested, unknown-digest or reconciliation-blocked state fails before
+file publication; offline inspection never advances the store marker or completes
+a domain-rule operation. The read-only helper lives beside the existing production
+store history, rather than creating a second attestation scheme. The bootstrap
+composition accepts a rule directory argument for isolated subprocess fixtures;
+the shipped CLI always uses the canonical `/domain-rules` mount.
+
+Backing-store regressions cover all rejection cases and a recoverable unfinished
+store operation without marker promotion. Four rejection assertions failed before
+the fix (`/tmp/submerge-pr53-recovery-store-red.log`); the terminal-operation test
+fixture was corrected to satisfy its existing completed-at constraint. Full raw
+static is green: 142 shared / 1463 server / 297 web tests, four opt-in skipped,
+all static checks and builds (`/tmp/submerge-pr53-recovery-static-store.log`).
+Independent rechecks and final real-engine backing-store proof follow.
+
+Backing-store incremental Standards `/root/final_standards`: no findings,
+independently passed all 23 bootstrap tests. Spec `/root/pr54_final_spec`: prior P1
+resolved, no new findings; independently passed all 10 managed bootstrap cases,
+including recoverable operation intent without marker promotion.
+
+The real canonical-mount Docker probe passed under Node 24.22.2 and uid 999:
+missing and digest-mismatched store files reject preparation without changing the
+accepted file or config journal. After restoring the attested file, repeated
+offline migration retains pending activation; real Mihomo loads the one-rule
+canonical provider at REJECT before the overlapping custom Direct matcher, while
+the final catch-all remains Direct and the desired VPN pool is empty. Artifacts:
+`config-recovery/{results-managed.json,smoke-store.log,smoke-managed.py}`.
+Temporary runtime resources were removed. No production or physical LAN claim.
+Final whole-feature rechecks and a repeat of all nine runtime recovery cases on
+the final compiled source follow.
+
+The final-source Docker repeat passed all nine recovery cases: legacy Proxy,
+prepared Proxy and legacy-to-prepared migration, each killed after staging,
+engine reload and accepted-file replacement. Ordinary application startup restored
+agreement between desired settings, accepted file and real engine rules, then
+cleared pending proof. Node 24.22.2, uid 999; no source changed after the 1463-test
+static run. Artifacts `config-recovery/{results-final.json,smoke-final.log}`.
+All temporary containers, networks and volumes were removed.
+
+### Final whole-feature review after recovery corrections
+
+Reviewed final source tree `b2bbcfd3b3b1b770a1587a209acf3a10b1fcedc4` against
+master `fe3a5c290e127e7253cc8d9f587d7e5f2094cc54`. Subsequent changes only append
+the factual runtime/review receipts in this plan; production source is unchanged.
+
+#### Standards
+
+`/root/final_standards`: no findings. The wide pass covered routing, rollback,
+common recovery, managed-store protection, credential integration, diagnostics
+and readiness, UI, tests, migration snapshot and documentation. No unresolved
+documented-standard violations or actionable smell findings. The reviewer also
+checked the subsequent Docker receipt and independently passed all 23 bootstrap
+tests during the final correction.
+
+#### Spec
+
+`/root/round2_final_spec`: no unresolved findings. The wide pass covered Default
+routing, empty VPN pools, common crash recovery, proof rebasing, explicit rollback,
+merged credential behavior, accepted-route diagnostics and coordinated recovery.
+Managed-provider preservation and backing-store authority match the specification;
+offline inspection neither promotes the marker nor completes an operation. The
+reviewer independently passed all 23 final bootstrap tests. No missing requirement,
+incorrect behavior or scope creep identified.
+
+Final totals: Standards 0 unresolved; Spec 0 unresolved. Earlier findings about
+the missing architecture decision, legacy migration, lost managed provider and
+unverified backing file were corrected and independently rechecked before this
+wide pass. Static and local runtime gates are green; real TUN-device, production
+and physical LAN acceptance remain unperformed. Publication targets PR #53 only.

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -683,7 +683,7 @@ describe("applyConfig", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("still writes the config and reports applied:false when the reload fails", async () => {
+  it("keeps a durable pending config and retries it when reload fails", async () => {
     const db = freshDb();
     db.insert(sources)
       .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
@@ -697,10 +697,24 @@ describe("applyConfig", () => {
     expect(res.applied).toBe(false);
     expect(res.nodes).toBe(1);
     expect(operationalLog).toHaveBeenCalledWith("config-reload-failed", {}, expect.any(Error));
-    // the file must be written regardless — it applies on the engine's next reload
+    expect(existsSync(configPath)).toBe(false);
+    expect(getSetting(db, "internal.configApply")).toBeDefined();
+    // Desired settings and the pending artifact survive without replacing the accepted file.
+    const pending = readFileSync(`${configPath}.pending`, "utf8");
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    const cfg = yaml.load(pending) as Record<string, any>;
     expect(cfg.proxies[0].name).toBe("A");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    await expect(applyConfig(db, configPath)).resolves.toMatchObject({
+      applied: true,
+      activationVerified: true,
+    });
+    expect(readFileSync(configPath, "utf8")).toBe(pending);
+    expect(getSetting(db, "internal.configApply")).toBeUndefined();
+    expect(existsSync(`${configPath}.pending`)).toBe(false);
   });
 
   it("force-retries a byte-identical config after a failed reload", async () => {

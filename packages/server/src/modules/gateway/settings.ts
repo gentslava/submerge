@@ -178,8 +178,8 @@ export function readGatewayRuntimeSettings(db: Db): GatewayProfile | undefined {
 }
 
 export function assertGatewaySecurity(secret: string): void {
-  if (!env.ADMIN_PASSWORD || secret.length < 16) {
-    throw new Error("TUN requires ADMIN_PASSWORD and an automatically protected engine secret");
+  if (!env.ADMIN_PASSWORD || !secret) {
+    throw new Error("TUN requires ADMIN_PASSWORD and an engine secret");
   }
 }
 
@@ -190,8 +190,7 @@ export function gatewayApplyState(db: Db): "applied" | "failed" | "unknown" {
 
 export function seedGatewayMihomoSecret(db: Db, effectiveSecret: string): void {
   if (getSetting(db, "mihomoSecret")) return;
-  if (effectiveSecret.length < 16)
-    throw new Error("Gateway requires a strong confirmed engine secret");
+  if (!effectiveSecret) throw new Error("Gateway requires a confirmed engine secret");
   // Environment is a first-install seed, never a restart-time auth rotation.
   setSetting(db, "mihomoSecret", effectiveSecret);
 }
@@ -206,8 +205,7 @@ export function validateGatewayStartup(db: Db, candidateSecret?: string): void {
           .parse(yaml.load(readFileSync(env.MIHOMO_CONFIG_PATH, "utf8"))).tun?.enable === true
       : false;
     if (readNetworkProfile(db).profile === "gateway" || acceptedTun) assertGatewaySecurity(secret);
-    else if (secret.length < 16)
-      throw new Error("Prepared deployment requires a strong engine secret");
+    else if (!secret) throw new Error("Prepared deployment requires an engine secret");
     if (secret === confirmed) seedGatewayMihomoSecret(db, secret);
   }
 }

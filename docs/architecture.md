@@ -26,7 +26,7 @@ Overview for agents and developers. Full design: [docs/specs/2026-06-29-submerge
 
 ## Data flows
 
-- **Management** (add source, select node): web → tRPC mutation → server module → (parse / fetchSubscription / ingestHapp) → generate config.yaml → reload mihomo.
+- **Management** (add source, select node): web → tRPC mutation → server module → (parse / fetchSubscription / ingestHapp) → journal and generate pending config → reload/verify Mihomo → replace accepted config and confirm completion. The common serialized apply resumes interrupted intent through the existing startup/reconnect owner; see [ADR-0007](adr/0007-recoverable-config-apply.md).
 - **Node selection** (channel routing): a `ChannelController` per channel applies its policy — `speed` (latency race with switch tolerance), `sticky` (hold the node while healthy), `manual` (priority node) — on each probe tick, switches the mihomo selector when the policy says so, and records a decision log shown in Settings. Spec: [specs/2026-07-01-channel-routing-design.md](specs/2026-07-01-channel-routing-design.md).
 - **Real-time** (nodes/pings/traffic): server SSE hub polls mihomo → fan-out via tRPC subscription (SSE) → web patches TanStack Query cache with targeted node updates.
 - **Domain intelligence**: normalized Mihomo connection observations → bounded SQLite

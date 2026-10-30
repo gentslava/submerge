@@ -497,8 +497,7 @@ export function buildMultiConfigDocument(
   savedGateway?: GatewayProfile,
 ): { yaml: string; nodeNamesByChannel: Map<string, string[]> } {
   const gateway = networkProfile.profile === "gateway" ? networkProfile : savedGateway;
-  if (gateway && secret.length < 16)
-    throw new Error("gateway requires a Mihomo secret of at least 16 characters");
+  if (gateway && !secret) throw new Error("gateway requires a Mihomo secret");
   const proxyChannels = channels.filter(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
   );
@@ -645,7 +644,11 @@ export function buildMultiConfigDocument(
   // Legacy Proxy with no exits is all-DIRECT. Direct-default and prepared modes
   // retain explicit VPN rules/providers even when their targets have no exits.
   const noProxies = unique.length === 0;
-  if (managedDomainRules) {
+  // Offline preparation may retain an accepted managed provider at REJECT until
+  // the coordinated owner attests its current store and VPN target.
+  const offlineManagedRejection =
+    gateway !== undefined && managedDomainRules?.targetGroupName === "REJECT";
+  if (managedDomainRules && !offlineManagedRejection) {
     const target = [...builds.values()].find(
       (build) => build.channel.groupName === managedDomainRules.targetGroupName,
     );

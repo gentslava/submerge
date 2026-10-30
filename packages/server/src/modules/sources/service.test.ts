@@ -148,6 +148,7 @@ describe("sources service", () => {
 
   it("persists the source and reports applied:false when the engine reload fails", async () => {
     const db = freshDb();
+    const configPath = tmpConfig();
     // subscription fetch works, but the mihomo reload endpoint is down
     vi.stubGlobal(
       "fetch",
@@ -163,13 +164,13 @@ describe("sources service", () => {
     const { source: src, applied } = await addSource(
       db,
       { value: "https://ex.com/sub", hwid: false },
-      tmpConfig(),
+      configPath,
       hwidFile(),
     );
     expect(applied).toBe(false);
     expect(src.proxies).toHaveLength(1);
     expect(await listSources(db)).toHaveLength(1); // saved despite the failed reload
-    const toggled = await toggleSource(db, src.id, tmpConfig());
+    const toggled = await toggleSource(db, src.id, configPath);
     expect(toggled.applied).toBe(false);
     expect(toggled.source.enabled).toBe(false);
   });

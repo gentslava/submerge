@@ -122,6 +122,46 @@ describe("mihomo client", () => {
     expect(authenticatedWithNext).toHaveBeenCalledOnce();
   });
 
+  it.each(["密码", "пароль", "clé🔑", "café"])(
+    "preserves UTF-8 controller credential bytes for %s",
+    async (secret) => {
+      setMihomoSecret(secret);
+      mockFetch((_url, init) => {
+        const authorization = new Headers(init?.headers).get("authorization") ?? "";
+        expect(Buffer.from(authorization, "latin1")).toEqual(
+          Buffer.from(`Bearer ${secret}`, "utf8"),
+        );
+        return json({ version: "v1.19.12" });
+      });
+      await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+      await expect(probeMihomoCredential(secret)).resolves.toBe(true);
+    },
+  );
+
+  it.each(["invalid\nheader", "invalid\u0001header", "invalid\u0000header", "invalid\u007fheader"])(
+    "recovers with the previous credential when the primary header is transport-invalid (%j)",
+    async (primary) => {
+      const finalize = vi.fn();
+      setMihomoSecretRecovery(primary, "previous-secret", finalize);
+      const authorizations: string[] = [];
+      mockFetch((_url, init) => {
+        authorizations.push(new Headers(init?.headers).get("authorization") ?? "");
+        return json({ version: "v1.19.12" });
+      });
+      await expect(getVersion()).resolves.toEqual({ version: "v1.19.12" });
+      expect(authorizations).toEqual(["Bearer previous-secret"]);
+      expect(finalize).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not retry a network failure with the previous credential", async () => {
+    setMihomoSecretRecovery("next-secret", "previous-secret");
+    const fetch = vi.fn().mockRejectedValue(new Error("connection lost"));
+    vi.stubGlobal("fetch", fetch);
+    await expect(getVersion()).rejects.toThrow("connection lost");
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("retries durable credential finalization after a transient callback failure", async () => {
     const finalize = vi
       .fn<() => boolean>()

@@ -43,6 +43,12 @@ import {
 } from "../settings/secret-rotation.js";
 import { getOrCreateInternalSecret, getSetting } from "../settings/service.js";
 import { groupProxies } from "./config.js";
+import {
+  beginConfigApply,
+  type ConfigApplyAttempt,
+  finishConfigApply,
+  recordConfigApplyCandidate,
+} from "./config-apply-journal.js";
 import type {
   ChannelConfigInput,
   DomainValidationListenerInput,
@@ -129,8 +135,8 @@ export function setExcluded(db: Db, name: string, excluded: boolean): void {
 
 export interface ApplyResult {
   nodes: number;
-  // false = the config was persisted (DB + file) but the engine reload failed —
-  // e.g. mihomo is down. It applies on the engine's next successful reload, so
+  // false = desired settings and a pending config were persisted, but activation
+  // failed. The accepted file is retained; the common apply retries on recovery, so
   // callers must report "saved, engine pending", never a hard failure.
   applied: boolean;
   // true only when this call received a successful Mihomo reload response.
@@ -286,18 +292,25 @@ function readExistingConfig(configPath: string): string | null {
 // so identical inputs → identical bytes → a safe skip. `force` is for engine-reconnect
 // recovery (onReconnect): a restarted mihomo may have lost our config even though the DB
 // didn't change, so we must push it regardless of the on-disk match.
+interface ConfigApplyOptions {
+  afterConfigActivationAttempt?: (
+    result: Pick<ApplyResult, "applied" | "activationVerified">,
+  ) => void;
+  force?: boolean;
+  stageConfigMutation?: () => () => void;
+  rollbackOnFailure?: boolean;
+}
+
+type RawConfigApplyOptions = ConfigApplyOptions & {
+  managedDomainRules?: ManagedDomainRulesProviderInput;
+};
+let configApplyTail: Promise<unknown> = Promise.resolve();
+
 export async function applyConfig(
   db: Db,
   configPath: string = env.MIHOMO_CONFIG_PATH,
   targetPath: string = env.MIHOMO_CONFIG_TARGET,
-  opts: {
-    afterConfigActivationAttempt?: (
-      result: Pick<ApplyResult, "applied" | "activationVerified">,
-    ) => void;
-    force?: boolean;
-    stageConfigMutation?: () => () => void;
-    rollbackOnFailure?: boolean;
-  } = {},
+  opts: ConfigApplyOptions = {},
 ): Promise<ApplyResult> {
   const apply = (managedDomainRules?: ManagedDomainRulesProviderInput) =>
     applyConfigNow(db, configPath, targetPath, {
@@ -316,19 +329,24 @@ export async function applyConfig(
   return configApplyCoordinator ? configApplyCoordinator(apply) : apply();
 }
 
-async function applyConfigNow(
+function applyConfigNow(
   db: Db,
   configPath: string,
   targetPath: string,
-  opts: {
-    afterConfigActivationAttempt?: (
-      result: Pick<ApplyResult, "applied" | "activationVerified">,
-    ) => void;
-    force?: boolean;
-    managedDomainRules?: ManagedDomainRulesProviderInput;
-    stageConfigMutation?: () => () => void;
-    rollbackOnFailure?: boolean;
-  } = {},
+  opts: RawConfigApplyOptions = {},
+): Promise<ApplyResult> {
+  const operation = configApplyTail.then(() =>
+    applyConfigSerialized(db, configPath, targetPath, opts),
+  );
+  configApplyTail = operation.catch(() => {});
+  return operation;
+}
+
+async function applyConfigSerialized(
+  db: Db,
+  configPath: string,
+  targetPath: string,
+  opts: RawConfigApplyOptions = {},
 ): Promise<ApplyResult> {
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
@@ -344,15 +362,24 @@ async function applyConfigNow(
   // no DOMAIN-SUFFIX rules — until re-enabled. The Default is the catch-all and
   // stays active regardless of its own `enabled` flag.
   let rollbackConfigMutation: (() => void) | undefined;
+  let attempt: ConfigApplyAttempt | undefined;
   let activationAttempted = false;
   let rollbackSafe = true;
   let gateway = false;
   const tmpPath = `${configPath}.tmp`;
-  const previousContent = opts.rollbackOnFailure ? readExistingConfig(configPath) : undefined;
+  const pendingPath = `${configPath}.pending`;
   configApplyRevision += 1;
   activeConfigApplies += 1;
   try {
-    rollbackConfigMutation = opts.stageConfigMutation?.();
+    const staged = db.transaction(
+      () => ({
+        attempt: beginConfigApply(db, configPath),
+        rollback: opts.stageConfigMutation?.(),
+      }),
+      { behavior: "immediate" },
+    );
+    attempt = staged.attempt;
+    rollbackConfigMutation = staged.rollback;
     const { inputs, inventory } = collectActiveRoutingInputs(db);
     const networkProfile = readNetworkProfile(db);
     const preferences = readGatewayRuntimeSettings(db);
@@ -362,8 +389,8 @@ async function applyConfigNow(
     rollbackSafe = secretPreparation.rollbackSafe;
     if (preferences) {
       if (networkProfile.profile === "gateway") assertGatewaySecurity(secretPreparation.secret);
-      else if (secretPreparation.secret.length < 16)
-        throw new Error("Prepared deployment requires a strong engine secret");
+      else if (!secretPreparation.secret)
+        throw new Error("Prepared deployment requires an engine secret");
       assertIndependentLocalDns(preferences);
       privateListCounts = validatePrivateLists(preferences);
       if (!secretPreparation.pending) seedGatewayMihomoSecret(db, secretPreparation.secret);
@@ -382,6 +409,7 @@ async function applyConfigNow(
     // still reload. `force` (reconnect recovery) always pushes.
     if (
       !opts.force &&
+      !attempt.previousJournal &&
       (!gateway || gatewayApplyState(db) === "applied") &&
       readExistingConfig(configPath) === content
     ) {
@@ -390,22 +418,25 @@ async function applyConfigNow(
         !secretPreparation.pending || (await confirmPendingMihomoSecretRotation(db));
       if (pendingSecretConfirmed) {
         opts.afterConfigActivationAttempt?.({ applied: true, activationVerified: false });
+        rmSync(pendingPath, { force: true });
+        finishConfigApply(db, attempt);
         return { nodes: inventory.length, applied: true, activationVerified: false };
       }
       // Bytes alone are insufficient during a rotation: a previous attempt may
       // have written the new file but failed before Mihomo accepted it. Continue
       // through the reload path until the new credential authenticates.
     }
+    recordConfigApplyCandidate(db, configPath, content);
     writeFileSync(tmpPath, content, { encoding: "utf8", mode: 0o600 });
-    if (!gateway) renameSync(tmpPath, configPath);
-    // The reload is the only network step — its failure must not read as "not saved":
-    // the DB row and the config file are already updated. fs errors above still throw.
+    renameSync(tmpPath, pendingPath);
+    // Every mode sends the durable candidate inline, retaining the accepted file
+    // until reload and readiness succeed. A lost response leaves replayable intent.
     try {
       // Once the request is sent, a lost response cannot prove whether Mihomo
       // accepted the new secret. Keep the durable rotation journal in that
       // ambiguous state; recovery probes both credentials on the next apply.
       activationAttempted = true;
-      await reloadConfig(targetPath, gateway ? content : undefined);
+      await reloadConfig(targetPath, content);
     } catch (err) {
       operationalLog(
         opts.rollbackOnFailure
@@ -416,7 +447,6 @@ async function applyConfigNow(
         {},
         err,
       );
-      if (!gateway) await confirmPendingMihomoSecretRotation(db);
       opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
       if (gateway || opts.rollbackOnFailure)
         throw new Error("gateway configuration activation failed; previous config file preserved", {
@@ -452,7 +482,7 @@ async function applyConfigNow(
     }
     // Keep both credentials until the accepted payload is also durable. Mihomo
     // may retain the old controller credential until process restart.
-    if (gateway) renameSync(tmpPath, configPath);
+    renameSync(pendingPath, configPath);
     const pendingSecretConfirmed = await confirmPendingMihomoSecretRotation(db);
     if (secretPreparation.pending && !pendingSecretConfirmed) {
       opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
@@ -464,26 +494,37 @@ async function applyConfigNow(
       recordGatewayApply(db, "applied");
     }
     opts.afterConfigActivationAttempt?.({ applied: true, activationVerified: true });
+    finishConfigApply(db, attempt);
     return { nodes: inventory.length, applied: true, activationVerified: true };
   } catch (error) {
     if (gateway) recordGatewayApply(db, "failed");
-    if (opts.rollbackOnFailure || (!activationAttempted && rollbackSafe))
-      rollbackConfigMutation?.();
-    if (opts.rollbackOnFailure && activationAttempted) {
+    if (attempt && opts.rollbackOnFailure && activationAttempted) {
       // Keep route changes and their recovery inside the serialized apply. A lost
       // reload response is ambiguous, so restore the durable file and attempt to
       // restore the engine too before another configuration can be applied.
+      const previousContent = attempt.previousContent;
       if (previousContent != null) {
         writeFileSync(tmpPath, previousContent, { encoding: "utf8", mode: 0o600 });
         renameSync(tmpPath, configPath);
         try {
-          await reloadConfig(targetPath, gateway ? previousContent : undefined);
+          await reloadConfig(targetPath, previousContent);
         } catch (restoreError) {
           operationalLog("default-route-restore-failed", {}, restoreError);
         }
       } else {
         rmSync(configPath, { force: true });
       }
+    }
+    if (
+      attempt &&
+      (opts.rollbackOnFailure || (!activationAttempted && rollbackSafe && rollbackConfigMutation))
+    ) {
+      const rollbackAttempt = attempt;
+      db.transaction(() => {
+        rollbackConfigMutation?.();
+        finishConfigApply(db, rollbackAttempt, true);
+      });
+      rmSync(pendingPath, { force: true });
     }
     throw error;
   } finally {

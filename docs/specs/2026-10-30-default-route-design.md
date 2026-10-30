@@ -33,6 +33,41 @@ report uncertain route attribution and do not cache a definitive result. Apply
 completion invalidates previous diagnostic cache generations. Runtime bookkeeping
 failures after a committed apply retain its result and schedule observer recovery.
 
+Crash recovery belongs to the common config apply lifecycle, for all configuration
+changes and connection modes. Desired settings in SQLite, a durable pending config
+and the last accepted config are distinct. Staged mutations and the apply journal
+are one SQLite transaction. The bounded internal journal binds config path and
+previous/candidate hashes to their Default route; it contains no config payload.
+The candidate is persisted separately and sent inline to Mihomo. Only successful
+reload/readiness checks replace the accepted file; credential confirmation and
+apply bookkeeping precede journal removal. Failed ordinary applies retain pending
+state and retry even when bytes are identical. Existing explicit rollback callers
+restore the previous file before atomically undoing their staged mutation and
+restoring the previous journal.
+
+Startup validates a journal-proven accepted file using its accepted route while
+keeping the requested settings. The normal serialized owner then regenerates from
+current desired settings and coordinated managed rules, reloads and confirms the
+configuration. It also recovers when the candidate reached the accepted path but
+the process stopped before recording completion. Bootstrap never promotes an apply
+without contacting Mihomo. Missing files are regenerated only when no accepted
+file existed; unknown files, invalid journals and path mismatches fail explicitly.
+Pending credential rotations retain both keys until normal apply completes; an
+offline bootstrap preserves the journal-bound file rather than rewriting its key.
+Existing bootstrap safety and TUN administrator checks continue to apply.
+Supported legacy Proxy preparation also resumes interrupted applies: only a proven
+pre-native Proxy file can migrate offline. Rebase its current file identity before
+publishing a prepared candidate, retain desired settings and credential recovery,
+and leave activation pending. Native/TUN validation failures remain explicit.
+Offline legacy migration retains any accepted managed domain-rule provider at a
+REJECT target until the coordinated owner proves its current VPN route. Keep its
+normal rule priority and canonical local provider; missing or unsafe definitions
+fail explicitly instead of allowing a Direct catch-all to absorb managed domains.
+Inspect the backing file with the existing local-store safety checks and accept
+only its attested digest or a known unfinished operation's intended digest.
+Missing, unsafe, unattested or unknown bytes block preparation. Offline inspection
+never promotes the store marker or finishes a domain-rule operation.
+
 UI uses the existing Indigo Console `Segmented` control and channel editor row:
 `oXxu8/KvheA` (3 px inset/gap, 7×13 px option padding, text-sub, md/sm radii),
 and Routing frames `lYrng`, `HXRTv`. No new tokens. The new row adapts these existing
