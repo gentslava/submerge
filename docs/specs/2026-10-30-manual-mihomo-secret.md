@@ -22,6 +22,13 @@ configured secret. A locally unrepresentable primary header must still allow the
 previous credential to recover an interrupted rotation; network errors must not
 retry controller mutations with another credential.
 
+Before creating a new rotation journal or adopting a first-install environment
+seed, reject credentials that cannot survive HTTP Authorization transport:
+trailing ASCII spaces/tabs and invalid header bytes. Do not trim or change the
+credential. Leading spaces/tabs, short values and Unicode remain supported.
+Existing confirmed credentials and pending journals retain their recovery path;
+new-admission validation must not reject those historical values during startup.
+
 Keep authentication proof, atomic file updates, rotation recovery, TUN admin
 authentication, routing, DNS and container permissions unchanged. This does not
 make an old Compose installation ready for TUN; the complete deployment update

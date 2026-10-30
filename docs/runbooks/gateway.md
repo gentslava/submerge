@@ -26,8 +26,10 @@ credentials. Host-run development keeps its existing HWID sharing behavior.
 Existing installations must receive the updated complete Compose once. Updating
 only the application image cannot grant missing Docker permissions or ports.
 Keep the existing SQLite/config/rule mounts when adapting a custom deployment.
-Bootstrap generates a random engine credential when none exists and retains any
-nonempty manual credential without a minimum-length requirement. Ordinary server
+Bootstrap generates a random engine credential when none exists and retains
+existing credentials without a minimum-length requirement. New manual seeds and
+rotations must be representable in HTTP Authorization: no invalid header bytes or
+trailing ASCII space/tab. Leading whitespace and Unicode are preserved. Ordinary server
 startup also prepares a missing credential if the Compose init service was skipped.
 In that older topology, restart Mihomo after the application writes its generated
 config so the engine loads the API credential; config reload alone retains the

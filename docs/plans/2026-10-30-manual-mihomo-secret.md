@@ -175,3 +175,79 @@ Final totals: Standards 0; Spec 0. Incremental P2 independently rechecked as
 resolved. Static and final Docker gates are green; the prior browser gate remains
 valid. Packaged release, production and physical deployment acceptance remain
 unperformed. Correction prepared for the user's authorized commit/push to PR #54.
+
+## Review 5708397413: credential admission
+
+Baseline: `b0fbdcfcbb147e8dfe0e5cc61b76bcd913ddece0`.
+Validate a new rotation or first-install environment seed before it can become
+durable. Share the controller Authorization builder with transport, reject only
+unrepresentable header bytes and trailing ASCII space/tab, preserve leading
+whitespace and Unicode, and leave existing confirmed/pending recovery unchanged.
+The manual credential length remains unrestricted.
+
+- [x] Red/green admission and recovery regressions.
+- [x] Raw static verification and focused runtime evidence.
+- [x] Independent incremental and final Standards/Spec review.
+- [x] Prepare the correction for the authorized update to PR #54.
+
+Before correction, 11 new admission cases failed (5 new rotations plus 6 initial
+environment seeds; NUL rotation was already blocked by the shared schema):
+`/tmp/submerge-pr54-round2-red.log`. Tests also preserve short/Unicode/leading
+whitespace values, existing pending journals and confirmed credential precedence.
+Focused server-package execution passed 111 tests, including real startup cases
+(`/tmp/submerge-pr54-round2-green-server.log`). An earlier root-directory direct
+runner could not resolve the startup child's package-local tsx; no source change
+was needed when run from the server package.
+
+Raw static passed: 142 shared / 1388 server / 297 web tests, four opt-in skipped,
+and production builds (`/tmp/submerge-pr54-round2-static-final.log`). Initial
+concurrent whole-worktree checks timed out in 5-second network-bootstrap child
+tests in both branches; serial reruns passed unchanged. Existing browser evidence
+remains valid: no web implementation or new UI control changed.
+
+Local Linux/arm64 Docker verification passed with the final compiled server over
+the published runtime image. A rejected `abc ` first-install seed left neither a
+confirmed key nor a pending journal. Recreating only the app with a valid leading
+space/tab + Unicode seed worked on the same volumes and preserved those bytes.
+The actual controller client and credential probe authenticated after engine/app
+restart; unauthenticated requests returned 401. Six unusable new rotation values
+left DB credentials, journal and config unchanged; previous-key controller
+recovery worked for each. App uid: 999. Temporary resources were removed.
+Artifacts: chat scratch `manual-secret-admission/{compose.yaml,smoke.py,smoke.log,results.json}`.
+This is runtime verification with a compiled-code overlay, not packaged release
+or production acceptance.
+
+### Incremental Standards
+
+Reviewer `/root/incremental_standards`: no findings on the complete correction.
+Admission and transport share the Authorization builder; new persistence is
+guarded while historical recovery remains intact. No documented-standard
+violations or actionable smells.
+
+### Incremental Spec
+
+Reviewer `/root/pr54_final_spec`: no findings. New seed/rotation validation runs
+before persistence, existing saved/pending values retain recovery, leading
+whitespace/Unicode/short values remain unchanged. Independent Node Headers checks
+confirmed the valid examples survive unchanged. No scope creep or partial requirements.
+
+Incremental totals: Standards 0; Spec 0. The environment template and runbook also
+clarify the representability constraint without adding a length requirement.
+
+### Final Standards
+
+Reviewer `/root/final_standards`: no findings across the entire feature from
+`7a92a3a7b764162c0fa04dea5f2e2c20c07722fc` and the final correction. Shared
+transport/admission validation, historical recovery and documentation conform to
+the repository's boundaries and standards; no actionable smells.
+
+### Final Spec
+
+Reviewer `/root/round2_final_spec`: no findings across the entire feature. All
+new-admission review requirements are implemented before persistence; confirmed
+credentials and pending journals retain recovery. Short values, Unicode and
+leading whitespace remain supported. No length minimum or scope creep introduced.
+
+Final totals for this correction: Standards 0; Spec 0. All required local gates
+are green. Later environment-template/runbook edits only clarify the verified
+behavior. Publication to the existing PR is authorized; no merge/deployment run.

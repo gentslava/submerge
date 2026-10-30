@@ -3,6 +3,7 @@ import { setSettingInput } from "@submerge/shared";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
+  buildMihomoAuthorization,
   probeMihomoCredential,
   setMihomoSecret,
   setMihomoSecretRecovery,
@@ -83,8 +84,13 @@ export function prepareMihomoSecretForBootstrap(db: Db): string {
     installRecoveryCredential(pending);
     return pending.nextEffective;
   }
-  const secret = confirmedSecret(db);
-  if (secret) return secret;
+  const stored = getSetting(db, "mihomoSecret");
+  if (stored) return stored;
+  const seed = env.MIHOMO_SECRET;
+  if (seed) {
+    buildMihomoAuthorization(seed);
+    return seed;
+  }
   return beginMihomoSecretRotation(db, randomBytes(32).toString("hex")).rotation.nextEffective;
 }
 
@@ -136,6 +142,7 @@ export function beginMihomoSecretRotation(
     installRecoveryCredential(existing);
     return { created: false, rotation: existing };
   }
+  buildMihomoAuthorization(nextStored);
   const rotation = pendingMihomoSecretRotationSchema.parse({
     id: randomUUID(),
     nextEffective: nextStored || env.MIHOMO_SECRET,

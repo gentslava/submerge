@@ -238,12 +238,19 @@ function boundedSignal(
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
-function authenticatedHeaders(init: RequestInit, secret: string): Headers {
-  const headers = new Headers(init.headers);
+export function buildMihomoAuthorization(secret: string): string {
+  if (/[ \t]$/u.test(secret)) {
+    throw new Error("mihomo secret must not end with a space or tab");
+  }
   // Headers takes a byte string; Mihomo compares the raw token with UTF-8 config bytes.
   const authorization = `Bearer ${Buffer.from(secret, "utf8").toString("latin1")}`;
   validateHeaderValue("Authorization", authorization);
-  headers.set("Authorization", authorization);
+  return authorization;
+}
+
+function authenticatedHeaders(init: RequestInit, secret: string): Headers {
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", buildMihomoAuthorization(secret));
   return headers;
 }
 

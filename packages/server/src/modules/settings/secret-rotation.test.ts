@@ -20,7 +20,8 @@ const mihomoClient = vi.hoisted(() => ({
     vi.fn<(primary: string, fallback: string, onPrimaryAuthenticated?: () => boolean) => void>(),
 }));
 
-vi.mock("../../clients/mihomo.js", () => ({
+vi.mock("../../clients/mihomo.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../clients/mihomo.js")>()),
   probeMihomoCredential: mihomoClient.probe,
   setMihomoSecret: mihomoClient.set,
   setMihomoSecretRecovery: mihomoClient.setRecovery,
@@ -37,6 +38,76 @@ beforeEach(() => {
 });
 
 describe("mihomo secret rotation journal", () => {
+  it.each(["abc ", "abc\t", "abc\n", "abc\u0001", "abc\u007f", "abc\u0000"])(
+    "rejects a new unrepresentable credential before journaling (%j)",
+    (secret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", "previous-key");
+      expect(() => beginMihomoSecretRotation(db, secret)).toThrow();
+      expect(getSetting(db, "mihomoSecret")).toBe("previous-key");
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+      expect(mihomoClient.setRecovery).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["a", "abc", "密码", "café", "🔑", " abc", "\tabc"])(
+    "keeps an HTTP-representable manual credential unchanged (%j)",
+    (secret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", "previous-key");
+      const attempt = beginMihomoSecretRotation(db, secret);
+      expect(attempt.rotation).toMatchObject({ nextStored: secret, nextEffective: secret });
+      expect(mihomoClient.setRecovery).toHaveBeenCalledWith(secret, "previous-key");
+    },
+  );
+  it.each(["abc ", "abc\t", "abc\n", "abc\u0001", "abc\u007f", "abc\u0000"])(
+    "does not adopt an unusable first-install environment seed (%j)",
+    (secret) => {
+      const db = freshDb();
+      const previous = env.MIHOMO_SECRET;
+      try {
+        env.MIHOMO_SECRET = secret;
+        expect(() => prepareMihomoSecretForBootstrap(db)).toThrow();
+        expect(getSetting(db, "mihomoSecret")).toBeUndefined();
+        expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+        expect(mihomoClient.setRecovery).not.toHaveBeenCalled();
+        env.MIHOMO_SECRET = "abc";
+        expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+      } finally {
+        env.MIHOMO_SECRET = previous;
+      }
+    },
+  );
+  it.each(["abc ", "abc\t", "abc\n", "abc\u0001", "abc\u007f"])(
+    "resumes an existing pending journal without new-admission validation (%j)",
+    (secret) => {
+      const db = freshDb();
+      const journal = JSON.stringify({
+        id: "00000000-0000-4000-8000-000000000001",
+        version: 2,
+        nextEffective: secret,
+        nextStored: secret,
+        previousEffective: "previous-key",
+      });
+      setSetting(db, "mihomoSecret", "previous-key");
+      setSetting(db, "internal.mihomoSecretRotation", journal);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      expect(beginMihomoSecretRotation(db, secret).created).toBe(false);
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBe(journal);
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "previous-key");
+    },
+  );
+  it("does not validate an unused environment seed or an existing confirmed credential", () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "unused seed ";
+      setSetting(db, "mihomoSecret", "existing confirmed ");
+      expect(prepareMihomoSecretForBootstrap(db)).toBe("existing confirmed ");
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
   it("keeps the automatic confirmed credential when resetting a deployment with no explicit seed", () => {
     const db = freshDb();
     const previousSecret = env.MIHOMO_SECRET;
