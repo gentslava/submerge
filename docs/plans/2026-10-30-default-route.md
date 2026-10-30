@@ -88,14 +88,14 @@ Incremental totals: Standards 0; Spec 3 P2, all resolved.
 The same skill reviewed the entire feature against the pinned baseline, followed
 by independent verification of the final corrections.
 
-### Standards
+### Initial feature final Standards review
 
 Reviewer: `/root/final_standards`. No findings on the complete feature or final
 delta. The routing-uncertainty getter preserves the existing activation-proof
 contract; both registration callbacks are cleaned up together. No unresolved
 standards violations or actionable smells.
 
-### Spec
+### Initial feature final Spec review
 
 Reviewer: `/root/final_spec`. One P2, resolved: the separately injected managed
 provider can match the IP-trace destination before the Direct catch-all. A failed
@@ -151,7 +151,7 @@ summary counts, both added cases passed again with zero retries
 `/tmp/submerge-default-route-1440-dark.png`. The reused controls and existing
 diagnostic hierarchy remain intact; no UI implementation changed in this follow-up.
 
-### Incremental Standards
+### Diagnostics incremental Standards review
 
 Invoked the same `code-review` skill for the full correction against `3bdbedc`,
 including all working files. Reviewer: `/root/incremental_standards`.
@@ -160,7 +160,7 @@ One P2: concurrent diagnostic callers shared the raw probe promise and the secon
 caller bypassed the revision check. The complete checked result is now shared.
 No additional documented-standard violations or actionable smells were found.
 
-### Incremental Spec
+### Diagnostics incremental Spec review
 
 Reviewer: `/root/final_spec` (incremental pass for this correction).
 
@@ -229,13 +229,13 @@ simultaneous full-suite runs on both worktrees timed out in two unrelated
 source or timeout changes. The existing 41-scenario browser evidence remains
 valid because this correction only changes a test and its plan.
 
-### Incremental Standards
+### Lifecycle assertions incremental Standards review
 
 Reviewer `/root/incremental_standards`: no findings. Lifecycle callbacks record
 observations and all checks run outside the application error-catching path.
 No documented-standard violations or actionable smells.
 
-### Incremental Spec
+### Lifecycle assertions incremental Spec review
 
 Reviewer `/root/pr54_final_spec`: no findings. The requested assertion placement,
 explicit successful results and existing rollback/rejection checks are preserved.
@@ -358,7 +358,7 @@ engine agree after recovery. Artifacts: chat scratch
 The network was isolated; temporary containers, networks and volumes were removed.
 Real TUN/device, production and physical LAN acceptance remain unperformed.
 
-### Incremental Standards
+### Common recovery incremental Standards review
 
 Reviewer `/root/final_standards`: one P2 documented-standard finding.
 CONTRIBUTING requires an ADR for a significant architectural decision. Added
@@ -366,7 +366,7 @@ CONTRIBUTING requires an ADR for a significant architectural decision. Added
 architecture overview link, describing ownership, boundaries and tradeoffs.
 No actionable heuristic smells. Independent resolution check follows.
 
-### Incremental Spec
+### Common recovery incremental Spec review
 
 Reviewer `/root/pr54_final_spec`: no findings. The common desired/pending/accepted
 lifecycle matches the user's architectural request. Both proven file generations
@@ -499,7 +499,7 @@ Reviewed final source tree `b2bbcfd3b3b1b770a1587a209acf3a10b1fcedc4` against
 master `fe3a5c290e127e7253cc8d9f587d7e5f2094cc54`. Subsequent changes only append
 the factual runtime/review receipts in this plan; production source is unchanged.
 
-#### Standards
+#### Common recovery final Standards review
 
 `/root/final_standards`: no findings. The wide pass covered routing, rollback,
 common recovery, managed-store protection, credential integration, diagnostics
@@ -508,7 +508,7 @@ documented-standard violations or actionable smell findings. The reviewer also
 checked the subsequent Docker receipt and independently passed all 23 bootstrap
 tests during the final correction.
 
-#### Spec
+#### Common recovery final Spec review
 
 `/root/round2_final_spec`: no unresolved findings. The wide pass covered Default
 routing, empty VPN pools, common crash recovery, proof rebasing, explicit rollback,
@@ -566,13 +566,13 @@ Temporary containers, networks and volumes are removed by the harness.
 Incremental `/code-review` on `1659422` to source tree
 `a5ca5cbadaaea83b41c9087214c8e3326619c013`:
 
-#### Standards
+#### Rollback incremental Standards review
 
 `/root/final_standards`: no findings; no documented-standard violations or
 actionable smells. Atomic mutation rollback and file-bound pending proof preserve
 the common lifecycle. Independently passed all four new cases.
 
-#### Spec
+#### Rollback incremental Spec review
 
 `/root/pr54_final_spec`: no findings; unconfirmed rollback gap resolved. Ordinary
 retry now verifies identical restored bytes, successful restore keeps prior
@@ -586,14 +586,14 @@ list; no overlap with this correction. Its merge base remains `fe3a5c2`.
 Final whole-feature `/code-review` against `fe3a5c2`, pinned tree
 `7554cf59b0b4ffd042392353e5eba780973ec9b8`:
 
-#### Standards
+#### Rollback final Standards review
 
 `/root/final_standards`: zero unresolved documented violations and actionable
 smells. Reviewed persistence, API/UI behavior, generated routing, rollback and
 restart recovery, managed-store protection, credentials, diagnostics/readiness,
 tests and documentation. The correction fits the existing recovery owner.
 
-#### Spec
+#### Rollback final Spec review
 
 `/root/pr54_final_spec`: zero unresolved findings across the complete feature.
 Default routing and explicit VPN priority, accepted-engine diagnostics, pending
@@ -605,3 +605,21 @@ Final totals: Standards 0; Spec 0. Source remains unchanged since the full stati
 and real-engine rollback runs. Only these review receipts follow the pinned tree.
 UI rendering is unchanged; prior browser evidence remains applicable. Production,
 physical LAN and real TUN-device acceptance remain unperformed.
+
+Review `5710153057` reports no new functional finding on `d8f9d08`; the engine
+rollback comment is resolved by CodeRabbit. GitHub CI, including browser E2E,
+both Docker builds and secret scanning passed on that commit. Its remaining
+unverified Markdown comment identifies repeated review headings. Scope each
+repeated heading by the review round without changing any recorded result or
+production source; verify that headings are unique throughout this plan.
+
+The duplicate-heading check passes with 33 unique headings. Full raw static also
+passes again with 142 shared / 1467 server / 297 web tests, four opt-in skips and
+all builds (`/tmp/submerge-pr53-headings-static.log`). This follow-up changes only
+this plan; production code, tests and UI are identical to `d8f9d08`.
+
+Documentation incremental and final integration reviews on tree `9491c6e`:
+Standards `/root/final_standards` and Spec `/root/pr54_final_spec` both report zero
+findings at both scales. Each independently confirmed unchanged application/test/UI
+source and preserved evidence. All GitHub checks, including CodeRabbit, passed on
+`d8f9d08`; this follow-up only changes plan headings and these factual receipts.
