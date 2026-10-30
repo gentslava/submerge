@@ -1182,7 +1182,7 @@
     justify-content: space-between;
   }
 
-  .segmented-control {
+  .segmented-control:not(.segmented-control--stretch) {
     display: inline-flex;
     width: auto;
     flex-wrap: nowrap;
@@ -1315,6 +1315,10 @@
   .latency-chart {
     --latency-chart-height: 92px;
   }
+}
+
+.segmented-control--stretch > button {
+  font-size: var(--text-sub);
 }
 
 @container app-page (min-width: 48rem) {

@@ -262,25 +262,23 @@ test("routing renders its channel-list error state", async ({ page }) => {
   await expectNoDocumentOverflow(page);
 });
 
-test("mobile reorder sends Direct and proxy ids in their new order without Default", async ({
+test("Direct is pinned before Default while proxy channels remain reorderable", async ({
   page,
 }) => {
   await installTrpcFixture(page, { "channels.list": populatedChannels });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/routing");
-
-  const requestPromise = page.waitForRequest(
-    (request) => new URL(request.url()).pathname === "/trpc/channels.reorder",
+  await expect(page.getByRole("button", { name: "Опустить канал «Direct» ниже" })).toHaveCount(0);
+  const headings = page.getByRole("button", { name: /Развернуть канал/ });
+  const labels = await headings.evaluateAll((buttons) =>
+    buttons.map((button) => button.getAttribute("aria-label")),
   );
-  await page.getByRole("button", { name: "Опустить канал «Direct» ниже" }).click();
-  const request = await requestPromise;
-  const payload = request.postDataJSON() as {
-    json?: { ids?: string[] };
-    0?: { ids?: string[]; json?: { ids?: string[] } };
-  };
-  const ids = payload.json?.ids ?? payload[0]?.json?.ids ?? payload[0]?.ids;
-  expect(ids).toEqual(["advanced", "direct"]);
-  expect(ids).not.toContain("default");
+  expect(labels.indexOf("Развернуть канал «Advanced»")).toBeLessThan(
+    labels.indexOf("Развернуть канал «Direct»"),
+  );
+  expect(labels.indexOf("Развернуть канал «Direct»")).toBeLessThan(
+    labels.indexOf("Развернуть канал «Default»"),
+  );
 });
 
 for (const width of [320, 390, 425, 768, 983, 984, 1024, 1440]) {

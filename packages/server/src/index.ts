@@ -10,13 +10,17 @@ import { runMigrations } from "./db/migrate.js";
 import { liveHub } from "./live/singleton.js";
 import { operationalLog, setUiEventSink } from "./log.js";
 import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
+import { readNetworkSettings, validateGatewayStartup } from "./modules/gateway/settings.js";
 import {
   logHub,
   reconcileDomainRuleDeployment,
   shutdownDomainIntelligenceRuntime,
   startDomainRuleApplyWorker,
 } from "./modules/logs/singleton.js";
-import { restorePendingMihomoSecretRotation } from "./modules/settings/secret-rotation.js";
+import {
+  readMihomoBootstrapSecret,
+  restorePendingMihomoSecretRotation,
+} from "./modules/settings/secret-rotation.js";
 import { sourceRefreshScheduler } from "./modules/sources/instance.js";
 import { startSchedulerAfter } from "./modules/sources/scheduler.js";
 import { backfillSubUrls } from "./modules/sources/service.js";
@@ -51,6 +55,8 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
 
 // Apply any pending DB migrations before accepting connections
 runMigrations();
+readNetworkSettings(db);
+validateGatewayStartup(db, readMihomoBootstrapSecret(db));
 
 // Seed the Default channel on first boot (idempotent — no-op if already present).
 ensureDefaultChannel(db);

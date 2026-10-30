@@ -44,6 +44,7 @@ const POLICY_LABEL: Record<ChannelPolicy["kind"], string> = {
 };
 
 interface ChannelCardBaseProps {
+  publishedFiles?: string[];
   busy?: boolean;
   initiallyExpanded?: boolean;
   reorderControl?: ReactNode;
@@ -142,12 +143,14 @@ export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(
             <div className="h-px w-full bg-border-subtle" aria-hidden="true" />
             {isDirectChannelCardProps(props) ? (
               <DirectChannelEditor
+                publishedFiles={props.publishedFiles ?? []}
                 channel={props.channel}
                 onChange={props.onUpdateDirect}
                 disabled={busy}
               />
             ) : (
               <ChannelEditor
+                publishedFiles={props.publishedFiles ?? []}
                 channel={props.channel}
                 onUpdateName={props.onUpdateName}
                 onUpdateMatcher={props.onUpdateMatcher}
@@ -352,12 +355,14 @@ function DefaultRow({
 // (see channels/pool.ts's resolveChannelProxies and the Settings screen, which
 // already edits the Default's policy through the same setPolicy call).
 function ChannelEditor({
+  publishedFiles,
   channel,
   onUpdateName,
   onUpdateMatcher,
   onUpdatePolicy,
   onRemove,
 }: {
+  publishedFiles: string[];
   channel: ProxyChannel;
   onUpdateName: (name: string) => void;
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
@@ -400,6 +405,21 @@ function ChannelEditor({
           </>
         )}
       </div>
+      {channel.isDefault && (
+        <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-label text-text-primary">Всегда через VPN</span>
+            <span className="text-xs text-text-tertiary">
+              Эти списки имеют приоритет над правилами Direct.
+            </span>
+          </div>
+          <RuleProviderRows
+            publishedFiles={publishedFiles}
+            value={channel.matcher.ruleProviders}
+            onChange={(ruleProviders) => onUpdateMatcher({ ...channel.matcher, ruleProviders })}
+          />
+        </div>
+      )}
       {!channel.isDefault && (
         <>
           <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
@@ -422,6 +442,7 @@ function ChannelEditor({
               </span>
             </div>
             <RuleProviderRows
+              publishedFiles={publishedFiles}
               value={channel.matcher.ruleProviders}
               onChange={(ruleProviders) => onUpdateMatcher({ ...channel.matcher, ruleProviders })}
             />

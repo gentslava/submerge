@@ -12,9 +12,15 @@ interface DirectChannelEditorProps {
   channel: DirectChannel;
   onChange: (patch: UpdateDirectInput) => void;
   disabled?: boolean;
+  publishedFiles?: string[];
 }
 
-export function DirectChannelEditor({ channel, onChange, disabled }: DirectChannelEditorProps) {
+export function DirectChannelEditor({
+  channel,
+  onChange,
+  disabled,
+  publishedFiles = [],
+}: DirectChannelEditorProps) {
   const emitChange = (patch: UpdateDirectInput) => {
     if (!disabled) onChange(patch);
   };
@@ -53,7 +59,7 @@ export function DirectChannelEditor({ channel, onChange, disabled }: DirectChann
       <section className="direct-editor-custom-heading flex w-full flex-col gap-[3px] px-3.5 pt-3.5 pb-2.5 @min-[42rem]/app-page:gap-1 @min-[42rem]/app-page:px-[18px] @min-[42rem]/app-page:pt-4 @min-[42rem]/app-page:pb-3">
         <SectionHeading
           title="Пользовательские правила"
-          description="Все совпадения направляются в native DIRECT"
+          description="Совпадения идут напрямую, без VPN"
         />
       </section>
 
@@ -81,22 +87,20 @@ export function DirectChannelEditor({ channel, onChange, disabled }: DirectChann
           onChange={(keywords) => updateMatcher("keywords", keywords)}
         />
       </MatcherSection>
-      <MatcherSection
-        title="Списки правил"
-        description="Внешние rule-providers, загружаемые напрямую"
-      >
+      <MatcherSection title="Списки правил" description="По ссылке или из опубликованных файлов">
         <RuleProviderRows
+          publishedFiles={publishedFiles}
           value={channel.matcher.ruleProviders}
           onChange={(ruleProviders) => updateMatcher("ruleProviders", ruleProviders)}
         />
       </MatcherSection>
-      <MatcherSection title="GEOSITE" description="Категории доменов из geodata">
+      <MatcherSection title="GEOSITE" description="Группы доменов, например category-ru">
         <GeoSiteTags
           value={channel.matcher.geosite}
           onChange={(geosite) => updateMatcher("geosite", geosite)}
         />
       </MatcherSection>
-      <MatcherSection title="GEOIP" description="Категории IP-адресов из geodata">
+      <MatcherSection title="GEOIP" description="Страны по IP-адресу, например RU">
         <GeoIpTags
           value={channel.matcher.geoip}
           onChange={(geoip) => updateMatcher("geoip", geoip)}

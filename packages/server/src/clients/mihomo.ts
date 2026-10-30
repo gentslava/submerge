@@ -81,14 +81,19 @@ export type MihomoProxy = z.infer<typeof mihomoProxySchema>;
 const proxiesResponseSchema = z.object({ proxies: z.record(z.string(), mihomoProxySchema) });
 export type ProxiesResponse = z.infer<typeof proxiesResponseSchema>;
 
-const ruleProviderSchema = z.object({
-  behavior: z.string().min(1),
-  format: z.string().min(1),
-  name: z.string().min(1),
-  ruleCount: z.number().int().nonnegative(),
-  type: z.string().min(1),
-  vehicleType: z.string().min(1),
-});
+const ruleProviderSchema = z
+  .object({
+    behavior: z.string().min(1),
+    format: z.string(),
+    name: z.string().min(1),
+    ruleCount: z.number().int().nonnegative(),
+    type: z.string().min(1),
+    vehicleType: z.string().min(1),
+  })
+  .refine(
+    (provider) => provider.format.length > 0 || provider.vehicleType === "Inline",
+    "Only inline providers may omit the file format",
+  );
 const ruleProvidersResponseSchema = z.object({
   providers: z.record(z.string().min(1), ruleProviderSchema),
 });
@@ -671,13 +676,47 @@ export async function measureDownload(url: string = SPEED_TEST_URL): Promise<Dow
   return { mbps, bytes, ms };
 }
 
-export async function reloadConfig(targetPath: string): Promise<void> {
+export async function reloadConfig(targetPath: string, payload?: string): Promise<void> {
   const r = await call("/configs?force=true", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: targetPath }),
+    body: JSON.stringify(payload === undefined ? { path: targetPath } : { path: "", payload }),
   });
   if (!r.ok) throw new Error(`mihomo reload returned HTTP ${r.status}`);
+}
+
+const dnsQueryResponseSchema = z.object({
+  Status: z.number().int().min(0).max(15),
+  Answer: z.array(z.object({ type: z.number().int(), data: z.string() })).default([]),
+});
+
+// The API queries the real resolver, bypassing the fake-IP listener mapping.
+export async function queryRealDns(name: string): Promise<string[]> {
+  const response = await call(`/dns/query?name=${encodeURIComponent(name)}&type=A`);
+  if (!response.ok) throw new Error(`mihomo DNS query returned HTTP ${response.status}`);
+  const parsed = dnsQueryResponseSchema.parse(await response.json());
+  if (parsed.Status !== 0) throw new Error("mihomo real DNS query failed");
+  return z
+    .array(z.ipv4())
+    .min(1)
+    .parse(parsed.Answer.filter((answer) => answer.type === 1).map((answer) => answer.data.trim()));
+}
+
+// Callers use a unique name when testing availability: the API can return stale
+// cache entries even when upstream refresh fails.
+export async function queryDnsResolution(name: string): Promise<boolean> {
+  const response = await call(`/dns/query?name=${encodeURIComponent(name)}&type=A`);
+  if (!response.ok) throw new Error(`mihomo DNS query returned HTTP ${response.status}`);
+  const parsed = dnsQueryResponseSchema.parse(await response.json());
+  return (
+    parsed.Status === 3 ||
+    (parsed.Status === 0 &&
+      parsed.Answer.filter((answer) => answer.type === 1).some(
+        (answer) =>
+          z.ipv4().safeParse(answer.data.trim()).success &&
+          !/^198\.(18|19)\./u.test(answer.data.trim()),
+      ))
+  );
 }
 
 const mihomoLogLevelSchema = z.enum(["debug", "info", "warn", "warning", "error"]);

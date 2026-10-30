@@ -1,0 +1,47 @@
+# Optional parallel test instance; capture mode is still selected in Settings.
+# docker compose -p submerge-test -f docker-compose.yml -f docker-compose.test.yml up -d
+services:
+  submerge-volumes:
+    volumes: !override
+      - test-mihomo:/mihomo
+      - test-domain-rules:/domain-rules
+      - submerge-data:/app/data
+  submerge-init:
+    volumes: !override
+      - test-mihomo:/mihomo
+      - test-domain-rules:/domain-rules
+      - submerge-data:/app/data
+      - ${PRIVATE_LISTS_DIR:-./mihomo/private-lists}:/mihomo/private-lists:ro
+  submerge-network:
+    ports: !override
+      - "127.0.0.1:13000:3000"
+      - "127.0.0.1:17890:7890"
+      - "127.0.0.1:11053:1053/udp"
+      - "127.0.0.1:11053:1053/tcp"
+    networks:
+      gateway-lan:
+        ipv4_address: 172.30.221.2
+  mihomo:
+    volumes: !override
+      - test-mihomo:/root/.config/mihomo
+      - test-domain-rules:/root/.config/mihomo/domain-rules:ro
+      - ${PRIVATE_LISTS_DIR:-./mihomo/private-lists}:/root/.config/mihomo/private-lists:ro
+  submerge:
+    environment:
+      PROXY_ENDPOINT: 127.0.0.1:17890
+    volumes: !override
+      - test-mihomo:/mihomo
+      - test-domain-rules:/domain-rules
+      - submerge-data:/app/data
+      - ${PRIVATE_LISTS_DIR:-./mihomo/private-lists}:/mihomo/private-lists:ro
+  happ-decoder:
+    volumes: !override
+      - test-mihomo:/mihomo:ro
+networks:
+  gateway-lan:
+    ipam:
+      config: !override
+        - subnet: 172.30.221.0/24
+volumes:
+  test-mihomo:
+  test-domain-rules:

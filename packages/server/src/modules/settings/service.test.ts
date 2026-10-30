@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
@@ -106,6 +106,23 @@ describe("settings service", () => {
     expect(getSetting(db, "hwid")).toBe(hwid); // persisted in DB
     expect(readFileSync(file, "utf8").trim()).toBe(hwid); // mirrored to file
     expect(getOrCreateHwid(db, file)).toBe(hwid); // stable on second call
+  });
+
+  it("limits prepared HWID mirrors to the app and authorized decoder group", () => {
+    const db = freshDb();
+    setSetting(
+      db,
+      "internal.networkSettings",
+      JSON.stringify({ mode: "proxy", localResolvers: [] }),
+    );
+    const directory = mkdtempSync(join(tmpdir(), "submerge-hwid-"));
+    const created = join(directory, "created.txt");
+    getOrCreateHwid(db, created);
+    expect(statSync(created).mode & 0o777).toBe(0o640);
+    const adopted = join(directory, "adopted.txt");
+    writeFileSync(adopted, "aabbccddeeff00112233445566778899", { mode: 0o644 });
+    getOrCreateHwid(db, adopted);
+    expect(statSync(adopted).mode & 0o777).toBe(0o640);
   });
 
   it("adopts hwid from an existing file when DB is empty", () => {

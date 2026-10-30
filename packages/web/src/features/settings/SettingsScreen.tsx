@@ -21,6 +21,7 @@ import type { Theme } from "@/lib/theme";
 import { useTheme } from "@/lib/theme-context";
 import { useTRPC } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { NetworkSettingsSection } from "./NetworkSettingsSection";
 
 export function SettingsScreen() {
   const trpc = useTRPC();
@@ -113,6 +114,7 @@ export function SettingsScreen() {
         </div>
       ) : (
         <>
+          <NetworkSettingsSection />
           <Section title="Внешний вид" desc="Оформление панели.">
             <Row label="Тема" sub="Тёмная · светлая · системная">
               {/*

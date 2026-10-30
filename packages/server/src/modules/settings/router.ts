@@ -16,7 +16,11 @@ import { getSettingsView, isInternalSettingKey, setSetting } from "./service.js"
 export const settingsRouter = router({
   get: protectedProcedure.query(() => getSettingsView(db)),
   set: protectedProcedure.input(setSettingInput).mutation(async ({ input }) => {
-    if (isInternalSettingKey(input.key) || input.key === "domainIntelligence") {
+    if (
+      isInternalSettingKey(input.key) ||
+      input.key === "domainIntelligence" ||
+      input.key === "networkProfile"
+    ) {
       throw new TRPCError({ code: "FORBIDDEN", message: "managed settings are read-only" });
     }
     if (input.key !== "mihomoSecret") setSetting(db, input.key, input.value);
