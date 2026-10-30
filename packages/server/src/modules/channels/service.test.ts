@@ -608,22 +608,26 @@ describe("Default route persistence and activation", () => {
       .run();
     const beforeApply = readConfigApplyState();
     expect(beforeApply.inProgress).toBe(false);
+    const progressDuringReload: boolean[] = [];
+    const progressDuringStaging: boolean[] = [];
     const fetch = vi.fn(() => {
-      expect(readConfigApplyState().inProgress).toBe(true);
+      progressDuringReload.push(readConfigApplyState().inProgress);
       return Promise.resolve(new Response(null, { status: 204 }));
     });
     vi.stubGlobal("fetch", fetch);
-    await applyConfig(db, configPath, configPath);
+    await expect(applyConfig(db, configPath, configPath)).resolves.toMatchObject({ applied: true });
     const stage = (route: "direct" | "proxy") => () => {
-      expect(readConfigApplyState().inProgress).toBe(true);
+      progressDuringStaging.push(readConfigApplyState().inProgress);
       const previous = readDefaultChannel(db).defaultRoute;
       setDefaultRoute(db, route);
       return () => setDefaultRoute(db, previous);
     };
-    await applyConfig(db, configPath, configPath, {
-      stageConfigMutation: stage("direct"),
-      rollbackOnFailure: true,
-    });
+    await expect(
+      applyConfig(db, configPath, configPath, {
+        stageConfigMutation: stage("direct"),
+        rollbackOnFailure: true,
+      }),
+    ).resolves.toMatchObject({ applied: true });
     expect((yaml.load(readFileSync(configPath, "utf8")) as { rules: string[] }).rules.at(-1)).toBe(
       "MATCH,DIRECT",
     );
@@ -632,7 +636,7 @@ describe("Default route persistence and activation", () => {
     expect(afterAccepted.inProgress).toBe(false);
     expect(afterAccepted.revision).toBeGreaterThan(beforeApply.revision);
     fetch.mockImplementation(() => {
-      expect(readConfigApplyState().inProgress).toBe(true);
+      progressDuringReload.push(readConfigApplyState().inProgress);
       return Promise.reject(new Error("engine offline"));
     });
     await expect(
@@ -646,5 +650,9 @@ describe("Default route persistence and activation", () => {
     expect(readFileSync(configPath, "utf8")).toBe(accepted);
     expect(readConfigApplyState().inProgress).toBe(false);
     expect(readConfigApplyState().revision).toBeGreaterThan(afterAccepted.revision);
+    expect(progressDuringReload.length).toBeGreaterThan(0);
+    expect(progressDuringReload.every(Boolean)).toBe(true);
+    expect(progressDuringStaging.length).toBeGreaterThan(0);
+    expect(progressDuringStaging.every(Boolean)).toBe(true);
   });
 });

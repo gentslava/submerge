@@ -2,10 +2,15 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import type { DefaultRoute } from "@submerge/shared";
 import * as yaml from "js-yaml";
 import { z } from "zod";
 import { env } from "./config/env.js";
-import { ensureDefaultChannel, ensureDirectChannel } from "./modules/channels/service.js";
+import {
+  ensureDefaultChannel,
+  ensureDirectChannel,
+  readDefaultChannel,
+} from "./modules/channels/service.js";
 import {
   assertGatewaySecurity,
   assertIndependentLocalDns,
@@ -22,7 +27,10 @@ import {
   restorePendingMihomoSecretRotation,
 } from "./modules/settings/secret-rotation.js";
 
-export function assertSafeGatewayBootstrap(content: string): void {
+export function assertSafeGatewayBootstrap(
+  content: string,
+  defaultRoute: DefaultRoute = "proxy",
+): void {
   const config = z
     .object({
       mode: z.literal("rule"),
@@ -33,9 +41,14 @@ export function assertSafeGatewayBootstrap(content: string): void {
       rules: z.array(z.string()).min(1),
     })
     .parse(yaml.load(content));
+  const unsafeDirectMatch = config.rules.some((rule, index) => {
+    const intendedCatchAll =
+      defaultRoute === "direct" && rule === "MATCH,DIRECT" && index === config.rules.length - 1;
+    return /^MATCH,DIRECT(?:,|$)/u.test(rule) && !intendedCatchAll;
+  });
   if (
     config["proxy-groups"].some((group) => group.proxies.includes("DIRECT")) ||
-    config.rules.some((rule) => /^MATCH,DIRECT(?:,|$)/u.test(rule)) ||
+    unsafeDirectMatch ||
     !config.rules.at(-1)?.startsWith("MATCH,")
   ) {
     throw new Error("Existing config is not a fail-closed gateway bootstrap");
@@ -59,6 +72,7 @@ export async function bootstrapNetwork(): Promise<void> {
     assertIndependentLocalDns(preferences);
     validatePrivateLists(preferences);
     if (secret === readMihomoSecret(db)) seedGatewayMihomoSecret(db, secret);
+    const defaultRoute = readDefaultChannel(db).defaultRoute;
     // Preserve the last accepted file on restart, including after a rejected apply.
     let content: string | undefined;
     if (existsSync(env.MIHOMO_CONFIG_PATH)) {
@@ -68,7 +82,7 @@ export async function bootstrapNetwork(): Promise<void> {
         assertGatewaySecurity(secret);
       }
       try {
-        assertSafeGatewayBootstrap(previous);
+        assertSafeGatewayBootstrap(previous, defaultRoute);
         if (document.secret !== secret) content = yaml.dump({ ...document, secret });
       } catch (error) {
         // Only the pre-TUN managed Proxy installation is migrated. Corrupt or
@@ -98,7 +112,7 @@ export async function bootstrapNetwork(): Promise<void> {
       );
     if (content !== undefined) {
       mkdirSync(dirname(env.MIHOMO_CONFIG_PATH), { recursive: true });
-      assertSafeGatewayBootstrap(content);
+      assertSafeGatewayBootstrap(content, defaultRoute);
       writeFileSync(`${env.MIHOMO_CONFIG_PATH}.tmp`, content, { mode: 0o600 });
       renameSync(`${env.MIHOMO_CONFIG_PATH}.tmp`, env.MIHOMO_CONFIG_PATH);
     }

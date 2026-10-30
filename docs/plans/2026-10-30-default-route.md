@@ -200,3 +200,104 @@ against the committed feature plus all working corrections. Final totals:
 Standards 0; Spec 0. All incremental findings were independently rechecked as
 resolved. Live engine/physical LAN/production acceptance for the feature and a
 rendered Pencil comparison remain unperformed.
+
+## Review 5708333779: lifecycle test assertions
+
+Baseline: `add23e5ba48a84efe63a86be649bb134f84c93db`.
+Record apply lifecycle observations inside callbacks and assert them after the
+operation. Assert successful apply results explicitly and keep the failed-reload
+rollback checks. Prove that an incorrect reload observation makes the corrected
+test fail instead of being swallowed as the expected rejection.
+
+- [x] Reproduce the false-positive test and verify the corrected assertion.
+- [x] Raw static verification.
+- [x] Independent incremental and final Standards/Spec review.
+- [x] Prepare the correction for the authorized update to PR #53.
+
+Fault injection in the original failing-reload mock replaced its busy-state
+assertion with `expect(false).toBe(true)`; the old test still passed
+(`/tmp/submerge-pr53-round2-false-positive.log`). The corrected test records reload
+and staging observations, checks successful apply results, and asserts all
+observations after rollback. Injecting a false failing-reload observation now
+fails the outer assertion (`/tmp/submerge-pr53-round2-red.log`). The fault was
+removed before verification; no production implementation changed.
+
+Raw static passed: 142 shared / 1370 server / 297 web tests, four opt-in skipped,
+and production builds (`/tmp/submerge-pr53-round2-static-final.log`). Initial
+simultaneous full-suite runs on both worktrees timed out in two unrelated
+5-second network-bootstrap subprocess tests each; serial reruns passed without
+source or timeout changes. The existing 41-scenario browser evidence remains
+valid because this correction only changes a test and its plan.
+
+### Incremental Standards
+
+Reviewer `/root/incremental_standards`: no findings. Lifecycle callbacks record
+observations and all checks run outside the application error-catching path.
+No documented-standard violations or actionable smells.
+
+### Incremental Spec
+
+Reviewer `/root/pr54_final_spec`: no findings. The requested assertion placement,
+explicit successful results and existing rollback/rejection checks are preserved.
+The fault-injection receipt demonstrates the corrected outer assertion fails.
+No production behavior change or scope creep.
+
+Incremental totals: Standards 0; Spec 0.
+
+### Final review: bootstrap integration finding
+
+Final Standards reviewer `/root/final_standards`: no findings. Final Spec
+reviewer `/root/round2_final_spec`: one P1. The old bootstrap validator rejects
+every `MATCH,DIRECT`, so prepared Proxy/TUN cannot restart with the saved Direct
+default. Extend bootstrap validation to permit an explicitly selected terminal
+Direct catch-all while preserving fail-closed VPN groups, accepted files and
+existing TUN security requirements. Add real bootstrap subprocess regressions
+for Proxy and TUN, including repeated startup, before publishing this correction.
+
+Four real bootstrap subprocess cases (prepared Proxy/TUN, with/without an accepted
+file) failed before the fix (`/tmp/submerge-pr53-bootstrap-red.log`). Bootstrap
+now passes the saved Default route to validation: only an explicitly intended
+terminal `MATCH,DIRECT` is allowed. Premature Direct matches, Direct members of
+VPN groups, and an unintended Direct catch-all remain rejected. Accepted files
+are retained and TUN administrator authentication remains required.
+
+Focused bootstrap/channel/config suites passed 50 tests
+(`/tmp/submerge-pr53-bootstrap-green.log`); each new restart case also checks the
+explicit Docker/npm rules and REJECT-only empty VPN pool. Raw static passed:
+142 shared / 1375 server / 297 web tests, four opt-in skipped, and production
+builds (`/tmp/submerge-pr53-bootstrap-static.log`). No UI implementation changed;
+prior browser evidence remains valid.
+
+The final bootstrap also passed four isolated Docker runtime cases under Node
+24.22.2 and uid 999, each invoking the actual compiled bootstrap CLI twice.
+Server/shared/migration artifacts were mounted over the published runtime; no
+network or TUN engine/device was used. Direct catch-all, accepted file and
+REJECT-only explicit package pool survived both invocations. Artifacts: chat
+scratch `default-bootstrap/{smoke.mjs,results.json,smoke.log}`. Container removed.
+
+Incremental bootstrap review: Standards `/root/incremental_standards` 0 findings;
+Spec `/root/pr54_final_spec` 0 findings. The intended terminal exception does not
+weaken VPN-group restrictions or existing TUN administrator checks. Separate
+whole-feature final recheck follows.
+
+### Final recheck Standards
+
+Reviewer `/root/final_standards`: no findings across the entire feature and final
+working corrections. The saved domain type controls the terminal Direct exception,
+VPN-group restrictions and TUN administrator checks remain intact, and accepted
+and regenerated files use the same validator. Lifecycle observations are checked
+outside swallowed callback errors. No actionable smells or rule violations.
+
+### Final recheck Spec
+
+Reviewer `/root/round2_final_spec`: no findings. The P1 is resolved. Independent
+generator-to-validator reproductions accept the selected Direct default in
+prepared Proxy and TUN, reject a VPN-default mismatch and Direct VPN-group fallback.
+The reviewer independently ran all 10 bootstrap tests, including the four actual
+subprocess startup/restart combinations. No remaining full-feature spec gap or
+scope creep.
+
+Final correction totals: Standards 0; Spec 1 P1, resolved and independently
+rechecked, with 0 unresolved. Raw static and Docker bootstrap gates are green;
+prior UI evidence remains valid. Engine/device, production and physical LAN
+acceptance remain unperformed. The correction is ready for authorized publication.
