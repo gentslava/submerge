@@ -78,7 +78,7 @@ describe("automatic network bootstrap", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
-  it("upgrades the managed legacy Proxy file without retaining its weak credential or DIRECT fallback", () => {
+  it("upgrades the managed legacy Proxy file while retaining its manual credential", () => {
     const directory = mkdtempSync(join(tmpdir(), "submerge-legacy-bootstrap-"));
     const path = join(directory, "config.yaml");
     try {
@@ -105,7 +105,7 @@ describe("automatic network bootstrap", () => {
       const content = readFileSync(path, "utf8");
       expect(() => assertSafeGatewayBootstrap(content)).not.toThrow();
       expect(content).not.toContain("MATCH,DIRECT");
-      expect(content).not.toContain("secret: poc");
+      expect(content).toContain("secret: poc");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

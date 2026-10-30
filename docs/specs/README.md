@@ -5,6 +5,7 @@ quick map. Update both when a spec ships.
 
 | Spec | Status |
 |---|---|
+| [2026-10-30 manual Mihomo credentials](2026-10-30-manual-mihomo-secret.md) | implemented and verified locally; not merged or deployed |
 | [2026-10-11 TUN engine and deployment](2026-10-11-gateway-design.md) | implemented and verified locally; not deployed |
 | [2026-10-11 native Proxy / TUN settings](2026-10-11-tun-settings-design.md) | implemented and verified locally; not deployed |
 | [2026-10-07 single-node JSON/YAML import](2026-10-07-single-node-import-design.md) | implemented and verified locally; prepared for PR |

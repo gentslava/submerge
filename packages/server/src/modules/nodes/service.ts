@@ -341,8 +341,8 @@ async function applyConfigNow(
     rollbackSafe = secretPreparation.rollbackSafe;
     if (preferences) {
       if (networkProfile.profile === "gateway") assertGatewaySecurity(secretPreparation.secret);
-      else if (secretPreparation.secret.length < 16)
-        throw new Error("Prepared deployment requires a strong engine secret");
+      else if (!secretPreparation.secret)
+        throw new Error("Prepared deployment requires an engine secret");
       assertIndependentLocalDns(preferences);
       privateListCounts = validatePrivateLists(preferences);
       if (!secretPreparation.pending) seedGatewayMihomoSecret(db, secretPreparation.secret);

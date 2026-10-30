@@ -20,7 +20,8 @@ const mihomoClient = vi.hoisted(() => ({
     vi.fn<(primary: string, fallback: string, onPrimaryAuthenticated?: () => boolean) => void>(),
 }));
 
-vi.mock("../../clients/mihomo.js", () => ({
+vi.mock("../../clients/mihomo.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../clients/mihomo.js")>()),
   probeMihomoCredential: mihomoClient.probe,
   setMihomoSecret: mihomoClient.set,
   setMihomoSecretRecovery: mihomoClient.setRecovery,
@@ -37,6 +38,76 @@ beforeEach(() => {
 });
 
 describe("mihomo secret rotation journal", () => {
+  it.each(["abc ", "abc\t", "abc\n", "abc\u0001", "abc\u007f", "abc\u0000"])(
+    "rejects a new unrepresentable credential before journaling (%j)",
+    (secret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", "previous-key");
+      expect(() => beginMihomoSecretRotation(db, secret)).toThrow();
+      expect(getSetting(db, "mihomoSecret")).toBe("previous-key");
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+      expect(mihomoClient.setRecovery).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["a", "abc", "密码", "café", "🔑", " abc", "\tabc"])(
+    "keeps an HTTP-representable manual credential unchanged (%j)",
+    (secret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", "previous-key");
+      const attempt = beginMihomoSecretRotation(db, secret);
+      expect(attempt.rotation).toMatchObject({ nextStored: secret, nextEffective: secret });
+      expect(mihomoClient.setRecovery).toHaveBeenCalledWith(secret, "previous-key");
+    },
+  );
+  it.each(["abc ", "abc\t", "abc\n", "abc\u0001", "abc\u007f", "abc\u0000"])(
+    "does not adopt an unusable first-install environment seed (%j)",
+    (secret) => {
+      const db = freshDb();
+      const previous = env.MIHOMO_SECRET;
+      try {
+        env.MIHOMO_SECRET = secret;
+        expect(() => prepareMihomoSecretForBootstrap(db)).toThrow();
+        expect(getSetting(db, "mihomoSecret")).toBeUndefined();
+        expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+        expect(mihomoClient.setRecovery).not.toHaveBeenCalled();
+        env.MIHOMO_SECRET = "abc";
+        expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+      } finally {
+        env.MIHOMO_SECRET = previous;
+      }
+    },
+  );
+  it.each(["abc ", "abc\t", "abc\n", "abc\u0001", "abc\u007f"])(
+    "resumes an existing pending journal without new-admission validation (%j)",
+    (secret) => {
+      const db = freshDb();
+      const journal = JSON.stringify({
+        id: "00000000-0000-4000-8000-000000000001",
+        version: 2,
+        nextEffective: secret,
+        nextStored: secret,
+        previousEffective: "previous-key",
+      });
+      setSetting(db, "mihomoSecret", "previous-key");
+      setSetting(db, "internal.mihomoSecretRotation", journal);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      expect(beginMihomoSecretRotation(db, secret).created).toBe(false);
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBe(journal);
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "previous-key");
+    },
+  );
+  it("does not validate an unused environment seed or an existing confirmed credential", () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "unused seed ";
+      setSetting(db, "mihomoSecret", "existing confirmed ");
+      expect(prepareMihomoSecretForBootstrap(db)).toBe("existing confirmed ");
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
   it("keeps the automatic confirmed credential when resetting a deployment with no explicit seed", () => {
     const db = freshDb();
     const previousSecret = env.MIHOMO_SECRET;
@@ -55,18 +126,132 @@ describe("mihomo secret rotation journal", () => {
       env.MIHOMO_SECRET = previousSecret;
     }
   });
-  it("automatically upgrades weak bootstrap auth with one durable candidate and retains the old recovery credential", async () => {
+  it("generates missing bootstrap auth with one durable candidate and retains recovery", async () => {
     const db = freshDb();
-    setSetting(db, "mihomoSecret", "poc");
-    const secret = prepareMihomoSecretForBootstrap(db);
-    expect(secret).toMatch(/^[a-f0-9]{64}$/u);
-    expect(getSetting(db, "mihomoSecret")).toBe("poc");
-    expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "poc");
-    expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+    const previous = env.MIHOMO_SECRET;
+    env.MIHOMO_SECRET = "";
+    try {
+      const secret = prepareMihomoSecretForBootstrap(db);
+      expect(secret).toMatch(/^[a-f0-9]{64}$/u);
+      expect(getSetting(db, "mihomoSecret")).toBeUndefined();
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "");
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      mihomoClient.probe.mockResolvedValue(true);
+      expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+      expect(getSetting(db, "mihomoSecret")).toBe(secret);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
+  it.each(["a", "abc", "fifteen-letters!"])(
+    "preserves the short confirmed credential %s",
+    (secret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", secret);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+    },
+  );
+  it("retains a short pending rotation through bootstrap and successful activation", async () => {
+    const db = freshDb();
+    setSetting(db, "mihomoSecret", "previous-key");
+    beginMihomoSecretRotation(db, "abc");
+    expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+    expect(getSetting(db, "mihomoSecret")).toBe("previous-key");
     mihomoClient.probe.mockResolvedValue(true);
     expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
-    expect(getSetting(db, "mihomoSecret")).toBe(secret);
-    expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+    expect(getSetting(db, "mihomoSecret")).toBe("abc");
+    expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+  });
+  it.each(["abc", ""])(
+    "recovers a legacy blank reset when the engine accepts %j",
+    async (engineSecret) => {
+      const db = freshDb();
+      setSetting(db, "mihomoSecret", "abc");
+      setSetting(
+        db,
+        "internal.mihomoSecretRotation",
+        JSON.stringify({
+          id: "00000000-0000-4000-8000-000000000001",
+          version: 2,
+          nextEffective: "",
+          nextStored: "",
+          previousEffective: "abc",
+        }),
+      );
+      const secret = prepareMihomoSecretForBootstrap(db);
+      expect(secret).toMatch(/^[a-f0-9]{64}$/u);
+      expect(prepareMihomoSecretForBootstrap(db)).toBe(secret);
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith(secret, "abc");
+      mihomoClient.probe.mockImplementation(
+        async (candidate) => !engineSecret || candidate === engineSecret,
+      );
+      await expect(prepareMihomoSecretForConfig(db)).resolves.toMatchObject({
+        pending: true,
+        secret,
+        rollbackSafe: Boolean(engineSecret),
+      });
+      mihomoClient.probe.mockResolvedValue(true);
+      expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+      expect(getSetting(db, "mihomoSecret")).toBe(secret);
+    },
+  );
+  it("persists the captured seed of a legacy blank reset before later environment edits", async () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "changed-before-restart";
+      setSetting(db, "mihomoSecret", "previous-key");
+      setSetting(
+        db,
+        "internal.mihomoSecretRotation",
+        JSON.stringify({
+          id: "00000000-0000-4000-8000-000000000001",
+          version: 2,
+          nextEffective: "abc",
+          nextStored: "",
+          previousEffective: "previous-key",
+        }),
+      );
+      expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+      expect(mihomoClient.setRecovery).toHaveBeenLastCalledWith("abc", "previous-key");
+      mihomoClient.probe.mockResolvedValue(true);
+      expect(await confirmPendingMihomoSecretRotation(db)).toBe(true);
+      expect(getSetting(db, "internal.mihomoSecretRotation")).toBeUndefined();
+      expect(getSetting(db, "mihomoSecret")).toBe("abc");
+      env.MIHOMO_SECRET = "changed-after-confirmation";
+      expect(prepareMihomoSecretForBootstrap(db)).toBe("abc");
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
+  it("uses a short explicit environment seed for a blank reset", () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "abc";
+      setSetting(db, "mihomoSecret", "previous-confirmed-key");
+      expect(beginMihomoSecretRotation(db, "").rotation).toMatchObject({
+        nextEffective: "abc",
+        nextStored: "abc",
+        previousEffective: "previous-confirmed-key",
+      });
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
+  });
+  it("generates a credential for a blank reset without any seed or confirmed key", () => {
+    const db = freshDb();
+    const previous = env.MIHOMO_SECRET;
+    try {
+      env.MIHOMO_SECRET = "";
+      const attempt = beginMihomoSecretRotation(db, "");
+      expect(attempt.rotation.nextEffective).toMatch(/^[a-f0-9]{64}$/u);
+      expect(attempt.rotation.nextStored).toBe(attempt.rotation.nextEffective);
+    } finally {
+      env.MIHOMO_SECRET = previous;
+    }
   });
   it("preserves an existing strong confirmed credential during deployment bootstrap", () => {
     const db = freshDb();
@@ -219,7 +404,7 @@ describe("mihomo secret rotation journal", () => {
       const attempt = beginMihomoSecretRotation(db, "");
       expect(attempt.rotation).toMatchObject({
         nextEffective: "env-secret-at-start",
-        nextStored: "",
+        nextStored: "env-secret-at-start",
         previousEffective: "old-secret",
       });
 

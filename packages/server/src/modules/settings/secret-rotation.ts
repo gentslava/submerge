@@ -3,6 +3,7 @@ import { setSettingInput } from "@submerge/shared";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import {
+  buildMihomoAuthorization,
   probeMihomoCredential,
   setMihomoSecret,
   setMihomoSecretRecovery,
@@ -10,7 +11,6 @@ import {
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { settings } from "../../db/schema.js";
-import { readGatewayRuntimeSettings } from "../gateway/settings.js";
 import { getSetting, setSetting } from "./service.js";
 
 const ROTATION_KEY = "internal.mihomoSecretRotation";
@@ -63,17 +63,34 @@ export function readMihomoBootstrapSecret(db: Db): string {
   return readPending(db)?.nextEffective ?? confirmedSecret(db);
 }
 
-// Bootstrap runs before the engine. Keep a durable old/new pair until the live
-// apply path proves the new credential, including an interrupted legacy upgrade.
+// Keep a durable old/new pair until the live apply path proves the new credential,
+// including application startup without init and interrupted legacy upgrades.
 export function prepareMihomoSecretForBootstrap(db: Db): string {
-  const pending = readPending(db);
+  const pending = db.transaction(
+    () => {
+      const current = readPending(db);
+      if (!current || current.nextStored) return current;
+      // Legacy Proxy resets left the stored value blank. Persist their captured
+      // seed, or generate one for an empty replacement. An unauthenticated engine
+      // accepts that candidate; the old key covers a reset not yet applied.
+      const secret = current.nextEffective || randomBytes(32).toString("hex");
+      const replacement = { ...current, nextEffective: secret, nextStored: secret };
+      setSetting(db, ROTATION_KEY, JSON.stringify(replacement));
+      return replacement;
+    },
+    { behavior: "immediate" },
+  );
   if (pending) {
-    if (pending.nextEffective.length < 16) throw new Error("Pending engine credential is weak");
     installRecoveryCredential(pending);
     return pending.nextEffective;
   }
-  const secret = confirmedSecret(db);
-  if (secret.length >= 16) return secret;
+  const stored = getSetting(db, "mihomoSecret");
+  if (stored) return stored;
+  const seed = env.MIHOMO_SECRET;
+  if (seed) {
+    buildMihomoAuthorization(seed);
+    return seed;
+  }
   return beginMihomoSecretRotation(db, randomBytes(32).toString("hex")).rotation.nextEffective;
 }
 
@@ -110,13 +127,12 @@ export function beginMihomoSecretRotation(
   nextStoredValue: string,
 ): MihomoSecretRotationAttempt {
   const existing = readPending(db);
-  // Gateway must retain the confirmed effective secret through env changes.
+  // Retain the confirmed effective secret through env changes.
   // Capture a blank reset now, so journal promotion is still a single transaction.
-  const defaultSecret = env.MIHOMO_SECRET.length >= 16 ? env.MIHOMO_SECRET : confirmedSecret(db);
+  const defaultSecret = env.MIHOMO_SECRET || confirmedSecret(db);
   const nextStored =
-    nextStoredValue === "" && readGatewayRuntimeSettings(db) !== undefined
-      ? (existing?.nextStored ??
-        (defaultSecret.length >= 16 ? defaultSecret : randomBytes(32).toString("hex")))
+    nextStoredValue === ""
+      ? (existing?.nextStored ?? (defaultSecret || randomBytes(32).toString("hex")))
       : nextStoredValue;
   setSettingInput.parse({ key: "mihomoSecret", value: nextStored });
   if (existing) {
@@ -126,6 +142,7 @@ export function beginMihomoSecretRotation(
     installRecoveryCredential(existing);
     return { created: false, rotation: existing };
   }
+  buildMihomoAuthorization(nextStored);
   const rotation = pendingMihomoSecretRotationSchema.parse({
     id: randomUUID(),
     nextEffective: nextStored || env.MIHOMO_SECRET,
