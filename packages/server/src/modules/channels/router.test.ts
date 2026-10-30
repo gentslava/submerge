@@ -22,6 +22,7 @@ vi.mock("./service.js", () => ({
   readDefaultChannel: vi.fn(() => ({})),
   reorderChannels: vi.fn(),
   setChannelPolicy: vi.fn(),
+  setDefaultRoute: vi.fn(),
   updateDirect: vi.fn(),
   updateChannel: vi.fn(),
 }));
@@ -51,6 +52,34 @@ beforeEach(() => {
 });
 
 describe("channels router — engine-apply status on every config mutation", () => {
+  it("stages a Default-only route choice and enables rollback for failed activation", async () => {
+    vi.mocked(service.readDefaultChannel).mockReturnValueOnce({ defaultRoute: "proxy" } as never);
+    applyConfigMock.mockImplementationOnce(async (_db, _file, _target, options) => {
+      const undo = options?.stageConfigMutation?.();
+      expect(service.setDefaultRoute).toHaveBeenCalledWith({}, "direct");
+      undo?.();
+      expect(service.setDefaultRoute).toHaveBeenLastCalledWith({}, "proxy");
+      return { nodes: 1, applied: true };
+    });
+    await expect(caller.channels.setDefaultRoute({ route: "direct" })).resolves.toEqual({
+      applied: true,
+    });
+    expect(applyConfig).toHaveBeenCalledWith(
+      {},
+      undefined,
+      undefined,
+      expect.objectContaining({ force: true, rollbackOnFailure: true }),
+    );
+  });
+
+  it("rejects unsupported routes and reports failed activation", async () => {
+    await expect(caller.channels.setDefaultRoute({ route: "invalid" as never })).rejects.toThrow();
+    expect(applyConfig).not.toHaveBeenCalled();
+    applyConfigMock.mockRejectedValueOnce(new Error("offline"));
+    await expect(caller.channels.setDefaultRoute({ route: "direct" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+  });
   it("reads canonical policy candidates without applying the config", async () => {
     vi.mocked(getPolicyNodeNames).mockReturnValueOnce(["AUTO-2"]);
     expect(await caller.channels.policyNodes({ id: "default" })).toEqual(["AUTO-2"]);

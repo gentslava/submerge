@@ -7,9 +7,16 @@ import {
 import { eq } from "drizzle-orm";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { describe, expect, it, vi } from "vitest";
+import { registerManagedDomainRuleProviderActiveSource } from "../../config/domain-rules.js";
 import { createDb, type Db } from "../../db/client.js";
 import { channels } from "../../db/schema.js";
-import { createChannel, ensureDefaultChannel, ensureDirectChannel } from "../channels/service.js";
+import {
+  createChannel,
+  ensureDefaultChannel,
+  ensureDirectChannel,
+  setDefaultRoute,
+} from "../channels/service.js";
+import { DomainRuleDeploymentController } from "../domain-intelligence/deployment-controller.js";
 import { getSetting, setSetting } from "../settings/service.js";
 import { DiagnosticsService, type DiagnosticsServiceDeps, SERVICE_PROBES } from "./service.js";
 
@@ -158,6 +165,101 @@ describe("DiagnosticsService cache", () => {
 });
 
 describe("DiagnosticsService orchestration", () => {
+  it("does not claim Direct while retained managed routing lacks an activation proof", async () => {
+    const db = freshDb();
+    db.update(channels).set({ enabled: false }).where(eq(channels.id, "direct")).run();
+    setDefaultRoute(db, "direct");
+    const applied = { nodes: 1, applied: true, activationVerified: true };
+    const applyConfigDirect = vi.fn(async () => applied);
+    const controller = new DomainRuleDeploymentController("report", {
+      provisionStore: async () => ({ ruleCount: 1 }),
+      inspectStore: async () => ({ ruleCount: 1 }),
+      storePreviouslyInitialized: () => true,
+      resolveTargetGroupName: () => "AUTO",
+      runConfigApply: async (apply) => apply(),
+      applyConfigDirect,
+      verifyActivation: async () => {
+        throw new Error("activation response unavailable");
+      },
+    });
+    await controller.reconcile();
+    expect(applyConfigDirect).toHaveBeenCalledWith({
+      force: true,
+      managedDomainRules: { targetGroupName: "AUTO" },
+    });
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(true);
+    const unregister = registerManagedDomainRuleProviderActiveSource(
+      () => controller.isManagedProviderActive(),
+      () => controller.mayHaveManagedRouting(),
+    );
+    try {
+      const result = await new DiagnosticsService(healthyDeps(db)).run({ force: true });
+      expect(result.externalIp).toMatchObject({
+        route: "через mihomo · текущие правила",
+        node: null,
+      });
+    } finally {
+      unregister();
+    }
+  });
+  it("keeps attribution uncertain when the separately managed VPN provider is active", async () => {
+    const db = freshDb();
+    db.update(channels).set({ enabled: false }).where(eq(channels.id, "direct")).run();
+    setDefaultRoute(db, "direct");
+    const unregister = registerManagedDomainRuleProviderActiveSource(() => true);
+    try {
+      const result = await new DiagnosticsService(healthyDeps(db)).run({ force: true });
+      expect(result.externalIp).toMatchObject({
+        route: "через mihomo · текущие правила",
+        node: null,
+      });
+    } finally {
+      unregister();
+    }
+  });
+  it("does not claim Direct attribution when an Always VPN list may match the trace", async () => {
+    const db = freshDb();
+    db.update(channels).set({ enabled: false }).where(eq(channels.id, "direct")).run();
+    setDefaultRoute(db, "direct");
+    db.update(channels)
+      .set({
+        matcher: {
+          ...emptyChannelMatcher(),
+          ruleProviders: [{ url: "https://rules.example.com/forced.yaml", behavior: "domain" }],
+        },
+      })
+      .where(eq(channels.id, "default"))
+      .run();
+    const result = await new DiagnosticsService(healthyDeps(db)).run({ force: true });
+    expect(result.externalIp).toMatchObject({
+      route: "через mihomo · текущие правила",
+      node: null,
+    });
+  });
+
+  it("checks the public IP and can report ready with Direct default and no VPN inventory", async () => {
+    const db = freshDb();
+    db.update(channels).set({ enabled: false }).where(eq(channels.id, "direct")).run();
+    setDefaultRoute(db, "direct");
+    const deps = healthyDeps(db);
+    vi.mocked(deps.getProxies).mockResolvedValue({ proxies: { DIRECT: leaf("DIRECT", "Direct") } });
+    const result = await new DiagnosticsService(deps).run({ force: true });
+    expect(deps.getExternalIpTrace).toHaveBeenCalledOnce();
+    expect(result.externalIp).toMatchObject({ status: "ok", route: "Default", node: "DIRECT" });
+    expect(result.state).toBe("ready");
+  });
+  it("attributes unmatched external traffic to Direct when it is the selected default", async () => {
+    const db = freshDb();
+    db.update(channels).set({ enabled: false }).where(eq(channels.id, "direct")).run();
+    setDefaultRoute(db, "direct");
+    const result = await new DiagnosticsService(healthyDeps(db)).run({ force: true });
+    expect(result.externalIp).toMatchObject({ route: "Default", node: "DIRECT" });
+    expect(result.routes.find((route) => route.channelId === "default")).toMatchObject({
+      node: "DIRECT",
+      detail: "Прямой маршрут",
+    });
+  });
   it("uses the real monotonic clock without detaching performance.now", async () => {
     const deps = healthyDeps();
     delete deps.monotonicNow;

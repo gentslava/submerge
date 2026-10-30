@@ -48,6 +48,7 @@ describe("DomainRuleDeploymentController", () => {
     expect(deps.applyConfigDirect).toHaveBeenCalledWith({ force: true });
     expect(deps.verifyActivation).not.toHaveBeenCalled();
     expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.mayHaveManagedRouting()).toBe(false);
   });
 
   it("keeps an attested existing provider active in report mode without provisioning", async () => {
@@ -68,6 +69,7 @@ describe("DomainRuleDeploymentController", () => {
       apply: { available: false, reason: "deployment-report-only" },
     });
     expect(controller.isManagedProviderActive()).toBe(true);
+    expect(controller.mayHaveManagedRouting()).toBe(true);
   });
 
   it("does not remove existing routing for an unmarked legacy store in report mode", async () => {
@@ -246,6 +248,9 @@ describe("DomainRuleDeploymentController", () => {
     expect(controller.readCapability()).toMatchObject({
       apply: { available: false, reason: "local-store-reconciliation-required" },
     });
+    expect(controller.isManagedProviderActive()).toBe(false);
+    expect(controller.requiresManagedProviderRecovery()).toBe(false);
+    expect(controller.mayHaveManagedRouting()).toBe(true);
   });
 
   it("fences later config applies after initialized-store boot attestation fails", async () => {

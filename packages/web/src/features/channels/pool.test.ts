@@ -16,6 +16,7 @@ const channel = (overrides: Partial<ProxyChannel>): ProxyChannel => ({
   id: "ch1",
   name: "Streaming",
   target: "proxy",
+  defaultRoute: "proxy",
   priority: -1,
   enabled: true,
   isDefault: false,

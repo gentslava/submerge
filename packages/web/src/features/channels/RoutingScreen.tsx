@@ -82,6 +82,12 @@ export function RoutingScreen() {
       qc.invalidateQueries({ queryKey: trpc.channels.list.queryKey() }),
       qc.resetQueries({ queryKey: trpc.channels.policyNodes.queryKey() }),
     ]);
+  const invalidateDefaultRoute = () =>
+    Promise.all([
+      invalidateChannels(),
+      qc.invalidateQueries({ queryKey: trpc.channels.get.queryKey() }),
+      qc.invalidateQueries({ queryKey: trpc.gateway.readiness.queryKey() }),
+    ]);
 
   const updateMutation = useMutation(
     trpc.channels.update.mutationOptions({
@@ -90,6 +96,32 @@ export function RoutingScreen() {
         warnIfNotApplied(data.applied);
       },
       onError: (e) => toast.error(e.message),
+    }),
+  );
+
+  const defaultRouteMutation = useMutation(
+    trpc.channels.setDefaultRoute.mutationOptions({
+      onMutate: () => ({ previousRoute: defaultChannel?.defaultRoute ?? "proxy" }),
+      onError: async (_error, _input, context) => {
+        qc.setQueryData(trpc.channels.list.queryKey(), (rows) =>
+          rows?.map((channel) =>
+            channel.target === "proxy" && channel.isDefault
+              ? { ...channel, defaultRoute: context?.previousRoute ?? "proxy" }
+              : channel,
+          ),
+        );
+        await invalidateDefaultRoute();
+      },
+      onSuccess: async (_data, input) => {
+        qc.setQueryData(trpc.channels.list.queryKey(), (rows) =>
+          rows?.map((channel) =>
+            channel.target === "proxy" && channel.isDefault
+              ? { ...channel, defaultRoute: input.route }
+              : channel,
+          ),
+        );
+        await invalidateDefaultRoute();
+      },
     }),
   );
 
@@ -301,7 +333,14 @@ export function RoutingScreen() {
           {defaultChannel && (
             <ChannelCard
               publishedFiles={publishedLists.data ?? []}
-              channel={defaultChannel}
+              channel={
+                defaultRouteMutation.isPending && defaultRouteMutation.context
+                  ? { ...defaultChannel, defaultRoute: defaultRouteMutation.context.previousRoute }
+                  : defaultChannel
+              }
+              onUpdateDefaultRoute={(route) => defaultRouteMutation.mutate({ route })}
+              defaultRoutePending={defaultRouteMutation.isPending}
+              defaultRouteError={defaultRouteMutation.error?.message ?? null}
               busy={updateMutation.isPending && updateMutation.variables?.id === defaultChannel.id}
               onToggleEnabled={(enabled) =>
                 updateMutation.mutate({ id: defaultChannel.id, enabled })

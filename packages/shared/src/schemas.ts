@@ -425,10 +425,15 @@ const channelBaseSchema = z.object({
   matcher: channelMatcherSchema,
 });
 
+export const defaultRouteSchema = z.enum(["proxy", "direct"]);
+export type DefaultRoute = z.infer<typeof defaultRouteSchema>;
+export const setDefaultRouteInput = z.object({ route: defaultRouteSchema }).strict();
+
 export const proxyChannelSchema = channelBaseSchema
   .extend({
     target: z.literal("proxy"),
     isDefault: z.boolean(),
+    defaultRoute: defaultRouteSchema.default("proxy"),
     policy: channelPolicySchema,
     lastReason: z.string().nullable(),
     lastReasonAt: z.number().nullable(), // epoch ms of the last controller decision

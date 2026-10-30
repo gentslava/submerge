@@ -15,6 +15,7 @@ import type {
   MihomoVersion,
   ProxiesResponse,
 } from "../../clients/mihomo.js";
+import { readManagedDomainRuleProviderMayRoute } from "../../config/domain-rules.js";
 import type { Db } from "../../db/client.js";
 import { SUBMERGE_VERSION } from "../../version.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
@@ -209,8 +210,13 @@ function externalRouteAttribution(
   proxies: ProxiesResponse["proxies"],
 ): { route: string; node: string | null } {
   const host = "www.cloudflare.com";
-  let uncertain = false;
   const enabled = allChannels.filter((channel) => channel.enabled);
+  const defaultChannel = enabled.find(
+    (channel): channel is ProxyChannel => channel.target === "proxy" && channel.isDefault,
+  );
+  let uncertain =
+    defaultChannel?.defaultRoute === "direct" &&
+    (defaultChannel.matcher.ruleProviders.length > 0 || readManagedDomainRuleProviderMayRoute());
   for (const channel of enabled) {
     if (channel.isDefault) continue;
     const deterministicMatch =
@@ -237,13 +243,13 @@ function externalRouteAttribution(
     }
   }
   if (uncertain) return { route: "через mihomo · текущие правила", node: null };
-  const defaultChannel = enabled.find(
-    (channel): channel is ProxyChannel => channel.target === "proxy" && channel.isDefault,
-  );
   return defaultChannel
     ? {
         route: defaultChannel.name,
-        node: resolveActiveLeaf(proxies, channelGroupName(defaultChannel)),
+        node:
+          defaultChannel.defaultRoute === "direct"
+            ? "DIRECT"
+            : resolveActiveLeaf(proxies, channelGroupName(defaultChannel)),
       }
     : { route: "через mihomo · текущие правила", node: null };
 }
@@ -371,6 +377,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
   let externalIp = skippedExternal("dependency-unavailable");
   let config = skippedConfig(proxyEndpoint);
   let nodes = 0;
+  let directDefault = false;
 
   if (mihomo.status === "ok") {
     let proxyView: ProxiesResponse;
@@ -390,12 +397,19 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
     if (mihomo.status === "ok") {
       nodes = realNodeCount(proxyView.proxies);
       const allChannels = listChannels(deps.db);
+      directDefault = allChannels.some(
+        (channel) =>
+          channel.target === "proxy" && channel.isDefault && channel.defaultRoute === "direct",
+      );
       const proxyChannels = allChannels.filter(
         (channel): channel is ProxyChannel => channel.target === "proxy" && channel.enabled,
       );
       routes = proxyChannels.map((channel) => {
         const target = policyProbe(channel.policy);
-        const activeLeaf = resolveActiveLeaf(proxyView.proxies, channelGroupName(channel));
+        const activeLeaf =
+          channel.isDefault && channel.defaultRoute === "direct"
+            ? "DIRECT"
+            : resolveActiveLeaf(proxyView.proxies, channelGroupName(channel));
         if (!activeLeaf) {
           const error = skippedError("no-active-node");
           return {
@@ -443,7 +457,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
         errorCode: "unknown",
       }));
       externalIp =
-        nodes === 0
+        nodes === 0 && !directDefault
           ? skippedExternal("no-proxy-nodes")
           : {
               status: "failed",
@@ -486,7 +500,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
           };
         }
       });
-      if (nodes > 0) {
+      if (nodes > 0 || directDefault) {
         jobs.push(async () => {
           try {
             const result = await timed(deps, overallSignal, (signal) =>
@@ -582,6 +596,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
   const state = deriveDiagnosticState({
     mihomoStatus: mihomo.status,
     realNodeCount: nodes,
+    directDefault,
     externalIpStatus: externalIp.status,
     routes,
     services,

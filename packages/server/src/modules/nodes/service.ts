@@ -223,6 +223,7 @@ export function collectActiveRoutingInputs(
         target: "proxy" as const,
         groupName: groupNameFor(channel),
         policy: channel.policy,
+        defaultRoute: channel.defaultRoute,
       };
       return channel.isDefault
         ? { ...proxyBase, proxies: inventory, race: pool }
@@ -283,6 +284,7 @@ export async function applyConfig(
     ) => void;
     force?: boolean;
     stageConfigMutation?: () => () => void;
+    rollbackOnFailure?: boolean;
   } = {},
 ): Promise<ApplyResult> {
   const apply = (managedDomainRules?: ManagedDomainRulesProviderInput) =>
@@ -295,6 +297,9 @@ export async function applyConfig(
       ...(opts.stageConfigMutation === undefined
         ? {}
         : { stageConfigMutation: opts.stageConfigMutation }),
+      ...(opts.rollbackOnFailure === undefined
+        ? {}
+        : { rollbackOnFailure: opts.rollbackOnFailure }),
     });
   return configApplyCoordinator ? configApplyCoordinator(apply) : apply();
 }
@@ -310,9 +315,9 @@ async function applyConfigNow(
     force?: boolean;
     managedDomainRules?: ManagedDomainRulesProviderInput;
     stageConfigMutation?: () => () => void;
+    rollbackOnFailure?: boolean;
   } = {},
 ): Promise<ApplyResult> {
-  const { inputs, inventory } = collectActiveRoutingInputs(db);
   // fs/permission errors (e.g. EACCES) propagate to the caller (→ tRPC 500).
   mkdirSync(dirname(configPath), { recursive: true });
   // The config's `secret:` is the editable panel secret (seeded from env on first run):
@@ -331,8 +336,10 @@ async function applyConfigNow(
   let rollbackSafe = true;
   let gateway = false;
   const tmpPath = `${configPath}.tmp`;
+  const previousContent = opts.rollbackOnFailure ? readExistingConfig(configPath) : undefined;
   try {
     rollbackConfigMutation = opts.stageConfigMutation?.();
+    const { inputs, inventory } = collectActiveRoutingInputs(db);
     const networkProfile = readNetworkProfile(db);
     const preferences = readGatewayRuntimeSettings(db);
     let privateListCounts: Record<string, number> = {};
@@ -386,10 +393,18 @@ async function applyConfigNow(
       activationAttempted = true;
       await reloadConfig(targetPath, gateway ? content : undefined);
     } catch (err) {
-      operationalLog(gateway ? "gateway-config-reload-failed" : "config-reload-failed", {}, err);
+      operationalLog(
+        opts.rollbackOnFailure
+          ? "default-route-activation-failed"
+          : gateway
+            ? "gateway-config-reload-failed"
+            : "config-reload-failed",
+        {},
+        err,
+      );
       if (!gateway) await confirmPendingMihomoSecretRotation(db);
       opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
-      if (gateway)
+      if (gateway || opts.rollbackOnFailure)
         throw new Error("gateway configuration activation failed; previous config file preserved", {
           cause: err,
         });
@@ -427,7 +442,7 @@ async function applyConfigNow(
     const pendingSecretConfirmed = await confirmPendingMihomoSecretRotation(db);
     if (secretPreparation.pending && !pendingSecretConfirmed) {
       opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
-      if (gateway)
+      if (gateway || opts.rollbackOnFailure)
         throw new Error("gateway secret activation is pending; restart Mihomo to confirm it");
       return { nodes: inventory.length, applied: false, activationVerified: false };
     }
@@ -438,7 +453,24 @@ async function applyConfigNow(
     return { nodes: inventory.length, applied: true, activationVerified: true };
   } catch (error) {
     if (gateway) recordGatewayApply(db, "failed");
-    if (!activationAttempted && rollbackSafe) rollbackConfigMutation?.();
+    if (opts.rollbackOnFailure || (!activationAttempted && rollbackSafe))
+      rollbackConfigMutation?.();
+    if (opts.rollbackOnFailure && activationAttempted) {
+      // Keep route changes and their recovery inside the serialized apply. A lost
+      // reload response is ambiguous, so restore the durable file and attempt to
+      // restore the engine too before another configuration can be applied.
+      if (previousContent != null) {
+        writeFileSync(tmpPath, previousContent, { encoding: "utf8", mode: 0o600 });
+        renameSync(tmpPath, configPath);
+        try {
+          await reloadConfig(targetPath, gateway ? previousContent : undefined);
+        } catch (restoreError) {
+          operationalLog("default-route-restore-failed", {}, restoreError);
+        }
+      } else {
+        rmSync(configPath, { force: true });
+      }
+    }
     throw error;
   } finally {
     rmSync(tmpPath, { force: true });

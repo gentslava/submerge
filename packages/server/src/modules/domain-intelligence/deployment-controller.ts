@@ -92,6 +92,11 @@ export class DomainRuleDeploymentController {
     return this.managedProviderActive;
   }
 
+  mayHaveManagedRouting(): boolean {
+    // Accepted rules can remain effective while provisioning or live proof fails.
+    return this.storeProvisioned || this.deps.storePreviouslyInitialized();
+  }
+
   requiresManagedProviderRecovery(): boolean {
     return this.storeProvisioned && !this.managedProviderActive;
   }

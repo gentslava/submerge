@@ -38,6 +38,7 @@ export function safeTargetHost(rawUrl: string): string {
 export interface DiagnosticStateInput {
   mihomoStatus: DiagnosticCheckStatus;
   realNodeCount: number;
+  directDefault?: boolean;
   externalIpStatus: DiagnosticCheckStatus;
   routes: readonly DiagnosticRouteResult[];
   services: readonly DiagnosticServiceResult[];
@@ -46,7 +47,7 @@ export interface DiagnosticStateInput {
 
 export function deriveDiagnosticState(input: DiagnosticStateInput): DiagnosticState {
   if (input.mihomoStatus === "failed") return "mihomo-down";
-  if (input.realNodeCount === 0) return "no-nodes";
+  if (input.realNodeCount === 0 && !input.directDefault) return "no-nodes";
 
   const outbound = [input.externalIpStatus, ...input.routes, ...input.services].map((entry) =>
     typeof entry === "string" ? entry : entry.status,

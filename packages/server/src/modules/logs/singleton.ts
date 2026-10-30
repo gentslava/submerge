@@ -122,8 +122,9 @@ const deploymentOwnership = registerConfigApplyOwner({ db }, (applyConfigDirect)
 export const domainIntelligenceRuntimeCoordinator = deploymentOwnership.owner.runtimeCoordinator;
 const domainRuleDeploymentController = deploymentOwnership.owner.deploymentController;
 registerDomainRulesDeploymentCapabilitySource(domainRuleDeploymentController.capabilitySource);
-registerManagedDomainRuleProviderActiveSource(() =>
-  domainRuleDeploymentController.isManagedProviderActive(),
+registerManagedDomainRuleProviderActiveSource(
+  () => domainRuleDeploymentController.isManagedProviderActive(),
+  () => domainRuleDeploymentController.mayHaveManagedRouting(),
 );
 const domainRuleDeploymentLifecycle = new DomainRuleDeploymentLifecycle(
   domainRuleDeploymentController,

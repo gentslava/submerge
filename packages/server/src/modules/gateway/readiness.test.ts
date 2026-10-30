@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { networkProfileSchema } from "./engine-settings.js";
 import {
   assertGatewayNetworkActivated,
@@ -59,6 +59,78 @@ const deps: GatewayReadinessDeps = {
   files: () => ({ n: 1 }),
 };
 describe("gateway readiness", () => {
+  it("accepts a Direct catch-all without requiring unused VPN pools or probing them", async () => {
+    const vpnProbe = vi.fn();
+    const directDeps = {
+      ...deps,
+      vpnProbe,
+      rules: async () => ({
+        rules: [
+          {
+            index: 0,
+            type: "Match",
+            payload: "",
+            proxy: "DIRECT",
+            size: -1,
+            extra: { disabled: false },
+          },
+        ],
+      }),
+      proxies: async () => ({ proxies: {} }),
+    };
+    const result = await checkGatewayReadiness(
+      profile,
+      "applied",
+      "AUTO",
+      directDeps,
+      true,
+      "direct",
+    );
+    expect(result.ready).toBe(true);
+    expect(vpnProbe).not.toHaveBeenCalled();
+    expect((await checkGatewayReadiness(profile, "applied", "AUTO", directDeps)).ready).toBe(false);
+  });
+
+  it("still checks explicit VPN targets when the catch-all is Direct", async () => {
+    const directDeps = {
+      ...deps,
+      rules: async () => ({
+        rules: [
+          {
+            index: 0,
+            type: "DomainSuffix",
+            payload: "npmjs.org",
+            proxy: "AUTO",
+            size: -1,
+            extra: { disabled: false },
+          },
+          {
+            index: 1,
+            type: "Match",
+            payload: "",
+            proxy: "DIRECT",
+            size: -1,
+            extra: { disabled: false },
+          },
+        ],
+      }),
+    };
+    expect(
+      (await checkGatewayReadiness(profile, "applied", "AUTO", directDeps, true, "direct")).ready,
+    ).toBe(true);
+    expect(
+      (
+        await checkGatewayReadiness(
+          profile,
+          "applied",
+          "AUTO",
+          { ...directDeps, vpnProbe: async () => 0 },
+          true,
+          "direct",
+        )
+      ).ready,
+    ).toBe(false);
+  });
   it("does not require first TUN local-DNS setup for otherwise healthy Proxy", async () => {
     const proxyDeps = {
       ...deps,

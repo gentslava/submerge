@@ -6,6 +6,7 @@ for their status. Mark a plan **done** here when its feature is merged to master
 
 | Plan | Status |
 |---|---|
+| [Default route selection](2026-10-30-default-route.md) | implemented and verified locally; not merged or deployed |
 | [TUN engine and deployment](2026-10-11-gateway.md) | implemented and verified locally; not deployed |
 | [Native connection mode cleanup](2026-10-11-network-cleanup.md) | implemented and verified locally; not deployed |
 | [Native Proxy / TUN settings](2026-10-11-tun-settings.md) | implemented and verified locally; not deployed |

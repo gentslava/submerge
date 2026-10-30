@@ -26,6 +26,7 @@ import {
   reorderChannels,
   setChannelLastReason,
   setChannelPolicy,
+  setDefaultRoute,
   updateChannel,
   updateDirect,
 } from "./service.js";
@@ -572,5 +573,64 @@ describe("updateChannel matcher persistence + config regeneration", () => {
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,ex.com,ch-${created.id}`);
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${created.id}`);
     expect(cfg.rules).toContain(`IP-CIDR,10.0.0.0/8,ch-${created.id}`);
+  });
+});
+
+describe("Default route persistence and activation", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("preserves the VPN default and the saved VPN policy when switching both ways", () => {
+    const db = freshDb();
+    ensureDefaultChannel(db);
+    expect(readDefaultChannel(db).defaultRoute).toBe("proxy");
+    const policy = readDefaultPolicy(db);
+    setDefaultRoute(db, "direct");
+    ensureDefaultChannel(db);
+    expect(readDefaultChannel(db).defaultRoute).toBe("direct");
+    expect(readDefaultPolicy(db)).toEqual(policy);
+    setDefaultRoute(db, "proxy");
+    expect(readDefaultChannel(db).defaultRoute).toBe("proxy");
+  });
+
+  it("generates the staged route and restores the accepted route/file after a failed reload", async () => {
+    const db = freshDb();
+    ensureDefaultChannel(db);
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-route-")), "config.yaml");
+    db.insert(sources)
+      .values({
+        kind: "sub",
+        value: "test",
+        label: "test",
+        proxies: [
+          { name: "vpn", type: "vless", server: "vpn.example.com", port: 443, uuid: "test" },
+        ],
+      })
+      .run();
+    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal("fetch", fetch);
+    await applyConfig(db, configPath, configPath);
+    const stage = (route: "direct" | "proxy") => () => {
+      const previous = readDefaultChannel(db).defaultRoute;
+      setDefaultRoute(db, route);
+      return () => setDefaultRoute(db, previous);
+    };
+    await applyConfig(db, configPath, configPath, {
+      stageConfigMutation: stage("direct"),
+      rollbackOnFailure: true,
+    });
+    expect((yaml.load(readFileSync(configPath, "utf8")) as { rules: string[] }).rules.at(-1)).toBe(
+      "MATCH,DIRECT",
+    );
+    const accepted = readFileSync(configPath, "utf8");
+    fetch.mockRejectedValue(new Error("engine offline"));
+    await expect(
+      applyConfig(db, configPath, configPath, {
+        stageConfigMutation: stage("proxy"),
+        rollbackOnFailure: true,
+        force: true,
+      }),
+    ).rejects.toThrow();
+    expect(readDefaultChannel(db).defaultRoute).toBe("direct");
+    expect(readFileSync(configPath, "utf8")).toBe(accepted);
   });
 });

@@ -5,9 +5,11 @@ import {
   reorderChannelsInput,
   setChannelPolicyInput,
   setChannelPoolInput,
+  setDefaultRouteInput,
   updateChannelInput,
   updateDirectInput,
 } from "@submerge/shared";
+import { TRPCError } from "@trpc/server";
 import { db } from "../../db/client.js";
 import { protectedProcedure, router } from "../../trpc/trpc.js";
 import { availablePublishedLists } from "../gateway/settings.js";
@@ -21,6 +23,7 @@ import {
   readDefaultChannel,
   reorderChannels,
   setChannelPolicy,
+  setDefaultRoute,
   updateChannel,
   updateDirect,
 } from "./service.js";
@@ -30,6 +33,28 @@ export const channelsRouter = router({
   get: protectedProcedure.query(() => readDefaultChannel(db)),
   list: protectedProcedure.query(() => listChannels(db)),
   publishedLists: protectedProcedure.query(() => availablePublishedLists()),
+  setDefaultRoute: protectedProcedure.input(setDefaultRouteInput).mutation(async ({ input }) => {
+    try {
+      const result = await applyConfig(db, undefined, undefined, {
+        force: true,
+        rollbackOnFailure: true,
+        stageConfigMutation: () => {
+          const previous = readDefaultChannel(db).defaultRoute;
+          setDefaultRoute(db, input.route);
+          return () => setDefaultRoute(db, previous);
+        },
+      });
+      if (!result.applied) throw new Error("Default route was not activated");
+      return { applied: true as const };
+    } catch (cause) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message:
+          "Не удалось применить маршрут по умолчанию. Проверьте доступность mihomo и повторите выбор. Активный маршрут не подтверждён.",
+        cause,
+      });
+    }
+  }),
   create: protectedProcedure.input(createChannelInput).mutation(async ({ input }) => {
     const ch = createChannel(db, input);
     // A new channel adds a routing group — regenerate + reload the mihomo config.

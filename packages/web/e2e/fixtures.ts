@@ -39,6 +39,7 @@ export const defaultChannelFixture: ProxyChannel = {
   id: "default",
   name: "Default",
   target: "proxy",
+  defaultRoute: "proxy",
   priority: 1,
   enabled: true,
   isDefault: true,

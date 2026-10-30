@@ -1,6 +1,7 @@
 import type {
   ChannelMatcher,
   ChannelPolicy,
+  DefaultRoute,
   DirectChannel,
   ProxyChannel,
   UpdateDirectInput,
@@ -22,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { pluralRu } from "@/lib/plural";
 import { cn } from "@/lib/utils";
 import { ChannelPolicyEditor } from "./ChannelPolicyEditor";
+import { DefaultRouteControl } from "./DefaultRouteControl";
 import { DirectChannelEditor } from "./DirectChannelEditor";
 import { DomainTags } from "./DomainTags";
 import { GeoIpTags, GeoSiteTags } from "./GeoTags";
@@ -59,6 +61,9 @@ interface ProxyChannelCardProps extends ChannelCardBaseProps {
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
   onUpdatePolicy: (policy: ChannelPolicy) => void;
   onRemove: () => void;
+  onUpdateDefaultRoute?: (route: DefaultRoute) => void;
+  defaultRoutePending?: boolean;
+  defaultRouteError?: string | null;
   // Opens the card already expanded on first mount — used right after `channels.create`
   // so the admin lands straight in the editor instead of a second click. Only affects
   // the initial `useState` value, so it's safe even though the prop itself never changes.
@@ -156,6 +161,9 @@ export const ChannelCard = forwardRef<HTMLDivElement, ChannelCardProps>(
                 onUpdateMatcher={props.onUpdateMatcher}
                 onUpdatePolicy={props.onUpdatePolicy}
                 onRemove={props.onRemove}
+                onUpdateDefaultRoute={props.onUpdateDefaultRoute}
+                defaultRoutePending={props.defaultRoutePending ?? false}
+                defaultRouteError={props.defaultRouteError ?? null}
               />
             )}
           </>
@@ -329,7 +337,9 @@ function DefaultRow({
           catch-all
         </span>
         <div className="channel-default-summary flex w-full min-w-0 items-center gap-2 px-1">
-          <span className="text-xs text-text-tertiary">Всё остальное</span>
+          <span className="text-xs text-text-tertiary">
+            Всё остальное · {channel.defaultRoute === "direct" ? "напрямую" : "через VPN"}
+          </span>
         </div>
       </button>
       <div className="relative z-10 flex shrink-0 items-center gap-3.5">
@@ -361,6 +371,9 @@ function ChannelEditor({
   onUpdateMatcher,
   onUpdatePolicy,
   onRemove,
+  onUpdateDefaultRoute,
+  defaultRoutePending,
+  defaultRouteError,
 }: {
   publishedFiles: string[];
   channel: ProxyChannel;
@@ -368,11 +381,22 @@ function ChannelEditor({
   onUpdateMatcher: (matcher: ChannelMatcher) => void;
   onUpdatePolicy: (policy: ChannelPolicy) => void;
   onRemove: () => void;
+  onUpdateDefaultRoute: ((route: DefaultRoute) => void) | undefined;
+  defaultRoutePending: boolean;
+  defaultRouteError: string | null;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
     <div className="flex w-full flex-col">
+      {channel.isDefault && onUpdateDefaultRoute && (
+        <DefaultRouteControl
+          route={channel.defaultRoute ?? "proxy"}
+          pending={defaultRoutePending}
+          error={defaultRouteError}
+          onChange={onUpdateDefaultRoute}
+        />
+      )}
       <EditorRow label="Имя">
         <Input
           key={channel.name}
@@ -467,6 +491,11 @@ function ChannelEditor({
       )}
       <div className="flex w-full flex-col gap-3 border-b border-border-subtle px-[18px] py-4">
         <span className="text-label text-text-primary">Пул</span>
+        {channel.isDefault && channel.defaultRoute === "direct" && (
+          <p className="text-sub text-text-tertiary">
+            Пул и политика ниже используются списками «Всегда через VPN».
+          </p>
+        )}
         <PoolPicker channelId={channel.id} />
       </div>
       {/* PolicyEditor renders its own label/sub + border-bottom per row (shared
