@@ -230,7 +230,7 @@ export const PRESET_DOMAINS: Record<PresetId, string[]> = {
   stackoverflow: ["stackoverflow.com", "stackexchange.com", "sstatic.net"],
   vscode: ["code.visualstudio.com", "marketplace.visualstudio.com", "vscode.dev"],
   jetbrains: ["jetbrains.com"],
-  postman: ["postman.com", "getpostman.com"],
+  postman: ["postman.com", "postman.co", "getpostman.com", "pstmn.io"],
   sentry: ["sentry.io"],
   cloudflare: ["cloudflare.com", "cloudflareworkers.com", "workers.dev", "pages.dev"],
   vercel: ["vercel.com", "vercel.app"],
