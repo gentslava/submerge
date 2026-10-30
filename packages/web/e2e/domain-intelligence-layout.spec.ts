@@ -898,12 +898,17 @@ test("mobile uses a centered settings icon and bottom-sheet filter editor", asyn
   }
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveAttribute("data-swipe-direction", "down");
+  await expect
+    .poll(async () => {
+      const box = await dialog.boundingBox();
+      return box ? box.y + box.height : null;
+    })
+    .toBe(844);
   const dialogBox = await dialog.boundingBox();
   expect(entrySamples[0] ?? 0).toBeGreaterThan((dialogBox?.y ?? 0) + 24);
   expect(entrySamples.at(-1) ?? 0).toBeLessThan(entrySamples[0] ?? 0);
   expect(dialogBox?.x).toBe(0);
   expect(dialogBox?.width).toBe(425);
-  expect((dialogBox?.y ?? 0) + (dialogBox?.height ?? 0)).toBe(844);
 
   const handleBox = await page.locator(".responsive-dialog-handle").boundingBox();
   if (!dialogBox || !handleBox) throw new Error("Drawer geometry is unavailable");

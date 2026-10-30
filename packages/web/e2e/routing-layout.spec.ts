@@ -266,19 +266,25 @@ test("Direct is pinned before Default while proxy channels remain reorderable", 
   page,
 }) => {
   await installTrpcFixture(page, { "channels.list": populatedChannels });
+  // Exercise the ordering check while the initial channel list is still in flight.
+  await page.route("**/trpc/**", async (route) => {
+    if (route.request().url().includes("channels.list"))
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fallback();
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/routing");
+  const headings = page.getByRole("button", { name: /Развернуть канал/, expanded: false });
+  await expect
+    .poll(() =>
+      headings.evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label"))),
+    )
+    .toEqual([
+      "Развернуть канал «Advanced»",
+      "Развернуть канал «Direct»",
+      "Развернуть канал «Default»",
+    ]);
   await expect(page.getByRole("button", { name: "Опустить канал «Direct» ниже" })).toHaveCount(0);
-  const headings = page.getByRole("button", { name: /Развернуть канал/ });
-  const labels = await headings.evaluateAll((buttons) =>
-    buttons.map((button) => button.getAttribute("aria-label")),
-  );
-  expect(labels.indexOf("Развернуть канал «Advanced»")).toBeLessThan(
-    labels.indexOf("Развернуть канал «Direct»"),
-  );
-  expect(labels.indexOf("Развернуть канал «Direct»")).toBeLessThan(
-    labels.indexOf("Развернуть канал «Default»"),
-  );
 });
 
 for (const width of [320, 390, 425, 768, 983, 984, 1024, 1440]) {

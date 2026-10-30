@@ -623,3 +623,107 @@ Standards `/root/final_standards` and Spec `/root/pr54_final_spec` both report z
 findings at both scales. Each independently confirmed unchanged application/test/UI
 source and preserved evidence. All GitHub checks, including CodeRabbit, passed on
 `d8f9d08`; this follow-up only changes plan headings and these factual receipts.
+
+### CI follow-up: routing order before channel loading
+
+CI on `6c08eda` passed 186 browser cases but the Direct/Default ordering case read
+an empty channel-header list (`indexOf` returned -1 for both names). The existing
+absence assertion succeeds during loading and `evaluateAll` does not await data.
+The failed run uploaded no workflow artifacts, so its local trace is unavailable.
+Reproduce with a deliberately delayed channel-list response, then await the full
+expected accessible-label sequence before checking that Direct has no move
+control. Keep the same channel order and zero test retries. No application or
+routing behavior changes; run static, focused/full browser and independent review
+gates before updating the existing PR.
+
+The unchanged ordering assertions fail with the exact CI `-1 < -1` error when
+the channel-list fixture response is delayed by 500 ms. The saved failure
+screenshot shows loading skeletons; its later error-context snapshot already
+contains the loaded cards. This confirms a test synchronization gap. Artifacts:
+`routing-order-ci/{red.log,red/test-failed-1.png,red/error-context.md,red/trace.zip}`
+in chat scratch, plus `/tmp/submerge-pr53-routing-order-red.log`.
+
+Keep that deliberate fixture latency as a regression condition. The assertion now
+polls the exact ordered labels of the three primary expand controls, distinguished
+by their `aria-expanded` state from the separate chevron buttons. Check the absent
+Direct move control only after the cards are present. The same delayed case
+passes with zero retries (`/tmp/submerge-pr53-routing-order-delayed-green.log`).
+The installed Playwright 1.64.1 role types confirm the `expanded` filter.
+
+Raw static passes: 142 shared / 1467 server / 297 web tests, four opt-in server
+skips, Biome, token drift, typecheck and production builds
+(`/tmp/submerge-pr53-routing-order-static.log`). The complete 187-case Chromium
+suite runs with one worker and zero retries before independent review.
+
+The first complete local run passed the corrected routing case and 185 other
+cases, but exposed a pre-existing drawer geometry race in
+`domain-intelligence-layout.spec.ts`: the bottom was sampled at 844.290466 px
+instead of the final 844 px while entry animation was still settling. That test
+and all application source are unchanged from `6c08eda`, and it runs before the
+modified routing test. Artifacts `routing-order-ci/{full-initial.log,drawer-red/}`.
+
+Keep the drawer's exact 844 px assertion and all animation/swipe checks, but poll
+the final bottom edge before capturing geometry for the drag. Do not relax pixel
+tolerance or increase test retries. This is a second E2E synchronization fix;
+application behavior remains unchanged. Repeat focused browser checks and the
+complete local suite after this correction.
+
+Both focused cases pass with one worker and zero retries
+(`/tmp/submerge-pr53-routing-order-focused.log`). Raw static passes again after
+the drawer correction, with the same 142 shared / 1467 server / 297 web tests,
+four opt-in skips and all builds
+(`/tmp/submerge-pr53-routing-order-static-final.log`). Incremental independent
+review and the final complete browser run follow. Only the two E2E files and this
+plan differ from `6c08eda`; production code, styles and dependency versions do not.
+
+#### CI synchronization incremental Standards review
+
+`/root/final_standards`: no documented-standard violations or actionable smells
+in `6c08eda` to tree `11fe39c`. Exact order/geometry assertions and zero test
+retries remain intact; no production code changed. No concurrent browser process
+was started by the reviewer.
+
+#### CI synchronization incremental Spec review
+
+`/root/pr54_final_spec`: no findings. The loaded order is checked before absence,
+primary headers exclude duplicate chevrons, and settled drawer geometry retains
+the exact 844 px requirement and entry/swipe checks. No weakened assertions,
+missing requirement or scope creep. No concurrent browser tests were launched.
+
+Incremental totals: Standards 0; Spec 0. Whole-feature final integration review
+and the complete browser run follow before publication.
+
+#### CI synchronization final Standards review
+
+`/root/final_standards`: zero unresolved documented-standard violations or
+actionable smells on full feature tree `77e047e` against `fe3a5c2`. Production,
+UI, shared fixtures, migrations and other tests match the previously reviewed
+feature. Both synchronization changes retain exact assertions. No concurrent
+browser run was launched by the reviewer.
+
+#### CI synchronization final Spec review
+
+`/root/pr54_final_spec`: zero unresolved findings across the complete feature.
+The routing/recovery/rollback/managed-store/credential/diagnostic/UI contracts
+remain unchanged. The new waits preserve exact ordering, geometry and animation
+checks. The review did not mark the then-pending full browser gate complete.
+
+The final full local run completed with 186 passing cases and one independent
+network failure in unchanged `priority-node-pool.spec.ts` at 984 px. Both modified
+cases passed. Keyboard/geometry assertions in the failing case passed; its final
+console-error check caught a Google Fonts CSS request ending in
+`net::ERR_CONNECTION_CLOSED`. The trace console and HAR identify the external
+`fonts.googleapis.com` URL. The same unchanged case passed in the first full run
+and a separate zero-retry check after the error
+(`/tmp/submerge-pr53-priority-network-check.log`). No errors were filtered out.
+Artifacts: `routing-order-ci/{full-final.log,priority-network/}`. Required raw
+static and focused browser checks are green; the broad full run is not claimed
+green. New-head GitHub CI remains a separate verification step after publication.
+
+Both final reviewers inspected the network-failure trace and retained zero
+change-related findings. Standards confirms no change-related blocker; Spec
+retains its conclusion without marking the broad browser result green or waiving
+verification. The unchanged priority case's separate zero-retry check passed.
+No production change, console-error filtering or font substitution was introduced.
+Publication is to the PR branch only; remote CI must still be checked on the new
+head, and merging/deployment remain separate.
