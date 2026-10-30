@@ -9,6 +9,7 @@ const channel: ProxyChannel = {
   id: "channel-ai",
   name: "AI",
   target: "proxy",
+  defaultRoute: "proxy",
   priority: 0,
   enabled: true,
   isDefault: false,

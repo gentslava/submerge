@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import {
   type ChannelPolicy,
   cidrVersion,
+  type DefaultRoute,
   type DirectPresetSettings,
   PROBE_GROUP,
   type Proxy as ProxyConfig,
@@ -34,6 +35,7 @@ interface MatcherConfigInput {
 
 export interface ProxyChannelConfigInput extends MatcherConfigInput {
   target: "proxy";
+  defaultRoute?: DefaultRoute;
   groupName: string; // "AUTO" for the default channel, "ch-<id>" otherwise (groupNameFor)
   policy: ChannelPolicy;
   // The proxies this channel DEFINES + contributes to PROXY. The default channel is
@@ -280,9 +282,11 @@ function buildRules(
   nonDefaultProxyCount: number,
   managedDomainRules?: ManagedDomainRulesProviderInput,
   defaultProviders: RuleProviderRef[] = [],
+  directDefault = false,
 ): string[] {
-  // With no exit nodes anywhere there is nothing to route — everything is DIRECT.
-  if (noProxies) return ["MATCH,DIRECT"];
+  // Preserve legacy empty-inventory behavior. Direct-default mode must retain
+  // explicit VPN rules even with no exit nodes: their empty groups reject traffic.
+  if (noProxies && !directDefault) return ["MATCH,DIRECT"];
   const rules: string[] = [];
   for (const channel of nonDefault) {
     if (channel.target === "direct") {
@@ -334,7 +338,13 @@ function buildRules(
   }
   // Default-only stays on the legacy PROXY catch-all (so config.test.ts holds);
   // once other channels exist the catch-all is the default channel's own group.
-  rules.push(nonDefaultProxyCount === 0 ? "MATCH,PROXY" : `MATCH,${defaultGroupName}`);
+  rules.push(
+    directDefault
+      ? "MATCH,DIRECT"
+      : nonDefaultProxyCount === 0
+        ? "MATCH,PROXY"
+        : `MATCH,${defaultGroupName}`,
+  );
   return rules;
 }
 
@@ -345,6 +355,7 @@ function buildGatewayRules(
   defaultGroupName: string,
   defaultProviders: RuleProviderRef[],
   managedDomainRules?: ManagedDomainRulesProviderInput,
+  directDefault = false,
 ): string[] {
   const direct = nonDefault.filter((channel) => channel.target === "direct");
   const rules: string[] = [];
@@ -402,7 +413,7 @@ function buildGatewayRules(
       })),
     ),
   );
-  rules.push(`MATCH,${defaultGroupName}`);
+  rules.push(`MATCH,${directDefault ? "DIRECT" : defaultGroupName}`);
   return [...new Set(rules)];
 }
 
@@ -491,6 +502,7 @@ export function buildMultiConfigDocument(
     (channel): channel is ProxyChannelConfigInput => channel.target === "proxy",
   );
   const defaultChannel = proxyChannels.find((c) => c.isDefault);
+  const directDefault = defaultChannel?.defaultRoute === "direct";
   const nonDefault = channels.filter((c) => !c.isDefault);
   const nonDefaultProxy = proxyChannels.filter((c) => !c.isDefault);
   // Default first: it claims its endpoints and names before anyone else.
@@ -573,7 +585,7 @@ export function buildMultiConfigDocument(
 
   const groupFor = (build: ChannelBuild): Record<string, unknown> => {
     const names = raceNames(build);
-    const members = names.length ? names : [gateway ? "REJECT" : "DIRECT"];
+    const members = names.length ? names : [gateway || directDefault ? "REJECT" : "DIRECT"];
     if (build.channel.policy.kind === "speed") {
       const t = urlTestTuning(build.channel.policy);
       return {
@@ -601,7 +613,7 @@ export function buildMultiConfigDocument(
   const proxyMembers = [
     ...(defaultChannel ? [defaultChannel.groupName] : []),
     ...defaultTopLevelNames,
-    gateway ? "REJECT" : "DIRECT",
+    gateway || directDefault ? "REJECT" : "DIRECT",
   ];
 
   const channelGroups: Record<string, unknown>[] = [];
@@ -629,10 +641,14 @@ export function buildMultiConfigDocument(
     proxies: spec.memberFlatIndices.map(nameAt),
   }));
 
-  // With no exit nodes the config is all-DIRECT (buildRules short-circuits and
-  // emits no RULE-SET lines), so defined providers would be dead weight — skip them.
+  // Legacy Proxy with no exits is all-DIRECT. Direct-default and prepared modes
+  // retain explicit VPN rules/providers even when their targets have no exits.
   const noProxies = unique.length === 0;
-  if (managedDomainRules) {
+  // Offline preparation may retain an accepted managed provider at REJECT until
+  // the coordinated owner attests its current store and VPN target.
+  const offlineManagedRejection =
+    gateway !== undefined && managedDomainRules?.targetGroupName === "REJECT";
+  if (managedDomainRules && !offlineManagedRejection) {
     const target = [...builds.values()].find(
       (build) => build.channel.groupName === managedDomainRules.targetGroupName,
     );
@@ -641,9 +657,11 @@ export function buildMultiConfigDocument(
     }
   }
   const ruleProviders =
-    noProxies && !gateway ? {} : buildRuleProviders(channels, managedDomainRules, gateway);
+    noProxies && !gateway && !directDefault
+      ? {}
+      : buildRuleProviders(channels, managedDomainRules, gateway);
   const hasProviders = Object.keys(ruleProviders).length > 0;
-  const geo = noProxies && !gateway ? null : geoTopLevel(nonDefault);
+  const geo = noProxies && !gateway && !directDefault ? null : geoTopLevel(nonDefault);
 
   let validationListeners: Record<string, unknown>[] = [];
   if (domainValidation) {
@@ -723,6 +741,7 @@ export function buildMultiConfigDocument(
             defaultGroupName,
             defaultChannel?.ruleProviders ?? [],
             managedDomainRules,
+            directDefault,
           )
         : buildRules(
             nonDefault,
@@ -731,6 +750,7 @@ export function buildMultiConfigDocument(
             nonDefaultProxy.length,
             managedDomainRules,
             defaultChannel?.ruleProviders ?? [],
+            directDefault,
           ),
     ),
   };

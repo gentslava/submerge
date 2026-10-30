@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -22,10 +22,12 @@ import {
   createChannel,
   ensureDefaultChannel,
   readDefaultChannel,
+  setDefaultRoute,
   updateChannel,
 } from "../channels/service.js";
 import { beginMihomoSecretRotation } from "../settings/secret-rotation.js";
 import { getSetting, getSettingsView, setSetting } from "../settings/service.js";
+import { readConfigApplyRecovery } from "./config-apply-journal.js";
 import {
   applyConfig,
   collectProxies,
@@ -683,7 +685,7 @@ describe("applyConfig", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("still writes the config and reports applied:false when the reload fails", async () => {
+  it("keeps a durable pending config and retries it when reload fails", async () => {
     const db = freshDb();
     db.insert(sources)
       .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
@@ -697,11 +699,92 @@ describe("applyConfig", () => {
     expect(res.applied).toBe(false);
     expect(res.nodes).toBe(1);
     expect(operationalLog).toHaveBeenCalledWith("config-reload-failed", {}, expect.any(Error));
-    // the file must be written regardless — it applies on the engine's next reload
+    expect(existsSync(configPath)).toBe(false);
+    expect(getSetting(db, "internal.configApply")).toBeDefined();
+    // Desired settings and the pending artifact survive without replacing the accepted file.
+    const pending = readFileSync(`${configPath}.pending`, "utf8");
     // biome-ignore lint/suspicious/noExplicitAny: parsed yaml is untyped
-    const cfg = yaml.load(readFileSync(configPath, "utf8")) as Record<string, any>;
+    const cfg = yaml.load(pending) as Record<string, any>;
     expect(cfg.proxies[0].name).toBe("A");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Response(null, { status: 204 })),
+    );
+    await expect(applyConfig(db, configPath)).resolves.toMatchObject({
+      applied: true,
+      activationVerified: true,
+    });
+    expect(readFileSync(configPath, "utf8")).toBe(pending);
+    expect(getSetting(db, "internal.configApply")).toBeUndefined();
+    expect(existsSync(`${configPath}.pending`)).toBe(false);
   });
+
+  it.each([
+    { route: "direct", restoreSucceeds: false },
+    { route: "proxy", restoreSucceeds: false },
+    { route: "direct", restoreSucceeds: true },
+    { route: "proxy", restoreSucceeds: true },
+  ] as const)(
+    "reconciles an uncertain candidate after restoring $route with restore success=$restoreSucceeds",
+    async ({ route, restoreSucceeds }) => {
+      const db = freshDb();
+      setDefaultRoute(db, route);
+      db.insert(sources)
+        .values({ kind: "sub", value: "a", label: "a", proxies: [proxy("A")] })
+        .run();
+      const configPath = join(mkdtempSync(join(tmpdir(), "submerge-rollback-")), "config.yaml");
+      let activeContent: string | undefined;
+      const reloads: string[] = [];
+      const fetchMock = vi.fn((_url: unknown, init?: RequestInit) => {
+        const { payload } = JSON.parse(String(init?.body)) as { payload: string };
+        reloads.push(payload);
+        if (reloads.length === 2) {
+          activeContent = payload;
+          throw new Error("candidate response lost");
+        }
+        if (reloads.length === 3 && !restoreSucceeds) throw new Error("restore unavailable");
+        activeContent = payload;
+        return new Response(null, { status: 204 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      await expect(applyConfig(db, configPath)).resolves.toMatchObject({ applied: true });
+      const accepted = readFileSync(configPath, "utf8");
+
+      await expect(
+        applyConfig(db, configPath, configPath, {
+          rollbackOnFailure: true,
+          stageConfigMutation: () => {
+            setDefaultRoute(db, route === "direct" ? "proxy" : "direct");
+            return () => setDefaultRoute(db, route);
+          },
+        }),
+      ).rejects.toThrow("gateway configuration activation failed");
+      expect(reloads).toHaveLength(3);
+      expect(reloads[1]).not.toBe(accepted);
+      expect(readDefaultChannel(db).defaultRoute).toBe(route);
+      expect(readFileSync(configPath, "utf8")).toBe(accepted);
+      expect(activeContent).toBe(restoreSucceeds ? accepted : reloads[1]);
+      expect(readConfigApplyRecovery(db, configPath)).toEqual({
+        pending: !restoreSucceeds,
+        defaultRoute: route,
+      });
+      if (!restoreSucceeds)
+        expect(JSON.parse(getSetting(db, "internal.configApply") ?? "null")).toMatchObject({
+          accepted: { defaultRoute: route },
+          candidate: null,
+        });
+
+      await expect(applyConfig(db, configPath)).resolves.toMatchObject({
+        applied: true,
+        activationVerified: !restoreSucceeds,
+      });
+      expect(reloads).toHaveLength(restoreSucceeds ? 3 : 4);
+      expect(activeContent).toBe(accepted);
+      expect(getSetting(db, "internal.configApply")).toBeUndefined();
+      await applyConfig(db, configPath);
+      expect(reloads).toHaveLength(restoreSucceeds ? 3 : 4);
+    },
+  );
 
   it("force-retries a byte-identical config after a failed reload", async () => {
     const db = freshDb();

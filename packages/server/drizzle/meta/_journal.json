@@ -92,6 +92,13 @@
       "when": 1785878785881,
       "tag": "0012_normal_leo",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1793331626538,
+      "tag": "0013_same_thunderbolt_ross",
+      "breakpoints": true
     }
   ]
 }

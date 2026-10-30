@@ -21,6 +21,8 @@ config/gateway.json
 
 # mihomo runtime — здесь твои узлы/подписки, НЕ коммитить
 mihomo/config.yaml
+mihomo/config.yaml.pending
+mihomo/config.yaml.tmp
 mihomo/sources.json
 mihomo/hwid.txt
 mihomo/providers/

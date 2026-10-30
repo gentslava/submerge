@@ -97,6 +97,9 @@ export const channels = sqliteTable(
     priority: integer("priority").notNull().default(0),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
     isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+    defaultRoute: text("default_route", { enum: ["proxy", "direct"] })
+      .notNull()
+      .default("proxy"),
     policy: text("policy", { mode: "json" }).$type<ChannelPolicy | null>(),
     matcher: text("matcher", { mode: "json" })
       .$type<ChannelMatcher>()

@@ -23,6 +23,7 @@ export function deriveDomainRulesDeploymentCapability(
 
 let domainRulesDeploymentCapabilitySource: DomainRuleDeploymentProvisioner | null = null;
 let managedDomainRuleProviderActiveSource: (() => boolean) | null = null;
+let managedDomainRuleProviderMayRouteSource: (() => boolean) | null = null;
 
 export function readDomainRulesDeploymentCapability(): DomainIntelligenceDeploymentCapability {
   return domainIntelligenceDeploymentCapabilitySchema.parse(
@@ -53,14 +54,23 @@ export function readManagedDomainRuleProviderActive(): boolean {
   return managedDomainRuleProviderActiveSource?.() ?? false;
 }
 
-export function registerManagedDomainRuleProviderActiveSource(source: () => boolean): () => void {
+export function readManagedDomainRuleProviderMayRoute(): boolean {
+  return managedDomainRuleProviderMayRouteSource?.() ?? false;
+}
+
+export function registerManagedDomainRuleProviderActiveSource(
+  source: () => boolean,
+  mayRoute: () => boolean = source,
+): () => void {
   if (managedDomainRuleProviderActiveSource !== null) {
     throw new Error("managed domain-rule provider source is already registered");
   }
   managedDomainRuleProviderActiveSource = source;
+  managedDomainRuleProviderMayRouteSource = mayRoute;
   return () => {
     if (managedDomainRuleProviderActiveSource === source) {
       managedDomainRuleProviderActiveSource = null;
+      managedDomainRuleProviderMayRouteSource = null;
     }
   };
 }

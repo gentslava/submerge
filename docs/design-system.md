@@ -92,6 +92,12 @@ Visual fidelity is a **gate**, the same way `pnpm test` / `pnpm typecheck` are:
 
 ### Routing / system Direct contract
 
+- Default exposes a **Напрямую / Через VPN** segmented control under **Всё
+  остальное**. Reuse `oXxu8/KvheA` segmented metrics and the existing labeled
+  control row. The collapsed summary includes the selected route. Pending edits
+  disable both choices, and failed activation retains the previous selection
+  with an inline error. This addition introduces no design tokens.
+
 - Direct is a system-owned channel in the normal sortable list. Desktop uses the existing
   grip; mobile uses the existing up/down controls. Default remains separate and terminal.
 - The collapsed card always shows `Direct`, the `Системный` and mono `DIRECT` labels, an

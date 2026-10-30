@@ -12,3 +12,4 @@ When a new significant decision is made, add a file `NNNN-short-name.md` with th
 - [0004](0004-anti-overengineering.md) — Minimal sufficient complexity (SQLite, pnpm monorepo, no Postgres/Nx/hexagonal)
 - [0005](0005-mihomo-native-domain-intelligence.md) — Mihomo-native domain intelligence as an optional Submerge background module
 - [0006](0006-local-domain-rule-store.md) — Local domain-rule source of truth with optional host-side export
+- [0007](0007-recoverable-config-apply.md) — Common pending/accepted config lifecycle and recovery after interrupted application

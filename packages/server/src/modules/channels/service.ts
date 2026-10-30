@@ -7,6 +7,7 @@ import {
   DEFAULT_AUTO_TEST_INTERVAL,
   DEFAULT_AUTO_TEST_URL,
   DEFAULT_SPEED_POLICY,
+  type DefaultRoute,
   type DirectChannel,
   directChannelSchema,
   directPresetSettingsSchema,
@@ -179,6 +180,7 @@ function rowToChannel(row: typeof channels.$inferSelect): Channel {
     enabled: row.enabled,
     isDefault: row.isDefault,
     policy: policy.success ? policy.data : DEFAULT_SPEED_POLICY,
+    defaultRoute: row.defaultRoute,
     matcher: matcher.success ? matcher.data : emptyChannelMatcher(),
     lastReason: row.lastReason ?? null,
     lastReasonAt: row.lastReasonAt ?? null,
@@ -197,6 +199,7 @@ export function readDefaultChannel(db: Db): ProxyChannel {
       priority: 0,
       enabled: true,
       isDefault: true,
+      defaultRoute: "proxy",
       policy: DEFAULT_SPEED_POLICY,
       matcher: emptyChannelMatcher(),
       lastReason: null,
@@ -212,6 +215,11 @@ export function readDefaultChannel(db: Db): ProxyChannel {
 
 export function readDefaultPolicy(db: Db): ChannelPolicy {
   return readDefaultChannel(db).policy;
+}
+
+export function setDefaultRoute(db: Db, route: DefaultRoute): void {
+  ensureDefaultChannel(db);
+  db.update(channels).set({ defaultRoute: route }).where(eq(channels.id, DEFAULT_CHANNEL_ID)).run();
 }
 
 export function setChannelPolicy(db: Db, id: string, policy: ChannelPolicy): void {

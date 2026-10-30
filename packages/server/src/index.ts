@@ -17,6 +17,7 @@ import {
   shutdownDomainIntelligenceRuntime,
   startDomainRuleApplyWorker,
 } from "./modules/logs/singleton.js";
+import { readConfigApplyRecovery } from "./modules/nodes/config-apply-journal.js";
 import {
   prepareMihomoSecretForBootstrap,
   restorePendingMihomoSecretRotation,
@@ -55,12 +56,13 @@ async function serveStatic(url: string, res: ServerResponse): Promise<void> {
 
 // Apply any pending DB migrations before accepting connections
 runMigrations();
-readNetworkSettings(db);
-validateGatewayStartup(db, prepareMihomoSecretForBootstrap(db));
 
 // Seed the Default channel on first boot (idempotent — no-op if already present).
 ensureDefaultChannel(db);
 ensureDirectChannel(db);
+readConfigApplyRecovery(db, env.MIHOMO_CONFIG_PATH);
+readNetworkSettings(db);
+validateGatewayStartup(db, prepareMihomoSecretForBootstrap(db));
 
 // Backfill sub_url for pre-migration sub/deep-link rows so dedup covers them.
 backfillSubUrls(db);

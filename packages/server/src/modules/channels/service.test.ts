@@ -10,7 +10,7 @@ import * as yaml from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
 import { channels, sources } from "../../db/schema.js";
-import { applyConfig } from "../nodes/service.js";
+import { applyConfig, readConfigApplyState } from "../nodes/service.js";
 import { setSetting } from "../settings/service.js";
 import { getPool, setPool } from "./pool.js";
 import {
@@ -26,6 +26,7 @@ import {
   reorderChannels,
   setChannelLastReason,
   setChannelPolicy,
+  setDefaultRoute,
   updateChannel,
   updateDirect,
 } from "./service.js";
@@ -572,5 +573,86 @@ describe("updateChannel matcher persistence + config regeneration", () => {
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,ex.com,ch-${created.id}`);
     expect(cfg.rules).toContain(`DOMAIN-SUFFIX,youtube.com,ch-${created.id}`);
     expect(cfg.rules).toContain(`IP-CIDR,10.0.0.0/8,ch-${created.id}`);
+  });
+});
+
+describe("Default route persistence and activation", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("preserves the VPN default and the saved VPN policy when switching both ways", () => {
+    const db = freshDb();
+    ensureDefaultChannel(db);
+    expect(readDefaultChannel(db).defaultRoute).toBe("proxy");
+    const policy = readDefaultPolicy(db);
+    setDefaultRoute(db, "direct");
+    ensureDefaultChannel(db);
+    expect(readDefaultChannel(db).defaultRoute).toBe("direct");
+    expect(readDefaultPolicy(db)).toEqual(policy);
+    setDefaultRoute(db, "proxy");
+    expect(readDefaultChannel(db).defaultRoute).toBe("proxy");
+  });
+
+  it("generates the staged route and restores the accepted route/file after a failed reload", async () => {
+    const db = freshDb();
+    ensureDefaultChannel(db);
+    const configPath = join(mkdtempSync(join(tmpdir(), "submerge-route-")), "config.yaml");
+    db.insert(sources)
+      .values({
+        kind: "sub",
+        value: "test",
+        label: "test",
+        proxies: [
+          { name: "vpn", type: "vless", server: "vpn.example.com", port: 443, uuid: "test" },
+        ],
+      })
+      .run();
+    const beforeApply = readConfigApplyState();
+    expect(beforeApply.inProgress).toBe(false);
+    const progressDuringReload: boolean[] = [];
+    const progressDuringStaging: boolean[] = [];
+    const fetch = vi.fn(() => {
+      progressDuringReload.push(readConfigApplyState().inProgress);
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
+    vi.stubGlobal("fetch", fetch);
+    await expect(applyConfig(db, configPath, configPath)).resolves.toMatchObject({ applied: true });
+    const stage = (route: "direct" | "proxy") => () => {
+      progressDuringStaging.push(readConfigApplyState().inProgress);
+      const previous = readDefaultChannel(db).defaultRoute;
+      setDefaultRoute(db, route);
+      return () => setDefaultRoute(db, previous);
+    };
+    await expect(
+      applyConfig(db, configPath, configPath, {
+        stageConfigMutation: stage("direct"),
+        rollbackOnFailure: true,
+      }),
+    ).resolves.toMatchObject({ applied: true });
+    expect((yaml.load(readFileSync(configPath, "utf8")) as { rules: string[] }).rules.at(-1)).toBe(
+      "MATCH,DIRECT",
+    );
+    const accepted = readFileSync(configPath, "utf8");
+    const afterAccepted = readConfigApplyState();
+    expect(afterAccepted.inProgress).toBe(false);
+    expect(afterAccepted.revision).toBeGreaterThan(beforeApply.revision);
+    fetch.mockImplementation(() => {
+      progressDuringReload.push(readConfigApplyState().inProgress);
+      return Promise.reject(new Error("engine offline"));
+    });
+    await expect(
+      applyConfig(db, configPath, configPath, {
+        stageConfigMutation: stage("proxy"),
+        rollbackOnFailure: true,
+        force: true,
+      }),
+    ).rejects.toThrow();
+    expect(readDefaultChannel(db).defaultRoute).toBe("direct");
+    expect(readFileSync(configPath, "utf8")).toBe(accepted);
+    expect(readConfigApplyState().inProgress).toBe(false);
+    expect(readConfigApplyState().revision).toBeGreaterThan(afterAccepted.revision);
+    expect(progressDuringReload.length).toBeGreaterThan(0);
+    expect(progressDuringReload.every(Boolean)).toBe(true);
+    expect(progressDuringStaging.length).toBeGreaterThan(0);
+    expect(progressDuringStaging.every(Boolean)).toBe(true);
   });
 });

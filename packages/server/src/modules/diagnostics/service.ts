@@ -10,15 +10,18 @@ import {
 } from "@submerge/shared";
 import { sql } from "drizzle-orm";
 import type {
+  ActiveRulesResponse,
   ExternalIpTrace,
   MihomoRuntimeConfig,
   MihomoVersion,
   ProxiesResponse,
 } from "../../clients/mihomo.js";
+import { readManagedDomainRuleProviderMayRoute } from "../../config/domain-rules.js";
 import type { Db } from "../../db/client.js";
 import { SUBMERGE_VERSION } from "../../version.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe } from "../channels/service.js";
+import type { ConfigApplyState } from "../nodes/service.js";
 import { getSetting } from "../settings/service.js";
 import { deriveDiagnosticState, resolveActiveLeaf, safeTargetHost } from "./model.js";
 
@@ -83,6 +86,8 @@ export interface DiagnosticsServiceDeps {
   healthHapp(signal?: AbortSignal): Promise<{ ok: true }>;
   getProxies(signal?: AbortSignal): Promise<ProxiesResponse>;
   getRuntimeConfig(signal?: AbortSignal): Promise<MihomoRuntimeConfig>;
+  getRules(signal?: AbortSignal): Promise<ActiveRulesResponse>;
+  readConfigApplyState?: () => ConfigApplyState;
   getExternalIpTrace(signal?: AbortSignal): Promise<ExternalIpTrace>;
   getDelay(
     name: string,
@@ -207,10 +212,17 @@ function realNodeCount(proxies: ProxiesResponse["proxies"]): number {
 function externalRouteAttribution(
   allChannels: ReturnType<typeof listChannels>,
   proxies: ProxiesResponse["proxies"],
+  acceptedDefaultTarget: string | null,
 ): { route: string; node: string | null } {
   const host = "www.cloudflare.com";
-  let uncertain = false;
   const enabled = allChannels.filter((channel) => channel.enabled);
+  const defaultChannel = allChannels.find(
+    (channel): channel is ProxyChannel => channel.target === "proxy" && channel.isDefault,
+  );
+  let uncertain =
+    acceptedDefaultTarget === null ||
+    (defaultChannel?.matcher.ruleProviders.length ?? 0) > 0 ||
+    readManagedDomainRuleProviderMayRoute();
   for (const channel of enabled) {
     if (channel.isDefault) continue;
     const deterministicMatch =
@@ -236,14 +248,15 @@ function externalRouteAttribution(
       uncertain = true;
     }
   }
-  if (uncertain) return { route: "через mihomo · текущие правила", node: null };
-  const defaultChannel = enabled.find(
-    (channel): channel is ProxyChannel => channel.target === "proxy" && channel.isDefault,
-  );
+  if (uncertain || !acceptedDefaultTarget)
+    return { route: "через mihomo · текущие правила", node: null };
   return defaultChannel
     ? {
         route: defaultChannel.name,
-        node: resolveActiveLeaf(proxies, channelGroupName(defaultChannel)),
+        node:
+          acceptedDefaultTarget === "DIRECT"
+            ? "DIRECT"
+            : resolveActiveLeaf(proxies, acceptedDefaultTarget),
       }
     : { route: "через mihomo · текущие правила", node: null };
 }
@@ -371,6 +384,8 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
   let externalIp = skippedExternal("dependency-unavailable");
   let config = skippedConfig(proxyEndpoint);
   let nodes = 0;
+  let directDefault = false;
+  let acceptedDefaultTarget: string | null = null;
 
   if (mihomo.status === "ok") {
     let proxyView: ProxiesResponse;
@@ -390,12 +405,41 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
     if (mihomo.status === "ok") {
       nodes = realNodeCount(proxyView.proxies);
       const allChannels = listChannels(deps.db);
+      try {
+        const active = (await timed(deps, overallSignal, (signal) => deps.getRules(signal))).value;
+        const finalRule = active.rules.filter((rule) => !rule.extra.disabled).at(-1);
+        const defaultChannel = allChannels.find(
+          (channel): channel is ProxyChannel => channel.target === "proxy" && channel.isDefault,
+        );
+        if (finalRule?.type.toLowerCase() === "match") {
+          if (
+            finalRule.proxy === "DIRECT" ||
+            finalRule.proxy === "PROXY" ||
+            (defaultChannel && finalRule.proxy === channelGroupName(defaultChannel))
+          )
+            acceptedDefaultTarget = finalRule.proxy;
+        }
+      } catch {
+        /* Missing live rule evidence leaves Default unconfirmed. */
+      }
+      directDefault = acceptedDefaultTarget === "DIRECT";
       const proxyChannels = allChannels.filter(
-        (channel): channel is ProxyChannel => channel.target === "proxy" && channel.enabled,
+        (channel): channel is ProxyChannel =>
+          channel.target === "proxy" && (channel.enabled || channel.isDefault),
       );
       routes = proxyChannels.map((channel) => {
         const target = policyProbe(channel.policy);
-        const activeLeaf = resolveActiveLeaf(proxyView.proxies, channelGroupName(channel));
+        const activeLeaf =
+          channel.isDefault && acceptedDefaultTarget === null
+            ? null
+            : channel.isDefault && directDefault
+              ? "DIRECT"
+              : resolveActiveLeaf(
+                  proxyView.proxies,
+                  channel.isDefault && acceptedDefaultTarget
+                    ? acceptedDefaultTarget
+                    : channelGroupName(channel),
+                );
         if (!activeLeaf) {
           const error = skippedError("no-active-node");
           return {
@@ -443,7 +487,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
         errorCode: "unknown",
       }));
       externalIp =
-        nodes === 0
+        nodes === 0 && !directDefault
           ? skippedExternal("no-proxy-nodes")
           : {
               status: "failed",
@@ -486,13 +530,17 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
           };
         }
       });
-      if (nodes > 0) {
+      if (nodes > 0 || directDefault) {
         jobs.push(async () => {
           try {
             const result = await timed(deps, overallSignal, (signal) =>
               deps.getExternalIpTrace(signal),
             );
-            const attribution = externalRouteAttribution(allChannels, proxyView.proxies);
+            const attribution = externalRouteAttribution(
+              allChannels,
+              proxyView.proxies,
+              acceptedDefaultTarget,
+            );
             externalIp = {
               status: "ok",
               ...result.value,
@@ -514,7 +562,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
       }
       for (const [index, channel] of proxyChannels.entries()) {
         const row = routes[index];
-        if (!row || row.status === "skipped" || !row.node || row.node === "DIRECT") continue;
+        if (!row || row.status === "skipped" || !row.node) continue;
         jobs.push(async () => {
           try {
             const probe = policyProbe(channel.policy);
@@ -529,7 +577,7 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
               ...row,
               status: "ok",
               durationMs: result.value.delay,
-              detail: "Маршрут доступен",
+              detail: row.node === "DIRECT" ? "Прямой маршрут" : "Маршрут доступен",
               errorCode: null,
             };
           } catch (error) {
@@ -582,13 +630,14 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
   const state = deriveDiagnosticState({
     mihomoStatus: mihomo.status,
     realNodeCount: nodes,
+    directDefault,
     externalIpStatus: externalIp.status,
     routes,
     services,
     remainingRequiredStatuses: [submerge.status, happ.status, config.status],
   });
   const completedEpoch = now();
-  return diagnosticsResultSchema.parse({
+  const result = diagnosticsResultSchema.parse({
     startedAt: new Date(startedEpoch).toISOString(),
     completedAt: new Date(completedEpoch).toISOString(),
     durationMs: Math.max(0, monotonicNow(deps) - startedMono),
@@ -600,6 +649,29 @@ async function executeDiagnostics(deps: DiagnosticsServiceDeps): Promise<Diagnos
     services,
     config,
   });
+  return config.status === "ok" && config.mode !== "rule" ? unconfirmedRouteResult(result) : result;
+}
+
+function unconfirmedRouteResult(result: DiagnosticsResult): DiagnosticsResult {
+  const routes = result.routes.map((row) =>
+    row.channelId === "default"
+      ? {
+          ...row,
+          node: null,
+          status: "skipped" as const,
+          durationMs: null,
+          detail: "Маршрут не подтверждён",
+          errorCode: "dependency-unavailable" as const,
+        }
+      : row,
+  );
+  return {
+    ...result,
+    state: result.state === "ready" ? "partial" : result.state,
+    summary: summary(routes, result.services),
+    routes,
+    externalIp: { ...result.externalIp, route: "через mihomo · текущие правила", node: null },
+  };
 }
 
 function fatalResult(deps: DiagnosticsServiceDeps): DiagnosticsResult {
@@ -650,6 +722,7 @@ export class DiagnosticsService {
   private result: DiagnosticsResult | null = null;
   private completedAt: number | null = null;
   private inFlight: Promise<DiagnosticsResult> | null = null;
+  private cachedRevision = 0;
 
   constructor(deps: DiagnosticsServiceDeps) {
     this.deps = deps;
@@ -657,8 +730,11 @@ export class DiagnosticsService {
 
   async run(input: { force?: boolean } = {}): Promise<DiagnosticsResult> {
     if (this.inFlight) return this.inFlight;
+    const before = this.deps.readConfigApplyState?.() ?? { revision: 0, inProgress: false };
     if (
       !input.force &&
+      !before.inProgress &&
+      this.cachedRevision === before.revision &&
       this.result &&
       this.completedAt !== null &&
       (this.deps.now ?? Date.now)() - this.completedAt < CACHE_TTL_MS
@@ -669,13 +745,22 @@ export class DiagnosticsService {
     const pending = Promise.resolve()
       .then(() => this.deps.runChecks?.() ?? executeDiagnostics(this.deps))
       .then((result) => diagnosticsResultSchema.parse(result))
-      .catch(() => fatalResult(this.deps));
+      .catch(() => fatalResult(this.deps))
+      .then((result) => {
+        const after = this.deps.readConfigApplyState?.() ?? before;
+        if (before.inProgress || after.inProgress || before.revision !== after.revision) {
+          this.result = null;
+          this.completedAt = null;
+          return unconfirmedRouteResult(result);
+        }
+        this.result = result;
+        this.cachedRevision = after.revision;
+        this.completedAt = (this.deps.now ?? Date.now)();
+        return result;
+      });
     this.inFlight = pending;
     try {
-      const result = await pending;
-      this.result = result;
-      this.completedAt = (this.deps.now ?? Date.now)();
-      return result;
+      return await pending;
     } finally {
       if (this.inFlight === pending) this.inFlight = null;
     }

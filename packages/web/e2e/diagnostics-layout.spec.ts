@@ -398,6 +398,64 @@ test("no-nodes and first-load errors remain explicit", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Повторить" })).toBeVisible();
 });
 
+for (const width of [390, 1440]) {
+  test(`failed Direct and unconfirmed Default stay explicit at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1024 });
+    const firstRoute = healthyResult.routes[0];
+    if (!firstRoute) throw new Error("Default route fixture is missing");
+    const routes = page.getByRole(width < 768 ? "list" : "table", { name: "Маршруты" });
+    await openDiagnostics(page, {
+      ...healthyResult,
+      state: "partial",
+      summary: "0 из 1 маршрутов · 6 из 6 сервисов",
+      routes: [
+        {
+          ...firstRoute,
+          node: "DIRECT",
+          status: "failed",
+          durationMs: null,
+          detail: "Тайм-аут проверки",
+          errorCode: "timeout",
+        },
+      ],
+    });
+    await expect(page.getByText("Есть замечания")).toBeVisible();
+    await expect(routes.getByText("DIRECT", { exact: true })).toBeVisible();
+    await expect(routes.getByText("Тайм-аут проверки")).toBeVisible();
+
+    await openDiagnostics(page, {
+      ...healthyResult,
+      state: "partial",
+      summary: "0 из 0 маршрутов · 6 из 6 сервисов",
+      externalIp: {
+        ...healthyResult.externalIp,
+        route: "через mihomo · текущие правила",
+        node: null,
+      },
+      routes: [
+        {
+          ...firstRoute,
+          node: null,
+          status: "skipped",
+          durationMs: null,
+          detail: "Маршрут не подтверждён",
+          errorCode: "dependency-unavailable",
+        },
+      ],
+    });
+    await expect(page.getByText("Есть замечания")).toBeVisible();
+    await expect(routes.getByText("Маршрут не подтверждён")).toBeVisible();
+    await expect(
+      page.getByLabel("Внешний IP").getByText("через mihomo · текущие правила"),
+    ).toBeVisible();
+    await expectNoDocumentOverflow(page);
+    await page.screenshot({
+      path: `/tmp/diagnostics-unconfirmed-dark-${width}.png`,
+      fullPage: true,
+    });
+  });
+}
+
 test("Diagnostics has no overflow at supported widths and container boundaries", async ({
   page,
 }) => {

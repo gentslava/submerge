@@ -135,34 +135,43 @@ export class DomainIntelligenceRuntimeCoordinator {
       }
       throw error;
     }
-    if (!result.applied) {
-      this.activationVerified = false;
-    } else if (result.activationVerified) {
-      this.activationVerified = true;
-    } else if (!this.activationVerified) {
-      const view = this.deps.readSettings();
-      const shouldEnable = view.configurationState === "ready" && view.settings.enabled;
-      if (shouldEnable) {
-        let forcedApplied = false;
-        try {
-          const forced = await this.deps.applyCurrentConfig();
-          forcedApplied = forced.applied && forced.activationVerified;
-        } catch (error) {
-          this.deps.onError?.(error);
+    const committed = result;
+    try {
+      if (!result.applied) {
+        this.activationVerified = false;
+      } else if (result.activationVerified) {
+        this.activationVerified = true;
+      } else if (!this.activationVerified) {
+        const view = this.deps.readSettings();
+        const shouldEnable = view.configurationState === "ready" && view.settings.enabled;
+        if (shouldEnable) {
+          let forcedApplied = false;
+          try {
+            const forced = await this.deps.applyCurrentConfig();
+            forcedApplied = forced.applied && forced.activationVerified;
+          } catch (error) {
+            this.deps.onError?.(error);
+          }
+          this.activationVerified = forcedApplied;
+          result = {
+            ...result,
+            applied: forcedApplied,
+            activationVerified: forcedApplied,
+          };
         }
-        this.activationVerified = forcedApplied;
-        result = {
-          ...result,
-          applied: forcedApplied,
-          activationVerified: forcedApplied,
-        };
       }
+      if (result.applied && this.activationVerified && result.activationVerified === false) {
+        result = { ...result, activationVerified: true };
+      }
+      await this.finishTransition(generation, result.applied);
+      return result;
+    } catch (error) {
+      // The apply has already committed. Observer bookkeeping cannot undo that
+      // route or turn its successful result into a rejected settings mutation.
+      if (generation === this.generation && !this.stopped) this.recoveryNeeded = true;
+      this.deps.onError?.(error);
+      return committed;
     }
-    if (result.applied && this.activationVerified && result.activationVerified === false) {
-      result = { ...result, activationVerified: true };
-    }
-    await this.finishTransition(generation, result.applied);
-    return result;
   }
 
   private async finishTransition(generation: number, applied: boolean): Promise<boolean> {

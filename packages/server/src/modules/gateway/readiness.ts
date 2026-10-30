@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { type NetworkInterfaceInfo, networkInterfaces } from "node:os";
-import { isPublicResolverIp, PSEUDO_NODE_SET } from "@submerge/shared";
+import {
+  type DefaultRoute,
+  isPublicResolverIp,
+  PROBE_GROUP,
+  PSEUDO_NODE_SET,
+} from "@submerge/shared";
 import { probeDnsListener } from "../../clients/gateway-network.js";
 import {
   type ActiveRulesResponse,
@@ -95,7 +100,24 @@ export async function checkGatewayReadiness(
   defaultGroup: string,
   deps: GatewayReadinessDeps = gatewayReadinessDeps,
   tunEnabled = true,
+  defaultRoute: DefaultRoute = "proxy",
 ): Promise<GatewayReadiness> {
+  let activeRules: Promise<ActiveRulesResponse> | undefined;
+  const rules = () => (activeRules ??= deps.rules());
+  const vpnTargets = async () =>
+    defaultRoute === "proxy"
+      ? [defaultGroup]
+      : [
+          ...new Set(
+            (await rules()).rules
+              .filter(
+                (rule) =>
+                  !rule.extra.disabled &&
+                  !["DIRECT", "REJECT", "REJECT-DROP", PROBE_GROUP].includes(rule.proxy),
+              )
+              .map((rule) => rule.proxy),
+          ),
+        ];
   const nonce = randomUUID();
   const prefix = profile.fakeIpRange.split(".").slice(0, 2).join(".");
   const host = profile.dnsListen === "0.0.0.0" ? "127.0.0.1" : profile.dnsListen;
@@ -174,12 +196,12 @@ export async function checkGatewayReadiness(
     [
       "default-rule",
       async () => {
-        const { rules } = await deps.rules();
-        const active = rules.filter((rule) => !rule.extra.disabled);
+        const response = await rules();
+        const active = response.rules.filter((rule) => !rule.extra.disabled);
         return (
           active.at(-1)?.type.toLowerCase() === "match" &&
-          active.at(-1)?.proxy === defaultGroup &&
-          !active.some((rule) => rule.type.toLowerCase() === "match" && rule.proxy === "DIRECT")
+          active.at(-1)?.proxy === (defaultRoute === "direct" ? "DIRECT" : defaultGroup) &&
+          active.filter((rule) => rule.type.toLowerCase() === "match").length === 1
         );
       },
     ],
@@ -198,10 +220,19 @@ export async function checkGatewayReadiness(
             ? proxy.all.every((member) => member !== "DIRECT") && proxy.all.some(hasNode)
             : !PSEUDO_NODE_SET.has(name);
         };
-        return hasNode(defaultGroup);
+        return (await vpnTargets()).every((target) => {
+          visited.clear();
+          return hasNode(target);
+        });
       },
     ],
-    ["vpn-egress", async () => (await deps.vpnProbe(defaultGroup)) > 0],
+    [
+      "vpn-egress",
+      async () =>
+        (await Promise.all((await vpnTargets()).map((target) => deps.vpnProbe(target)))).every(
+          (delay) => delay > 0,
+        ),
+    ],
   ];
   const results = await Promise.all(
     tasks

@@ -91,6 +91,7 @@ export async function gatewayReadiness(db: Db) {
       group,
       undefined,
       profile.profile === "gateway",
+      defaultChannel?.target === "proxy" ? (defaultChannel.defaultRoute ?? "proxy") : "proxy",
     );
   } catch {
     return {

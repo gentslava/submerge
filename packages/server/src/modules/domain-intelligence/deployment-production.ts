@@ -17,6 +17,7 @@ import {
   DOMAIN_RULE_DIRECTORY_PATH,
   DomainRuleStoreError,
   inspectLocalDomainRuleStore,
+  type LocalDomainRuleStoreState,
   parseManagedDomainRules,
   provisionLocalDomainRuleStore,
 } from "./rule-store.js";
@@ -111,6 +112,30 @@ function sameRules(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false;
   const expected = new Set(left);
   return expected.size === left.length && right.every((rule) => expected.has(rule));
+}
+
+// Offline preparation may inspect an unfinished, journal-proven file generation,
+// but only the coordinated owner can promote the store marker or activation state.
+export function inspectRecoverableLocalDomainRuleStore(
+  db: Db,
+  ruleDirectoryPath: string = DOMAIN_RULE_DIRECTORY_PATH,
+): LocalDomainRuleStoreState {
+  const history = localRuleStoreHistory(db);
+  if (!history.markerDigest || history.reconciliationRequiredPresent)
+    throw new DomainRuleStoreError(
+      "local-store-reconciliation-required",
+      "Managed store is not attested",
+    );
+  const state = inspectLocalDomainRuleStore({ ruleDirectoryPath });
+  if (
+    history.markerDigest !== state.contentSha256 &&
+    !history.unfinishedIntendedDigests.has(state.contentSha256)
+  )
+    throw new DomainRuleStoreError(
+      "local-store-reconciliation-required",
+      "Managed store has unknown content",
+    );
+  return state;
 }
 
 function classifyLocalStoreFailure(error: unknown): unknown {

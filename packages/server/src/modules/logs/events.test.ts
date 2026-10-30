@@ -20,6 +20,8 @@ const keys: OperationalEventKey[] = [
   "boot-config-apply-failed",
   "boot-domain-rules-failed",
   "config-reload-failed",
+  "default-route-activation-failed",
+  "default-route-restore-failed",
   "secret-rotation-write-failed",
   "domain-validation-config-write-failed",
   "domain-validation-scheduler-failed",

@@ -8,6 +8,8 @@ export type OperationalEventKey =
   | "boot-domain-rules-failed"
   | "config-reload-failed"
   | "gateway-config-reload-failed"
+  | "default-route-restore-failed"
+  | "default-route-activation-failed"
   | "secret-rotation-write-failed"
   | "domain-validation-config-write-failed"
   | "domain-validation-scheduler-failed"
@@ -67,6 +69,18 @@ const definitions: Record<OperationalEventKey, OperationalEventDefinition> = {
     level: "warning",
     uiMessage: "Не удалось применить конфигурацию шлюза; предыдущий файл сохранён",
     stdoutMessage: "gateway activation failed; previous config file preserved",
+    fields: noFields,
+  },
+  "default-route-restore-failed": {
+    level: "error",
+    uiMessage: "Не удалось подтвердить восстановление прежнего маршрута; проверьте mihomo",
+    stdoutMessage: "default route recovery could not be confirmed; accepted file restored",
+    fields: noFields,
+  },
+  "default-route-activation-failed": {
+    level: "warning",
+    uiMessage: "Не удалось применить маршрут по умолчанию; восстанавливаем прежнюю настройку",
+    stdoutMessage: "default route activation failed; restoring previous configuration",
     fields: noFields,
   },
   "secret-rotation-write-failed": {
