@@ -116,3 +116,87 @@ Final totals: Standards 0; Spec 1 P2, resolved. Independent follow-up: 0 unresol
 on both axes. Full raw static verification passed after the final source changes;
 the 31-scenario browser gate remains valid because those changes affect server
 diagnostic attribution only. Production and live engine acceptance remain unrun.
+
+## PR #53 review corrections
+
+Baseline: `3bdbedc94bd8c34774a5b12a5b10dc6ecbbc08ea`. Follow-up verified and ready
+for the user-authorized publication to the existing PR.
+
+- [x] Reproduce accepted-route attribution, disabled Default, missing Direct probe,
+  and post-apply bookkeeping failures.
+- [x] Correct confirmed findings and the no-node runbook guidance.
+- [x] Raw static and focused browser verification; independent incremental review.
+- [x] Independent final review; correction ready for authorized publication to PR #53.
+
+The manual credential correction is separate (PR #54).
+
+Seven added regressions failed against the original PR behavior (7 failed / 37
+passed in `/tmp/submerge-pr53-review-red.log`) and passed after correction (44/44
+in `/tmp/submerge-pr53-review-green.log`). The existing staged-activation and
+rollback integration test also verifies that the real apply lifecycle exposes a
+busy state before staging/reload and advances its revision after either outcome.
+
+Raw `CI=true pnpm verify:static` passed: Biome, token drift, typecheck, 142 shared /
+1366 server / 297 web tests and production builds; four opt-in server tests remain
+skipped. Final log: `/tmp/submerge-pr53-review-static-final.log`. Existing Biome schema-version
+information and Vite native-loader/chunk-size warnings remain unchanged.
+
+Chromium passed 41 Routing/Default/Diagnostics scenarios with zero retries
+(`/tmp/submerge-pr53-review-browser.log`). This repeats the 31 original routing
+cases and adds diagnostic populated/empty/error/loading states, supported widths,
+and failed Direct/unconfirmed Default at 390 and 1440 px. After correcting fixture
+summary counts, both added cases passed again with zero retries
+(`/tmp/submerge-pr53-review-browser-final.log`). Inspected dark screenshots at
+1440×1024 and 390×1024: `/tmp/diagnostics-unconfirmed-dark-{1440,390}.png` and
+`/tmp/submerge-default-route-1440-dark.png`. The reused controls and existing
+diagnostic hierarchy remain intact; no UI implementation changed in this follow-up.
+
+### Incremental Standards
+
+Invoked the same `code-review` skill for the full correction against `3bdbedc`,
+including all working files. Reviewer: `/root/incremental_standards`.
+
+One P2: concurrent diagnostic callers shared the raw probe promise and the second
+caller bypassed the revision check. The complete checked result is now shared.
+No additional documented-standard violations or actionable smells were found.
+
+### Incremental Spec
+
+Reviewer: `/root/final_spec` (incremental pass for this correction).
+
+Three P2 findings: the concurrent-result issue above; legacy `MATCH,PROXY` was not
+recognized/resolved; Default's Always VPN precedence was treated as uncertain
+only with a Direct catch-all. All three were corrected. Accepted targets now
+include legacy PROXY and its actual selected leaf, including DIRECT. Provider
+uncertainty applies independently of the catch-all choice.
+
+Four added regression cases failed before these corrections (4 failed / 31
+passed, `/tmp/submerge-pr53-incremental-red.log`). The focused diagnostics,
+runtime and channel suites then passed 78 tests
+(`/tmp/submerge-pr53-incremental-green.log`). Incremental totals: Standards 1 P2;
+Spec 3 P2, all resolved. Both independent reviewers repeated their reproductions
+and reported no remaining findings. Raw static then passed again with 142 shared /
+1370 server / 297 web tests, four opt-in server tests skipped, and production
+builds (`/tmp/submerge-pr53-incremental-static.log`). The browser gate remains
+valid because the final corrections affect server attribution only. The
+whole-feature final review follows below.
+
+### Final Standards
+
+Reviewer: `/root/final_standards`. No findings across the entire feature and all
+working corrections. Migration snapshot, persistence, rollback, revision checks,
+shared concurrent results and runtime recovery fit the documented boundaries.
+Desktop/mobile screenshots retain the existing control metrics.
+
+### Final Spec
+
+Reviewer: `/root/pr53_final_spec`. No findings across the entire feature and all
+working corrections: preserved defaults, explicit VPN precedence, empty pools,
+Proxy/TUN configuration, rollback, pending/error UI, readiness, accepted-route
+diagnostics and post-apply recovery. No scope creep found.
+
+The final review uses the exact PR merge-base `330c3c5c9774434bd4cea018ac0f6d26e7ed2a80`
+against the committed feature plus all working corrections. Final totals:
+Standards 0; Spec 0. All incremental findings were independently rechecked as
+resolved. Live engine/physical LAN/production acceptance for the feature and a
+rendered Pencil comparison remain unperformed.

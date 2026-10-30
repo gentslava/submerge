@@ -10,7 +10,7 @@ import * as yaml from "js-yaml";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "../../db/client.js";
 import { channels, sources } from "../../db/schema.js";
-import { applyConfig } from "../nodes/service.js";
+import { applyConfig, readConfigApplyState } from "../nodes/service.js";
 import { setSetting } from "../settings/service.js";
 import { getPool, setPool } from "./pool.js";
 import {
@@ -606,10 +606,16 @@ describe("Default route persistence and activation", () => {
         ],
       })
       .run();
-    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    const beforeApply = readConfigApplyState();
+    expect(beforeApply.inProgress).toBe(false);
+    const fetch = vi.fn(() => {
+      expect(readConfigApplyState().inProgress).toBe(true);
+      return Promise.resolve(new Response(null, { status: 204 }));
+    });
     vi.stubGlobal("fetch", fetch);
     await applyConfig(db, configPath, configPath);
     const stage = (route: "direct" | "proxy") => () => {
+      expect(readConfigApplyState().inProgress).toBe(true);
       const previous = readDefaultChannel(db).defaultRoute;
       setDefaultRoute(db, route);
       return () => setDefaultRoute(db, previous);
@@ -622,7 +628,13 @@ describe("Default route persistence and activation", () => {
       "MATCH,DIRECT",
     );
     const accepted = readFileSync(configPath, "utf8");
-    fetch.mockRejectedValue(new Error("engine offline"));
+    const afterAccepted = readConfigApplyState();
+    expect(afterAccepted.inProgress).toBe(false);
+    expect(afterAccepted.revision).toBeGreaterThan(beforeApply.revision);
+    fetch.mockImplementation(() => {
+      expect(readConfigApplyState().inProgress).toBe(true);
+      return Promise.reject(new Error("engine offline"));
+    });
     await expect(
       applyConfig(db, configPath, configPath, {
         stageConfigMutation: stage("proxy"),
@@ -632,5 +644,7 @@ describe("Default route persistence and activation", () => {
     ).rejects.toThrow();
     expect(readDefaultChannel(db).defaultRoute).toBe("direct");
     expect(readFileSync(configPath, "utf8")).toBe(accepted);
+    expect(readConfigApplyState().inProgress).toBe(false);
+    expect(readConfigApplyState().revision).toBeGreaterThan(afterAccepted.revision);
   });
 });

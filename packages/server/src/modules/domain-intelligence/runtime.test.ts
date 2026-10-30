@@ -30,6 +30,31 @@ function deferred<T>() {
 }
 
 describe("DomainIntelligenceRuntimeCoordinator", () => {
+  it.each([true, false])(
+    "retains a committed apply if bookkeeping fails (verified: %s)",
+    async (activationVerified) => {
+      const failure = new Error("settings read failed after commit");
+      let readable = false;
+      const onError = vi.fn();
+      const setRuntimeEnabled = vi.fn();
+      const coordinator = new DomainIntelligenceRuntimeCoordinator({
+        readSettings: () => {
+          if (!readable) throw failure;
+          return settingsView(true);
+        },
+        applyCurrentConfig: async () => ({ applied: true, activationVerified: true }),
+        setRuntimeEnabled,
+        onError,
+      });
+      const committed = { applied: true, activationVerified, nodes: 2 };
+      await expect(coordinator.runConfigApply(async () => committed)).resolves.toEqual(committed);
+      expect(onError).toHaveBeenCalledWith(failure);
+      expect(setRuntimeEnabled).not.toHaveBeenCalledWith(true);
+      readable = true;
+      await expect(coordinator.recoverIfNeeded()).resolves.toMatchObject({ applied: true });
+      expect(setRuntimeEnabled).toHaveBeenLastCalledWith(true);
+    },
+  );
   it("serializes inverse completions and never re-enables after a newer disable", async () => {
     let current = settingsView(true);
     const firstApply = deferred<{ applied: boolean; activationVerified: boolean }>();

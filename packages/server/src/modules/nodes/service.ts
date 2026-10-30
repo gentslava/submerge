@@ -53,6 +53,18 @@ import { buildMultiConfig, buildMultiConfigDocument } from "./multiConfig.js";
 
 const DOMAIN_VALIDATION_PASSWORD_KEY = "internal.domainValidationProxyPassword";
 
+export interface ConfigApplyState {
+  revision: number;
+  inProgress: boolean;
+}
+
+let configApplyRevision = 0;
+let activeConfigApplies = 0;
+
+export function readConfigApplyState(): ConfigApplyState {
+  return { revision: configApplyRevision, inProgress: activeConfigApplies > 0 };
+}
+
 function domainValidationTarget(
   inputs: readonly ChannelConfigInput[],
   targetChannelId: string,
@@ -337,6 +349,8 @@ async function applyConfigNow(
   let gateway = false;
   const tmpPath = `${configPath}.tmp`;
   const previousContent = opts.rollbackOnFailure ? readExistingConfig(configPath) : undefined;
+  configApplyRevision += 1;
+  activeConfigApplies += 1;
   try {
     rollbackConfigMutation = opts.stageConfigMutation?.();
     const { inputs, inventory } = collectActiveRoutingInputs(db);
@@ -473,6 +487,8 @@ async function applyConfigNow(
     }
     throw error;
   } finally {
+    activeConfigApplies -= 1;
+    configApplyRevision += 1;
     rmSync(tmpPath, { force: true });
   }
 }

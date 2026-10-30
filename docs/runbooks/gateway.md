@@ -90,7 +90,9 @@ back into Submerge; otherwise a resolution loop is possible.
 
 The protected gateway.readiness endpoint tests the active configuration, TUN, TCP/UDP DNS,
 fresh public/local resolution, loaded lists, default routing and VPN pool.
-No VPN nodes means internet default traffic is rejected. Invalid configuration
+With a VPN default, no VPN nodes means default traffic is rejected. With a Direct
+default, unmatched traffic remains direct; an empty explicit VPN pool rejects
+only the destinations assigned to that pool. Invalid configuration
 keeps the last accepted engine file and shows an explicit activation failure.
 Liveness (/healthz) remains separate from operational readiness.
 

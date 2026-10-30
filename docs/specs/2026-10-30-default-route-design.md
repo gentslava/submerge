@@ -26,6 +26,13 @@ and npm use VPN, without maintaining a list of insurance API destinations.
 - No host routes, Docker settings, dependencies, public deployment, or existing
   routing preferences change as part of this task.
 
+PR review corrections: diagnostics derive Default from the accepted engine rules,
+including a Default row whose enabled flag is false. Probe native DIRECT before
+reporting it available. If configuration activation overlaps a diagnostic run,
+report uncertain route attribution and do not cache a definitive result. Apply
+completion invalidates previous diagnostic cache generations. Runtime bookkeeping
+failures after a committed apply retain its result and schedule observer recovery.
+
 UI uses the existing Indigo Console `Segmented` control and channel editor row:
 `oXxu8/KvheA` (3 px inset/gap, 7×13 px option padding, text-sub, md/sm radii),
 and Routing frames `lYrng`, `HXRTv`. No new tokens. The new row adapts these existing
