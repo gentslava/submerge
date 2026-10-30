@@ -53,6 +53,8 @@ and startup/reconnect recovery; credential rotation already retains both keys.
 - Explicit rollback callers restore the previous file first, then atomically
   undo their staged mutation and restore the preceding journal. A crash during
   rollback remains an interrupted operation for the same recovery owner.
+  If the engine restore reload fails, retain a fresh pending journal bound to the
+  restored file so the next apply verifies activation even with identical bytes.
 
 ## Consequences
 

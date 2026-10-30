@@ -523,3 +523,85 @@ the missing architecture decision, legacy migration, lost managed provider and
 unverified backing file were corrected and independently rechecked before this
 wide pass. Static and local runtime gates are green; real TUN-device, production
 and physical LAN acceptance remain unperformed. Publication targets PR #53 only.
+
+### Review follow-up: unconfirmed engine rollback
+
+The latest CodeRabbit review on `1659422` reports an unconfirmed rollback gap:
+after a candidate reload loses its response and restoring the prior payload also
+fails, legacy Proxy clears the apply journal. A later ordinary apply can then skip
+reload because the restored file matches the desired settings, although the engine
+may still run the candidate. CI and both Docker builds on `1659422` passed.
+
+Retain a new pending apply bound to the restored file when the restore reload
+fails, after atomically undoing the staged mutation. Keep successful rollback's
+existing journal restoration. Regressions will model an accepted candidate with a
+lost response, both restore outcomes, both Default routes and a non-forced retry.
+Run static verification, incremental and final independent review before commit
+and push to the existing PR. UI implementation and visual evidence are unchanged.
+
+Red: both failed-restore route cases lost their pending journal on the old code;
+both successful-restore controls passed (`/tmp/submerge-pr53-restore-red.log`).
+The minimal correction tracks restore failure and transactionally rebases pending
+proof to the restored file after undoing the mutation. All 107 focused lifecycle,
+journal, crash-recovery and channel tests pass
+(`/tmp/submerge-pr53-restore-focused.log`). The four added cases also prove a
+non-forced retry restores the active engine model and clears pending proof, while
+successful rollback retains the confirmed no-op optimization.
+
+Raw `pnpm verify:static` passes: 142 shared / 1467 server / 297 web tests,
+four opt-in server tests skipped, plus Biome, token drift, typecheck and production
+builds (`/tmp/submerge-pr53-restore-static.log`). Independent incremental/final
+review and a focused real-engine rollback probe follow.
+
+The real-Mihomo Docker rollback probe passed both directions under Node 24.22.2,
+uid 999. The candidate actually reaches the engine before its response is lost;
+the restore request is then blocked. The probe verifies the restored DB/file,
+still-candidate engine rules and pending proof before an ordinary non-forced retry
+reloads the restored route and clears the journal. A subsequent no-op skips reload.
+Compiled artifacts overlay the same pinned runtime/engine images as above, on an
+isolated internal network. Artifacts:
+`config-recovery/{results-rollback.json,smoke-rollback.log,smoke-rollback.py}`.
+Temporary containers, networks and volumes are removed by the harness.
+
+Incremental `/code-review` on `1659422` to source tree
+`a5ca5cbadaaea83b41c9087214c8e3326619c013`:
+
+#### Standards
+
+`/root/final_standards`: no findings; no documented-standard violations or
+actionable smells. Atomic mutation rollback and file-bound pending proof preserve
+the common lifecycle. Independently passed all four new cases.
+
+#### Spec
+
+`/root/pr54_final_spec`: no findings; unconfirmed rollback gap resolved. Ordinary
+retry now verifies identical restored bytes, successful restore keeps prior
+journal behavior, and current desired settings/credential recovery remain the
+retry authority. Independently passed all four new cases.
+
+Incremental totals: Standards 0; Spec 0. Whole-feature final rechecks follow.
+Remote master advanced through PR #55, touching only the Postman preset domain
+list; no overlap with this correction. Its merge base remains `fe3a5c2`.
+
+Final whole-feature `/code-review` against `fe3a5c2`, pinned tree
+`7554cf59b0b4ffd042392353e5eba780973ec9b8`:
+
+#### Standards
+
+`/root/final_standards`: zero unresolved documented violations and actionable
+smells. Reviewed persistence, API/UI behavior, generated routing, rollback and
+restart recovery, managed-store protection, credentials, diagnostics/readiness,
+tests and documentation. The correction fits the existing recovery owner.
+
+#### Spec
+
+`/root/pr54_final_spec`: zero unresolved findings across the complete feature.
+Default routing and explicit VPN priority, accepted-engine diagnostics, pending
+UI, common recovery, managed-provider safety and credential integration match the
+specification. Independently passed 83 focused routing, diagnostics, readiness and
+router tests in this wide pass, in addition to the four incremental regressions.
+
+Final totals: Standards 0; Spec 0. Source remains unchanged since the full static
+and real-engine rollback runs. Only these review receipts follow the pinned tree.
+UI rendering is unchanged; prior browser evidence remains applicable. Production,
+physical LAN and real TUN-device acceptance remain unperformed.

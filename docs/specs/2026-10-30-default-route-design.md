@@ -44,6 +44,9 @@ apply bookkeeping precede journal removal. Failed ordinary applies retain pendin
 state and retry even when bytes are identical. Existing explicit rollback callers
 restore the previous file before atomically undoing their staged mutation and
 restoring the previous journal.
+If the engine restore reload fails, keep a pending apply bound to the restored
+file instead: engine activation remains uncertain, and the next ordinary apply
+must reload even when the restored bytes already match the desired settings.
 
 Startup validates a journal-proven accepted file using its accepted route while
 keeping the requested settings. The normal serialized owner then regenerates from

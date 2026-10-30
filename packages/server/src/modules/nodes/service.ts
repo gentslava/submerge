@@ -498,6 +498,7 @@ async function applyConfigSerialized(
     return { nodes: inventory.length, applied: true, activationVerified: true };
   } catch (error) {
     if (gateway) recordGatewayApply(db, "failed");
+    let engineRestoreFailed = false;
     if (attempt && opts.rollbackOnFailure && activationAttempted) {
       // Keep route changes and their recovery inside the serialized apply. A lost
       // reload response is ambiguous, so restore the durable file and attempt to
@@ -509,6 +510,7 @@ async function applyConfigSerialized(
         try {
           await reloadConfig(targetPath, previousContent);
         } catch (restoreError) {
+          engineRestoreFailed = true;
           operationalLog("default-route-restore-failed", {}, restoreError);
         }
       } else {
@@ -522,7 +524,10 @@ async function applyConfigSerialized(
       const rollbackAttempt = attempt;
       db.transaction(() => {
         rollbackConfigMutation?.();
-        finishConfigApply(db, rollbackAttempt, true);
+        // The engine may still run the candidate despite the restored file.
+        // Retain pending proof so identical bytes cannot skip the next reload.
+        if (engineRestoreFailed) beginConfigApply(db, configPath);
+        else finishConfigApply(db, rollbackAttempt, true);
       });
       rmSync(pendingPath, { force: true });
     }
