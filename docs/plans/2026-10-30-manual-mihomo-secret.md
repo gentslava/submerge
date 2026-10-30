@@ -82,3 +82,96 @@ previous recovery credential. No further gaps or scope creep.
 Final totals: Standards 0; Spec 1 P2 resolved. Follow-up: 0 unresolved on both axes.
 Static verification passed after the last behavior change. Later edits record
 evidence and clarify the existing controller-restart requirement only.
+
+## PR #54 review correction
+
+Baseline: `44a72988c75c8a968e8d08dd1d39c84cf5bc92f2`. Review:
+https://github.com/gentslava/submerge/pull/54#discussion_r4420570480.
+
+Node Headers accepts byte strings, so passing Unicode credentials directly can
+throw before a controller request. Preserve UTF-8 octets through a Latin-1 header
+string. The engine compares the token bytes directly with its configured secret;
+it does not decode URL/base64 encodings. Source checked at
+https://github.com/MetaCubeX/mihomo/blob/v1.19.33/hub/route/server.go#L311-L339.
+Header construction failure must permit the existing previous-key fallback,
+without retrying network failures or falsely confirming the primary key.
+
+- [x] Reproduce Unicode and header-construction fallback failures.
+- [x] Correct client transport and verify focused/static/Docker gates.
+- [x] Independent incremental and whole-feature final code-review.
+- [x] Prepare the reviewed correction for user-authorized publication to PR #54.
+
+Red: five added regression cases failed before the transport correction
+(`/tmp/submerge-pr54-review-red.log`), including Latin-1 characters whose original
+header bytes did not match the UTF-8 configuration. Green: the focused client and
+rotation selection passed 141 tests (`/tmp/submerge-pr54-review-green.log`).
+Network failure is not retried; an invalid primary header uses the previous key
+without promoting the invalid primary.
+
+Raw `CI=true pnpm verify:static` passed after the correction: Biome, tokens,
+typecheck, 142 shared / 1360 server / 297 web tests and production builds; four
+opt-in server tests remain skipped (`/tmp/submerge-pr54-review-static.log`). The
+prior 14-scenario browser gate remains valid because the follow-up only changes
+the server controller client and adds no UI behavior or control.
+
+Linux/arm64 Docker runtime verification passed all four manually configured
+keys: CJK, Cyrillic, emoji and Latin-1 text. The actual compiled controller client
+and candidate probe authenticated against Mihomo v1.19.33, including after app and
+engine restart under uid 999. Credentials stayed unchanged; wrong and missing
+credentials returned 401 after engine restart. An unconstructible primary header
+successfully used the previous credential without promotion. As above, the test
+uses a published runtime image with locally built server dist mounted over it;
+it is not packaged release acceptance. Initial controller authentication before
+the first engine restart has the already documented legacy behavior.
+
+Artifacts: chat scratch `manual-secret-unicode/{compose.yaml,smoke.py,smoke.log,results.json}`.
+All temporary containers, networks and volumes were removed. No production access.
+
+### Incremental Standards
+
+Reviewer `/root/incremental_standards`: no findings on the four-file correction
+or its subsequent transport-validation delta. No documented-standard violations
+or actionable smells. Authentication transport stays within the existing client;
+network errors remain outside the previous-key fallback path.
+
+### Incremental Spec
+
+Reviewer `/root/final_spec`: one P2, resolved. Headers construction accepts some
+C0/DEL bytes that the HTTP transport rejects before sending a request. Preflight
+the encoded Authorization using `node:http`'s `validateHeaderValue`, so recovery
+uses the previous key before dispatch without retrying generic network failures.
+
+Two added cases reproduced this error before correction (2 failed / 105 passed,
+`/tmp/submerge-pr54-control-red.log`); focused client/rotation tests then passed
+144 cases (`/tmp/submerge-pr54-control-green.log`). The independent loopback
+recheck confirmed exact UTF-8 bytes for all four key examples, LF/C0/NUL/DEL
+recovery through a Unicode previous key without primary promotion, and exactly
+one controller mutation request on a connection failure. No remaining findings.
+
+Incremental totals: Standards 0; Spec 1 P2 resolved. Raw static passed again:
+142 shared / 1363 server / 297 web tests, four opt-in skipped, and production
+builds (`/tmp/submerge-pr54-review-static-final.log`).
+
+Final Docker rerun passed all four keys with the final compiled client and all
+LF/C0/NUL/DEL recovery variants. Final receipt:
+`manual-secret-unicode/smoke-final.log` and `results.json`; cleanup completed.
+
+### Final Standards
+
+Reviewer `/root/final_standards`: no findings on the entire feature from
+`7a92a3a7b764162c0fa04dea5f2e2c20c07722fc`, including all working corrections.
+Unicode transport is shared by normal requests and candidate probes; locally
+invalid-header recovery stays separate from network failures and cannot promote
+the primary key. No documented-standard violations or actionable smells.
+
+### Final Spec
+
+Reviewer `/root/pr54_final_spec`: no unresolved findings across startup,
+bootstrap, configuration, activation, generation/restart persistence, legacy
+journal recovery, Unicode transport and previous-key recovery. TUN administrator
+authentication remains required. No scope creep or integration regression found.
+
+Final totals: Standards 0; Spec 0. Incremental P2 independently rechecked as
+resolved. Static and final Docker gates are green; the prior browser gate remains
+valid. Packaged release, production and physical deployment acceptance remain
+unperformed. Correction prepared for the user's authorized commit/push to PR #54.
