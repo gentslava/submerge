@@ -4,8 +4,13 @@ import { queryDnsResolution } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import { createDb } from "../../db/client.js";
 import { applyConfig } from "../nodes/service.js";
+import { NetworkActivationError } from "./readiness.js";
 import { configureGateway } from "./service.js";
-import { initializeNetworkSettings, readNetworkSettings } from "./settings.js";
+import {
+  initializeNetworkSettings,
+  readNetworkSettings,
+  writeNetworkSettings,
+} from "./settings.js";
 
 vi.mock("../../clients/mihomo.js", async (original) => ({
   ...(await original<typeof import("../../clients/mihomo.js")>()),
@@ -58,3 +63,64 @@ it("does not save an unreachable or looping home DNS", async () => {
   expect(readNetworkSettings(db).localResolvers).toEqual([]);
   db.$client.close();
 });
+
+it("reports the failed network check when switching mode without exposing raw causes", async () => {
+  const db = fixture();
+  vi.mocked(applyConfig).mockImplementationOnce(async (_db, _path, _target, options) => {
+    options?.stageConfigMutation?.();
+    throw new Error("network activation failed", {
+      cause: new NetworkActivationError("udp", { cause: new Error("private-controller-token") }),
+    });
+  });
+  const error = await configureGateway(db, { mode: "tun", localResolvers: [] }).catch(
+    (error: unknown) => error,
+  );
+  expect((error as Error).message).toContain("Не удалось включить TUN");
+  expect((error as Error).message).toContain("DNS UDP самого Mihomo");
+  expect((error as Error).message).not.toContain("private-controller-token");
+  expect(readNetworkSettings(db)).toEqual({ mode: "proxy", localResolvers: [] });
+  db.$client.close();
+});
+
+it.each([
+  {
+    mode: "tun",
+    reason: "tunDisabled",
+    message: "Не удалось включить TUN. После загрузки конфига Mihomo сообщил, что TUN выключен.",
+  },
+  {
+    mode: "proxy",
+    reason: "tunEnabled",
+    message:
+      "Не удалось переключиться на прокси. После загрузки конфига Mihomo сообщил, что TUN всё ещё включён.",
+  },
+  {
+    mode: "tun",
+    reason: "tunUnknown",
+    message:
+      "Не удалось включить TUN. API Mihomo не вернул состояние TUN. Проверить переключение не удалось.",
+  },
+  {
+    mode: "proxy",
+    reason: "tunUnknown",
+    message:
+      "Не удалось переключиться на прокси. API Mihomo не вернул состояние TUN. Проверить переключение не удалось.",
+  },
+] as const)(
+  "reports $reason when switching to $mode and restores the saved mode",
+  async ({ mode, reason, message }) => {
+    const db = fixture();
+    const previous = {
+      mode: mode === "tun" ? ("proxy" as const) : ("tun" as const),
+      localResolvers: [],
+    };
+    writeNetworkSettings(db, previous);
+    vi.mocked(applyConfig).mockImplementationOnce(async (_db, _path, _target, options) => {
+      options?.stageConfigMutation?.();
+      throw new Error("activation failed", { cause: new NetworkActivationError(reason) });
+    });
+    await expect(configureGateway(db, { mode, localResolvers: [] })).rejects.toThrow(message);
+    expect(readNetworkSettings(db)).toEqual(previous);
+    db.$client.close();
+  },
+);

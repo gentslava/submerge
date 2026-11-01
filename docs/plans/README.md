@@ -6,6 +6,7 @@ for their status. Mark a plan **done** here when its feature is merged to master
 
 | Plan | Status |
 |---|---|
+| [Engine network activation correction](2026-11-01-network-activation.md) | implemented and verified locally; not merged or deployed |
 | [Default route selection](2026-10-30-default-route.md) | implemented and verified locally; not merged or deployed |
 | [Manual Mihomo credential correction](2026-10-30-manual-mihomo-secret.md) | implemented and verified locally; not merged or deployed |
 | [TUN engine and deployment](2026-10-11-gateway.md) | implemented and verified locally; not deployed |

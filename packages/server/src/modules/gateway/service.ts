@@ -5,7 +5,7 @@ import { getRuntimeConfig, queryDnsResolution } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import type { Db } from "../../db/client.js";
 import { applyConfig, collectActiveRoutingInputs } from "../nodes/service.js";
-import { checkGatewayReadiness } from "./readiness.js";
+import { checkGatewayReadiness, NetworkActivationError } from "./readiness.js";
 import {
   assertIndependentLocalDns,
   gatewayApplyState,
@@ -59,14 +59,21 @@ export async function configureGateway(db: Db, input: NetworkSettings) {
     } catch {
       /* Health reports the engine failure. */
     }
+    const context =
+      next.localResolvers.join() !== previous.localResolvers.join()
+        ? "Не удалось сохранить DNS."
+        : next.mode === "tun"
+          ? "Не удалось включить TUN."
+          : "Не удалось переключиться на прокси.";
+    const activationError =
+      cause instanceof Error && cause.cause instanceof NetworkActivationError
+        ? cause.cause
+        : undefined;
+    const reason =
+      activationError?.message ?? "Проверьте работу сервера и настройки установки Submerge.";
     throw new TRPCError({
       code: "BAD_REQUEST",
-      message:
-        next.localResolvers.join() !== previous.localResolvers.join()
-          ? "Не удалось сохранить DNS. Проверьте адрес сервера и его доступность."
-          : next.mode === "tun"
-            ? "Не удалось включить TUN. Проверьте работу сервера и поддержку TUN в установке Submerge."
-            : "Не удалось переключиться на прокси. Проверьте работу сервера.",
+      message: `${context} ${reason}`,
       cause,
     });
   }

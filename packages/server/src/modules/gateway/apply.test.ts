@@ -12,10 +12,13 @@ import { beginMihomoSecretRotation } from "../settings/secret-rotation.js";
 import { getSetting, setSetting } from "../settings/service.js";
 import { networkProfileSchema } from "./engine-settings.js";
 import { writeNetworkProfile } from "./gateway.test-support.js";
-import { assertGatewayNetworkActivated } from "./readiness.js";
+import { assertGatewayNetworkActivated, NetworkActivationError } from "./readiness.js";
 import { gatewayApplyState, readGatewayRuntimeSettings } from "./settings.js";
 
-vi.mock("./readiness.js", () => ({ assertGatewayNetworkActivated: vi.fn(async () => undefined) }));
+vi.mock("./readiness.js", async (original) => ({
+  ...(await original<typeof import("./readiness.js")>()),
+  assertGatewayNetworkActivated: vi.fn(async () => undefined),
+}));
 
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>();
@@ -139,11 +142,20 @@ describe("gateway apply", () => {
         return new Response(null, { status: 204 });
       }),
     );
-    vi.mocked(assertGatewayNetworkActivated).mockRejectedValueOnce(new Error("missing TUN"));
-    await expect(applyConfig(db, path)).rejects.toThrow("network activation failed");
+    vi.mocked(assertGatewayNetworkActivated).mockRejectedValueOnce(
+      new NetworkActivationError("device", { cause: new Error("private-controller-token") }),
+    );
+    const error = await applyConfig(db, path).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(
+      "Настройки сохранены, но применение в Mihomo не подтверждено",
+    );
+    expect((error as Error).message).toContain("Интерфейс TUN не появился");
+    expect((error as Error).message).not.toContain("private-controller-token");
     expect(readFileSync(path, "utf8")).toBe("previous valid config");
     expect(payloads.at(-1)).toBe("previous valid config");
     expect(gatewayApplyState(db)).toBe("failed");
+    expect(getSetting(db, "internal.configApply")).toBeDefined();
   });
   it("rejects incomplete providers and restores the previous engine payload", async () => {
     const { db, path } = fixture();

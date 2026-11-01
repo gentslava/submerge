@@ -119,6 +119,51 @@ No `.env` is needed for localhost — the compose defaults just work.
 > **Note:** the `happ-decoder` image bundles the official Happ desktop + Qt, so it is
 > a few hundred MB — the first pull takes a moment.
 
+## Proxy and TUN
+
+Choose the capture mode in Settings → **Режим подключения**:
+
+| Mode | Which traffic reaches Mihomo? |
+|---|---|
+| **Proxy** (default) | Applications explicitly configured to use its HTTP/SOCKS endpoint. Applications without proxy settings keep their existing network path. |
+| **TUN** | IP traffic routed into Mihomo's virtual network interface. Applications do not need proxy support, but their packets must reach the engine's network namespace. HTTP/SOCKS remains available. |
+
+Both modes use the same routing channels. **TUN does not mean “send everything
+through VPN.”** Routing → **Default → Всё остальное → Напрямую** sends unmatched
+traffic through Mihomo's DIRECT connection; selected VPN channels still use VPN.
+DIRECT traffic that reaches Mihomo is processed by the engine before leaving
+directly. An application outside the proxy/TUN capture path bypasses Mihomo entirely.
+
+For a server that needs VPN only for Docker Hub and npm, Proxy mode is sufficient:
+configure the **Docker daemon** and npm to use the proxy, choose a Direct default,
+and add VPN rules for those services. Leave other applications without proxy
+settings to retain their existing path, including services with source-IP allowlists.
+
+**Docker scope matters:** a TUN inside the Mihomo container does not automatically
+capture the host or neighboring containers. Their routes must direct traffic to
+the engine. Submerge does not replace host routes, DHCP or DNS forwarding when
+you select TUN. LAN gateway setup is a separate network choice.
+
+The standard Compose prepares TUN support. In an older or custom installation:
+
+- `/dev/net/tun` is the Linux device passed to Mihomo to create the interface.
+- `NET_ADMIN` gives Mihomo permission to configure interfaces and routes.
+- Submerge's current TUN verification needs the engine's interfaces visible in
+  the app's network namespace, with a loopback `MIHOMO_API` address. The standard
+  Compose shares a stable namespace between them. Being on the same Docker
+  bridge network alone does not share interfaces. An unproven topology is a
+  verification failure, not proof that a remote engine's TUN is broken.
+
+Updating only an image cannot add missing device mappings or permissions; existing
+installations need the complete Compose update once, preserving their data mounts.
+See the [operation and upgrade guide](docs/runbooks/gateway.md).
+
+**Saved settings are not proof of activation.** If applying a change fails,
+refreshing the page can show the desired settings saved in SQLite while Mihomo
+still uses the previous configuration. Submerge retains the previous accepted
+file and tracks unfinished ordinary applies for recovery. An activation error
+means the new configuration has not been confirmed active.
+
 ## Production deploy
 
 The panel is designed to sit behind a TLS reverse-proxy (Traefik / Caddy / Dokploy).

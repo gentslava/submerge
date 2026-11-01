@@ -69,11 +69,14 @@ for (const width of [320, 390, 425, 768, 983, 985, 1024, 1440]) {
 test("immediate mode switch shows progress, retains previous mode on failure and retries by selecting TUN", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 1024 });
+  await page.addInitScript(() => localStorage.setItem("theme", "dark"));
+  const message =
+    "Не удалось включить TUN. После загрузки конфига Mihomo сообщил, что TUN выключен.";
   const overrides = fixtures();
   let attempts = 0;
   overrides["gateway.set"] = trpcFixtureByInput((input) => {
-    if (++attempts === 1)
-      return trpcFixtureError("Не удалось включить TUN. Проверьте работу сервера.");
+    if (++attempts === 1) return trpcFixtureError(message);
     overrides["gateway.configuration"] = input;
     return { applied: true };
   });
@@ -98,12 +101,41 @@ test("immediate mode switch shows progress, retains previous mode on failure and
     "true",
   );
   release();
-  await expect(mode.getByRole("alert")).toContainText("Не удалось включить TUN");
+  await expect(mode.getByRole("alert")).toHaveText(message);
+  await expectNoDocumentOverflow(page);
+  await page.screenshot({ path: "/tmp/submerge-mode-state-error-390-dark.png" });
   await tun.focus();
   await page.keyboard.press("Enter");
   await expect(tun).toHaveAttribute("aria-current", "true");
   await expect(mode.getByRole("alert")).toHaveCount(0);
 });
+
+for (const width of [320, 1440]) {
+  test(`specific TUN activation error remains readable at ${width}px`, async ({ page }) => {
+    const message =
+      "Не удалось включить TUN. Интерфейс TUN не появился в сети Submerge. Для TUN нужны поддержка /dev/net/tun, NET_ADMIN и общее сетевое пространство с Mihomo.";
+    await page.setViewportSize({ width, height: 1024 });
+    await page.addInitScript(() => localStorage.setItem("theme", "dark"));
+    await installTrpcFixture(page, {
+      ...fixtures(),
+      "gateway.set": trpcFixtureError(message),
+    });
+    await page.goto("/settings");
+    const mode = page.getByRole("region", { name: "Режим подключения", exact: true });
+    await mode.getByRole("button", { name: "TUN", exact: true }).click();
+    const alert = mode.getByRole("alert");
+    await expect(alert).toHaveText(message);
+    await expect(mode.getByRole("button", { name: "Прокси" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    await expectNoDocumentOverflow(page);
+    expect(
+      await alert.evaluate((element) => element.scrollHeight <= element.clientHeight + 1),
+    ).toBe(true);
+    await page.screenshot({ path: `/tmp/submerge-activation-error-${width}-dark.png` });
+  });
+}
 
 test("optional DNS saves on blur, rejects malformed values and can be cleared", async ({
   page,

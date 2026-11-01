@@ -1,9 +1,41 @@
 import { randomInt } from "node:crypto";
 import { createSocket } from "node:dgram";
-import { connect } from "node:net";
+import { connect, isIP } from "node:net";
 import { z } from "zod";
+import { env } from "../config/env.js";
 
 const DNS_TIMEOUT_MS = 3000;
+
+function isIpv4Loopback(host: string): boolean {
+  return isIP(host) === 4 && host.startsWith("127.");
+}
+
+function mihomoControllerHost(): string {
+  const host = new URL(env.MIHOMO_API).hostname;
+  // Mapped addresses use IPv4 transport; native IPv6 socket targets omit brackets.
+  const [, high, low] = /^\[::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/u.exec(host) ?? [];
+  if (high === undefined || low === undefined)
+    return host.startsWith("[") ? host.slice(1, -1) : host;
+  const first = Number.parseInt(high, 16);
+  const last = Number.parseInt(low, 16);
+  return [first >> 8, first & 255, last >> 8, last & 255].join(".");
+}
+
+export function mihomoControllerIsLocal(): boolean {
+  const host = mihomoControllerHost();
+  return host === "localhost" || host === "::1" || isIpv4Loopback(host);
+}
+
+// A wildcard is bound in the engine namespace, which may be another container.
+export function probeMihomoDnsListener(host: string, port: number, protocol: "tcp" | "udp") {
+  const target =
+    (host === "0.0.0.0" || isIpv4Loopback(host)) && !mihomoControllerIsLocal()
+      ? mihomoControllerHost()
+      : host === "0.0.0.0"
+        ? "127.0.0.1"
+        : host;
+  return probeDnsListener(target, port, protocol);
+}
 
 export function parseDnsAResponse(message: Buffer, id: number): string[] {
   if (
@@ -66,7 +98,10 @@ export async function probeDnsListener(
   const packet = Buffer.concat([query, ...labels, Buffer.from([0, 0, 1, 0, 1])]);
   return new Promise((resolve, reject) => {
     let settled = false;
-    const socket = protocol === "udp" ? createSocket("udp4") : connect({ host, port });
+    const socket =
+      protocol === "udp"
+        ? createSocket(isIP(host) === 6 ? "udp6" : "udp4")
+        : connect({ host, port });
     const finish = (error?: Error, response?: Buffer) => {
       if (settled) return;
       settled = true;
@@ -90,11 +125,16 @@ export async function probeDnsListener(
     socket.on("error", (error) => finish(error));
     if ("send" in socket) {
       socket.on("message", (response) => finish(undefined, response));
-      socket.connect(port, host, () =>
+      socket.connect(port, host, (error?: Error) => {
+        if (error) {
+          finish(error);
+          return;
+        }
+        if (settled) return;
         socket.send(packet, (error) => {
           if (error) finish(error);
-        }),
-      );
+        });
+      });
     } else {
       let received = Buffer.alloc(0);
       socket.on("connect", () => {
