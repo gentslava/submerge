@@ -4,6 +4,7 @@ import { queryDnsResolution } from "../../clients/mihomo.js";
 import { env } from "../../config/env.js";
 import { createDb } from "../../db/client.js";
 import { applyConfig } from "../nodes/service.js";
+import { NetworkActivationError } from "./readiness.js";
 import { configureGateway } from "./service.js";
 import { initializeNetworkSettings, readNetworkSettings } from "./settings.js";
 
@@ -56,5 +57,23 @@ it("does not save an unreachable or looping home DNS", async () => {
     configureGateway(db, { mode: "proxy", localResolvers: ["192.168.1.1"] }),
   ).rejects.toThrow("Не удалось сохранить DNS");
   expect(readNetworkSettings(db).localResolvers).toEqual([]);
+  db.$client.close();
+});
+
+it("reports the failed network check when switching mode without exposing raw causes", async () => {
+  const db = fixture();
+  vi.mocked(applyConfig).mockImplementationOnce(async (_db, _path, _target, options) => {
+    options?.stageConfigMutation?.();
+    throw new Error("network activation failed", {
+      cause: new NetworkActivationError("udp", { cause: new Error("private-controller-token") }),
+    });
+  });
+  const error = await configureGateway(db, { mode: "tun", localResolvers: [] }).catch(
+    (error: unknown) => error,
+  );
+  expect((error as Error).message).toContain("Не удалось включить TUN");
+  expect((error as Error).message).toContain("DNS UDP самого Mihomo");
+  expect((error as Error).message).not.toContain("private-controller-token");
+  expect(readNetworkSettings(db)).toEqual({ mode: "proxy", localResolvers: [] });
   db.$client.close();
 });

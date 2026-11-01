@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { env } from "../../config/env.js";
 import { networkProfileSchema } from "./engine-settings.js";
 import {
   assertGatewayNetworkActivated,
@@ -12,6 +13,13 @@ const profile = networkProfileSchema.parse({
   privateLists: [{ name: "n", file: "n.txt", target: "notblocked" }],
 });
 if (profile.profile !== "gateway") throw new Error("fixture");
+const previousApi = env.MIHOMO_API;
+beforeEach(() => {
+  env.MIHOMO_API = "http://127.0.0.1:9090";
+});
+afterEach(() => {
+  env.MIHOMO_API = previousApi;
+});
 const deps: GatewayReadinessDeps = {
   runtime: async () => ({ mode: "rule", tun: true, dns: null, ipv6: false }),
   rules: async () => ({
@@ -59,6 +67,59 @@ const deps: GatewayReadinessDeps = {
   files: () => ({ n: 1 }),
 };
 describe("gateway readiness", () => {
+  it("does not combine remote engine DNS with an unrelated app-local TUN", async () => {
+    env.MIHOMO_API = "http://mihomo:9090";
+    await expect(assertGatewayNetworkActivated(profile, deps)).rejects.toThrow(
+      "сетевое пространство",
+    );
+    const health = await checkGatewayReadiness(profile, "applied", "AUTO", deps);
+    expect(health.ready).toBe(false);
+    expect(health.checks.find((check) => check.name === "tun-interface")?.ok).toBe(false);
+  });
+
+  it("does not inspect app interfaces as proof of a remote Proxy engine", async () => {
+    env.MIHOMO_API = "http://mihomo:9090";
+    const remoteDeps = {
+      ...deps,
+      runtime: async () => ({ mode: "rule", tun: false, dns: null, ipv6: false }),
+      interfaces: () => ({}),
+    };
+    await expect(
+      assertGatewayNetworkActivated(profile, remoteDeps, false),
+    ).resolves.toBeUndefined();
+    expect((await checkGatewayReadiness(profile, "applied", "AUTO", remoteDeps, false)).ready).toBe(
+      true,
+    );
+    await expect(assertGatewayNetworkActivated(profile, remoteDeps, true)).rejects.toThrow();
+  });
+
+  it("retains interface and stopped-TUN checks when the engine controller is local", async () => {
+    env.MIHOMO_API = "http://127.0.0.1:9090";
+    const localDeps = {
+      ...deps,
+      runtime: async () => ({ mode: "rule", tun: false, dns: null, ipv6: false }),
+    };
+    await expect(assertGatewayNetworkActivated(profile, localDeps, false)).rejects.toThrow("TUN");
+    await expect(
+      assertGatewayNetworkActivated(profile, { ...localDeps, interfaces: () => ({}) }, false),
+    ).rejects.toThrow("WAN");
+  });
+
+  it.each(["udp", "tcp"] as const)(
+    "identifies failed %s DNS without returning raw errors",
+    async (protocol) => {
+      await expect(
+        assertGatewayNetworkActivated(profile, {
+          ...deps,
+          listener: async (_host, _port, transport) => {
+            if (transport === protocol) throw new Error("private-controller-token");
+            return ["198.19.0.2"];
+          },
+        }),
+      ).rejects.toThrow(`DNS ${protocol.toUpperCase()}`);
+    },
+  );
+
   it("accepts a Direct catch-all without requiring unused VPN pools or probing them", async () => {
     const vpnProbe = vi.fn();
     const directDeps = {
@@ -158,7 +219,13 @@ describe("gateway readiness", () => {
     await expect(assertGatewayNetworkActivated(profile, deps)).resolves.toBeUndefined();
     await expect(
       assertGatewayNetworkActivated(profile, { ...deps, interfaces: () => ({}) }),
-    ).rejects.toThrow("TUN");
+    ).rejects.toThrow("WAN");
+    await expect(
+      assertGatewayNetworkActivated(profile, {
+        ...deps,
+        interfaces: () => ({ eth0: deps.interfaces().eth0, lan0: deps.interfaces().lan0 }),
+      }),
+    ).rejects.toThrow("Интерфейс TUN не появился");
     await expect(
       assertGatewayNetworkActivated(profile, { ...deps, listener: async () => [] }),
     ).rejects.toThrow("DNS");

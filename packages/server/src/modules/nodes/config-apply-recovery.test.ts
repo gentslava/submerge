@@ -91,6 +91,8 @@ describe.each([
             ...process.env,
             DB_PATH: databasePath,
             MIHOMO_CONFIG_PATH: configPath,
+            // The fixture below supplies a shared-namespace runtime/interface proof.
+            MIHOMO_API: "http://127.0.0.1:9090",
             ADMIN_PASSWORD: "test-admin",
             MIHOMO_SECRET: "old-secret",
             DESIRED_ROUTE: desiredRoute,

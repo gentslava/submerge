@@ -6,7 +6,7 @@ import {
   PROBE_GROUP,
   PSEUDO_NODE_SET,
 } from "@submerge/shared";
-import { probeDnsListener } from "../../clients/gateway-network.js";
+import { mihomoControllerIsLocal, probeMihomoDnsListener } from "../../clients/gateway-network.js";
 import {
   type ActiveRulesResponse,
   getDelay,
@@ -45,7 +45,7 @@ export const gatewayReadinessDeps: GatewayReadinessDeps = {
   rules: getRules,
   providers: getRuleProviders,
   proxies: getProxies,
-  listener: probeDnsListener,
+  listener: probeMihomoDnsListener,
   realDns: queryRealDns,
   localDns: queryDnsResolution,
   upstreamDns: queryDnsResolution,
@@ -63,6 +63,29 @@ export interface GatewayReadiness {
 
 type NetworkActivationDeps = Pick<GatewayReadinessDeps, "runtime" | "interfaces" | "listener">;
 
+const activationReasons = {
+  runtime: "Не удалось прочитать состояние Mihomo.",
+  mode: "Mihomo не подтвердил режим маршрутизации rule.",
+  tun: "Mihomo не подтвердил выбранный режим TUN/Proxy.",
+  ipv6: "Mihomo не подтвердил отключение IPv6.",
+  namespace:
+    "Submerge не может подтвердить общее сетевое пространство с Mihomo. Текущая проверка TUN требует локальный адрес MIHOMO_API.",
+  wan: "Не найден сетевой интерфейс WAN для Mihomo.",
+  lan: "Не найден сетевой интерфейс LAN для TUN.",
+  device:
+    "Интерфейс TUN не появился в сети Submerge. Для TUN нужны поддержка /dev/net/tun, NET_ADMIN и общее сетевое пространство с Mihomo.",
+  stopped: "Интерфейс TUN остался активным после переключения в Proxy.",
+  udp: "DNS UDP самого Mihomo не ответил ожидаемым fake-IP адресом.",
+  tcp: "DNS TCP самого Mihomo не ответил ожидаемым fake-IP адресом.",
+} as const;
+
+export class NetworkActivationError extends Error {
+  constructor(reason: keyof typeof activationReasons, options?: ErrorOptions) {
+    super(activationReasons[reason], options);
+    this.name = "NetworkActivationError";
+  }
+}
+
 /** A successful config reload does not prove Linux could create the TUN/listeners. */
 export async function assertGatewayNetworkActivated(
   profile: GatewayProfile,
@@ -71,27 +94,38 @@ export async function assertGatewayNetworkActivated(
 ): Promise<void> {
   const prefix = profile.fakeIpRange.split(".").slice(0, 2).join(".");
   const host = profile.dnsListen === "0.0.0.0" ? "127.0.0.1" : profile.dnsListen;
-  const runtime = await deps.runtime();
+  const runtime = await deps.runtime().catch((cause: unknown) => {
+    throw new NetworkActivationError("runtime", { cause });
+  });
   const interfaces = deps.interfaces();
+  const inspectInterfaces = tunEnabled || mihomoControllerIsLocal();
+  if (runtime.mode !== "rule") throw new NetworkActivationError("mode");
+  if (runtime.tun !== tunEnabled) throw new NetworkActivationError("tun");
+  if (runtime.ipv6 !== false) throw new NetworkActivationError("ipv6");
+  if (tunEnabled && !mihomoControllerIsLocal()) throw new NetworkActivationError("namespace");
+  if (inspectInterfaces && !interfaces[profile.outboundInterface]?.length)
+    throw new NetworkActivationError("wan");
+  if (tunEnabled && !interfaces[profile.lanInterface]?.length)
+    throw new NetworkActivationError("lan");
   if (
-    runtime.mode !== "rule" ||
-    runtime.tun !== tunEnabled ||
-    runtime.ipv6 !== false ||
-    !interfaces[profile.outboundInterface]?.length ||
-    (tunEnabled && !interfaces[profile.lanInterface]?.length) ||
-    (tunEnabled
-      ? !interfaces[profile.tunDevice]?.some((entry) => entry.address.startsWith(`${prefix}.`))
-      : Boolean(interfaces[profile.tunDevice]?.length))
-  ) {
-    throw new Error("Gateway TUN or LAN/WAN interfaces are unavailable");
-  }
-  const responses = await Promise.all([
-    deps.listener(host, profile.dnsPort, "udp"),
-    deps.listener(host, profile.dnsPort, "tcp"),
-  ]);
-  if (!responses.every((ips) => ips.length > 0 && ips.every((ip) => ip.startsWith(`${prefix}.`)))) {
-    throw new Error("Gateway DNS listeners are unavailable");
-  }
+    tunEnabled &&
+    !interfaces[profile.tunDevice]?.some((entry) => entry.address.startsWith(`${prefix}.`))
+  )
+    throw new NetworkActivationError("device");
+  if (!tunEnabled && inspectInterfaces && interfaces[profile.tunDevice]?.length)
+    throw new NetworkActivationError("stopped");
+  await Promise.all(
+    (["udp", "tcp"] as const).map(async (protocol) => {
+      try {
+        const ips = await deps.listener(host, profile.dnsPort, protocol);
+        if (ips.length === 0 || !ips.every((ip) => ip.startsWith(`${prefix}.`)))
+          throw new NetworkActivationError(protocol);
+      } catch (cause) {
+        if (cause instanceof NetworkActivationError) throw cause;
+        throw new NetworkActivationError(protocol, { cause });
+      }
+    }),
+  );
 }
 
 export async function checkGatewayReadiness(
@@ -119,6 +153,7 @@ export async function checkGatewayReadiness(
           ),
         ];
   const nonce = randomUUID();
+  const inspectInterfaces = tunEnabled || mihomoControllerIsLocal();
   const prefix = profile.fakeIpRange.split(".").slice(0, 2).join(".");
   const host = profile.dnsListen === "0.0.0.0" ? "127.0.0.1" : profile.dnsListen;
   const checks: GatewayReadiness["checks"] = [
@@ -130,7 +165,7 @@ export async function checkGatewayReadiness(
       () =>
         Boolean(
           (!tunEnabled || deps.interfaces()[profile.lanInterface]?.length) &&
-            deps.interfaces()[profile.outboundInterface]?.length,
+            (!inspectInterfaces || deps.interfaces()[profile.outboundInterface]?.length),
         ),
     ],
     [
@@ -156,10 +191,11 @@ export async function checkGatewayReadiness(
       tunEnabled ? "tun-interface" : "tun-disabled",
       () =>
         tunEnabled
-          ? (deps.interfaces()[profile.tunDevice] ?? []).some((address) =>
+          ? mihomoControllerIsLocal() &&
+            (deps.interfaces()[profile.tunDevice] ?? []).some((address) =>
               address.address.startsWith(`${prefix}.`),
             )
-          : !deps.interfaces()[profile.tunDevice]?.length,
+          : !inspectInterfaces || !deps.interfaces()[profile.tunDevice]?.length,
     ],
     [
       "dns-udp",

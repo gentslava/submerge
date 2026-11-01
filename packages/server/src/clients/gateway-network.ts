@@ -1,9 +1,36 @@
 import { randomInt } from "node:crypto";
 import { createSocket } from "node:dgram";
-import { connect } from "node:net";
+import { connect, isIP } from "node:net";
 import { z } from "zod";
+import { env } from "../config/env.js";
 
 const DNS_TIMEOUT_MS = 3000;
+
+function isIpv4Loopback(host: string): boolean {
+  return isIP(host) === 4 && host.startsWith("127.");
+}
+
+export function mihomoControllerIsLocal(): boolean {
+  const host = new URL(env.MIHOMO_API).hostname;
+  return (
+    host === "localhost" ||
+    host === "[::1]" ||
+    isIpv4Loopback(host) ||
+    // URL normalizes IPv4-mapped loopback addresses to hexadecimal IPv6.
+    /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/u.test(host)
+  );
+}
+
+// A wildcard is bound in the engine namespace, which may be another container.
+export function probeMihomoDnsListener(host: string, port: number, protocol: "tcp" | "udp") {
+  const target =
+    (host === "0.0.0.0" || isIpv4Loopback(host)) && !mihomoControllerIsLocal()
+      ? new URL(env.MIHOMO_API).hostname
+      : host === "0.0.0.0"
+        ? "127.0.0.1"
+        : host;
+  return probeDnsListener(target, port, protocol);
+}
 
 export function parseDnsAResponse(message: Buffer, id: number): string[] {
   if (
@@ -90,11 +117,16 @@ export async function probeDnsListener(
     socket.on("error", (error) => finish(error));
     if ("send" in socket) {
       socket.on("message", (response) => finish(undefined, response));
-      socket.connect(port, host, () =>
+      socket.connect(port, host, (error?: Error) => {
+        if (error) {
+          finish(error);
+          return;
+        }
+        if (settled) return;
         socket.send(packet, (error) => {
           if (error) finish(error);
-        }),
-      );
+        });
+      });
     } else {
       let received = Buffer.alloc(0);
       socket.on("connect", () => {

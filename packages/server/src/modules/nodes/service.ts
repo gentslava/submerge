@@ -25,7 +25,7 @@ import { groupNameFor, resolveChannelProxies } from "../channels/pool.js";
 import { resolveMatcherDomains } from "../channels/presets.js";
 import { listChannels, policyProbe, readDefaultPolicy } from "../channels/service.js";
 import { getDomainIntelligenceSettingsView } from "../domain-intelligence/service.js";
-import { assertGatewayNetworkActivated } from "../gateway/readiness.js";
+import { assertGatewayNetworkActivated, NetworkActivationError } from "../gateway/readiness.js";
 import {
   assertGatewaySecurity,
   assertIndependentLocalDns,
@@ -475,6 +475,18 @@ async function applyConfigSerialized(
           }
         }
         opts.afterConfigActivationAttempt?.({ applied: false, activationVerified: false });
+        if (phase === "network") {
+          const context = opts.rollbackOnFailure
+            ? "Применение в Mihomo не подтверждено."
+            : "Настройки сохранены, но применение в Mihomo не подтверждено.";
+          const reason =
+            error instanceof NetworkActivationError
+              ? ` ${error.message}`
+              : " Проверка сетевого состояния Mihomo завершилась ошибкой.";
+          throw new Error(`${context}${reason} Предыдущий файл конфигурации сохранён.`, {
+            cause: error,
+          });
+        }
         throw new Error(`gateway ${phase} activation failed; previous config file preserved`, {
           cause: error,
         });
