@@ -217,3 +217,41 @@ this transport correction does not enable engine IPv6 traffic or change TUN proo
 
 Artifacts: `submerge-native-ipv6-{red,focused,static,docker-before,docker-after}.log`
 and `ipv6-probe.mjs` in the same chat-scratch qualification directory.
+
+
+## PR 56 follow-up: IPv6 test portability
+
+Review `5726603379` asks for a portable real IPv6 socket fixture and independent
+coverage of remote native IPv6 controller targeting. The real `::1` case now
+skips only fixture setup errors `EAFNOSUPPORT`, `EADDRNOTAVAIL` and
+`EPROTONOSUPPORT`. IPv4 failures, unexpected bind errors and failures after both
+listeners are ready still fail. Both TCP and UDP fixtures close on setup errors.
+Vitest `it.for` supplies the test context used for the runtime skip.
+
+A separate mocked-transport regression covers remote `http://[2001:db8::1]:9090`
+for wildcard and loopback IPv4 listener settings without requiring host IPv6.
+It asserts UDP6, an unbracketed socket target, socket closure and no TCP connect.
+The spec explicitly keeps URL brackets in `MIHOMO_API` and removes them only
+from the parsed socket target. No production source or UI changes are included.
+
+- Focused: all seven client tests pass on this IPv6-capable host.
+- Portability qualification: temporary copies of the real socket fixture bind
+  TCP or UDP separately to an unassigned documentation IPv6 address. Each run
+  reports four passed and one skipped. A separate injected `EACCES` setup error
+  reports four passed and one failed, with no skips. The initial qualification
+  exposed that `it.each` does not supply the test context; switching to `it.for`
+  fixed both unavailable-address runs. Temporary files were removed afterward.
+- Raw `verify:static` passed: 142 shared / 1486 server / 297 web tests, raw
+  Biome, token drift, typecheck and production builds. Four existing opt-in
+  integration cases remain skipped.
+  The previous 14-case browser and pinned Node 24/Mihomo receipts apply to the
+  unchanged production code; this follow-up does not add runtime qualification.
+- Incremental review on tree `321c6e1`: `ipv6_incremental_standards` and
+  `ipv6_incremental_spec` independently cleared the slice, zero findings on
+  either axis.
+- Final whole-change review on tree `45218dc`: `ipv6_final_standards` and
+  `ipv6_final_spec` independently cleared the full feature, zero findings.
+  Standards additionally ran 58 focused tests across five files successfully.
+  The existing transactional default-route endpoint's generic error contract is
+  unchanged and outside this follow-up. Only this receipt changed after review;
+  test and production source are identical to the cleared tree.
