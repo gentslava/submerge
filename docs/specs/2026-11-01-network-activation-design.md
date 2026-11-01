@@ -22,6 +22,9 @@ reloading the settings page never proves engine activation.
   errors distinguish saved settings from unconfirmed activation. Mode-switch
   errors retain their context and include the same safe reason. Never return raw
   controller responses, credentials or arbitrary exception text to the browser.
+  A mode mismatch states the TUN flag reported after loading the candidate:
+  disabled when enabling, still enabled when disabling, or state not reported.
+  Missing state is never described as a known disabled or enabled engine.
 - Preserve candidate publication, previous-file retention and the recovery journal
   protocol. No claim of successful apply follows failed readiness, and no routing
   rule is weakened. Current namespaces/privileges remain installation concerns.
@@ -33,3 +36,7 @@ without its runtime evidence; do not claim production acceptance.
 The README explains Proxy versus TUN capture, shared routing decisions, Docker
 namespace/device/permission requirements and saved-versus-active configuration.
 It includes the selective Docker/npm proxy scenario without changing host routes.
+
+Controller DNS targeting converts IPv4-mapped IPv6 controller hosts to their
+IPv4 address, including remote addresses. Ordinary hosts and explicit listener
+addresses retain their existing behavior.

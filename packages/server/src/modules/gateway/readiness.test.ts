@@ -67,6 +67,43 @@ const deps: GatewayReadinessDeps = {
   files: () => ({ n: 1 }),
 };
 describe("gateway readiness", () => {
+  it.each([
+    {
+      expected: true,
+      reported: false,
+      message: "После загрузки конфига Mihomo сообщил, что TUN выключен.",
+    },
+    {
+      expected: false,
+      reported: true,
+      message: "После загрузки конфига Mihomo сообщил, что TUN всё ещё включён.",
+    },
+    {
+      expected: true,
+      reported: null,
+      message: "API Mihomo не вернул состояние TUN. Проверить переключение не удалось.",
+    },
+    {
+      expected: false,
+      reported: null,
+      message: "API Mihomo не вернул состояние TUN. Проверить переключение не удалось.",
+    },
+  ])(
+    "distinguishes expected $expected from reported $reported TUN state",
+    async ({ expected, reported, message }) => {
+      await expect(
+        assertGatewayNetworkActivated(
+          profile,
+          {
+            ...deps,
+            runtime: async () => ({ mode: "rule", tun: reported, dns: null, ipv6: false }),
+          },
+          expected,
+        ),
+      ).rejects.toThrow(message);
+    },
+  );
+
   it("does not combine remote engine DNS with an unrelated app-local TUN", async () => {
     env.MIHOMO_API = "http://mihomo:9090";
     await expect(assertGatewayNetworkActivated(profile, deps)).rejects.toThrow(

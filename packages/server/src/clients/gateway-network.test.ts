@@ -39,10 +39,12 @@ describe("gateway DNS listener probes", () => {
       udp.bind(0, host, resolve);
     });
     const port = udp.address().port;
-    env.MIHOMO_API = `http://${host}:9090`;
     try {
-      expect(await probeMihomoDnsListener("127.0.0.1", port, "udp")).toEqual(["198.19.0.5"]);
-      expect(await probeMihomoDnsListener("0.0.0.0", port, "udp")).toEqual(["198.19.0.5"]);
+      for (const controller of [`http://${host}:9090`, `http://[::ffff:${host}]:9090`]) {
+        env.MIHOMO_API = controller;
+        expect(await probeMihomoDnsListener("127.0.0.1", port, "udp")).toEqual(["198.19.0.5"]);
+        expect(await probeMihomoDnsListener("0.0.0.0", port, "udp")).toEqual(["198.19.0.5"]);
+      }
       env.MIHOMO_API = "http://unreachable.invalid:9090";
       expect(await probeMihomoDnsListener(host, port, "udp")).toEqual(["198.19.0.5"]);
     } finally {

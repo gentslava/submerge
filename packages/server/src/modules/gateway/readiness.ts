@@ -66,7 +66,9 @@ type NetworkActivationDeps = Pick<GatewayReadinessDeps, "runtime" | "interfaces"
 const activationReasons = {
   runtime: "Не удалось прочитать состояние Mihomo.",
   mode: "Mihomo не подтвердил режим маршрутизации rule.",
-  tun: "Mihomo не подтвердил выбранный режим TUN/Proxy.",
+  tunDisabled: "После загрузки конфига Mihomo сообщил, что TUN выключен.",
+  tunEnabled: "После загрузки конфига Mihomo сообщил, что TUN всё ещё включён.",
+  tunUnknown: "API Mihomo не вернул состояние TUN. Проверить переключение не удалось.",
   ipv6: "Mihomo не подтвердил отключение IPv6.",
   namespace:
     "Submerge не может подтвердить общее сетевое пространство с Mihomo. Текущая проверка TUN требует локальный адрес MIHOMO_API.",
@@ -100,7 +102,10 @@ export async function assertGatewayNetworkActivated(
   const interfaces = deps.interfaces();
   const inspectInterfaces = tunEnabled || mihomoControllerIsLocal();
   if (runtime.mode !== "rule") throw new NetworkActivationError("mode");
-  if (runtime.tun !== tunEnabled) throw new NetworkActivationError("tun");
+  if (runtime.tun !== tunEnabled)
+    throw new NetworkActivationError(
+      runtime.tun === null ? "tunUnknown" : runtime.tun ? "tunEnabled" : "tunDisabled",
+    );
   if (runtime.ipv6 !== false) throw new NetworkActivationError("ipv6");
   if (tunEnabled && !mihomoControllerIsLocal()) throw new NetworkActivationError("namespace");
   if (inspectInterfaces && !interfaces[profile.outboundInterface]?.length)

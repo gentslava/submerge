@@ -1,6 +1,6 @@
 # Engine network activation correction
 
-Status: implemented and verified locally; ready for PR, not merged or deployed.
+Status: implemented and verified locally; PR #56 open, not merged or deployed.
 
 Spec: [Engine network activation checks](../specs/2026-11-01-network-activation-design.md).
 Baseline: master `9c59907ff1afba5ea0bdcb69d4d00df2ae322403`.
@@ -136,3 +136,46 @@ The publication addendum was reviewed independently on tree `bbc04ba` by
 Source code is unchanged from the earlier cleared tree. Raw `verify:static`
 passed again before publication (142 shared / 1475 server / 297 web tests and
 all static/build stages). Only this receipt and status metadata changed afterward.
+
+## PR 56 follow-up: reported TUN state and mapped controller hosts
+
+The user reported that the combined TUN/Proxy mismatch message remained unclear.
+The activation error now states what Mihomo reported after the candidate reload:
+TUN disabled when enabling, still enabled when disabling, or state not reported.
+The third case never claims a known state, and none invents a device/permission
+root cause. Mode-switch errors preserve that distinction and retain their
+previous saved mode. Past tense describes the observed candidate response even
+when subsequent recovery changes the engine again.
+
+Also verified CodeRabbit comment `discussion_r4434402866`: a remote IPv4-mapped
+controller host reached the IPv4-only DNS probe as bracketed IPv6. Normalize its
+canonical mapped address to IPv4, reusing the same host for locality and DNS.
+Ordinary hosts and explicit listener addresses retain their behavior.
+
+- Red: 9 failing regressions for the four readiness states, four outward mode
+  errors and a real remote mapped-host DNS probe.
+- Green: 43 focused tests; full raw static gate passed with 142 shared / 1483
+  server / 297 web tests plus Biome, token drift, typecheck and production builds.
+  Four existing opt-in server integration cases remain skipped.
+- Browser: all 14 connection-settings cases passed with zero retries at the
+  existing 320/390/425/768/983/985/1024/1440 widths. The actual disabled-TUN message
+  is exercised at 390 dark, including pending state, retained Proxy selection,
+  readable wrapping, no overflow and successful keyboard retry. Author inspected
+  `/tmp/submerge-mode-state-error-390-dark.png`; no layout code changed. Existing
+  frame references `oXxu8` and `Q3sToj` remain the contract.
+- Incremental review on tree `1fa0320`: `network_final_standards` and
+  `network_incremental_spec` independently cleared the slice, zero findings.
+  Standards also reran all 43 focused tests successfully.
+- Pinned Docker Node 24.22.2: actual separate-container Mihomo API and UDP/TCP
+  DNS succeed through an IPv4-mapped controller URL. The activation assertion
+  against this known TUN-disabled engine returns the new disabled-state message.
+  No physical TUN activation was attempted by this additional probe.
+- Final whole-change review on tree `7b09aeb`: `network_final_standards` and
+  `network_final_spec` independently cleared the full feature, zero findings.
+  Source code is unchanged after those final reviews; only this receipt changed.
+
+The user-linked review `5726459288` contains exactly the mapped-controller
+comment above. Its actual API review/comments were checked before publication.
+
+No production request or deployment was made; these messages identify the failed
+observation and do not establish the user's underlying TUN failure cause.

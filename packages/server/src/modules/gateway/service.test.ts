@@ -6,7 +6,11 @@ import { createDb } from "../../db/client.js";
 import { applyConfig } from "../nodes/service.js";
 import { NetworkActivationError } from "./readiness.js";
 import { configureGateway } from "./service.js";
-import { initializeNetworkSettings, readNetworkSettings } from "./settings.js";
+import {
+  initializeNetworkSettings,
+  readNetworkSettings,
+  writeNetworkSettings,
+} from "./settings.js";
 
 vi.mock("../../clients/mihomo.js", async (original) => ({
   ...(await original<typeof import("../../clients/mihomo.js")>()),
@@ -77,3 +81,46 @@ it("reports the failed network check when switching mode without exposing raw ca
   expect(readNetworkSettings(db)).toEqual({ mode: "proxy", localResolvers: [] });
   db.$client.close();
 });
+
+it.each([
+  {
+    mode: "tun",
+    reason: "tunDisabled",
+    message: "Не удалось включить TUN. После загрузки конфига Mihomo сообщил, что TUN выключен.",
+  },
+  {
+    mode: "proxy",
+    reason: "tunEnabled",
+    message:
+      "Не удалось переключиться на прокси. После загрузки конфига Mihomo сообщил, что TUN всё ещё включён.",
+  },
+  {
+    mode: "tun",
+    reason: "tunUnknown",
+    message:
+      "Не удалось включить TUN. API Mihomo не вернул состояние TUN. Проверить переключение не удалось.",
+  },
+  {
+    mode: "proxy",
+    reason: "tunUnknown",
+    message:
+      "Не удалось переключиться на прокси. API Mihomo не вернул состояние TUN. Проверить переключение не удалось.",
+  },
+] as const)(
+  "reports $reason when switching to $mode and restores the saved mode",
+  async ({ mode, reason, message }) => {
+    const db = fixture();
+    const previous = {
+      mode: mode === "tun" ? ("proxy" as const) : ("tun" as const),
+      localResolvers: [],
+    };
+    writeNetworkSettings(db, previous);
+    vi.mocked(applyConfig).mockImplementationOnce(async (_db, _path, _target, options) => {
+      options?.stageConfigMutation?.();
+      throw new Error("activation failed", { cause: new NetworkActivationError(reason) });
+    });
+    await expect(configureGateway(db, { mode, localResolvers: [] })).rejects.toThrow(message);
+    expect(readNetworkSettings(db)).toEqual(previous);
+    db.$client.close();
+  },
+);

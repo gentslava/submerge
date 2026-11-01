@@ -69,11 +69,14 @@ for (const width of [320, 390, 425, 768, 983, 985, 1024, 1440]) {
 test("immediate mode switch shows progress, retains previous mode on failure and retries by selecting TUN", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 1024 });
+  await page.addInitScript(() => localStorage.setItem("theme", "dark"));
+  const message =
+    "Не удалось включить TUN. После загрузки конфига Mihomo сообщил, что TUN выключен.";
   const overrides = fixtures();
   let attempts = 0;
   overrides["gateway.set"] = trpcFixtureByInput((input) => {
-    if (++attempts === 1)
-      return trpcFixtureError("Не удалось включить TUN. Проверьте работу сервера.");
+    if (++attempts === 1) return trpcFixtureError(message);
     overrides["gateway.configuration"] = input;
     return { applied: true };
   });
@@ -98,7 +101,9 @@ test("immediate mode switch shows progress, retains previous mode on failure and
     "true",
   );
   release();
-  await expect(mode.getByRole("alert")).toContainText("Не удалось включить TUN");
+  await expect(mode.getByRole("alert")).toHaveText(message);
+  await expectNoDocumentOverflow(page);
+  await page.screenshot({ path: "/tmp/submerge-mode-state-error-390-dark.png" });
   await tun.focus();
   await page.keyboard.press("Enter");
   await expect(tun).toHaveAttribute("aria-current", "true");
