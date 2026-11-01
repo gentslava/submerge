@@ -12,9 +12,10 @@ function isIpv4Loopback(host: string): boolean {
 
 function mihomoControllerHost(): string {
   const host = new URL(env.MIHOMO_API).hostname;
-  // URL normalizes IPv4-mapped addresses to hexadecimal IPv6; DNS uses udp4.
+  // Mapped addresses use IPv4 transport; native IPv6 socket targets omit brackets.
   const [, high, low] = /^\[::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})\]$/u.exec(host) ?? [];
-  if (high === undefined || low === undefined) return host;
+  if (high === undefined || low === undefined)
+    return host.startsWith("[") ? host.slice(1, -1) : host;
   const first = Number.parseInt(high, 16);
   const last = Number.parseInt(low, 16);
   return [first >> 8, first & 255, last >> 8, last & 255].join(".");
@@ -22,7 +23,7 @@ function mihomoControllerHost(): string {
 
 export function mihomoControllerIsLocal(): boolean {
   const host = mihomoControllerHost();
-  return host === "localhost" || host === "[::1]" || isIpv4Loopback(host);
+  return host === "localhost" || host === "::1" || isIpv4Loopback(host);
 }
 
 // A wildcard is bound in the engine namespace, which may be another container.
@@ -97,7 +98,10 @@ export async function probeDnsListener(
   const packet = Buffer.concat([query, ...labels, Buffer.from([0, 0, 1, 0, 1])]);
   return new Promise((resolve, reject) => {
     let settled = false;
-    const socket = protocol === "udp" ? createSocket("udp4") : connect({ host, port });
+    const socket =
+      protocol === "udp"
+        ? createSocket(isIP(host) === 6 ? "udp6" : "udp4")
+        : connect({ host, port });
     const finish = (error?: Error, response?: Buffer) => {
       if (settled) return;
       settled = true;

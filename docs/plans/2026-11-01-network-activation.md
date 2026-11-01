@@ -179,3 +179,41 @@ comment above. Its actual API review/comments were checked before publication.
 
 No production request or deployment was made; these messages identify the failed
 observation and do not establish the user's underlying TUN failure cause.
+
+## PR 56 follow-up: native IPv6 controllers
+
+Review `5726518870` contains an inline listener-wording clarification, an
+outside-diff native-IPv6 transport issue and an additional TUN-state terminology
+comment. All were checked against the client, IPv4-only listener schema and spec.
+The spec now names the TUN-state check separately from the rule-mode check and
+limits preservation to non-loopback IPv4 listener addresses. Remote-controller
+targeting still replaces IPv4 wildcard/loopback listener addresses only.
+
+Native IPv6 controller literals are unbracketed for sockets and use UDP6.
+IPv4-mapped hosts continue to normalize to IPv4; ordinary hostnames keep their
+existing IPv4 UDP path. Local IPv6 controllers still use the existing IPv4 DNS
+loopback target. The DNS question remains A and fake-IPv4 responses are required;
+this transport correction does not enable engine IPv6 traffic or change TUN proof.
+
+- Red: the added real `::1` UDP/TCP listener regression failed with `EINVAL` on
+  the old UDP4 probe. Four existing client tests remained green.
+- Docker baseline: isolated dual-stack internal network, no host ports. On
+  pinned Node 24.22.2, the real Mihomo IPv6 API and independent native DNS query
+  succeeded, while the old activation DNS probe failed with bracketed-host
+  `ENOTFOUND`. Engine flags remained `ipv6: false`, `tun: false` throughout.
+- Docker green: same engine/config; the corrected IPv6 controller path passes
+  UDP, TCP and prepared Proxy activation. This qualifies reachable native IPv6
+  transport, not physical TUN or production acceptance.
+- Green: 44 focused tests; raw `verify:static` passed with 142 shared / 1484
+  server / 297 web tests, raw Biome, token drift, typecheck and production builds.
+  Four existing opt-in server integration cases remain skipped. No UI text or
+  layout changed; the earlier 14-case zero-retry browser receipt remains relevant.
+- Incremental review on tree `5685473`: `network_final_standards` and
+  `network_incremental_spec` independently cleared the slice, zero findings.
+  Standards independently reran all 44 focused tests successfully.
+  Final whole-change review on tree `7bb9628`: `network_final_standards` and
+  `network_final_spec` independently cleared the complete feature, zero findings.
+  Source code is unchanged after those reviews; only this receipt changed.
+
+Artifacts: `submerge-native-ipv6-{red,focused,static,docker-before,docker-after}.log`
+and `ipv6-probe.mjs` in the same chat-scratch qualification directory.

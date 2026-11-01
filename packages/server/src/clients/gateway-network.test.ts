@@ -52,7 +52,10 @@ describe("gateway DNS listener probes", () => {
     }
   });
 
-  it("checks both UDP and TCP responses on the actual listener", async () => {
+  it.each([
+    { host: "127.0.0.1", type: "udp4" },
+    { host: "::1", type: "udp6" },
+  ] as const)("checks UDP and TCP responses on the $host listener", async ({ host, type }) => {
     const tcp = createServer((socket) => {
       socket.on("data", (data) => {
         const response = answer(data.subarray(2));
@@ -61,15 +64,16 @@ describe("gateway DNS listener probes", () => {
         socket.end(Buffer.concat([prefix, response]));
       });
     });
-    await new Promise<void>((resolve) => tcp.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => tcp.listen(0, host, resolve));
     const address = tcp.address();
     if (!address || typeof address === "string") throw new Error("fixture");
-    const udp = createSocket("udp4");
+    const udp = createSocket(type);
     udp.on("message", (data, remote) => udp.send(answer(data), remote.port, remote.address));
-    await new Promise<void>((resolve) => udp.bind(address.port, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) => udp.bind(address.port, host, resolve));
     try {
-      expect(await probeDnsListener("127.0.0.1", address.port, "udp")).toEqual(["198.19.0.5"]);
-      expect(await probeDnsListener("127.0.0.1", address.port, "tcp")).toEqual(["198.19.0.5"]);
+      expect(await probeDnsListener(host, address.port, "udp")).toEqual(["198.19.0.5"]);
+      expect(await probeDnsListener(host, address.port, "tcp")).toEqual(["198.19.0.5"]);
+      if (host === "::1") return;
       for (const controller of [
         "http://[::1]:9090",
         "http://localhost:9090",
